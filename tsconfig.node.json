@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"] },
+  "include": [
+    "*.ts",
+    "src/backend/**/*.ts",
+    "src/common/**/*.ts",
+    "src/frontend/react/env.d.ts",
+    "tests/**/*.ts"
+  ]
+}

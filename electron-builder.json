@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "dev.gitworkbench.desktop",
+  "productName": "Git Workbench",
+  "directories": { "output": "release" },
+  "files": ["out/**/*", "package.json", "LICENSE"],
+  "asar": true,
+  "npmRebuild": false,
+  "linux": { "target": ["AppImage"], "category": "Development", "syncDesktopName": true },
+  "win": { "target": ["nsis"] },
+  "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" }
+}
