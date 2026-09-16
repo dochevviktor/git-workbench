@@ -6,6 +6,7 @@ import type {
   RecentRepository,
   RepositoryHead,
   RepositoryHistoryPage,
+  RepositoryLocation,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
   RepositoryManagerSnapshot,
@@ -70,6 +71,7 @@ export class RepositoryService {
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
   private readonly restorePromises = new Map<number, Promise<void>>();
   private readonly ownerGenerations = new Map<number, number>();
+  private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
   private gitInfoPromise: Promise<GitInfo> | undefined;
 
   constructor(options: RepositoryServiceOptions) {
@@ -288,6 +290,10 @@ export class RepositoryService {
       const scan = await this.scanSource(sourceDirectory);
       this.addManagerSource(snapshot, sourceDirectory, scan);
     }
+    this.managerRepositoryPaths.set(
+      ownerId,
+      new Map(snapshot.repositories.map((repository) => [repository.id, repository.path])),
+    );
 
     return {
       sourceDirectories: snapshot.sourceDirectories,
@@ -324,16 +330,65 @@ export class RepositoryService {
     return this.listManager(ownerId);
   }
 
+  /**
+   * Resolves a location the backend previously issued to this window. The path is never supplied by
+   * the renderer, and it must still be an existing directory.
+   */
+  async resolveLocation(ownerId: number, location: RepositoryLocation): Promise<string> {
+    await this.ensureSessions(ownerId);
+    let path: string | undefined;
+    switch (location.kind) {
+      case 'open':
+        path = this.sessions.get(ownerId)?.get(location.id)?.path;
+        if (!path) {
+          throw new ExpectedBackendError(
+            'REPOSITORY_NOT_OPEN',
+            'That repository is not open in this window.',
+          );
+        }
+        break;
+      case 'recent':
+        path = (await this.store.list()).find((entry) => entry.id === location.id)?.path;
+        break;
+      case 'manager-repository':
+        path = this.managerRepositoryPaths.get(ownerId)?.get(location.id);
+        break;
+      case 'source-directory':
+        path = (await this.managerStore.list()).find((source) => source.id === location.id)?.path;
+        if (!path) {
+          throw new ExpectedBackendError(
+            'SOURCE_DIRECTORY_NOT_FOUND',
+            'That source directory is no longer configured.',
+          );
+        }
+        break;
+    }
+    if (!path) {
+      throw new ExpectedBackendError('PATH_NOT_FOUND', 'That repository is no longer listed.');
+    }
+    try {
+      if (!(await stat(path)).isDirectory()) {
+        throw new ExpectedBackendError('NOT_A_DIRECTORY', 'That location is no longer a directory.');
+      }
+    } catch (error) {
+      if (error instanceof ExpectedBackendError) throw error;
+      throw new ExpectedBackendError('PATH_NOT_FOUND', 'That directory no longer exists.');
+    }
+    return path;
+  }
+
   disposeWindow(ownerId: number): void {
     this.ownerGenerations.set(ownerId, (this.ownerGenerations.get(ownerId) ?? 0) + 1);
     this.restorePromises.delete(ownerId);
     this.sessions.delete(ownerId);
+    this.managerRepositoryPaths.delete(ownerId);
   }
 
   dispose(): void {
     this.ownerGenerations.clear();
     this.restorePromises.clear();
     this.sessions.clear();
+    this.managerRepositoryPaths.clear();
   }
 
   private async probeGit(): Promise<GitInfo> {

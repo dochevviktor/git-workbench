@@ -25,10 +25,31 @@ export const appInfoSchema = z.strictObject({
 export const windowStateSchema = z.strictObject({
   maximized: z.boolean(),
   focused: z.boolean(),
+  fullScreen: z.boolean(),
 });
 
 export const windowCommandSchema = z.strictObject({
-  action: z.enum(['minimize', 'toggle-maximize', 'close']),
+  action: z.enum([
+    'minimize',
+    'toggle-maximize',
+    'close',
+    'toggle-full-screen',
+    'zoom-in',
+    'zoom-out',
+    'reset-zoom',
+    'reload',
+    'toggle-developer-tools',
+    'quit',
+  ]),
+});
+
+/** Standard editing commands applied by the owning window to its focused renderer element. */
+export const editCommandSchema = z.strictObject({
+  action: z.enum(['undo', 'redo', 'cut', 'copy', 'paste', 'select-all']),
+});
+
+export const clipboardTextSchema = z.strictObject({
+  text: z.string().max(1_048_576),
 });
 
 // Paths are intentionally opaque strings in the shared layer. Absolute-path and filesystem
@@ -148,6 +169,15 @@ export const repositoryTabOrientationRequestSchema = z.strictObject({
 export const sourceDirectoryRequestSchema = z.strictObject({ path: repositoryPathSchema });
 export const sourceDirectorySessionSchema = z.strictObject({ id: sourceDirectoryIdSchema });
 
+// A location is addressed only by an identifier the backend issued. The main process resolves the
+// path itself, so the renderer cannot ask the file manager to open an arbitrary location.
+export const repositoryLocationSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('open'), id: repositoryIdSchema }),
+  z.strictObject({ kind: z.literal('recent'), id: repositoryIdSchema }),
+  z.strictObject({ kind: z.literal('manager-repository'), id: repositoryManagerRepositoryIdSchema }),
+  z.strictObject({ kind: z.literal('source-directory'), id: sourceDirectoryIdSchema }),
+]);
+
 export const repositoryHistoryReferenceKindSchema = z.enum([
   'head',
   'branch',
@@ -219,6 +249,8 @@ export const requests = {
   getAppInfo: request('app:get-info', z.undefined(), appInfoSchema),
   getWindowState: request('window:get-state', z.undefined(), windowStateSchema),
   windowCommand: request('window:command', windowCommandSchema, z.null()),
+  editCommand: request('edit:command', editCommandSchema, z.null()),
+  writeClipboardText: request('clipboard:write-text', clipboardTextSchema, z.null()),
   getGitInfo: request('git:get-info', z.undefined(), gitInfoSchema),
   pickRepositoryDirectory: request(
     'repository:pick-directory',
@@ -275,6 +307,7 @@ export const requests = {
     repositoryHistoryRequestSchema,
     repositoryHistoryPageSchema,
   ),
+  openRepositoryInFileManager: request('repository:open-in-file-manager', repositoryLocationSchema, z.null()),
 } as const;
 
 export const events = {
@@ -284,6 +317,8 @@ export const events = {
 export type AppInfo = z.infer<typeof appInfoSchema>;
 export type WindowState = z.infer<typeof windowStateSchema>;
 export type WindowCommand = z.infer<typeof windowCommandSchema>;
+export type EditCommand = z.infer<typeof editCommandSchema>;
+export type ClipboardText = z.infer<typeof clipboardTextSchema>;
 export type GitInfo = z.infer<typeof gitInfoSchema>;
 export type RepositoryHead = z.infer<typeof repositoryHeadSchema>;
 export type RepositoryWorkingTree = z.infer<typeof repositoryWorkingTreeSchema>;
@@ -303,6 +338,7 @@ export type RepositorySession = z.infer<typeof repositorySessionSchema>;
 export type RepositoryTabOrientationRequest = z.infer<typeof repositoryTabOrientationRequestSchema>;
 export type SourceDirectoryRequest = z.infer<typeof sourceDirectoryRequestSchema>;
 export type SourceDirectorySession = z.infer<typeof sourceDirectorySessionSchema>;
+export type RepositoryLocation = z.infer<typeof repositoryLocationSchema>;
 export type RepositoryHistoryReferenceKind = z.infer<typeof repositoryHistoryReferenceKindSchema>;
 export type RepositoryHistoryDecoration = z.infer<typeof repositoryHistoryDecorationSchema>;
 export type RepositoryHistoryPerson = z.infer<typeof repositoryHistoryPersonSchema>;

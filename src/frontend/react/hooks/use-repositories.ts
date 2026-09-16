@@ -23,7 +23,7 @@ type RepositoryBusyState =
   | undefined;
 
 const defaultTabPreferences: RepositoryTabPreferences = {
-  tabOrientation: 'vertical',
+  tabOrientation: 'horizontal',
   activeRepositoryId: null,
 };
 
@@ -46,6 +46,8 @@ export function useRepositories() {
   const [busy, setBusy] = useState<RepositoryBusyState>();
   const [error, setError] = useState<string>();
   const [activeId, setActiveId] = useState<string>();
+  // The Repository Manager is a transient renderer tab, like a browser's new-tab page.
+  const [managerTab, setManagerTab] = useState({ open: false, active: false });
   const generation = useRef(0);
   const mounted = useRef(true);
   const busyRef = useRef<RepositoryBusyState>(undefined);
@@ -118,6 +120,10 @@ export function useRepositories() {
     }
   }, []);
 
+  const leaveManagerTab = useCallback(() => {
+    setManagerTab((current) => (current.active ? { open: false, active: false } : current));
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
     void load();
@@ -145,13 +151,14 @@ export function useRepositories() {
       const repository = unwrapResult(await api.repository.open({ path: pickedPath }));
       setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
       setActiveId(repository.id);
+      leaveManagerTab();
       await load();
     } catch (reason: unknown) {
       if (mounted.current) setError(actionError(reason));
     } finally {
       if (mounted.current) setBusy(undefined);
     }
-  }, [load]);
+  }, [leaveManagerTab, load]);
 
   const initialize = useCallback(async () => {
     const api = desktopApi();
@@ -167,13 +174,14 @@ export function useRepositories() {
       const repository = unwrapResult(await api.repository.initialize({ path: pickedPath, bare: false }));
       setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
       setActiveId(repository.id);
+      leaveManagerTab();
       await load();
     } catch (reason: unknown) {
       if (mounted.current) setError(actionError(reason));
     } finally {
       if (mounted.current) setBusy(undefined);
     }
-  }, [load]);
+  }, [leaveManagerTab, load]);
 
   const openRecent = useCallback(
     async (path: string) => {
@@ -188,6 +196,7 @@ export function useRepositories() {
         const repository = unwrapResult(await api.repository.open({ path }));
         setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
         setActiveId(repository.id);
+        leaveManagerTab();
         await load();
       } catch (reason: unknown) {
         if (mounted.current) setError(actionError(reason));
@@ -195,7 +204,7 @@ export function useRepositories() {
         if (mounted.current) setBusy(undefined);
       }
     },
-    [load],
+    [leaveManagerTab, load],
   );
 
   const closeRepository = useCallback(
@@ -226,6 +235,45 @@ export function useRepositories() {
     [load, open],
   );
 
+  /** Closes every repository tab, or every tab except `keepId`. */
+  const closeRepositoryTabs = useCallback(
+    async (keepId: string | null) => {
+      const api = desktopApi();
+      const closing = openRef.current.filter((repository) => repository.id !== keepId);
+      if (!api || closing.length === 0) return;
+      setBusy('closing');
+      setError(undefined);
+      const closed: RepositorySummary[] = [];
+      try {
+        for (const repository of closing) {
+          unwrapResult(await api.repository.close({ id: repository.id }));
+          closed.unshift(repository);
+        }
+        if (keepId) {
+          setActiveId(keepId);
+          setManagerTab((current) => ({ ...current, active: false }));
+          unwrapResult(await api.repository.selectTab({ id: keepId }));
+        } else {
+          setActiveId(undefined);
+        }
+      } catch (reason: unknown) {
+        if (mounted.current) setError(actionError(reason));
+      } finally {
+        if (mounted.current) {
+          setRecentlyClosed((current) =>
+            [
+              ...closed,
+              ...current.filter((candidate) => !closed.some((tab) => tab.id === candidate.id)),
+            ].slice(0, 20),
+          );
+          await load();
+          setBusy(undefined);
+        }
+      }
+    },
+    [load],
+  );
+
   const reopenClosed = useCallback(async () => {
     const api = desktopApi();
     const candidate = recentlyClosed[0];
@@ -236,13 +284,14 @@ export function useRepositories() {
       const repository = unwrapResult(await api.repository.open({ path: candidate.path }));
       setRecentlyClosed((current) => current.filter((tab) => tab.id !== candidate.id));
       setActiveId(repository.id);
+      leaveManagerTab();
       await load();
     } catch (reason: unknown) {
       if (mounted.current) setError(actionError(reason));
     } finally {
       if (mounted.current) setBusy(undefined);
     }
-  }, [load, recentlyClosed]);
+  }, [leaveManagerTab, load, recentlyClosed]);
 
   const removeRecent = useCallback(
     async (id: string) => {
@@ -345,6 +394,7 @@ export function useRepositories() {
     (id: string) => {
       if (!open.some((repository) => repository.id === id)) return;
       setActiveId(id);
+      setManagerTab((current) => ({ ...current, active: false }));
       const api = desktopApi();
       if (!api) return;
       void api.repository.selectTab({ id }).then((result) => {
@@ -365,12 +415,24 @@ export function useRepositories() {
     [openRecent, select],
   );
 
+  const openManagerTab = useCallback(() => setManagerTab({ open: true, active: true }), []);
+  const closeManagerTab = useCallback(() => setManagerTab({ open: false, active: false }), []);
+  const reportError = useCallback((message: string) => setError(message), []);
+  const managerActive = open.length === 0 || managerTab.active;
+
   return {
     gitInfo,
     recent,
     open,
     manager,
-    active: open.find((repository) => repository.id === activeId),
+    managerActive,
+    managerTabOpen: open.length === 0 || managerTab.open,
+    openManagerTab,
+    closeManagerTab,
+    closeRepositoryTabs,
+    reportError,
+    active: managerActive ? undefined : open.find((repository) => repository.id === activeId),
+    lastActive: open.find((repository) => repository.id === activeId),
     tabOrientation: tabPreferences.tabOrientation,
     recentlyClosed,
     select,

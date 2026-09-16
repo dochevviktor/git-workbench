@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { AppInfo, WindowState } from '../../../common/ipc/contracts';
+import { useCallback, useEffect, useState } from 'react';
+import type { AppInfo, WindowCommand, WindowState } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 
 export function useDesktop() {
@@ -47,23 +47,25 @@ export function useDesktop() {
     };
   }, [attempt]);
 
-  const toggleMaximize = () => {
+  const windowCommand = useCallback((action: WindowCommand['action']) => {
     const api = window.desktop;
     if (!api) return;
     void api.window
-      .command({ action: 'toggle-maximize' })
+      .command({ action })
       .then(unwrapResult)
       .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : 'Could not resize the window.');
+        setError(reason instanceof Error ? reason.message : 'The window command could not be completed.');
       });
-  };
+  }, []);
+
+  const refresh = useCallback(() => setAttempt((value) => value + 1), []);
 
   return {
     info,
     windowState,
     error,
     loading,
-    refresh: () => setAttempt((value) => value + 1),
-    toggleMaximize,
+    refresh,
+    windowCommand,
   };
 }

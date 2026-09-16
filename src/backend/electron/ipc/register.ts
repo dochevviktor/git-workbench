@@ -1,13 +1,29 @@
-import { app, dialog, ipcMain } from 'electron';
+import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { events, requests } from '../../../common/ipc/contracts';
 import type { AppInfo, RequestContract, WindowState } from '../../../common/ipc/contracts';
+import { ExpectedBackendError } from '../../errors';
 import type { RepositoryService } from '../../repositories/repository-service';
 import { isTrustedDocument } from '../security';
 import { executeRequest } from './execute-request';
 
+const minimumZoomLevel = -3;
+const maximumZoomLevel = 5;
+const zoomStep = 0.5;
+
 function windowState(window: BrowserWindow): WindowState {
-  return { maximized: window.isMaximized(), focused: window.isFocused() };
+  return { maximized: window.isMaximized(), focused: window.isFocused(), fullScreen: window.isFullScreen() };
+}
+
+function requireDevelopment(): void {
+  if (app.isPackaged) {
+    throw new ExpectedBackendError('FORBIDDEN', 'That command is only available in development builds.');
+  }
+}
+
+function changeZoom(window: BrowserWindow, delta: number): void {
+  const level = window.webContents.getZoomLevel() + delta;
+  window.webContents.setZoomLevel(Math.min(maximumZoomLevel, Math.max(minimumZoomLevel, level)));
 }
 
 export function registerAppIpc(repositoryService?: RepositoryService) {
@@ -77,7 +93,60 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
           if (!window.isDestroyed()) window.close();
         });
         break;
+      case 'toggle-full-screen':
+        window.setFullScreen(!window.isFullScreen());
+        break;
+      case 'zoom-in':
+        changeZoom(window, zoomStep);
+        break;
+      case 'zoom-out':
+        changeZoom(window, -zoomStep);
+        break;
+      case 'reset-zoom':
+        window.webContents.setZoomLevel(0);
+        break;
+      case 'reload':
+        requireDevelopment();
+        setImmediate(() => {
+          if (!window.isDestroyed()) window.webContents.reload();
+        });
+        break;
+      case 'toggle-developer-tools':
+        requireDevelopment();
+        window.webContents.toggleDevTools();
+        break;
+      case 'quit':
+        setImmediate(() => app.quit());
+        break;
     }
+    return null;
+  });
+  register(requests.editCommand, (window, { action }) => {
+    const contents = window.webContents;
+    switch (action) {
+      case 'undo':
+        contents.undo();
+        break;
+      case 'redo':
+        contents.redo();
+        break;
+      case 'cut':
+        contents.cut();
+        break;
+      case 'copy':
+        contents.copy();
+        break;
+      case 'paste':
+        contents.paste();
+        break;
+      case 'select-all':
+        contents.selectAll();
+        break;
+    }
+    return null;
+  });
+  register(requests.writeClipboardText, async (_window, { text }) => {
+    await clipboard.writeText(text);
     return null;
   });
 
@@ -131,6 +200,14 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryHistory, (window, { id, offset, limit }) =>
       repositoryService.getHistory(window.webContents.id, id, offset, limit),
     );
+    register(requests.openRepositoryInFileManager, async (window, location) => {
+      const path = await repositoryService.resolveLocation(window.webContents.id, location);
+      const failure = await shell.openPath(path);
+      if (failure) {
+        throw new ExpectedBackendError('OPERATION_FAILED', 'The file manager could not open that folder.');
+      }
+      return null;
+    });
   }
 
   return {
@@ -146,6 +223,8 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       window.on('unmaximize', publishState);
       window.on('focus', publishState);
       window.on('blur', publishState);
+      window.on('enter-full-screen', publishState);
+      window.on('leave-full-screen', publishState);
       const cleanup = () => {
         repositoryService?.disposeWindow(id);
         windows.delete(id);
@@ -153,6 +232,8 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
         window.removeListener('unmaximize', publishState);
         window.removeListener('focus', publishState);
         window.removeListener('blur', publishState);
+        window.removeListener('enter-full-screen', publishState);
+        window.removeListener('leave-full-screen', publishState);
         window.removeListener('closed', cleanup);
       };
       windows.set(id, { window, url, cleanup });

@@ -133,9 +133,10 @@ describe('repository service', () => {
       workingTree: { state: 'clean', changedFileCount: 0 },
     });
 
-    await service.setTabOrientation('horizontal');
+    await expect(service.getTabPreferences(1)).resolves.toMatchObject({ tabOrientation: 'horizontal' });
+    await service.setTabOrientation('vertical');
     await expect(service.getTabPreferences(1)).resolves.toMatchObject({
-      tabOrientation: 'horizontal',
+      tabOrientation: 'vertical',
       activeRepositoryId: second.id,
     });
 
@@ -148,7 +149,7 @@ describe('repository service', () => {
     );
     expect(await restarted.listOpen(2)).toHaveLength(2);
     await expect(restarted.getTabPreferences(2)).resolves.toMatchObject({
-      tabOrientation: 'horizontal',
+      tabOrientation: 'vertical',
       activeRepositoryId: second.id,
     });
   });
@@ -340,6 +341,61 @@ describe('repository service', () => {
     await rm(source, { recursive: true, force: true });
     const missing = await service.listManager(1);
     expect(missing.sourceDirectories[0]).toMatchObject({ status: 'missing', repositoryCount: 0 });
+  });
+
+  it('resolves file-manager locations only from identifiers issued to the window', async () => {
+    const directory = await fixtureDirectory();
+    const source = join(directory, 'source');
+    const managed = join(source, 'managed');
+    const closed = join(directory, 'closed');
+    await mkdir(managed, { recursive: true });
+    await mkdir(closed);
+    const service = new RepositoryService({
+      storagePath: join(directory, 'recent.json'),
+      managerStoragePath: join(directory, 'manager.json'),
+      workspaceStoragePath: join(directory, 'workspace.json'),
+    });
+    const open = await service.initialize(1, managed, false);
+    const recentOnly = await service.initialize(1, closed, false);
+    await service.close(1, recentOnly.id);
+    const snapshot = await service.addSourceDirectory(1, source);
+    const managerRepository = snapshot.repositories[0]!;
+    const sourceDirectory = snapshot.sourceDirectories[0]!;
+
+    await expect(service.resolveLocation(1, { kind: 'open', id: open.id })).resolves.toBe(managed);
+    await expect(service.resolveLocation(1, { kind: 'recent', id: recentOnly.id })).resolves.toBe(closed);
+    await expect(
+      service.resolveLocation(1, { kind: 'manager-repository', id: managerRepository.id }),
+    ).resolves.toBe(managed);
+    await expect(
+      service.resolveLocation(1, { kind: 'source-directory', id: sourceDirectory.id }),
+    ).resolves.toBe(source);
+
+    await expect(service.resolveLocation(1, { kind: 'open', id: recentOnly.id })).rejects.toMatchObject({
+      code: 'REPOSITORY_NOT_OPEN',
+    });
+    await expect(
+      service.resolveLocation(2, { kind: 'manager-repository', id: managerRepository.id }),
+    ).rejects.toMatchObject({ code: 'PATH_NOT_FOUND' });
+    await expect(
+      service.resolveLocation(1, { kind: 'recent', id: `repo-${'0'.repeat(64)}` }),
+    ).rejects.toMatchObject({ code: 'PATH_NOT_FOUND' });
+    await expect(
+      service.resolveLocation(1, { kind: 'source-directory', id: `source-${'0'.repeat(64)}` }),
+    ).rejects.toMatchObject({ code: 'SOURCE_DIRECTORY_NOT_FOUND' });
+
+    await rm(closed, { recursive: true, force: true });
+    await expect(service.resolveLocation(1, { kind: 'recent', id: recentOnly.id })).rejects.toMatchObject({
+      code: 'PATH_NOT_FOUND',
+    });
+    await writeFile(closed, 'now a file\n', 'utf8');
+    await expect(service.resolveLocation(1, { kind: 'recent', id: recentOnly.id })).rejects.toMatchObject({
+      code: 'NOT_A_DIRECTORY',
+    });
+    service.disposeWindow(1);
+    await expect(
+      service.resolveLocation(1, { kind: 'manager-repository', id: managerRepository.id }),
+    ).rejects.toMatchObject({ code: 'PATH_NOT_FOUND' });
   });
 
   it('quarantines invalid repository-manager settings', async () => {

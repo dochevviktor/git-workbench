@@ -5,13 +5,17 @@ The long-term target is the publicly documented functionality of Fork, implement
 with Electron, shared TypeScript contracts, and React.
 
 The current milestone starts F01's local workflow, the first F02 repository-manager slice, the initial
-F03 tab slice, and the first F04 history slice. It includes a desktop workspace, appearance controls,
-native menus, window commands, Git discovery, opening existing repositories, local initialization,
-recent-repository persistence, persisted source directories, bounded folder-aware repository scanning,
-multiple persisted repository tabs, dirty indicators, vertical/horizontal tab orientation, close/reopen
-shortcuts, paged commit history, reference labels, graph lanes, and selectable commit metadata.
-Changes, graph collapse/filtering, revision trees, clone, custom manager folders, filesystem watchers,
-and the remaining Git operations are later work.
+F03 tab slice, the first F04 history slice, and an initial F34 workspace-chrome slice. It includes a
+Fork-style workspace: a custom title bar with menus and window controls (native traffic lights on
+macOS), a toolbar, equal-width repository tabs or a vertical tab column, a Repository Manager new tab,
+a repository sidebar with a reference tree, a commit table with a lane graph and colored labels,
+commit details, and renderer-drawn context menus. It also covers Git discovery, opening existing
+repositories, local initialization, recent-repository persistence, persisted source directories,
+bounded folder-aware repository scanning, persisted tabs with dirty indicators, close/reopen
+shortcuts, paged commit history, and System/Light/Dark appearance. Toolbar and menu entries for Git
+operations from later phases are shown disabled with the phase that will enable them. Changes, graph
+collapse/filtering, revision trees, clone, custom manager folders, filesystem watchers, and the
+remaining Git operations are later work.
 
 ## Start
 
@@ -42,6 +46,10 @@ Run platform builds on their respective operating systems. Signing, update distr
 icons, and final application identifiers are deferred to the release milestone.
 Debian packaging is also deferred until a real maintainer email is selected; the initial package command
 does not invent release contact information.
+
+On Linux and Windows the window is frameless: the application draws its own title bar, menu bar
+(Alt+letter opens a menu), and window controls, and it handles shortcuts itself instead of installing
+a native menu. macOS keeps inset traffic lights and a small native application menu.
 
 Linux desktop execution needs Electron's shared libraries and a working graphical session.
 For a Wayland-only desktop, launch with `npm run dev -- -- --ozone-platform=wayland`
@@ -75,6 +83,9 @@ The smoke test passed through this bridge. Native Wayland application startup wa
 native Wayland Playwright startup previously timed out amid virtual-driver diagnostics; use the
 bridge's Xwayland path for automation here. No additional X server or service changes are needed.
 The GPU switch is local to this software-rendered testing setup, not a production application default.
+This forwarded display ignores window-manager state requests: even a normal framed window does not
+maximize or minimize there. The Electron test therefore checks that the title-bar buttons reach the
+main-process window methods rather than asserting the resulting window state.
 
 ## Project map
 
@@ -84,7 +95,7 @@ src/backend/preload/    Sandboxed bridge: fixed capabilities and subscriptions
 src/backend/git/        Argument-array Git executable resolution and bounded process runner
 src/backend/repositories/ Repository topology, sessions, history, recent/tab persistence, status, and manager scanning
 src/common/ipc/         Runtime schemas, DTOs, result envelopes, public API types
-src/frontend/react/     React desktop shell (no Electron or Node imports)
+src/frontend/react/     React desktop shell (no Electron or Node imports): components/, menu/, hooks/, lib/
 tests/unit/             IPC validation, sender checks, timeouts, subscription cleanup
 tests/e2e/              Real Electron startup and bridge smoke test
 docs/                   Research, architecture, and implementation roadmap

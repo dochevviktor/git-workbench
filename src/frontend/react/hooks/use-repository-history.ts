@@ -12,6 +12,8 @@ function actionError(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'The repository history could not be loaded.';
 }
 
+export type RepositoryHistory = ReturnType<typeof useRepositoryHistory>;
+
 export function useRepositoryHistory(repositoryId: string | undefined) {
   const [commits, setCommits] = useState<RepositoryHistoryCommit[]>([]);
   const [references, setReferences] = useState<RepositoryHistoryReference[]>([]);

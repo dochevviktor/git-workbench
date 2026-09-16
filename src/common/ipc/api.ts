@@ -1,10 +1,13 @@
 import type {
   AppInfo,
+  ClipboardText,
+  EditCommand,
   GitInfo,
   RecentRepository,
   RepositoryInitializeRequest,
   RepositoryHistoryPage,
   RepositoryHistoryRequest,
+  RepositoryLocation,
   RepositoryManagerSnapshot,
   RepositoryOpenRequest,
   RepositorySession,
@@ -30,6 +33,12 @@ export interface DesktopApi {
     command(command: WindowCommand): Promise<IpcResult<null>>;
     onStateChanged(listener: (state: WindowState) => void): Unsubscribe;
   };
+  readonly edit: {
+    command(command: EditCommand): Promise<IpcResult<null>>;
+  };
+  readonly clipboard: {
+    writeText(request: ClipboardText): Promise<IpcResult<null>>;
+  };
   readonly repository: {
     getGitInfo(): Promise<IpcResult<GitInfo>>;
     pickDirectory(): Promise<IpcResult<string | null>>;
@@ -47,5 +56,6 @@ export interface DesktopApi {
     removeSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<null>>;
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
+    openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;
   };
 }

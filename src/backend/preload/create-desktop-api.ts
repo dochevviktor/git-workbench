@@ -70,6 +70,8 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       command: (command) => invoke(requests.windowCommand, command),
       onStateChanged: (listener) => subscribe(events.windowStateChanged, listener),
     },
+    edit: { command: (command) => invoke(requests.editCommand, command) },
+    clipboard: { writeText: (request) => invoke(requests.writeClipboardText, request) },
     repository: {
       getGitInfo: () => invoke(requests.getGitInfo, undefined),
       pickDirectory: () => invoke(requests.pickRepositoryDirectory, undefined),
@@ -88,6 +90,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       removeSourceDirectory: (request) => invoke(requests.removeSourceDirectory, request),
       rescanSourceDirectory: (request) => invoke(requests.rescanSourceDirectory, request),
       getHistory: (request) => invoke(requests.getRepositoryHistory, request),
+      openInFileManager: (location) => invoke(requests.openRepositoryInFileManager, location),
     },
   };
 }

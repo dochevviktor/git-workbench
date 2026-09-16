@@ -30,7 +30,7 @@ describe('preload capability API', () => {
     const { api, invoke } = fixture();
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
-    expect(Object.keys(api)).toEqual(['app', 'window', 'repository']);
+    expect(Object.keys(api)).toEqual(['app', 'window', 'edit', 'clipboard', 'repository']);
   });
 
   it('blocks malformed input before crossing IPC', async () => {
@@ -83,6 +83,26 @@ describe('preload capability API', () => {
     });
   });
 
+  it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
+    const { api, invoke } = fixture();
+    await api.edit.command({ action: 'copy' });
+    expect(invoke).toHaveBeenLastCalledWith(requests.editCommand.channel, { action: 'copy' });
+    await api.clipboard.writeText({ text: 'commit message' });
+    expect(invoke).toHaveBeenLastCalledWith(requests.writeClipboardText.channel, { text: 'commit message' });
+    const location = { kind: 'source-directory', id: `source-${'b'.repeat(64)}` } as const;
+    await api.repository.openInFileManager(location);
+    expect(invoke).toHaveBeenLastCalledWith(requests.openRepositoryInFileManager.channel, location);
+
+    const invalidLocation = await api.repository.openInFileManager({
+      kind: 'recent',
+      id: '../../etc',
+    });
+    expect(invalidLocation).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    const invalidEdit = await api.edit.command({ action: 'print' } as never);
+    expect(invalidEdit).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
+
   it('validates tab preferences and uses named tab channels', async () => {
     const { api, invoke } = fixture();
     const preferences = { tabOrientation: 'horizontal', activeRepositoryId: null } as const;
@@ -129,14 +149,14 @@ describe('preload capability API', () => {
     const listener = vi.fn();
     const channel = events.windowStateChanged.channel;
     const unsubscribe = api.window.onStateChanged(listener);
-    emitter.emit(channel, { privileged: true }, { maximized: 'invalid', focused: true });
+    emitter.emit(channel, { privileged: true }, { maximized: 'invalid', focused: true, fullScreen: false });
     expect(listener).not.toHaveBeenCalled();
-    emitter.emit(channel, { privileged: true }, { maximized: true, focused: false });
-    expect(listener).toHaveBeenCalledExactlyOnceWith({ maximized: true, focused: false });
+    emitter.emit(channel, { privileged: true }, { maximized: true, focused: false, fullScreen: false });
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ maximized: true, focused: false, fullScreen: false });
     unsubscribe();
     unsubscribe();
     expect(emitter.listenerCount(channel)).toBe(0);
-    emitter.emit(channel, {}, { maximized: false, focused: true });
+    emitter.emit(channel, {}, { maximized: false, focused: true, fullScreen: false });
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
@@ -147,7 +167,7 @@ describe('preload capability API', () => {
     const stopPersistent = api.window.onStateChanged(persistent);
     for (let index = 0; index < 20; index += 1) api.window.onStateChanged(vi.fn())();
     expect(emitter.listenerCount(channel)).toBe(1);
-    emitter.emit(channel, {}, { maximized: false, focused: true });
+    emitter.emit(channel, {}, { maximized: false, focused: true, fullScreen: false });
     expect(persistent).toHaveBeenCalledOnce();
     stopPersistent();
     expect(emitter.listenerCount(channel)).toBe(0);

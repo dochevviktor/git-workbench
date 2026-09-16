@@ -2,22 +2,46 @@ import { describe, expect, it, vi } from 'vitest';
 import { ExpectedBackendError } from '../../src/backend/errors';
 import { executeRequest } from '../../src/backend/electron/ipc/execute-request';
 import { requests } from '../../src/common/ipc/contracts';
-import type { WindowState } from '../../src/common/ipc/contracts';
+import type { RequestContract, WindowState } from '../../src/common/ipc/contracts';
 
 describe('main-process request boundary', () => {
   it('returns a validated response', async () => {
-    const handler = vi.fn(() => ({ maximized: false, focused: true }));
+    const handler = vi.fn(() => ({ maximized: false, focused: true, fullScreen: false }));
     expect(await executeRequest(requests.getWindowState, undefined, true, handler, vi.fn())).toEqual({
       ok: true,
-      value: { maximized: false, focused: true },
+      value: { maximized: false, focused: true, fullScreen: false },
     });
   });
 
-  it.each([null, {}, { action: 'shell' }, { action: 'minimize', script: 'unexpected' }])(
-    'rejects invalid window commands before calling a handler: %j',
-    async (payload) => {
+  it.each([
+    null,
+    {},
+    { action: 'shell' },
+    { action: 'minimize', script: 'unexpected' },
+    { action: 'open-url' },
+  ])('rejects invalid window commands before calling a handler: %j', async (payload) => {
+    const handler = vi.fn(() => null);
+    const result = await executeRequest(requests.windowCommand, payload, true, handler, vi.fn());
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [requests.editCommand, { action: 'execute' }],
+    [requests.writeClipboardText, { text: 'x'.repeat(1_048_577) }],
+    [requests.openRepositoryInFileManager, { kind: 'path', path: '/etc' }],
+    [requests.openRepositoryInFileManager, { kind: 'open', id: '/etc' }],
+  ] as const)(
+    'rejects invalid shell-adjacent requests before calling a handler: %s',
+    async (contract, payload) => {
       const handler = vi.fn(() => null);
-      const result = await executeRequest(requests.windowCommand, payload, true, handler, vi.fn());
+      const result = await executeRequest(
+        contract as RequestContract<unknown, null>,
+        payload,
+        true,
+        handler,
+        vi.fn(),
+      );
       expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
       expect(handler).not.toHaveBeenCalled();
     },
@@ -70,7 +94,7 @@ describe('main-process request boundary', () => {
       requests.getWindowState,
       undefined,
       true,
-      () => ({ maximized: 'yes', focused: false }) as unknown as WindowState,
+      () => ({ maximized: 'yes', focused: false, fullScreen: false }) as unknown as WindowState,
       vi.fn(),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });

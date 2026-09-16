@@ -1,7 +1,8 @@
 # Architecture and implementation decisions
 
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
-F03 tab slice, and the initial F04 history/selection slice implemented.
+F03 tab slice, the initial F04 history/selection slice, and the initial F34 workspace-chrome slice
+implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -67,8 +68,14 @@ session queries, close, and recent-entry removal. The first F02 slice adds manag
 add/remove, and explicit rescan methods. The initial F03 slice adds validated tab-preference reads and
 writes plus active-tab selection; open-session DTOs include a bounded Git-derived working-tree state.
 The initial F04 slice adds a bounded `desktop.repository.getHistory()` query for validated, paged
-commit/reference DTOs. The window commands are minimize, toggle-maximize, and close. Native titlebar/menu
-controls remain available.
+commit/reference DTOs. The F34 workspace-chrome slice extends `desktop.window.command()` with full
+screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
+adds `fullScreen` to window state, and adds three narrow capabilities: `desktop.edit.command()` for
+undo/redo/cut/copy/paste/select-all on the requesting window's focused element,
+`desktop.clipboard.writeText()` for bounded text, and `desktop.repository.openInFileManager()`, which
+accepts only an open-session, recent, manager-repository, or source-directory ID. The main process
+resolves that ID to a path it issued to the same window, requires an existing directory, and opens it
+with the desktop's default file manager. Renderer clipboard and permission requests remain denied.
 
 Requests return typed result envelopes because errors crossing Electron/contextBridge lose useful
 structure. Expected failures have stable codes; backend exceptions become a generic internal error.
@@ -96,6 +103,43 @@ To add a capability:
 3. Register a main handler and delegate substantive work to a service.
 4. Add validation, failure, sender, and lifecycle tests where the behavior changes.
 5. Connect the UI with cleanup, loading/error handling, and explicit mutation intent.
+
+## Window chrome, menus, and context menus
+
+Linux and Windows windows are frameless; the renderer draws the title bar, its File/View/Repository/
+Window/Help menu bar, and minimize/maximize/close buttons. The title bar is an app-region drag area and
+its interactive children opt out, so native moving, resize borders, and platform double-click handling
+remain with Electron and the window manager. macOS uses `hiddenInset` traffic lights and keeps a small
+native application menu, because the global menu bar and standard editing key equivalents depend on it;
+that menu omits roles that would close the window for tab shortcuts.
+
+There is no native application menu on Linux or Windows, and main no longer builds a native context
+menu. Renderer keyboard handling owns application shortcuts (tabs, open, refresh, zoom, full screen,
+quit, and development tools), with Alt mnemonics for the menu bar. One `MenuPopup` component renders
+title-bar menus, toolbar dropdowns, and context menus: it clamps to the viewport, supports submenus,
+radio/check items, disabled items with an explanation, typeahead, and arrow/Home/End/Escape/Tab keys,
+and restores focus when it closes. A context-menu host lets components supply menus and falls back to
+Undo/Redo/Cut/Copy/Paste/Select All for text fields or Copy for selected text; editing commands run
+through `desktop.edit.command()` after focus returns to the original element. Menus reserve Fork's
+positions for workflows planned in later phases, but those entries stay disabled and name the phase.
+
+Theme tokens live on the document root and use CSS `light-dark()`, so portaled menus follow the
+selected System/Light/Dark appearance. The appearance and pane sizes are renderer-profile preferences
+stored in `localStorage` with safe fallbacks; they are presentation state, not repository data.
+
+## History graph drawing
+
+`src/common/history-graph.ts` assigns columns in one pass over topologically ordered commits. A column
+holds the commit its line is heading toward and keeps that column until the line reaches it, so lanes
+never shift sideways. A commit expected by several columns uses the leftmost; the others end with a
+`join` elbow into it. A first parent continues the commit's column. Further parents join a column that
+already carries them or open the first free column to the right, drawn as a `branch` elbow. Columns
+released by a join are not reused in the same row. Each row returns drawing segments (`pass`, `top`,
+`bottom`, `join`, `branch`) and depends only on earlier rows, so appending pages leaves existing rows
+unchanged. The renderer draws each row as an SVG with quarter-circle elbows, overlaps row boundaries to
+avoid seams at fractional scale, colors lines by column, and dims commits that are not reachable from
+HEAD among the loaded commits. Unit tests check hand-built cases and seeded random histories by
+following every drawn line to the expected parent.
 
 ## Desktop security and lifecycle
 
@@ -156,10 +200,12 @@ shared code and never receives a Git command surface.
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
-manager slice, the initial persisted tab/status workflow, and the first paged history/graph/selection
-workflow are implemented. There is still no general job queue, operation activity surface, remote
+manager slice, the initial persisted tab/status workflow, the first paged history/graph/selection
+workflow, and the renderer-drawn window chrome, menus, and context menus are implemented. There is still no general job queue, operation activity surface, remote
 authentication, clone workflow, filesystem watcher, full-app closed-tab recovery, custom manager
 folders, history collapse/filtering, changed-file or revision-tree inspection, external integration,
-automatic updater, or final branding. Tests establish the local topology, tab/status behavior, manager
+automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
+real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
+not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, and the Electron bridge; later Git correctness will continue to be
 checked against independent CLI assertions as each workflow is added.

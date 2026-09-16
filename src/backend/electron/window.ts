@@ -1,7 +1,18 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, nativeTheme } from 'electron';
+import type { BrowserWindowConstructorOptions } from 'electron';
 import { isTrustedDocument } from './security';
+
+/**
+ * The renderer draws the title bar, menu bar, window controls, and context menus. macOS keeps its
+ * native traffic-light buttons, inset into that title bar; other platforms use a frameless window.
+ */
+function windowChrome(): BrowserWindowConstructorOptions {
+  return process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 10 } }
+    : { frame: false };
+}
 
 export function createMainWindow(attachWindow: (window: BrowserWindow, url: string) => void): BrowserWindow {
   const rendererFile = join(__dirname, '../renderer/index.html');
@@ -14,7 +25,8 @@ export function createMainWindow(attachWindow: (window: BrowserWindow, url: stri
     minWidth: 880,
     minHeight: 600,
     show: false,
-    backgroundColor: '#171b22',
+    ...windowChrome(),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1f22' : '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -32,21 +44,6 @@ export function createMainWindow(attachWindow: (window: BrowserWindow, url: stri
     if (!isTrustedDocument(url, rendererUrl)) event.preventDefault();
   });
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
-  window.webContents.on('context-menu', (_event, params) => {
-    const menu = Menu.buildFromTemplate([
-      { role: 'copy', enabled: params.selectionText.length > 0 },
-      ...(params.isEditable
-        ? [{ role: 'cut' as const }, { role: 'paste' as const }, { role: 'selectAll' as const }]
-        : []),
-      ...(!app.isPackaged
-        ? [
-            { type: 'separator' as const },
-            { label: 'Inspect element', click: () => window.webContents.inspectElement(params.x, params.y) },
-          ]
-        : []),
-    ]);
-    menu.popup({ window });
-  });
 
   const loaded = devUrl ? window.loadURL(devUrl) : window.loadFile(rendererFile);
   void loaded.catch((error: unknown) => {

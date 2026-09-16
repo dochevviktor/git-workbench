@@ -13,23 +13,23 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                                        | Depends on |
-| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------- | ---------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                         | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)               | P00        |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16) | P01        |
-| P03   | History graph, references, commit details, revision tree             | Partial; initial F04 history/selection slice (2026-09-16)     | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                       | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                       | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                       | P05        |
-| P07   | Interactive rebase and history editing                               | Planned                                                       | P06        |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                       | P07        |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                       | P08        |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                       | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                       | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                                       | P11        |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                       | P12        |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                       | P13        |
+| Phase | Deliverable                                                          | Status                                                           | Depends on |
+| ----- | -------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                            | —          |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                  | P00        |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)    | P01        |
+| P03   | History graph, references, commit details, revision tree             | Partial; F04 history slice + graph drawing refresh (2026-09-16)  | P02        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                          | P03        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                          | P04        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                          | P05        |
+| P07   | Interactive rebase and history editing                               | Planned                                                          | P06        |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                          | P07        |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                          | P08        |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                          | P09        |
+| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                          | P10        |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16) | P11        |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                          | P12        |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                          | P13        |
 
 The sequence is the default execution order. Within a phase, complete its numbered slices in order;
 each slice can be a separate future request. Refine a slice if public research exposes additional
@@ -197,6 +197,35 @@ and the Electron test selects a real commit through the isolated preload. Merge 
 content filters, changed-file/tree details, selection/scroll persistence, virtualization, detached and
 multiple-root integration fixtures, and the 100,000-commit/1,000-ref performance baseline remain
 unverified, so P03 and F04 remain partial.
+
+Workspace chrome, graph drawing, and context-menu slice (2026-09-16, requested ahead of sequence):
+align the workspace with the public Fork layout recorded under F34 in the research document. Linux
+and Windows now use a frameless window with a renderer-drawn title bar, menu bar with Alt mnemonics,
+and window controls; macOS keeps inset traffic lights and a reduced native menu. The shell uses a Fork
+style toolbar, equal-width tabs with `*` dirty markers and middle-click close, a Repository Manager new
+tab, a repository sidebar with view switching, filter, and a keyboard-navigable reference tree, a
+headerless commit table with avatars, lane-colored reference labels, HEAD emphasis and unreachable
+commit dimming, resizable panes, and Commit/Changes/File Tree details. The lane algorithm was replaced
+by stable columns with join/branch elbows. Renderer context menus cover commits, references, tabs,
+repository-manager items, text fields, and selected text. Implemented actions include copying SHAs,
+messages, names, and paths; opening repository folders in the file manager; closing tabs; and
+switching appearance and tab orientation. Planned Git operations are present but disabled with their
+phase. New IPC capabilities are validated and backed by unit tests; the Electron test verifies the
+title-bar buttons reach the main-process window methods, menus, appearance, the About dialog, graph
+elbows on a real merge, context-menu focus and clipboard copy, tabs, and the Repository Manager.
+
+Informal check on this Fedora host with software rendering (not the P03 performance baseline): a
+local mirror of a public project with 15,318 commits, 2,939 merges, and 116 refs showed its first
+50-commit page in about 0.2 s, loaded 2,050 rows by scrolling, and drew up to 13 lanes. Skipping
+off-screen row rendering (`content-visibility`) reduced a keyboard selection step with 2,050 rows from
+about 78 ms to 31 ms, measured over two animation frames. At 125% and 150% device scale, a pixel scan
+found no breaks in lane lines at row boundaries.
+
+This slice does not complete F05 collapse, F06 filtering, F07 changed files/tree, P04 local changes,
+or P12 command availability. On the forwarded Xwayland test display, `BrowserWindow.maximize()` and
+`minimize()` had no effect even for a normal framed window, so real maximize/minimize, title-bar
+double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output
+for the custom menus and tree, fractional scaling, and very wide graphs remain unverified.
 
 ## P03 — History, graph, and revision inspection
 

@@ -55,7 +55,7 @@ export class RepositoryTabStore {
     await this.mutationQueue;
     await this.load();
     return {
-      tabOrientation: this.tabOrientation ?? 'vertical',
+      tabOrientation: this.tabOrientation ?? 'horizontal',
       activeRepositoryId: this.activeRepositoryId ?? null,
     };
   }
@@ -153,7 +153,7 @@ export class RepositoryTabStore {
 
   private setDefaults(): void {
     this.tabs = [];
-    this.tabOrientation = 'vertical';
+    this.tabOrientation = 'horizontal';
     this.activeRepositoryId = null;
   }
 
@@ -163,7 +163,7 @@ export class RepositoryTabStore {
     const content = `${JSON.stringify(
       {
         version: 1,
-        tabOrientation: this.tabOrientation ?? 'vertical',
+        tabOrientation: this.tabOrientation ?? 'horizontal',
         activeRepositoryId: this.activeRepositoryId ?? null,
         tabs: this.tabs ?? [],
       },
