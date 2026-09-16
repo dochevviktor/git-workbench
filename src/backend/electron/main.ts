@@ -1,7 +1,9 @@
 import { app, session } from 'electron';
 import type { BrowserWindow } from 'electron';
+import { join } from 'node:path';
 import { registerAppIpc } from './ipc/register';
 import { installApplicationMenu } from './menu';
+import { RepositoryService } from '../repositories/repository-service';
 import { createMainWindow } from './window';
 
 app.setName('Git Workbench');
@@ -29,7 +31,10 @@ if (!app.requestSingleInstanceLock()) {
         callback(false),
       );
       session.defaultSession.setPermissionCheckHandler(() => false);
-      const ipc = registerAppIpc();
+      const repositories = new RepositoryService({
+        storagePath: join(app.getPath('userData'), 'recent-repositories.json'),
+      });
+      const ipc = registerAppIpc(repositories);
       installApplicationMenu();
 
       const openWindow = () => {
@@ -44,7 +49,10 @@ if (!app.requestSingleInstanceLock()) {
         if (!mainWindow) openWindow();
         else focusWindow();
       });
-      app.once('will-quit', () => ipc.dispose());
+      app.once('will-quit', () => {
+        repositories.dispose();
+        ipc.dispose();
+      });
     })
     .catch((error: unknown) => {
       console.error('Application startup failed', error);

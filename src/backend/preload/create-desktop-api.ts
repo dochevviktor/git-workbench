@@ -70,5 +70,15 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       command: (command) => invoke(requests.windowCommand, command),
       onStateChanged: (listener) => subscribe(events.windowStateChanged, listener),
     },
+    repository: {
+      getGitInfo: () => invoke(requests.getGitInfo, undefined),
+      pickDirectory: () => invoke(requests.pickRepositoryDirectory, undefined),
+      listRecent: () => invoke(requests.listRecentRepositories, undefined),
+      listOpen: () => invoke(requests.listOpenRepositories, undefined),
+      open: (request) => invoke(requests.openRepository, request),
+      initialize: (request) => invoke(requests.initializeRepository, request),
+      close: (request) => invoke(requests.closeRepository, request),
+      removeRecent: (request) => invoke(requests.removeRecentRepository, request),
+    },
   };
 }

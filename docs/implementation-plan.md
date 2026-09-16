@@ -6,29 +6,30 @@ define the target; [architecture](architecture.md) defines the boundaries.
 
 **Next implementation request: P01 — Git execution and operation infrastructure.**
 
-This is a staged product plan. The current task delivers P00 only. A usable daily Git client is the
-P06 checkpoint; it is not full Fork parity. Later phases cover the remaining documented families.
+This is a staged product plan. The foundation is complete and the current work starts the local F01
+repository workflow without declaring the feature complete. A usable daily Git client is the P06
+checkpoint; it is not full Fork parity. Later phases cover the remaining documented families.
 Unknown behavior is recorded in research and must not be invented and labeled equivalent.
 
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                | Depends on |
-| ----- | -------------------------------------------------------------------- | --------------------- | ---------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16) | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Planned; next         | P00        |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Planned               | P01        |
-| P03   | History graph, references, commit details, revision tree             | Planned               | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Planned               | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned               | P05        |
-| P07   | Interactive rebase and history editing                               | Planned               | P06        |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Planned               | P07        |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned               | P08        |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned               | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Planned               | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Planned               | P11        |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned               | P12        |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned               | P13        |
+| Phase | Deliverable                                                          | Status                                          | Depends on |
+| ----- | -------------------------------------------------------------------- | ----------------------------------------------- | ---------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                           | —          |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16) | P00        |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local slice (2026-09-16)           | P01        |
+| P03   | History graph, references, commit details, revision tree             | Planned                                         | P02        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                         | P03        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                         | P04        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                         | P05        |
+| P07   | Interactive rebase and history editing                               | Planned                                         | P06        |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                         | P07        |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                         | P08        |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                         | P09        |
+| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                         | P10        |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                         | P11        |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                         | P12        |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                         | P13        |
 
 The sequence is the default execution order. Within a phase, complete its numbered slices in order;
 each slice can be a separate future request. Refine a slice if public research exposes additional
@@ -130,6 +131,10 @@ Acceptance:
 - Arguments and private output never become shell code or unredacted credentials in the UI/log.
 - A backend job continues to have queryable state after a UI subscription is removed.
 
+F01 currently consumes the runner and discovery subset needed for local repository access. The P01
+operation registry, process-tree policy, repository trust model, and broader fixture catalog remain
+unverified and keep P01 partial.
+
 ## P02 — Repository sessions and persistence
 
 Coverage: F01–F03, F33 foundation.
@@ -154,6 +159,13 @@ Acceptance:
   duplicated unintentionally. No repository is modified just by opening it.
 - Switching tabs while a slow request completes cannot display data from the previous repository.
 - Tests isolate preferences, watchers, repository fixtures, and local clone destinations.
+
+Verified local F01 slice (2026-09-16, Fedora Linux x64, Git 2.55.0): open an existing repository,
+initialize a normal or bare directory, canonicalize nested paths/symlinks, retain separate worktree,
+Git, and common-directory paths, classify branch/detached/unborn HEAD, deduplicate an open session,
+close/reopen it, and persist a bounded recent list with corrupt-file quarantine. Remote clone, local
+clone jobs, tab persistence, filesystem invalidation, CLI/second-instance opening, and the restricted
+asset protocol remain unverified.
 
 ## P03 — History, graph, and revision inspection
 
@@ -404,6 +416,6 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Implement P01 from docs/implementation-plan.md. Keep the current Electron/shared/preload/React
-> boundaries. Build and test the Git runner, capability checks, operation registry, cancellation,
-> and temporary-repository fixtures, then update the progress ledger with verification.
+> Continue F01 from docs/implementation-plan.md. Add the remaining clone workflow only after the P01
+> operation registry and authenticated network boundary are in place; keep the current
+> Electron/shared/preload/React boundaries and update the partial feature evidence.

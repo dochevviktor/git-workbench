@@ -30,12 +30,19 @@ describe('preload capability API', () => {
     const { api, invoke } = fixture();
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
-    expect(Object.keys(api)).toEqual(['app', 'window']);
+    expect(Object.keys(api)).toEqual(['app', 'window', 'repository']);
   });
 
   it('blocks malformed input before crossing IPC', async () => {
     const { api, invoke } = fixture();
     const result = await api.window.command({ action: 'execute-code' } as unknown as WindowCommand);
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('validates repository paths before crossing IPC', async () => {
+    const { api, invoke } = fixture();
+    const result = await api.repository.open({ path: '' });
     expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     expect(invoke).not.toHaveBeenCalled();
   });

@@ -118,6 +118,11 @@ summary:focus-visible {
   align-items: center;
   margin-left: auto;
 }
+.repository-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .theme-picker {
   display: flex;
   align-items: center;
@@ -161,6 +166,43 @@ button:hover:not(:disabled) {
   padding: 16px 12px 25px;
   color: var(--muted);
 }
+.open-repositories {
+  display: grid;
+  gap: 3px;
+  margin: 12px 0 18px;
+}
+.repository-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.repository-tab.active {
+  background: var(--selected);
+  color: var(--accent);
+}
+.repository-tab-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.repository-tab-copy strong,
+.repository-tab-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repository-tab-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.repository-tab-copy small {
+  color: var(--muted);
+  font-size: 10px;
+}
 .nav-item {
   width: 100%;
   display: flex;
@@ -190,6 +232,53 @@ button:hover:not(:disabled) {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.7;
+}
+.recent-section {
+  min-height: 100px;
+}
+.recent-list {
+  display: grid;
+  gap: 3px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+.recent-list li {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.recent-repository {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+  border: 0;
+  border-radius: 4px 0 0 4px;
+  background: transparent;
+  padding: 7px 8px 7px 12px;
+  text-align: left;
+}
+.recent-repository strong,
+.recent-repository small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-repository strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.recent-repository small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.remove-recent {
+  border: 0;
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 7px;
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -264,6 +353,57 @@ p {
   max-width: 390px;
   font-size: 14px;
 }
+.repository-open-state {
+  flex: 1;
+  padding: 50px clamp(24px, 5vw, 72px);
+}
+.repository-open-state h2 {
+  max-width: 720px;
+  margin: 8px 0 12px;
+  font-size: clamp(24px, 3vw, 40px);
+  font-weight: 550;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+.repository-path {
+  max-width: 780px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.repository-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 780px;
+  margin-top: 32px;
+}
+.repository-facts div {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.repository-facts div:last-child {
+  grid-column: 1 / -1;
+}
+.repository-facts span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+.repository-facts strong {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
 .milestone-note {
   display: flex;
   align-items: center;
@@ -290,6 +430,12 @@ p {
   padding: 24px;
   min-height: 140px;
 }
+.detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
 .detail-panel h2,
 .inspector h2 {
   font-size: 12px;
@@ -311,6 +457,14 @@ p {
   margin-top: 32px;
   border-top: 1px solid var(--border);
   padding-top: 20px;
+}
+.git-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 11px;
 }
 summary {
   font-size: 12px;
@@ -363,7 +517,19 @@ dd {
   .build-label {
     display: none;
   }
+  .repository-actions button:last-child {
+    display: none;
+  }
   .inspector {
     padding: 24px 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .repository-facts {
+    grid-template-columns: 1fr;
+  }
+  .repository-facts div:last-child {
+    grid-column: auto;
   }
 }

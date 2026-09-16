@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDesktop } from '../hooks/use-desktop';
+import { useRepositories } from '../hooks/use-repositories';
 
 const views = {
   history: {
@@ -19,11 +20,53 @@ const views = {
   },
 } as const;
 
+function headLabel(state: 'branch' | 'detached' | 'unborn' | 'unknown', name: string | null): string {
+  switch (state) {
+    case 'branch':
+      return `Branch ${name ?? 'unknown'}`;
+    case 'detached':
+      return 'Detached HEAD';
+    case 'unborn':
+      return `Unborn ${name ?? 'HEAD'}`;
+    case 'unknown':
+      return 'HEAD unavailable';
+  }
+}
+
+function recentStatusLabel(status: 'available' | 'missing' | 'not-directory'): string {
+  switch (status) {
+    case 'available':
+      return 'Available';
+    case 'missing':
+      return 'Missing';
+    case 'not-directory':
+      return 'Not a directory';
+  }
+}
+
 export default function App() {
   const [view, setView] = useState<keyof typeof views>('history');
   const [theme, setTheme] = useState('system');
-  const { info, windowState, error, loading, refresh, toggleMaximize } = useDesktop();
+  const { info, windowState, error: desktopError, loading, refresh, toggleMaximize } = useDesktop();
+  const {
+    gitInfo,
+    recent,
+    open,
+    active,
+    loading: repositoriesLoading,
+    busy,
+    error: repositoryError,
+    retry: retryRepositories,
+    openExisting,
+    initialize,
+    openRecent,
+    closeRepository,
+    removeRecent,
+    select,
+  } = useRepositories();
   const currentView = views[view];
+  const error = desktopError ?? repositoryError;
+  const repositoryBusy = busy !== undefined;
 
   return (
     <div className="app" data-theme={theme}>
@@ -34,7 +77,21 @@ export default function App() {
           </span>{' '}
           Git Workbench
         </div>
-        <span className="build-label">Early development</span>
+        <span className="build-label">F01 local workflow</span>
+        <div className="repository-actions" aria-label="Repository actions">
+          <button disabled={repositoryBusy} onClick={() => void openExisting()}>
+            {busy === 'opening' ? 'Opening…' : 'Open repository'}
+          </button>
+          <button disabled={repositoryBusy} onClick={() => void initialize()}>
+            {busy === 'initializing' ? 'Initializing…' : 'Initialize repository'}
+          </button>
+          <button
+            disabled
+            title="Remote clone will be enabled with authenticated network operations in a later phase."
+          >
+            Clone repository
+          </button>
+        </div>
         <div className="toolbar-actions">
           <label className="theme-picker">
             Appearance
@@ -53,7 +110,31 @@ export default function App() {
       <div className="workspace">
         <aside className="sidebar">
           <div className="sidebar-title">WORKSPACE</div>
-          <div className="repository-empty">No repository open</div>
+          {open.length === 0 ? (
+            <div className="repository-empty">No repository open</div>
+          ) : (
+            <div className="open-repositories" aria-label="Open repositories">
+              {open.map((repository) => (
+                <button
+                  key={repository.id}
+                  className={active?.id === repository.id ? 'repository-tab active' : 'repository-tab'}
+                  aria-current={active?.id === repository.id ? 'page' : undefined}
+                  onClick={() => select(repository.id)}
+                  title={repository.path}
+                >
+                  <span className="nav-dot" aria-hidden="true" />
+                  <span className="repository-tab-copy">
+                    <strong>{repository.name}</strong>
+                    <small>
+                      {repository.bare
+                        ? 'Bare repository'
+                        : headLabel(repository.head.state, repository.head.name)}
+                    </small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <nav aria-label="Repository views">
             {Object.entries(views).map(([key, item]) => (
               <button
@@ -69,7 +150,43 @@ export default function App() {
           </nav>
           <div className="sidebar-section">
             <div className="sidebar-title">REFERENCES</div>
-            <p>Branches, tags, remotes, and stashes will appear when a repository is open.</p>
+            <p>
+              {active
+                ? 'Branch, tag, remote, and stash browsing will be added after repository sessions.'
+                : 'Open a repository to inspect its references.'}
+            </p>
+          </div>
+          <div className="sidebar-section recent-section">
+            <div className="sidebar-title">RECENT REPOSITORIES</div>
+            {repositoriesLoading && recent.length === 0 ? (
+              <p>Loading recent repositories…</p>
+            ) : recent.length === 0 ? (
+              <p>No recent repositories yet.</p>
+            ) : (
+              <ul className="recent-list">
+                {recent.map((repository) => (
+                  <li key={repository.id}>
+                    <button
+                      className="recent-repository"
+                      disabled={repositoryBusy || repository.status !== 'available'}
+                      onClick={() => void openRecent(repository.path)}
+                      title={repository.path}
+                    >
+                      <strong>{repository.name}</strong>
+                      <small>{recentStatusLabel(repository.status)}</small>
+                    </button>
+                    <button
+                      className="remove-recent"
+                      aria-label={`Remove ${repository.name} from recent repositories`}
+                      disabled={repositoryBusy}
+                      onClick={() => void removeRecent(repository.id)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="sidebar-bottom">A home for your repositories.</div>
         </aside>
@@ -77,29 +194,83 @@ export default function App() {
         <main className="main-panel">
           <div className="panel-heading">
             <h1>{currentView.label}</h1>
-            <span>No repository selected</span>
+            <span>{active?.path ?? 'No repository selected'}</span>
           </div>
-          <section className="empty-state" aria-labelledby="welcome-title">
-            <div className="empty-symbol" aria-hidden="true">
-              ⑂
-            </div>
-            <p className="eyebrow">GIT WORKBENCH</p>
-            <h2 id="welcome-title">{currentView.heading}</h2>
-            <p>{currentView.description}</p>
-            <div className="milestone-note">
-              <span className="status-dot" aria-hidden="true" />
-              This build prepares the workspace. Repository tools are coming next.
-            </div>
-          </section>
+          {active ? (
+            <section className="repository-open-state" aria-labelledby="repository-title">
+              <p className="eyebrow">REPOSITORY OPEN</p>
+              <h2 id="repository-title">{active.name}</h2>
+              <p className="repository-path">{active.path}</p>
+              <div className="repository-facts">
+                <div>
+                  <span>HEAD</span>
+                  <strong>{headLabel(active.head.state, active.head.name)}</strong>
+                </div>
+                <div>
+                  <span>WORKTREE</span>
+                  <strong>{active.bare ? 'Bare repository' : 'Working tree'}</strong>
+                </div>
+                <div>
+                  <span>GIT DIRECTORY</span>
+                  <strong>{active.gitDir}</strong>
+                </div>
+              </div>
+              <p className="milestone-note">
+                <span className="status-dot" aria-hidden="true" />
+                {currentView.description}
+              </p>
+            </section>
+          ) : (
+            <section className="empty-state" aria-labelledby="welcome-title">
+              <div className="empty-symbol" aria-hidden="true">
+                ⑂
+              </div>
+              <p className="eyebrow">GIT WORKBENCH</p>
+              <h2 id="welcome-title">{currentView.heading}</h2>
+              <p>{currentView.description}</p>
+              <div className="milestone-note">
+                <span className="status-dot" aria-hidden="true" />
+                Open an existing repository or initialize a directory to begin.
+              </div>
+            </section>
+          )}
           <section className="detail-panel" aria-labelledby="details-heading">
-            <h2 id="details-heading">Commit details</h2>
-            <p>Select a commit to inspect its message, changed files, and diff.</p>
+            <div className="detail-heading">
+              <h2 id="details-heading">{active ? 'Repository session' : 'Commit details'}</h2>
+              {active && (
+                <button disabled={repositoryBusy} onClick={() => void closeRepository(active.id)}>
+                  {busy === 'closing' ? 'Closing…' : 'Close repository'}
+                </button>
+              )}
+            </div>
+            <p>
+              {active
+                ? 'The repository is connected to this window. History and working changes are the next views.'
+                : 'Select a commit to inspect its message, changed files, and diff.'}
+            </p>
           </section>
         </main>
 
         <aside className="inspector" aria-label="Workspace information">
-          <h2>Getting started</h2>
-          <p>Repository opening, cloning, and history browsing are planned for upcoming builds.</p>
+          <h2>{active ? 'Repository information' : 'Getting started'}</h2>
+          <p>
+            {active
+              ? 'Opening a repository is read-only. No files or Git references are changed by this view.'
+              : 'Open an existing repository or initialize a local directory. Remote cloning is not enabled yet.'}
+          </p>
+          <div className="git-status" role="status">
+            <span
+              className={gitInfo?.status === 'available' ? 'status-dot' : 'status-dot error'}
+              aria-hidden="true"
+            />
+            {gitInfo?.status === 'available'
+              ? `Git ${gitInfo.version}`
+              : gitInfo?.status === 'missing'
+                ? 'Git is not installed or not on PATH'
+                : gitInfo?.status === 'error'
+                  ? 'Git could not be checked'
+                  : 'Checking Git…'}
+          </div>
           <details>
             <summary>About this build</summary>
             {info && (
@@ -125,16 +296,27 @@ export default function App() {
 
       <footer className="statusbar">
         <span role="status" data-testid="backend-status">
-          <span className={error ? 'status-dot error' : 'status-dot'} aria-hidden="true" />
-          {error ? 'Desktop unavailable' : loading ? 'Connecting…' : 'Desktop connected'}
+          <span className={desktopError ? 'status-dot error' : 'status-dot'} aria-hidden="true" />
+          {desktopError ? 'Desktop unavailable' : loading ? 'Connecting…' : 'Desktop connected'}
         </span>
-        <span>No repository selected</span>
+        <span>
+          {active
+            ? `${active.name} · ${headLabel(active.head.state, active.head.name)}`
+            : 'No repository selected'}
+        </span>
         <span className="statusbar-end">Git Workbench {info?.version ?? ''}</span>
       </footer>
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
-          <button onClick={refresh}>Retry</button>
+          <button
+            onClick={() => {
+              refresh();
+              void retryRepositories();
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
     </div>

@@ -29,7 +29,26 @@ Evidence labels:
 
 The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
-All F-items below remain **planned**; the foundation shell does not implement Git workflows.
+F01 is now **partial** in this project; all other F-items remain **planned**.
+
+### F01 source refresh
+
+Accessed **2026-09-16**. The [Fork product page][home] explicitly advertises creating, cloning, or
+adding existing repositories and quickly opening recent repositories. This is high-confidence
+evidence for the advertised outcomes on Fork's listed Mac and Windows platforms, but it does not
+specify dialog fields, persistence format, recovery behavior, or Linux support. The product page
+lists Mac and Windows downloads and no Linux download.
+
+For repository topology, this project uses the public [git-rev-parse documentation][rev-parse], which
+documents separate working-tree, Git-directory, common-directory, bare, and top-level queries, and
+[git-init documentation][init], which documents creating or reinitializing normal and bare repositories.
+These are Git CLI semantics, not observations of Fork. The current implementation was tested with Git
+2.55.0 on Fedora Linux; Windows/macOS path and dialog differences remain unverified.
+
+Current project status: F01 is partial. Local open, initialize, canonical topology discovery, recent
+entries, close/reopen sessions, and corrupt recent-file recovery are implemented and tested. Remote
+clone, authentication, and long-running clone jobs remain deferred to P01/P05; local clone and the
+broader repository manager remain deferred to P02.
 
 ## Feature coverage
 
@@ -151,6 +170,8 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [graph]: https://fork.dev/blog/posts/collapsible-graph/
 [quick]: https://fork.dev/blog/posts/quick-launch/
 [operations]: https://fork.dev/blog/posts/forkwin-1.48/
+[rev-parse]: https://git-scm.com/docs/git-rev-parse
+[init]: https://git-scm.com/docs/git-init
 [diff]: https://fork.dev/blog/posts/forkwin-1.38/
 [rebase]: https://fork.dev/blog/posts/forkwin-1.23/
 [merge]: https://fork.dev/blog/posts/fork-1.0.73/

@@ -1,7 +1,8 @@
-import { app, ipcMain } from 'electron';
+import { app, dialog, ipcMain } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { events, requests } from '../../../common/ipc/contracts';
 import type { AppInfo, RequestContract, WindowState } from '../../../common/ipc/contracts';
+import type { RepositoryService } from '../../repositories/repository-service';
 import { isTrustedDocument } from '../security';
 import { executeRequest } from './execute-request';
 
@@ -9,7 +10,7 @@ function windowState(window: BrowserWindow): WindowState {
   return { maximized: window.isMaximized(), focused: window.isFocused() };
 }
 
-export function registerAppIpc() {
+export function registerAppIpc(repositoryService?: RepositoryService) {
   const windows = new Map<number, { window: BrowserWindow; url: string; cleanup: () => void }>();
   const channels: string[] = [];
 
@@ -80,6 +81,35 @@ export function registerAppIpc() {
     return null;
   });
 
+  if (repositoryService) {
+    register(requests.getGitInfo, () => repositoryService.getGitInfo());
+    register(requests.pickRepositoryDirectory, (window) =>
+      dialog
+        .showOpenDialog(window, {
+          title: 'Choose a repository directory',
+          properties: ['openDirectory'],
+        })
+        .then((result) => (result.canceled ? null : (result.filePaths[0] ?? null))),
+    );
+    register(requests.listRecentRepositories, (window) =>
+      repositoryService.listRecent(window.webContents.id),
+    );
+    register(requests.listOpenRepositories, (window) => repositoryService.listOpen(window.webContents.id));
+    register(requests.openRepository, (window, { path }) =>
+      repositoryService.open(window.webContents.id, path),
+    );
+    register(requests.initializeRepository, (window, { path, bare }) =>
+      repositoryService.initialize(window.webContents.id, path, bare),
+    );
+    register(requests.closeRepository, (window, { id }) => {
+      repositoryService.close(window.webContents.id, id);
+      return null;
+    });
+    register(requests.removeRecentRepository, (_window, { id }) =>
+      repositoryService.removeRecent(id).then(() => null),
+    );
+  }
+
   return {
     attachWindow(window: BrowserWindow, url: string) {
       const id = window.webContents.id;
@@ -94,6 +124,7 @@ export function registerAppIpc() {
       window.on('focus', publishState);
       window.on('blur', publishState);
       const cleanup = () => {
+        repositoryService?.disposeWindow(id);
         windows.delete(id);
         window.removeListener('maximize', publishState);
         window.removeListener('unmaximize', publishState);

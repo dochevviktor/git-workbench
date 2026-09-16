@@ -1,7 +1,19 @@
 import { z } from 'zod';
 
 export const ipcErrorSchema = z.strictObject({
-  code: z.enum(['INVALID_REQUEST', 'FORBIDDEN', 'INTERNAL_ERROR', 'UNAVAILABLE', 'TIMEOUT']),
+  code: z.enum([
+    'INVALID_REQUEST',
+    'FORBIDDEN',
+    'INTERNAL_ERROR',
+    'UNAVAILABLE',
+    'TIMEOUT',
+    'GIT_UNAVAILABLE',
+    'PATH_NOT_FOUND',
+    'NOT_A_DIRECTORY',
+    'NOT_A_REPOSITORY',
+    'REPOSITORY_NOT_OPEN',
+    'OPERATION_FAILED',
+  ]),
   message: z.string(),
 });
 

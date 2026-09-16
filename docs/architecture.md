@@ -1,6 +1,7 @@
 # Architecture and implementation decisions
 
-Status: foundation implemented. Future Git services described below are design decisions, not existing code.
+Status: foundation and the local F01 repository slice implemented. Remaining Git services described
+below are design decisions, not existing code.
 
 ## Process boundaries
 
@@ -57,8 +58,10 @@ Electron, and backend imports from the shared and renderer directories.
 | Registration and routing  | `src/backend/electron/ipc/register.ts`        | Register once; route to the exact owning window                    |
 
 The actual API is `desktop.app.getInfo()`, `desktop.window.getState()`,
-`desktop.window.command({ action })`, and `desktop.window.onStateChanged(listener)`.
-The window commands are minimize, toggle-maximize, and close. Native titlebar/menu controls remain available.
+`desktop.window.command({ action })`, and `desktop.window.onStateChanged(listener)`. The F01 slice adds
+named `desktop.repository` methods for Git diagnostics, directory selection, open/init, recent/open
+session queries, close, and recent-entry removal. The window commands are minimize, toggle-maximize,
+and close. Native titlebar/menu controls remain available.
 
 Requests return typed result envelopes because errors crossing Electron/contextBridge lose useful
 structure. Expected failures have stable codes; backend exceptions become a generic internal error.
@@ -129,9 +132,18 @@ Normal Git hooks, filters, diff drivers, credential helpers, and configured prog
 Repository trust and explicit-operation policies belong in P01/P02, before automatic background work.
 Never silently weaken Git's safe-directory checks or delete a lock simply because an operation failed.
 
+The implemented F01 service uses this direction for read-only topology discovery and explicit local
+initialization. It canonicalizes the selected path in the main process, keeps worktree/Git/common
+directories as separate DTO fields, derives a stable repository identity, and scopes in-memory sessions
+to the owning window. Recent entries use a versioned JSON file with atomic replacement and quarantine
+of invalid data. Remote clone, operation jobs, watcher invalidation, and the trust policy for commands
+that can run repository programs are still future work.
+
 ## Current limitations
 
-No Git discovery, repository access, persisted preferences, job queue, credentials, external integrations,
-automatic updater, or final branding is implemented. The sidebar and empty details pane are layout scaffolding.
-The existing tests establish IPC behavior and desktop startup; Git correctness will be checked against
-independent CLI assertions in disposable repositories as each workflow is added.
+Git discovery, local repository access, and recent-repository persistence are implemented for the F01
+slice. There is still no general job queue, operation activity surface, remote authentication, clone
+workflow, filesystem watcher, persisted tabs/preferences, external integration, automatic updater, or
+final branding. The sidebar's references and history/changes panes remain scaffolding. Tests establish
+the local topology behavior against disposable repositories and the Electron bridge; later Git
+correctness will continue to be checked against independent CLI assertions as each workflow is added.
