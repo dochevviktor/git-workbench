@@ -92,7 +92,7 @@ describe('repository service', () => {
     await mkdir(nestedPath);
     const openedFromNestedPath = await service.open(7, nestedPath);
     expect(openedFromNestedPath.id).toBe(initialized.id);
-    expect(service.listOpen(7)).toHaveLength(1);
+    await expect(service.listOpen(7)).resolves.toHaveLength(1);
     expect((await service.listRecent(7))[0]).toMatchObject({
       id: initialized.id,
       path: unusual,
@@ -100,8 +100,8 @@ describe('repository service', () => {
       open: true,
     });
 
-    service.close(7, initialized.id);
-    expect(service.listOpen(7)).toEqual([]);
+    await service.close(7, initialized.id);
+    await expect(service.listOpen(7)).resolves.toEqual([]);
     const reopenedService = new RepositoryService({ storagePath });
     expect((await reopenedService.listRecent(8))[0]).toMatchObject({
       id: initialized.id,
@@ -110,6 +110,47 @@ describe('repository service', () => {
     });
     const reopened = await reopenedService.open(8, unusual);
     expect(reopened.id).toBe(initialized.id);
+  });
+
+  it('reports dirty worktrees and restores ordered tabs and preferences', async () => {
+    const directory = await fixtureDirectory();
+    const firstPath = join(directory, 'first');
+    const secondPath = join(directory, 'second');
+    await mkdir(firstPath);
+    await mkdir(secondPath);
+    const storagePath = join(directory, 'recent.json');
+    const service = new RepositoryService({ storagePath });
+    const first = await service.initialize(1, firstPath, false);
+    const second = await service.initialize(1, secondPath, false);
+
+    const changedPath = join(firstPath, 'unusual\nfilename.txt');
+    await writeFile(changedPath, 'uncommitted\n', 'utf8');
+    const dirtyTabs = await service.listOpen(1);
+    expect(dirtyTabs.find((repository) => repository.id === first.id)).toMatchObject({
+      workingTree: { state: 'dirty', changedFileCount: 1 },
+    });
+    expect(dirtyTabs.find((repository) => repository.id === second.id)).toMatchObject({
+      workingTree: { state: 'clean', changedFileCount: 0 },
+    });
+
+    await service.setTabOrientation('horizontal');
+    await expect(service.getTabPreferences(1)).resolves.toMatchObject({
+      tabOrientation: 'horizontal',
+      activeRepositoryId: second.id,
+    });
+
+    const restarted = new RepositoryService({ storagePath });
+    await expect(restarted.listOpen(2)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.id, path: first.path }),
+        expect.objectContaining({ id: second.id, path: second.path }),
+      ]),
+    );
+    expect(await restarted.listOpen(2)).toHaveLength(2);
+    await expect(restarted.getTabPreferences(2)).resolves.toMatchObject({
+      tabOrientation: 'horizontal',
+      activeRepositoryId: second.id,
+    });
   });
 
   it('discovers a repository whose Git directory is stored in a .git file', async () => {
@@ -154,6 +195,7 @@ describe('repository service', () => {
     expect(repository.worktreePath).toBeNull();
     expect(repository.path).toBe(repository.commonDir);
     expect(repository.head.state).toBe('unborn');
+    expect(repository.workingTree).toEqual({ state: 'unavailable', changedFileCount: null });
   });
 
   it('keeps opening read-only and classifies invalid paths and missing Git', async () => {
@@ -248,7 +290,7 @@ describe('repository service', () => {
     expect(reopenedSnapshot.sourceDirectories[0]).toMatchObject({ path: source, repositoryCount: 3 });
     expect(
       reopenedSnapshot.repositories.find((repository) => repository.path === alpha.path)?.sessionId,
-    ).toBe(null);
+    ).toBe(alpha.id);
 
     const duplicate = await reopened.addSourceDirectory(2, source);
     expect(duplicate.sourceDirectories).toHaveLength(1);

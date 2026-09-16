@@ -52,6 +52,18 @@ export const repositoryHeadSchema = z.strictObject({
   commit: z.string().nullable(),
 });
 
+export const repositoryWorkingTreeSchema = z.strictObject({
+  state: z.enum(['clean', 'dirty', 'unavailable', 'unknown']),
+  changedFileCount: z.number().int().nonnegative().max(100_000).nullable(),
+});
+
+export const repositoryTabOrientationSchema = z.enum(['vertical', 'horizontal']);
+
+export const repositoryTabPreferencesSchema = z.strictObject({
+  tabOrientation: repositoryTabOrientationSchema,
+  activeRepositoryId: repositoryIdSchema.nullable(),
+});
+
 export const repositorySummarySchema = z.strictObject({
   id: repositoryIdSchema,
   name: z.string().min(1).max(512),
@@ -61,6 +73,7 @@ export const repositorySummarySchema = z.strictObject({
   commonDir: repositoryPathSchema,
   bare: z.boolean(),
   head: repositoryHeadSchema,
+  workingTree: repositoryWorkingTreeSchema,
 });
 
 export const recentRepositorySchema = z.strictObject({
@@ -128,6 +141,9 @@ export const repositoryInitializeSchema = z.strictObject({
   bare: z.boolean(),
 });
 export const repositorySessionSchema = z.strictObject({ id: repositoryIdSchema });
+export const repositoryTabOrientationRequestSchema = z.strictObject({
+  tabOrientation: repositoryTabOrientationSchema,
+});
 export const sourceDirectoryRequestSchema = z.strictObject({ path: repositoryPathSchema });
 export const sourceDirectorySessionSchema = z.strictObject({ id: sourceDirectoryIdSchema });
 
@@ -154,6 +170,21 @@ export const requests = {
   openRepository: request('repository:open', repositoryOpenSchema, repositorySummarySchema),
   initializeRepository: request('repository:initialize', repositoryInitializeSchema, repositorySummarySchema),
   closeRepository: request('repository:close', repositorySessionSchema, z.null()),
+  getRepositoryTabPreferences: request(
+    'repository:get-tab-preferences',
+    z.undefined(),
+    repositoryTabPreferencesSchema,
+  ),
+  setRepositoryTabOrientation: request(
+    'repository:set-tab-orientation',
+    repositoryTabOrientationRequestSchema,
+    repositoryTabPreferencesSchema,
+  ),
+  selectRepositoryTab: request(
+    'repository:select-tab',
+    repositorySessionSchema,
+    repositoryTabPreferencesSchema,
+  ),
   removeRecentRepository: request('repository:remove-recent', repositorySessionSchema, z.null()),
   listRepositoryManager: request('repository-manager:list', z.undefined(), repositoryManagerSnapshotSchema),
   addSourceDirectory: request(
@@ -182,6 +213,9 @@ export type WindowState = z.infer<typeof windowStateSchema>;
 export type WindowCommand = z.infer<typeof windowCommandSchema>;
 export type GitInfo = z.infer<typeof gitInfoSchema>;
 export type RepositoryHead = z.infer<typeof repositoryHeadSchema>;
+export type RepositoryWorkingTree = z.infer<typeof repositoryWorkingTreeSchema>;
+export type RepositoryTabOrientation = z.infer<typeof repositoryTabOrientationSchema>;
+export type RepositoryTabPreferences = z.infer<typeof repositoryTabPreferencesSchema>;
 export type RepositorySummary = z.infer<typeof repositorySummarySchema>;
 export type RecentRepository = z.infer<typeof recentRepositorySchema>;
 export type SourceDirectoryStatus = z.infer<typeof sourceDirectoryStatusSchema>;
@@ -193,5 +227,6 @@ export type RepositoryManagerSnapshot = z.infer<typeof repositoryManagerSnapshot
 export type RepositoryOpenRequest = z.infer<typeof repositoryOpenSchema>;
 export type RepositoryInitializeRequest = z.infer<typeof repositoryInitializeSchema>;
 export type RepositorySession = z.infer<typeof repositorySessionSchema>;
+export type RepositoryTabOrientationRequest = z.infer<typeof repositoryTabOrientationRequestSchema>;
 export type SourceDirectoryRequest = z.infer<typeof sourceDirectoryRequestSchema>;
 export type SourceDirectorySession = z.infer<typeof sourceDirectorySessionSchema>;

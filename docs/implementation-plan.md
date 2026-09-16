@@ -4,32 +4,32 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: P01 — Git execution and operation infrastructure.**
+**Next implementation request: Continue F03/P02 — tab recovery and workspace persistence refinements.**
 
-This is a staged product plan. The foundation is complete and the current work starts the local F01
-repository workflow without declaring the feature complete. A usable daily Git client is the P06
+This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
+to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
 checkpoint; it is not full Fork parity. Later phases cover the remaining documented families.
 Unknown behavior is recorded in research and must not be invented and labeled equivalent.
 
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                                   | Depends on |
-| ----- | -------------------------------------------------------------------- | -------------------------------------------------------- | ---------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                    | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)          | P00        |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager scan slice (2026-09-16) | P01        |
-| P03   | History graph, references, commit details, revision tree             | Planned                                                  | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                  | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                  | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                  | P05        |
-| P07   | Interactive rebase and history editing                               | Planned                                                  | P06        |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                  | P07        |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                  | P08        |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                  | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                  | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                                  | P11        |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                  | P12        |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                  | P13        |
+| Phase | Deliverable                                                          | Status                                                        | Depends on |
+| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------- | ---------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                         | —          |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)               | P00        |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16) | P01        |
+| P03   | History graph, references, commit details, revision tree             | Planned                                                       | P02        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                       | P03        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                       | P04        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                       | P05        |
+| P07   | Interactive rebase and history editing                               | Planned                                                       | P06        |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                       | P07        |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                       | P08        |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                       | P09        |
+| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                       | P10        |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                                       | P11        |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                       | P12        |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                       | P13        |
 
 The sequence is the default execution order. Within a phase, complete its numbered slices in order;
 each slice can be a separate future request. Refine a slice if public research exposes additional
@@ -164,8 +164,8 @@ Verified local F01 slice (2026-09-16, Fedora Linux x64, Git 2.55.0): open an exi
 initialize a normal or bare directory, canonicalize nested paths/symlinks, retain separate worktree,
 Git, and common-directory paths, classify branch/detached/unborn HEAD, deduplicate an open session,
 close/reopen it, and persist a bounded recent list with corrupt-file quarantine. Remote clone, local
-clone jobs, tab persistence, filesystem invalidation, CLI/second-instance opening, and the restricted
-asset protocol remain unverified.
+clone jobs, filesystem invalidation, CLI/second-instance opening, and the restricted asset protocol
+remain unverified.
 
 Started F02 manager slice (2026-09-16): persist up to ten canonical source directories in a separate,
 versioned atomic store; scan each source directory for normal, `.git`-file, and bare repository markers;
@@ -176,6 +176,16 @@ boundary. Tests use disposable repositories and verify persistence, nested folde
 overlapping/symlink paths, missing roots, and depth limits. Custom manager folders, repository renaming,
 automatic filesystem invalidation, cancellable background scans, and cross-window manager ownership
 remain unverified.
+
+Started F03 tab slice (2026-09-16): add bounded porcelain-v2 worktree summaries with clean, dirty,
+unavailable, and unknown states; refresh open-tab status on a five-second renderer poll; persist
+canonical tab order, active tab, and vertical/horizontal orientation in a separate versioned atomic
+store; restore persisted tabs when the repository service is recreated; and add close controls plus
+Ctrl/Cmd+1–9, Ctrl/Cmd+Tab, Ctrl/Cmd+W, and Ctrl/Cmd+Shift+T tab shortcuts. Disposable-repository
+unit tests verify newline-containing filenames, dirty counts, preference persistence, and tab restore;
+the Electron test verifies two tabs, external dirty-state refresh, orientation switching, and shortcut
+reopening. Full-app closed-tab history across restart, filesystem watchers, drag reordering, multiwindow
+ownership, and the remaining P12 workspace polish remain unverified.
 
 ## P03 — History, graph, and revision inspection
 

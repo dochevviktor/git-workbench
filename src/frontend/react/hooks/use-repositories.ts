@@ -5,6 +5,8 @@ import type {
   RepositoryManagerRepository,
   RepositoryManagerSnapshot,
   RepositorySummary,
+  RepositoryTabOrientation,
+  RepositoryTabPreferences,
 } from '../../../common/ipc/contracts';
 import type { DesktopApi } from '../../../common/ipc/api';
 import { unwrapResult } from '../../../common/ipc/result';
@@ -12,12 +14,18 @@ import { unwrapResult } from '../../../common/ipc/result';
 type RepositoryBusyState =
   | 'opening'
   | 'initializing'
+  | 'reopening'
   | 'closing'
   | 'removing'
   | 'adding-source'
   | 'scanning'
   | 'removing-source'
   | undefined;
+
+const defaultTabPreferences: RepositoryTabPreferences = {
+  tabOrientation: 'vertical',
+  activeRepositoryId: null,
+};
 
 function actionError(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'The repository action could not be completed.';
@@ -32,12 +40,18 @@ export function useRepositories() {
   const [recent, setRecent] = useState<RecentRepository[]>([]);
   const [open, setOpen] = useState<RepositorySummary[]>([]);
   const [manager, setManager] = useState<RepositoryManagerSnapshot>();
+  const [tabPreferences, setTabPreferences] = useState<RepositoryTabPreferences>(defaultTabPreferences);
+  const [recentlyClosed, setRecentlyClosed] = useState<RepositorySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<RepositoryBusyState>();
   const [error, setError] = useState<string>();
   const [activeId, setActiveId] = useState<string>();
   const generation = useRef(0);
   const mounted = useRef(true);
+  const busyRef = useRef<RepositoryBusyState>(undefined);
+  const openRef = useRef<RepositorySummary[]>([]);
+  busyRef.current = busy;
+  openRef.current = open;
 
   const load = useCallback(async () => {
     const api = desktopApi();
@@ -51,29 +65,56 @@ export function useRepositories() {
 
     setLoading(true);
     try {
-      const [gitResult, recentResult, openResult, managerResult] = await Promise.all([
+      const [gitResult, recentResult, openResult, managerResult, preferencesResult] = await Promise.all([
         api.repository.getGitInfo(),
         api.repository.listRecent(),
         api.repository.listOpen(),
         api.repository.listManager(),
+        api.repository.getTabPreferences(),
       ]);
       if (!mounted.current || generation.current !== requestGeneration) return;
       const nextGitInfo = unwrapResult(gitResult);
       const nextRecent = unwrapResult(recentResult);
       const nextOpen = unwrapResult(openResult);
       const nextManager = unwrapResult(managerResult);
+      const nextPreferences = unwrapResult(preferencesResult);
       setGitInfo(nextGitInfo);
       setRecent(nextRecent);
       setOpen(nextOpen);
       setManager(nextManager);
-      setActiveId((current) =>
-        current && nextOpen.some((repository) => repository.id === current) ? current : nextOpen[0]?.id,
-      );
+      setTabPreferences(nextPreferences);
+      setActiveId((current) => {
+        if (current && nextOpen.some((repository) => repository.id === current)) return current;
+        if (
+          nextPreferences.activeRepositoryId &&
+          nextOpen.some((repository) => repository.id === nextPreferences.activeRepositoryId)
+        ) {
+          return nextPreferences.activeRepositoryId;
+        }
+        return nextOpen[0]?.id;
+      });
       setError(undefined);
     } catch (reason: unknown) {
       if (mounted.current && generation.current === requestGeneration) setError(actionError(reason));
     } finally {
       if (mounted.current && generation.current === requestGeneration) setLoading(false);
+    }
+  }, []);
+
+  const refreshOpen = useCallback(async () => {
+    const api = desktopApi();
+    if (!api || openRef.current.length === 0 || busyRef.current) return;
+    const requestGeneration = generation.current + 1;
+    generation.current = requestGeneration;
+    try {
+      const nextOpen = unwrapResult(await api.repository.listOpen());
+      if (!mounted.current || generation.current !== requestGeneration) return;
+      setOpen(nextOpen);
+      setActiveId((current) =>
+        current && nextOpen.some((repository) => repository.id === current) ? current : nextOpen[0]?.id,
+      );
+    } catch (reason: unknown) {
+      if (mounted.current && generation.current === requestGeneration) setError(actionError(reason));
     }
   }, []);
 
@@ -84,6 +125,11 @@ export function useRepositories() {
       mounted.current = false;
     };
   }, [load]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => void refreshOpen(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [refreshOpen]);
 
   const openExisting = useCallback(async () => {
     const api = desktopApi();
@@ -97,6 +143,7 @@ export function useRepositories() {
       const pickedPath = unwrapResult(await api.repository.pickDirectory());
       if (pickedPath === null) return;
       const repository = unwrapResult(await api.repository.open({ path: pickedPath }));
+      setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
       setActiveId(repository.id);
       await load();
     } catch (reason: unknown) {
@@ -118,6 +165,7 @@ export function useRepositories() {
       const pickedPath = unwrapResult(await api.repository.pickDirectory());
       if (pickedPath === null) return;
       const repository = unwrapResult(await api.repository.initialize({ path: pickedPath, bare: false }));
+      setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
       setActiveId(repository.id);
       await load();
     } catch (reason: unknown) {
@@ -138,6 +186,7 @@ export function useRepositories() {
       setError(undefined);
       try {
         const repository = unwrapResult(await api.repository.open({ path }));
+        setRecentlyClosed((current) => current.filter((candidate) => candidate.id !== repository.id));
         setActiveId(repository.id);
         await load();
       } catch (reason: unknown) {
@@ -153,11 +202,20 @@ export function useRepositories() {
     async (id: string) => {
       const api = desktopApi();
       if (!api) return;
+      const closing = open.find((repository) => repository.id === id);
       setBusy('closing');
       setError(undefined);
       try {
         unwrapResult(await api.repository.close({ id }));
-        setActiveId((current) => (current === id ? undefined : current));
+        if (closing) {
+          setRecentlyClosed((current) =>
+            [closing, ...current.filter((candidate) => candidate.id !== closing.id)].slice(0, 20),
+          );
+        }
+        setActiveId((current) => {
+          if (current !== id) return current;
+          return open.find((repository) => repository.id !== id)?.id;
+        });
         await load();
       } catch (reason: unknown) {
         if (mounted.current) setError(actionError(reason));
@@ -165,8 +223,26 @@ export function useRepositories() {
         if (mounted.current) setBusy(undefined);
       }
     },
-    [load],
+    [load, open],
   );
+
+  const reopenClosed = useCallback(async () => {
+    const api = desktopApi();
+    const candidate = recentlyClosed[0];
+    if (!api || !candidate) return;
+    setBusy('reopening');
+    setError(undefined);
+    try {
+      const repository = unwrapResult(await api.repository.open({ path: candidate.path }));
+      setRecentlyClosed((current) => current.filter((tab) => tab.id !== candidate.id));
+      setActiveId(repository.id);
+      await load();
+    } catch (reason: unknown) {
+      if (mounted.current) setError(actionError(reason));
+    } finally {
+      if (mounted.current) setBusy(undefined);
+    }
+  }, [load, recentlyClosed]);
 
   const removeRecent = useCallback(
     async (id: string) => {
@@ -184,6 +260,29 @@ export function useRepositories() {
       }
     },
     [load],
+  );
+
+  const setTabOrientation = useCallback(
+    async (orientation: RepositoryTabOrientation) => {
+      const api = desktopApi();
+      if (!api) {
+        setError('Open this application in Electron to manage repositories.');
+        return;
+      }
+      const previousOrientation = tabPreferences.tabOrientation;
+      setError(undefined);
+      try {
+        setTabPreferences((current) => ({ ...current, tabOrientation: orientation }));
+        const nextPreferences = unwrapResult(await api.repository.setTabOrientation(orientation));
+        if (mounted.current) setTabPreferences(nextPreferences);
+      } catch (reason: unknown) {
+        if (mounted.current) {
+          setTabPreferences((current) => ({ ...current, tabOrientation: previousOrientation }));
+          setError(actionError(reason));
+        }
+      }
+    },
+    [tabPreferences.tabOrientation],
   );
 
   const addSourceDirectory = useCallback(async () => {
@@ -242,18 +341,29 @@ export function useRepositories() {
     [load],
   );
 
+  const select = useCallback(
+    (id: string) => {
+      if (!open.some((repository) => repository.id === id)) return;
+      setActiveId(id);
+      const api = desktopApi();
+      if (!api) return;
+      void api.repository.selectTab({ id }).then((result) => {
+        if (mounted.current && !result.ok) setError(result.error.message);
+      });
+    },
+    [open],
+  );
+
   const openManagerRepository = useCallback(
     async (repository: RepositoryManagerRepository) => {
       if (repository.sessionId) {
-        setActiveId(repository.sessionId);
+        select(repository.sessionId);
         return;
       }
       await openRecent(repository.path);
     },
-    [openRecent],
+    [openRecent, select],
   );
-
-  const select = useCallback((id: string) => setActiveId(id), []);
 
   return {
     gitInfo,
@@ -261,19 +371,24 @@ export function useRepositories() {
     open,
     manager,
     active: open.find((repository) => repository.id === activeId),
+    tabOrientation: tabPreferences.tabOrientation,
+    recentlyClosed,
     select,
     loading,
     busy,
     error,
     retry: load,
+    refreshOpen,
     openExisting,
     initialize,
     openRecent,
     closeRepository,
+    reopenClosed,
     removeRecent,
     addSourceDirectory,
     removeSourceDirectory,
     rescanSourceDirectory,
     openManagerRepository,
+    setTabOrientation,
   };
 }

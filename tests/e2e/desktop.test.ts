@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -7,8 +7,11 @@ import type { ElectronApplication } from '@playwright/test';
 test('production build loads its isolated preload and renderer', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'git-workbench-test-'));
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-repository-'));
+  const secondRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-tab-'));
   const fixtureRepository = join(fixtureRoot, 'sample');
+  const secondRepository = join(secondRoot, 'second');
   await mkdir(fixtureRepository);
+  await mkdir(secondRepository);
   const executablePath = process.env.ELECTRON_TEST_EXECUTABLE;
   let application: ElectronApplication | undefined;
   try {
@@ -70,6 +73,27 @@ test('production build loads its isolated preload and renderer', async () => {
         .getByText(/Unborn /u)
         .first(),
     ).toBeVisible();
+    const secondInitialized = await page.evaluate(async (path) => {
+      if (!window.desktop) throw new Error('Desktop API missing');
+      return window.desktop.repository.initialize({ path, bare: false });
+    }, secondRepository);
+    expect(secondInitialized).toMatchObject({ ok: true, value: { path: secondRepository, bare: false } });
+    await page.reload();
+    await expect(page.getByTestId('backend-status')).toHaveText('Desktop connected');
+    await expect(page.getByRole('tab', { name: /sample, Clean working tree/u })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /second, Clean working tree/u })).toBeVisible();
+    await writeFile(join(secondRepository, 'dirty\nfile.txt'), 'uncommitted\n', 'utf8');
+    await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.getByRole('button', { name: 'Use horizontal repository tabs' }).click();
+    await expect(page.locator('.repository-tabs.horizontal')).toBeVisible();
+    await page.getByRole('button', { name: 'Use vertical repository tabs' }).click();
+    await expect(page.locator('.repository-tabs.vertical')).toBeVisible();
+    await page.getByRole('button', { name: 'Close second' }).click();
+    await expect(page.getByRole('button', { name: 'Reopen closed tab' })).toBeEnabled();
+    await page.keyboard.press('Control+Shift+T');
+    await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible();
     const manager = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.addSourceDirectory({ path });
@@ -98,6 +122,7 @@ test('production build loads its isolated preload and renderer', async () => {
     } finally {
       await rm(profile, { recursive: true, force: true });
       await rm(fixtureRoot, { recursive: true, force: true });
+      await rm(secondRoot, { recursive: true, force: true });
     }
   }
 });

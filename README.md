@@ -4,11 +4,13 @@ A Linux-first Git desktop client in early development. **Git Workbench is a work
 The long-term target is the publicly documented functionality of Fork, implemented independently
 with Electron, shared TypeScript contracts, and React.
 
-The current milestone starts F01's local workflow and the first F02 repository-manager slice. It includes
-a desktop workspace, appearance controls, native menus, window commands, Git discovery, opening existing
-repositories, local initialization, recent-repository persistence, persisted source directories, and
-bounded folder-aware repository scanning. History, changes, clone, custom manager folders, and the
-remaining Git operations are later work.
+The current milestone starts F01's local workflow, the first F02 repository-manager slice, and the
+initial F03 tab slice. It includes a desktop workspace, appearance controls, native menus, window
+commands, Git discovery, opening existing repositories, local initialization, recent-repository
+persistence, persisted source directories, bounded folder-aware repository scanning, multiple persisted
+repository tabs, dirty indicators, vertical/horizontal tab orientation, and close/reopen shortcuts.
+History, changes, clone, custom manager folders, filesystem watchers, and the remaining Git operations
+are later work.
 
 ## Start
 
@@ -79,7 +81,7 @@ The GPU switch is local to this software-rendered testing setup, not a productio
 src/backend/electron/   Main process: windows, menus, validated IPC handlers
 src/backend/preload/    Sandboxed bridge: fixed capabilities and subscriptions
 src/backend/git/        Argument-array Git executable resolution and bounded process runner
-src/backend/repositories/ Repository topology, sessions, recent persistence, and manager scanning
+src/backend/repositories/ Repository topology, sessions, recent/tab persistence, status, and manager scanning
 src/common/ipc/         Runtime schemas, DTOs, result envelopes, public API types
 src/frontend/react/     React desktop shell (no Electron or Node imports)
 tests/unit/             IPC validation, sender checks, timeouts, subscription cleanup

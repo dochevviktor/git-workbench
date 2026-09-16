@@ -54,6 +54,23 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('validates tab preferences and uses named tab channels', async () => {
+    const { api, invoke } = fixture();
+    const preferences = { tabOrientation: 'horizontal', activeRepositoryId: null } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: preferences });
+    await expect(api.repository.setTabOrientation('horizontal')).resolves.toEqual({
+      ok: true,
+      value: preferences,
+    });
+    expect(invoke).toHaveBeenCalledWith(requests.setRepositoryTabOrientation.channel, {
+      tabOrientation: 'horizontal',
+    });
+
+    const invalid = await api.repository.setTabOrientation('diagonal' as never);
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects malformed responses and preserves known backend errors', async () => {
     const { api, invoke } = fixture();
     invoke.mockResolvedValueOnce({ maximized: true });

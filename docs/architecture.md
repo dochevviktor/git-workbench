@@ -1,6 +1,7 @@
 # Architecture and implementation decisions
 
-Status: foundation, the local F01 repository slice, and the first F02 manager scan slice implemented.
+Status: foundation, the local F01 repository slice, the first F02 manager scan slice, and the initial
+F03 tab slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -22,9 +23,11 @@ IPC. Main owns privileges, resource lifetime, and future Git orchestration. Shar
 serializable data and schemas; it cannot import Electron, Node, or frontend state libraries.
 DTOs cross IPC, not class instances with methods, Redux actions, errors, or native event objects.
 
-The initial UI uses React state. The starter's Redux store contained only a context-menu demo.
-Choose shared repository state management when tabs, asynchronous queries, and invalidation exist in
-P02; avoid inventing a domain store in advance. Backend repository state remains authoritative.
+The initial UI uses React state. The starter's Redux store contained only a context-menu demo. The
+initial F03 slice keeps tab, active-repository, and status-refresh state in the repository hook while
+the backend remains authoritative for canonical sessions, persisted tab order, and preferences. A
+larger shared state layer can be introduced with history and changes queries when their selection and
+invalidation lifecycles are understood.
 
 ## Build and dependency decisions
 
@@ -61,8 +64,10 @@ The actual API is `desktop.app.getInfo()`, `desktop.window.getState()`,
 `desktop.window.command({ action })`, and `desktop.window.onStateChanged(listener)`. The F01 slice adds
 named `desktop.repository` methods for Git diagnostics, directory selection, open/init, recent/open
 session queries, close, and recent-entry removal. The first F02 slice adds manager listing, source-root
-add/remove, and explicit rescan methods. The window commands are minimize, toggle-maximize, and close.
-Native titlebar/menu controls remain available.
+add/remove, and explicit rescan methods. The initial F03 slice adds validated tab-preference reads and
+writes plus active-tab selection; open-session DTOs include a bounded Git-derived working-tree state.
+The window commands are minimize, toggle-maximize, and close. Native titlebar/menu controls remain
+available.
 
 Requests return typed result envelopes because errors crossing Electron/contextBridge lose useful
 structure. Expected failures have stable codes; backend exceptions become a generic internal error.
@@ -137,17 +142,20 @@ The implemented F01 service uses this direction for read-only topology discovery
 initialization. It canonicalizes the selected path in the main process, keeps worktree/Git/common
 directories as separate DTO fields, derives a stable repository identity, and scopes in-memory sessions
 to the owning window. Recent entries use a versioned JSON file with atomic replacement and quarantine
-of invalid data. The first F02 manager slice uses a separate versioned source-root store and a bounded
-filesystem-marker scanner; it does not execute Git, follow directory symlinks, or descend into a found
-repository. Remote clone, operation jobs, watcher invalidation, and the trust policy for commands that
-can run repository programs are still future work.
+of invalid data. The initial F03 slice uses a separate versioned tab store for canonical tab records,
+active selection, and orientation; its status probe uses bounded NUL-delimited porcelain output and
+disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
+versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
+directory symlinks, or descend into a found repository. Remote clone, operation jobs, watcher
+invalidation, and the trust policy for commands that can run repository programs are still future work.
 
 ## Current limitations
 
-Git discovery, local repository access, recent-repository persistence, and the first source-directory
-manager slice are implemented. There is still no general job queue, operation activity surface, remote
-authentication, clone workflow, filesystem watcher, persisted tabs/preferences, custom manager folders,
-external integration, automatic updater, or final branding. The sidebar's references and history/changes
-panes remain scaffolding. Tests establish the local topology and manager behavior against disposable
-repositories and the Electron bridge; later Git correctness will continue to be checked against
-independent CLI assertions as each workflow is added.
+Git discovery, local repository access, recent-repository persistence, the first source-directory
+manager slice, and the initial persisted tab/status workflow are implemented. There is still no general
+job queue, operation activity surface, remote authentication, clone workflow, filesystem watcher,
+full-app closed-tab recovery, custom manager folders, external integration, automatic updater, or final
+branding. The sidebar's references and history/changes panes remain scaffolding. Tests establish the
+local topology, tab/status behavior, manager behavior against disposable repositories, and the Electron
+bridge; later Git correctness will continue to be checked against independent CLI assertions as each
+workflow is added.

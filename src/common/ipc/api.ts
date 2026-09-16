@@ -6,6 +6,8 @@ import type {
   RepositoryManagerSnapshot,
   RepositoryOpenRequest,
   RepositorySession,
+  RepositoryTabOrientation,
+  RepositoryTabPreferences,
   RepositorySummary,
   SourceDirectoryRequest,
   SourceDirectorySession,
@@ -34,6 +36,9 @@ export interface DesktopApi {
     open(request: RepositoryOpenRequest): Promise<IpcResult<RepositorySummary>>;
     initialize(request: RepositoryInitializeRequest): Promise<IpcResult<RepositorySummary>>;
     close(request: RepositorySession): Promise<IpcResult<null>>;
+    getTabPreferences(): Promise<IpcResult<RepositoryTabPreferences>>;
+    setTabOrientation(orientation: RepositoryTabOrientation): Promise<IpcResult<RepositoryTabPreferences>>;
+    selectTab(request: RepositorySession): Promise<IpcResult<RepositoryTabPreferences>>;
     removeRecent(request: RepositorySession): Promise<IpcResult<null>>;
     listManager(): Promise<IpcResult<RepositoryManagerSnapshot>>;
     addSourceDirectory(request: SourceDirectoryRequest): Promise<IpcResult<RepositoryManagerSnapshot>>;

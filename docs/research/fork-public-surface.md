@@ -49,7 +49,7 @@ Current project status: F01 is partial. Local open, initialize, canonical topolo
 entries, close/reopen sessions, and corrupt recent-file recovery are implemented and tested. Remote
 clone, authentication, and long-running clone jobs remain deferred to P01/P05; local clone and the
 remaining repository-manager workflows remain deferred to P02/P12. The first F02 source-scan slice
-is recorded below.
+and initial F03 tab slice are recorded below.
 
 ### F02 source refresh
 
@@ -72,6 +72,23 @@ sessions; the folder tree is regenerated from canonical filesystem paths; normal
 recognized through `.git` entries and bare repositories through their standard top-level markers;
 directory symlinks are not followed; overlapping roots are deduplicated; and bounded scans report
 warnings instead of silently claiming completeness. These choices are not observations of Fork.
+
+### F03 source refresh
+
+Accessed **2026-09-16**. The [Fork 1.0.79 manager article][manager] and the current [Mac release
+notes][mac] and [Windows release notes][win] document repository tabs, including the newer vertical-tab
+option in the listed platform releases. This is **D** evidence for the advertised tab outcome on Mac
+and Windows; it does not establish Linux support, exact shortcut bindings, dirty-state calculation,
+tab persistence, or multiwindow ownership.
+
+This project’s initial F03 slice is an **I** choice: tabs are owned by a window session, canonical tab
+records and active selection are persisted atomically, Git porcelain-v2 status supplies a visible
+clean/dirty/unknown indicator, vertical tabs are the default with a persisted horizontal alternative,
+and Ctrl/Cmd+Shift+T reopens the most recently closed tab during the renderer session. These are
+independent implementation decisions, not observed Fork behavior. The slice is partial: closed-tab
+history is not yet restored after a full application restart, automatic invalidation uses polling rather
+than a filesystem watcher, and P12 still covers multiwindow ownership, drag ordering, colors, and layout
+refinements.
 
 ## Feature coverage
 

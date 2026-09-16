@@ -10,7 +10,10 @@ import type {
   RepositoryManagerSnapshot,
   RepositoryManagerSourceDirectory,
   RepositoryManagerWarning,
+  RepositoryTabOrientation,
+  RepositoryTabPreferences,
   RepositorySummary,
+  RepositoryWorkingTree,
 } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
 import {
@@ -26,6 +29,7 @@ import type { GitCommandResult, GitRunOptions, GitVersion } from '../git/runner'
 import { RecentRepositoryStore, recentPathStatus } from './recent-store';
 import { RepositoryManagerStore } from './repository-manager-store';
 import type { SourceDirectoryRecord } from './repository-manager-store';
+import { RepositoryTabStore } from './repository-tab-store';
 import { scanSourceDirectory } from './source-scanner';
 import type { SourceScanOptions, SourceScanResult } from './source-scanner';
 
@@ -43,10 +47,12 @@ export interface GitRunnerLike {
 export interface RepositoryServiceOptions {
   readonly storagePath: string;
   readonly managerStoragePath?: string;
+  readonly workspaceStoragePath?: string;
   readonly runner?: GitRunnerLike;
   readonly clock?: () => Date;
   readonly maxRecentEntries?: number;
   readonly maxSourceDirectories?: number;
+  readonly maxOpenTabs?: number;
   readonly sourceScanOptions?: SourceScanOptions;
 }
 
@@ -54,10 +60,14 @@ export interface RepositoryServiceOptions {
 export class RepositoryService {
   private readonly store: RecentRepositoryStore;
   private readonly managerStore: RepositoryManagerStore;
+  private readonly tabStore: RepositoryTabStore;
   private readonly runner: GitRunnerLike;
   private readonly clock: () => Date;
   private readonly sourceScanOptions: SourceScanOptions;
+  private readonly maxOpenTabs: number;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
+  private readonly restorePromises = new Map<number, Promise<void>>();
+  private readonly ownerGenerations = new Map<number, number>();
   private gitInfoPromise: Promise<GitInfo> | undefined;
 
   constructor(options: RepositoryServiceOptions) {
@@ -68,6 +78,11 @@ export class RepositoryService {
     this.managerStore = new RepositoryManagerStore({
       filePath: options.managerStoragePath ?? `${options.storagePath}.manager`,
       maxSourceDirectories: options.maxSourceDirectories ?? 10,
+    });
+    this.maxOpenTabs = Math.max(1, Math.min(options.maxOpenTabs ?? 20, 20));
+    this.tabStore = new RepositoryTabStore({
+      filePath: options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
+      maxTabs: this.maxOpenTabs,
     });
     this.runner = options.runner ?? new GitRunner();
     this.clock = options.clock ?? (() => new Date());
@@ -81,15 +96,28 @@ export class RepositoryService {
 
   async open(ownerId: number, inputPath: string): Promise<RepositorySummary> {
     await this.requireGit();
+    await this.ensureSessions(ownerId);
     const directory = await this.canonicalDirectory(inputPath);
     const summary = await this.discover(directory);
+    if (
+      !this.sessions.get(ownerId)?.has(summary.id) &&
+      this.listOpenCached(ownerId).length >= this.maxOpenTabs
+    ) {
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Close a repository tab before opening another one.',
+      );
+    }
     await this.remember(summary);
+    await this.tabStore.addTab({ id: summary.id, path: summary.path });
+    await this.tabStore.setActiveRepositoryId(summary.id);
     this.addSession(ownerId, summary);
     return summary;
   }
 
   async initialize(ownerId: number, inputPath: string, bare: boolean): Promise<RepositorySummary> {
     await this.requireGit();
+    await this.ensureSessions(ownerId);
     const directory = await this.canonicalDirectory(inputPath);
     try {
       await this.runner.run(['init', '--quiet', ...(bare ? ['--bare'] : [])], {
@@ -101,12 +129,24 @@ export class RepositoryService {
       throw this.mapGitFailure(error, 'Git could not initialize the selected directory.');
     }
     const summary = await this.discover(directory);
+    if (
+      !this.sessions.get(ownerId)?.has(summary.id) &&
+      this.listOpenCached(ownerId).length >= this.maxOpenTabs
+    ) {
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Close a repository tab before opening another one.',
+      );
+    }
     await this.remember(summary);
+    await this.tabStore.addTab({ id: summary.id, path: summary.path });
+    await this.tabStore.setActiveRepositoryId(summary.id);
     this.addSession(ownerId, summary);
     return summary;
   }
 
   async listRecent(ownerId: number): Promise<RecentRepository[]> {
+    await this.ensureSessions(ownerId);
     const entries = await this.store.list();
     return Promise.all(
       entries.map(async (entry) => ({
@@ -120,16 +160,55 @@ export class RepositoryService {
     );
   }
 
-  listOpen(ownerId: number): RepositorySummary[] {
-    return [...(this.sessions.get(ownerId)?.values() ?? [])];
+  async listOpen(ownerId: number): Promise<RepositorySummary[]> {
+    await this.ensureSessions(ownerId);
+    const ownerSessions = this.sessions.get(ownerId);
+    if (!ownerSessions) return [];
+
+    const current = [...ownerSessions.values()];
+    const refreshed = await Promise.all(current.map((summary) => this.refreshSummary(summary)));
+    for (const summary of refreshed) {
+      if (ownerSessions.get(summary.id)?.path === summary.path) ownerSessions.set(summary.id, summary);
+    }
+    return [...ownerSessions.values()];
   }
 
-  close(ownerId: number, id: string): void {
+  async close(ownerId: number, id: string): Promise<void> {
+    await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
-    if (!ownerSessions?.delete(id)) {
+    if (!ownerSessions?.has(id)) {
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'That repository is not open in this window.');
     }
-    if (ownerSessions.size === 0) this.sessions.delete(ownerId);
+
+    const preferences = await this.tabStore.getPreferences();
+    await this.tabStore.removeTab(id);
+    if (preferences.activeRepositoryId === id) {
+      const nextActiveId = [...ownerSessions.keys()].find((candidate) => candidate !== id) ?? null;
+      await this.tabStore.setActiveRepositoryId(nextActiveId);
+    }
+    ownerSessions.delete(id);
+  }
+
+  async getTabPreferences(ownerId: number): Promise<RepositoryTabPreferences> {
+    await this.ensureSessions(ownerId);
+    return this.tabStore.getPreferences();
+  }
+
+  async setTabOrientation(tabOrientation: RepositoryTabOrientation): Promise<RepositoryTabPreferences> {
+    await this.tabStore.setTabOrientation(tabOrientation);
+    return this.tabStore.getPreferences();
+  }
+
+  async selectTab(ownerId: number, id: string): Promise<RepositoryTabPreferences> {
+    await this.ensureSessions(ownerId);
+    if (!this.sessions.get(ownerId)?.has(id)) {
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository tab is not open in this window.',
+      );
+    }
+    await this.tabStore.setActiveRepositoryId(id);
+    return this.tabStore.getPreferences();
   }
 
   async removeRecent(id: string): Promise<void> {
@@ -137,8 +216,9 @@ export class RepositoryService {
   }
 
   async listManager(ownerId: number): Promise<RepositoryManagerSnapshot> {
+    await this.ensureSessions(ownerId);
     const sourceDirectories = await this.managerStore.list();
-    const openRepositories = this.listOpen(ownerId);
+    const openRepositories = this.listOpenCached(ownerId);
     const openByPath = new Map(
       openRepositories.map((repository) => [this.pathKey(repository.path), repository.id]),
     );
@@ -193,10 +273,14 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.ownerGenerations.set(ownerId, (this.ownerGenerations.get(ownerId) ?? 0) + 1);
+    this.restorePromises.delete(ownerId);
     this.sessions.delete(ownerId);
   }
 
   dispose(): void {
+    this.ownerGenerations.clear();
+    this.restorePromises.clear();
     this.sessions.clear();
   }
 
@@ -257,6 +341,7 @@ export class RepositoryService {
           directory,
         );
     const head = await this.discoverHead(directory);
+    const workingTree = await this.inspectWorkingTree(bare ? null : worktreePath);
     const displayPath = worktreePath ?? commonDir;
     const id = this.repositoryId(worktreePath, commonDir);
 
@@ -269,6 +354,7 @@ export class RepositoryService {
       commonDir,
       bare,
       head,
+      workingTree,
     };
   }
 
@@ -314,6 +400,43 @@ export class RepositoryService {
       timeoutMs: repositoryReadTimeoutMs,
       maxOutputBytes: repositoryReadOutputLimit,
     });
+  }
+
+  private async refreshSummary(summary: RepositorySummary): Promise<RepositorySummary> {
+    return {
+      ...summary,
+      workingTree: await this.inspectWorkingTree(summary.worktreePath),
+    };
+  }
+
+  private async inspectWorkingTree(worktreePath: string | null): Promise<RepositoryWorkingTree> {
+    if (!worktreePath) return { state: 'unavailable', changedFileCount: null };
+
+    try {
+      const result = await this.runRead(
+        [
+          '-c',
+          'core.fsmonitor=false',
+          '-c',
+          'core.untrackedCache=false',
+          'status',
+          '--porcelain=v2',
+          '--untracked-files=normal',
+          '-z',
+          '--',
+        ],
+        worktreePath,
+      );
+      const changedFileCount = statusEntryCount(result.stdout);
+      return {
+        state: changedFileCount === 0 ? 'clean' : 'dirty',
+        changedFileCount,
+      };
+    } catch {
+      // A status failure may mean the worktree was moved, Git ownership is no longer trusted,
+      // or a configured status helper failed. Keep the tab visible without guessing that it is clean.
+      return { state: 'unknown', changedFileCount: null };
+    }
   }
 
   private async resolveGitPath(rawPath: string, directory: string): Promise<string> {
@@ -363,6 +486,44 @@ export class RepositoryService {
     const ownerSessions = this.sessions.get(ownerId) ?? new Map<string, RepositorySummary>();
     ownerSessions.set(summary.id, summary);
     this.sessions.set(ownerId, ownerSessions);
+  }
+
+  private listOpenCached(ownerId: number): RepositorySummary[] {
+    return [...(this.sessions.get(ownerId)?.values() ?? [])];
+  }
+
+  private async ensureSessions(ownerId: number): Promise<void> {
+    if (this.sessions.has(ownerId)) return;
+    const existing = this.restorePromises.get(ownerId);
+    if (existing) {
+      await existing;
+      return;
+    }
+
+    const generation = (this.ownerGenerations.get(ownerId) ?? 0) + 1;
+    this.ownerGenerations.set(ownerId, generation);
+    const restore = this.restoreSessions(ownerId, generation);
+    this.restorePromises.set(ownerId, restore);
+    try {
+      await restore;
+    } finally {
+      if (this.restorePromises.get(ownerId) === restore) this.restorePromises.delete(ownerId);
+    }
+  }
+
+  private async restoreSessions(ownerId: number, generation: number): Promise<void> {
+    const records = await this.tabStore.listTabs();
+    const restored = new Map<string, RepositorySummary>();
+    for (const record of records) {
+      if (restored.size >= this.maxOpenTabs) break;
+      try {
+        const summary = await this.discover(record.path);
+        restored.set(summary.id, summary);
+      } catch {
+        // Keep the tab record persisted so the path remains recoverable through Recent Repositories.
+      }
+    }
+    if (this.ownerGenerations.get(ownerId) === generation) this.sessions.set(ownerId, restored);
   }
 
   private repositoryId(worktreePath: string | null, commonDir: string): string {
@@ -525,4 +686,15 @@ function removeFinalLineEnding(value: string): string {
   if (value.endsWith('\r\n')) return value.slice(0, -2);
   if (value.endsWith('\n')) return value.slice(0, -1);
   return value;
+}
+
+function statusEntryCount(output: string): number {
+  const records = output.split('\0').filter((record) => record.length > 0);
+  let count = 0;
+  for (let index = 0; index < records.length; index += 1) {
+    count += 1;
+    // Porcelain v2 rename/copy records carry the original path as a second NUL-delimited field.
+    if (records[index]?.startsWith('2 ')) index += 1;
+  }
+  return count;
 }

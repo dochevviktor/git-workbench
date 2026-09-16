@@ -1,5 +1,10 @@
-import { useState } from 'react';
-import type { RepositoryManagerFolder, RepositoryManagerRepository } from '../../../common/ipc/contracts';
+import { useEffect, useState } from 'react';
+import type {
+  RepositoryManagerFolder,
+  RepositoryManagerRepository,
+  RepositorySummary,
+  RepositoryTabOrientation,
+} from '../../../common/ipc/contracts';
 import { useDesktop } from '../hooks/use-desktop';
 import { useRepositories } from '../hooks/use-repositories';
 
@@ -56,6 +61,118 @@ function sourceStatusLabel(status: 'available' | 'missing' | 'not-directory' | '
     case 'unreadable':
       return 'Unreadable';
   }
+}
+
+function workingTreeLabel(repository: RepositorySummary): string {
+  switch (repository.workingTree.state) {
+    case 'clean':
+      return 'Clean working tree';
+    case 'dirty':
+      return `${repository.workingTree.changedFileCount ?? 0} changed ${
+        repository.workingTree.changedFileCount === 1 ? 'file' : 'files'
+      }`;
+    case 'unavailable':
+      return 'No working tree';
+    case 'unknown':
+      return 'Status unavailable';
+  }
+}
+
+function tabStatusLabel(repository: RepositorySummary): string {
+  switch (repository.workingTree.state) {
+    case 'clean':
+      return 'Clean working tree';
+    case 'dirty':
+      return `Uncommitted changes${
+        repository.workingTree.changedFileCount === null
+          ? ''
+          : ` · ${repository.workingTree.changedFileCount} ${
+              repository.workingTree.changedFileCount === 1 ? 'file' : 'files'
+            }`
+      }`;
+    case 'unavailable':
+      return 'No working tree';
+    case 'unknown':
+      return 'Working-tree status unavailable';
+  }
+}
+
+function tabIndicator(repository: RepositorySummary): string {
+  switch (repository.workingTree.state) {
+    case 'clean':
+      return '○';
+    case 'dirty':
+      return '●';
+    case 'unavailable':
+      return '—';
+    case 'unknown':
+      return '?';
+  }
+}
+
+interface RepositoryTabsProps {
+  readonly repositories: readonly RepositorySummary[];
+  readonly activeId: string | undefined;
+  readonly orientation: RepositoryTabOrientation;
+  readonly closeDisabled: boolean;
+  readonly onSelect: (id: string) => void;
+  readonly onClose: (id: string) => void;
+}
+
+function RepositoryTabs({
+  repositories,
+  activeId,
+  orientation,
+  closeDisabled,
+  onSelect,
+  onClose,
+}: RepositoryTabsProps) {
+  if (repositories.length === 0) return <div className="repository-empty">No repository open</div>;
+
+  return (
+    <nav className={`repository-tabs ${orientation}`} aria-label="Open repository tabs" role="tablist">
+      {repositories.map((repository) => {
+        const selected = repository.id === activeId;
+        const status = tabStatusLabel(repository);
+        return (
+          <div className={selected ? 'repository-tab-row active' : 'repository-tab-row'} key={repository.id}>
+            <button
+              className={selected ? 'repository-tab active' : 'repository-tab'}
+              role="tab"
+              aria-selected={selected}
+              aria-current={selected ? 'page' : undefined}
+              aria-label={`${repository.name}, ${status}`}
+              onClick={() => onSelect(repository.id)}
+              title={repository.path}
+            >
+              <span className={`repository-tab-indicator ${repository.workingTree.state}`} aria-hidden="true">
+                {tabIndicator(repository)}
+              </span>
+              <span className="repository-tab-copy">
+                <strong>{repository.name}</strong>
+                <small>
+                  {repository.bare
+                    ? 'Bare repository'
+                    : headLabel(repository.head.state, repository.head.name)}
+                  {' · '}
+                  {status}
+                </small>
+              </span>
+            </button>
+            <button
+              className="repository-tab-close"
+              aria-label={`Close ${repository.name}`}
+              disabled={closeDisabled}
+              onClick={() => onClose(repository.id)}
+              title={`Close ${repository.name}`}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
 }
 
 interface RepositoryManagerTreeProps {
@@ -134,6 +251,8 @@ export default function App() {
     open,
     manager,
     active,
+    tabOrientation,
+    recentlyClosed,
     loading: repositoriesLoading,
     busy,
     error: repositoryError,
@@ -142,13 +261,61 @@ export default function App() {
     initialize,
     openRecent,
     closeRepository,
+    reopenClosed,
     removeRecent,
     addSourceDirectory,
     removeSourceDirectory,
     rescanSourceDirectory,
     openManagerRepository,
     select,
+    setTabOrientation,
   } = useRepositories();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      const modifier = event.ctrlKey || event.metaKey;
+      if (!modifier || event.altKey) return;
+
+      if (event.key.toLowerCase() === 't' && event.shiftKey) {
+        event.preventDefault();
+        void reopenClosed();
+        return;
+      }
+      if (event.key.toLowerCase() === 'w' && !event.shiftKey && active) {
+        event.preventDefault();
+        void closeRepository(active.id);
+        return;
+      }
+      if (event.key === 'Tab' && open.length > 1) {
+        event.preventDefault();
+        const currentIndex = open.findIndex((repository) => repository.id === active?.id);
+        const direction = event.shiftKey ? -1 : 1;
+        const nextIndex = (currentIndex + direction + open.length) % open.length;
+        const next = open[nextIndex];
+        if (next) select(next.id);
+        return;
+      }
+      if (!event.shiftKey && /^[1-9]$/u.test(event.key)) {
+        const next = open[Number(event.key) - 1];
+        if (next) {
+          event.preventDefault();
+          select(next.id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active, closeRepository, open, reopenClosed, select]);
+
   const currentView = views[view];
   const error = desktopError ?? repositoryError;
   const repositoryBusy = busy !== undefined;
@@ -162,7 +329,7 @@ export default function App() {
           </span>{' '}
           Git Workbench
         </div>
-        <span className="build-label">F02 repository manager</span>
+        <span className="build-label">F03 repository tabs</span>
         <div className="repository-actions" aria-label="Repository actions">
           <button disabled={repositoryBusy} onClick={() => void openExisting()}>
             {busy === 'opening' ? 'Opening…' : 'Open repository'}
@@ -175,6 +342,14 @@ export default function App() {
             title="Remote clone will be enabled with authenticated network operations in a later phase."
           >
             Clone repository
+          </button>
+          <button
+            disabled={repositoryBusy || recentlyClosed.length === 0}
+            aria-keyshortcuts="Control+Shift+T Meta+Shift+T"
+            onClick={() => void reopenClosed()}
+            title="Reopen the most recently closed tab (Ctrl/Cmd+Shift+T)"
+          >
+            {busy === 'reopening' ? 'Reopening…' : 'Reopen closed tab'}
           </button>
         </div>
         <div className="toolbar-actions">
@@ -194,31 +369,38 @@ export default function App() {
 
       <div className="workspace">
         <aside className="sidebar">
-          <div className="sidebar-title">WORKSPACE</div>
-          {open.length === 0 ? (
-            <div className="repository-empty">No repository open</div>
+          <div className="sidebar-heading-row workspace-heading">
+            <div className="sidebar-title">WORKSPACE</div>
+            <button
+              className="sidebar-action"
+              aria-label={
+                tabOrientation === 'vertical'
+                  ? 'Use horizontal repository tabs'
+                  : 'Use vertical repository tabs'
+              }
+              onClick={() =>
+                void setTabOrientation(tabOrientation === 'vertical' ? 'horizontal' : 'vertical')
+              }
+              title={
+                tabOrientation === 'vertical'
+                  ? 'Move repository tabs above the workspace'
+                  : 'Move repository tabs to the sidebar'
+              }
+            >
+              {tabOrientation === 'vertical' ? '↔' : '↕'}
+            </button>
+          </div>
+          {tabOrientation === 'vertical' ? (
+            <RepositoryTabs
+              repositories={open}
+              activeId={active?.id}
+              orientation="vertical"
+              closeDisabled={repositoryBusy}
+              onSelect={select}
+              onClose={(id) => void closeRepository(id)}
+            />
           ) : (
-            <div className="open-repositories" aria-label="Open repositories">
-              {open.map((repository) => (
-                <button
-                  key={repository.id}
-                  className={active?.id === repository.id ? 'repository-tab active' : 'repository-tab'}
-                  aria-current={active?.id === repository.id ? 'page' : undefined}
-                  onClick={() => select(repository.id)}
-                  title={repository.path}
-                >
-                  <span className="nav-dot" aria-hidden="true" />
-                  <span className="repository-tab-copy">
-                    <strong>{repository.name}</strong>
-                    <small>
-                      {repository.bare
-                        ? 'Bare repository'
-                        : headLabel(repository.head.state, repository.head.name)}
-                    </small>
-                  </span>
-                </button>
-              ))}
-            </div>
+            <div className="repository-empty">Tabs are shown above the workspace.</div>
           )}
           <section className="manager-section" aria-labelledby="repository-manager-heading">
             <div className="sidebar-heading-row">
@@ -374,6 +556,16 @@ export default function App() {
         </aside>
 
         <main className="main-panel">
+          {tabOrientation === 'horizontal' && (
+            <RepositoryTabs
+              repositories={open}
+              activeId={active?.id}
+              orientation="horizontal"
+              closeDisabled={repositoryBusy}
+              onSelect={select}
+              onClose={(id) => void closeRepository(id)}
+            />
+          )}
           <div className="panel-heading">
             <h1>{currentView.label}</h1>
             <span>{active?.path ?? 'No repository selected'}</span>
@@ -396,9 +588,22 @@ export default function App() {
                   <span>GIT DIRECTORY</span>
                   <strong>{active.gitDir}</strong>
                 </div>
+                <div>
+                  <span>WORKTREE STATUS</span>
+                  <strong>{workingTreeLabel(active)}</strong>
+                </div>
               </div>
               <p className="milestone-note">
-                <span className="status-dot" aria-hidden="true" />
+                <span
+                  className={
+                    active.workingTree.state === 'dirty'
+                      ? 'status-dot dirty'
+                      : active.workingTree.state === 'unknown'
+                        ? 'status-dot pending'
+                        : 'status-dot'
+                  }
+                  aria-hidden="true"
+                />
                 {currentView.description}
               </p>
             </section>
@@ -483,7 +688,7 @@ export default function App() {
         </span>
         <span>
           {active
-            ? `${active.name} · ${headLabel(active.head.state, active.head.name)}`
+            ? `${active.name} · ${headLabel(active.head.state, active.head.name)} · ${workingTreeLabel(active)}`
             : 'No repository selected'}
         </span>
         <span className="statusbar-end">Git Workbench {info?.version ?? ''}</span>

@@ -78,6 +78,10 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       open: (request) => invoke(requests.openRepository, request),
       initialize: (request) => invoke(requests.initializeRepository, request),
       close: (request) => invoke(requests.closeRepository, request),
+      getTabPreferences: () => invoke(requests.getRepositoryTabPreferences, undefined),
+      setTabOrientation: (orientation) =>
+        invoke(requests.setRepositoryTabOrientation, { tabOrientation: orientation }),
+      selectTab: (request) => invoke(requests.selectRepositoryTab, request),
       removeRecent: (request) => invoke(requests.removeRecentRepository, request),
       listManager: () => invoke(requests.listRepositoryManager, undefined),
       addSourceDirectory: (request) => invoke(requests.addSourceDirectory, request),

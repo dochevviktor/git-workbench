@@ -101,10 +101,18 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.initializeRepository, (window, { path, bare }) =>
       repositoryService.initialize(window.webContents.id, path, bare),
     );
-    register(requests.closeRepository, (window, { id }) => {
-      repositoryService.close(window.webContents.id, id);
-      return null;
-    });
+    register(requests.closeRepository, (window, { id }) =>
+      repositoryService.close(window.webContents.id, id).then(() => null),
+    );
+    register(requests.getRepositoryTabPreferences, (window) =>
+      repositoryService.getTabPreferences(window.webContents.id),
+    );
+    register(requests.setRepositoryTabOrientation, (_window, { tabOrientation }) =>
+      repositoryService.setTabOrientation(tabOrientation),
+    );
+    register(requests.selectRepositoryTab, (window, { id }) =>
+      repositoryService.selectTab(window.webContents.id, id),
+    );
     register(requests.removeRecentRepository, (_window, { id }) =>
       repositoryService.removeRecent(id).then(() => null),
     );

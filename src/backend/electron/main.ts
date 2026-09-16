@@ -34,6 +34,7 @@ if (!app.requestSingleInstanceLock()) {
       const repositories = new RepositoryService({
         storagePath: join(app.getPath('userData'), 'recent-repositories.json'),
         managerStoragePath: join(app.getPath('userData'), 'repository-manager.json'),
+        workspaceStoragePath: join(app.getPath('userData'), 'repository-workspace.json'),
       });
       const ipc = registerAppIpc(repositories);
       installApplicationMenu();
