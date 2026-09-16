@@ -12,6 +12,7 @@ export const ipcErrorSchema = z.strictObject({
     'NOT_A_DIRECTORY',
     'NOT_A_REPOSITORY',
     'REPOSITORY_NOT_OPEN',
+    'SOURCE_DIRECTORY_NOT_FOUND',
     'OPERATION_FAILED',
   ]),
   message: z.string(),

@@ -86,7 +86,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.pickRepositoryDirectory, (window) =>
       dialog
         .showOpenDialog(window, {
-          title: 'Choose a repository directory',
+          title: 'Choose a directory',
           properties: ['openDirectory'],
         })
         .then((result) => (result.canceled ? null : (result.filePaths[0] ?? null))),
@@ -107,6 +107,18 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     });
     register(requests.removeRecentRepository, (_window, { id }) =>
       repositoryService.removeRecent(id).then(() => null),
+    );
+    register(requests.listRepositoryManager, (window) =>
+      repositoryService.listManager(window.webContents.id),
+    );
+    register(requests.addSourceDirectory, (window, { path }) =>
+      repositoryService.addSourceDirectory(window.webContents.id, path),
+    );
+    register(requests.removeSourceDirectory, (_window, { id }) =>
+      repositoryService.removeSourceDirectory(id).then(() => null),
+    );
+    register(requests.rescanSourceDirectory, (window, { id }) =>
+      repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
   }
 

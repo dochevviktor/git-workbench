@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { RepositoryManagerFolder, RepositoryManagerRepository } from '../../../common/ipc/contracts';
 import { useDesktop } from '../hooks/use-desktop';
 import { useRepositories } from '../hooks/use-repositories';
 
@@ -44,6 +45,85 @@ function recentStatusLabel(status: 'available' | 'missing' | 'not-directory'): s
   }
 }
 
+function sourceStatusLabel(status: 'available' | 'missing' | 'not-directory' | 'unreadable'): string {
+  switch (status) {
+    case 'available':
+      return 'Available';
+    case 'missing':
+      return 'Missing';
+    case 'not-directory':
+      return 'Not a directory';
+    case 'unreadable':
+      return 'Unreadable';
+  }
+}
+
+interface RepositoryManagerTreeProps {
+  readonly parentId: string | null;
+  readonly folders: readonly RepositoryManagerFolder[];
+  readonly repositories: readonly RepositoryManagerRepository[];
+  readonly disabled: boolean;
+  readonly onOpen: (repository: RepositoryManagerRepository) => void;
+}
+
+function RepositoryManagerTree({
+  parentId,
+  folders,
+  repositories,
+  disabled,
+  onOpen,
+}: RepositoryManagerTreeProps) {
+  const childFolders = folders.filter((folder) => folder.parentId === parentId);
+  const childRepositories = repositories.filter((repository) => repository.folderId === parentId);
+  if (childFolders.length === 0 && childRepositories.length === 0) return null;
+
+  return (
+    <ul className="manager-tree">
+      {childFolders.map((folder) => (
+        <li key={folder.id}>
+          <div className="manager-folder">
+            <span className="manager-folder-glyph" aria-hidden="true">
+              ▸
+            </span>
+            <span title={folder.relativePath}>{folder.name}</span>
+          </div>
+          <RepositoryManagerTree
+            parentId={folder.id}
+            folders={folders}
+            repositories={repositories}
+            disabled={disabled}
+            onOpen={onOpen}
+          />
+        </li>
+      ))}
+      {childRepositories.map((repository) => (
+        <li key={repository.id}>
+          <button
+            className="manager-repository"
+            data-testid="manager-repository"
+            disabled={disabled}
+            onClick={() => onOpen(repository)}
+            title={repository.path}
+          >
+            <span className="manager-repository-glyph" aria-hidden="true">
+              {repository.kind === 'bare' ? '◈' : '●'}
+            </span>
+            <span className="manager-repository-copy">
+              <strong>{repository.name}</strong>
+              <small>{repository.relativePath || 'Source root'}</small>
+            </span>
+            {repository.sessionId && (
+              <span className="manager-open-label" title="Open in this window">
+                open
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<keyof typeof views>('history');
   const [theme, setTheme] = useState('system');
@@ -52,6 +132,7 @@ export default function App() {
     gitInfo,
     recent,
     open,
+    manager,
     active,
     loading: repositoriesLoading,
     busy,
@@ -62,6 +143,10 @@ export default function App() {
     openRecent,
     closeRepository,
     removeRecent,
+    addSourceDirectory,
+    removeSourceDirectory,
+    rescanSourceDirectory,
+    openManagerRepository,
     select,
   } = useRepositories();
   const currentView = views[view];
@@ -77,7 +162,7 @@ export default function App() {
           </span>{' '}
           Git Workbench
         </div>
-        <span className="build-label">F01 local workflow</span>
+        <span className="build-label">F02 repository manager</span>
         <div className="repository-actions" aria-label="Repository actions">
           <button disabled={repositoryBusy} onClick={() => void openExisting()}>
             {busy === 'opening' ? 'Opening…' : 'Open repository'}
@@ -135,6 +220,103 @@ export default function App() {
               ))}
             </div>
           )}
+          <section className="manager-section" aria-labelledby="repository-manager-heading">
+            <div className="sidebar-heading-row">
+              <div className="sidebar-title" id="repository-manager-heading">
+                REPOSITORY MANAGER
+              </div>
+              <button
+                className="sidebar-action"
+                aria-label="Add source directory"
+                disabled={repositoryBusy}
+                onClick={() => void addSourceDirectory()}
+                title="Add source directory"
+              >
+                +
+              </button>
+            </div>
+            {!manager && repositoriesLoading ? (
+              <p>Scanning source directories…</p>
+            ) : manager?.sourceDirectories.length === 0 ? (
+              <p>Add a source directory to find repositories in its folders.</p>
+            ) : (
+              <div className="manager-sources">
+                {manager?.sourceDirectories.map((source) => {
+                  const sourceRepositories = manager.repositories.filter(
+                    (repository) => repository.sourceDirectoryId === source.id,
+                  );
+                  const sourceFolders = manager.folders.filter(
+                    (folder) => folder.sourceDirectoryId === source.id,
+                  );
+                  return (
+                    <section
+                      className="manager-source"
+                      key={source.id}
+                      aria-labelledby={`source-${source.id}`}
+                    >
+                      <div className="manager-source-heading">
+                        <div className="manager-source-copy">
+                          <strong id={`source-${source.id}`} title={source.path}>
+                            {source.name}
+                          </strong>
+                          <small>
+                            {source.repositoryCount}{' '}
+                            {source.repositoryCount === 1 ? 'repository' : 'repositories'} ·{' '}
+                            {sourceStatusLabel(source.status)}
+                          </small>
+                        </div>
+                        <div className="manager-source-actions">
+                          <button
+                            className="sidebar-action"
+                            aria-label={`Rescan ${source.name}`}
+                            disabled={repositoryBusy}
+                            onClick={() => void rescanSourceDirectory(source.id)}
+                            title="Rescan source directory"
+                          >
+                            ↻
+                          </button>
+                          <button
+                            className="sidebar-action"
+                            aria-label={`Remove ${source.name}`}
+                            disabled={repositoryBusy}
+                            onClick={() => void removeSourceDirectory(source.id)}
+                            title="Remove source directory"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                      <p className="manager-source-path" title={source.path}>
+                        {source.path}
+                      </p>
+                      {source.status !== 'available' ? (
+                        <p className="manager-source-note">This source directory needs attention.</p>
+                      ) : (
+                        <RepositoryManagerTree
+                          parentId={null}
+                          folders={sourceFolders}
+                          repositories={sourceRepositories}
+                          disabled={repositoryBusy}
+                          onOpen={(repository) => void openManagerRepository(repository)}
+                        />
+                      )}
+                      {source.truncated && (
+                        <p className="manager-source-note">
+                          Scan limits were reached; rescan after narrowing this folder.
+                        </p>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+            {manager && manager.warnings.length > 0 && (
+              <p className="manager-warning" role="status" title={manager.warnings[0]?.path}>
+                {manager.warnings[0]?.message}
+                {manager.warnings.length > 1 ? ` (+${manager.warnings.length - 1} more)` : ''}
+              </p>
+            )}
+          </section>
           <nav aria-label="Repository views">
             {Object.entries(views).map(([key, item]) => (
               <button

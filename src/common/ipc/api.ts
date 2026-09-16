@@ -3,9 +3,12 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryInitializeRequest,
+  RepositoryManagerSnapshot,
   RepositoryOpenRequest,
   RepositorySession,
   RepositorySummary,
+  SourceDirectoryRequest,
+  SourceDirectorySession,
   WindowCommand,
   WindowState,
 } from './contracts';
@@ -32,5 +35,9 @@ export interface DesktopApi {
     initialize(request: RepositoryInitializeRequest): Promise<IpcResult<RepositorySummary>>;
     close(request: RepositorySession): Promise<IpcResult<null>>;
     removeRecent(request: RepositorySession): Promise<IpcResult<null>>;
+    listManager(): Promise<IpcResult<RepositoryManagerSnapshot>>;
+    addSourceDirectory(request: SourceDirectoryRequest): Promise<IpcResult<RepositoryManagerSnapshot>>;
+    removeSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<null>>;
+    rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
   };
 }

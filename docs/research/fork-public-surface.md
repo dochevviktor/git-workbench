@@ -29,7 +29,7 @@ Evidence labels:
 
 The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
-F01 is now **partial** in this project; all other F-items remain **planned**.
+F01 and the first F02 slice are **partial** in this project; all other F-items remain **planned**.
 
 ### F01 source refresh
 
@@ -48,7 +48,30 @@ These are Git CLI semantics, not observations of Fork. The current implementatio
 Current project status: F01 is partial. Local open, initialize, canonical topology discovery, recent
 entries, close/reopen sessions, and corrupt recent-file recovery are implemented and tested. Remote
 clone, authentication, and long-running clone jobs remain deferred to P01/P05; local clone and the
-broader repository manager remain deferred to P02.
+remaining repository-manager workflows remain deferred to P02/P12. The first F02 source-scan slice
+is recorded below.
+
+### F02 source refresh
+
+Accessed **2026-09-16**. The [Fork 1.0.79 manager article][manager] explicitly says that Fork can
+recreate the source-folder structure in its Repository Manager, automatically import repositories into
+their respective folders, rescan source directories manually, and select a default source folder in
+Preferences. This is high-confidence **D** evidence for the advertised Mac workflow; the article is
+tagged Mac and does not establish Windows behavior or exact scan rules.
+
+The current [Mac release notes][mac] document multiple source-code directories in Fork 2.60 and
+automatic discovery of new repositories in 2.56. The [Windows release notes][win] document the same
+multiple-source-directory outcome in Fork 2.15 and automatic new-repository discovery in 2.12; older
+Windows notes document Repository Manager subfolders and a performance improvement for rescanning.
+These are **D** outcomes on the respective listed platforms. Exact recursion depth, symlink handling,
+repository-marker rules, folder edit semantics, scan cancellation, and default-directory persistence
+remain **U**.
+
+This project’s first slice is an **I** choice: source roots are persisted separately from recent/open
+sessions; the folder tree is regenerated from canonical filesystem paths; normal repositories are
+recognized through `.git` entries and bare repositories through their standard top-level markers;
+directory symlinks are not followed; overlapping roots are deduplicated; and bounded scans report
+warnings instead of silently claiming completeness. These choices are not observations of Fork.
 
 ## Feature coverage
 
@@ -57,7 +80,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | ID  | Public capability                                                                              | Evidence                                                                            | Planned phase |
 | --- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------- |
 | F01 | Initialize, clone, add existing repositories, recent repositories                              | D: [product][home]                                                                  | P02, P05      |
-| F02 | Repository manager, folder hierarchy, source-directory scanning                                | D: [Mac 1.0.79][manager]                                                            | P02, P12      |
+| F02 | Repository manager, folder hierarchy, source-directory scanning                                | D: [Mac 1.0.79][manager], [Mac releases][mac], [Windows releases][win]              | P02, P12      |
 | F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts       | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                 | P02, P12      |
 | F04 | Commit graph, reference labels, authors, hashes, dates, selection                              | O: [history screenshot][history-image]                                              | P03           |
 | F05 | Collapse/expand merge branches in the graph                                                    | D: [graph article][graph]                                                           | P03           |

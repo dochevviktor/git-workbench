@@ -13,23 +13,23 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                          | Depends on |
-| ----- | -------------------------------------------------------------------- | ----------------------------------------------- | ---------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                           | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16) | P00        |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local slice (2026-09-16)           | P01        |
-| P03   | History graph, references, commit details, revision tree             | Planned                                         | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                         | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                         | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                         | P05        |
-| P07   | Interactive rebase and history editing                               | Planned                                         | P06        |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                         | P07        |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                         | P08        |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                         | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                         | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                         | P11        |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                         | P12        |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                         | P13        |
+| Phase | Deliverable                                                          | Status                                                   | Depends on |
+| ----- | -------------------------------------------------------------------- | -------------------------------------------------------- | ---------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                    | —          |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)          | P00        |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager scan slice (2026-09-16) | P01        |
+| P03   | History graph, references, commit details, revision tree             | Planned                                                  | P02        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                  | P03        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                  | P04        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                  | P05        |
+| P07   | Interactive rebase and history editing                               | Planned                                                  | P06        |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                  | P07        |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                  | P08        |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                  | P09        |
+| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                  | P10        |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Planned                                                  | P11        |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                  | P12        |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                  | P13        |
 
 The sequence is the default execution order. Within a phase, complete its numbered slices in order;
 each slice can be a separate future request. Refine a slice if public research exposes additional
@@ -166,6 +166,16 @@ Git, and common-directory paths, classify branch/detached/unborn HEAD, deduplica
 close/reopen it, and persist a bounded recent list with corrupt-file quarantine. Remote clone, local
 clone jobs, tab persistence, filesystem invalidation, CLI/second-instance opening, and the restricted
 asset protocol remain unverified.
+
+Started F02 manager slice (2026-09-16): persist up to ten canonical source directories in a separate,
+versioned atomic store; scan each source directory for normal, `.git`-file, and bare repository markers;
+rebuild deterministic folder hierarchy DTOs; deduplicate overlapping source roots; show missing and
+unreadable roots; bound depth, entries, repositories, and warning output; skip symlink entries without
+leaving the selected source tree; and open/select discovered repositories through the existing session
+boundary. Tests use disposable repositories and verify persistence, nested folders, bare repositories,
+overlapping/symlink paths, missing roots, and depth limits. Custom manager folders, repository renaming,
+automatic filesystem invalidation, cancellable background scans, and cross-window manager ownership
+remain unverified.
 
 ## P03 — History, graph, and revision inspection
 
@@ -416,6 +426,7 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue F01 from docs/implementation-plan.md. Add the remaining clone workflow only after the P01
-> operation registry and authenticated network boundary are in place; keep the current
-> Electron/shared/preload/React boundaries and update the partial feature evidence.
+> Continue F02 from docs/implementation-plan.md. Add user-managed Repository Manager folders and
+> rescan lifecycle refinements, then add background invalidation only after the P01 operation registry
+> is in place; keep the current Electron/shared/preload/React boundaries and update the partial feature
+> evidence.

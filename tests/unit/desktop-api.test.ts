@@ -47,6 +47,13 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('validates source-directory paths before crossing IPC', async () => {
+    const { api, invoke } = fixture();
+    const result = await api.repository.addSourceDirectory({ path: '' });
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed responses and preserves known backend errors', async () => {
     const { api, invoke } = fixture();
     invoke.mockResolvedValueOnce({ maximized: true });

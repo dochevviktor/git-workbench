@@ -33,6 +33,7 @@ if (!app.requestSingleInstanceLock()) {
       session.defaultSession.setPermissionCheckHandler(() => false);
       const repositories = new RepositoryService({
         storagePath: join(app.getPath('userData'), 'recent-repositories.json'),
+        managerStoragePath: join(app.getPath('userData'), 'repository-manager.json'),
       });
       const ipc = registerAppIpc(repositories);
       installApplicationMenu();

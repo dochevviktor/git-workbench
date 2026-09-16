@@ -203,6 +203,156 @@ button:hover:not(:disabled) {
   color: var(--muted);
   font-size: 10px;
 }
+.sidebar-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 4px;
+}
+.sidebar-action {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-width: 22px;
+  padding: 2px 5px;
+  line-height: 1;
+}
+.sidebar-action:hover:not(:disabled) {
+  color: var(--accent);
+}
+.manager-section {
+  margin-top: 10px;
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--border);
+}
+.manager-section > p,
+.manager-source-note,
+.manager-warning {
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.manager-sources {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.manager-source {
+  min-width: 0;
+}
+.manager-source-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0 8px 0 12px;
+}
+.manager-source-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.manager-source-copy strong,
+.manager-source-copy small,
+.manager-source-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manager-source-copy strong {
+  font-size: 11px;
+  font-weight: 650;
+}
+.manager-source-copy small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.manager-source-actions {
+  display: flex;
+  gap: 1px;
+}
+.manager-source-path {
+  margin: 5px 12px 4px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+}
+.manager-source-note,
+.manager-warning {
+  margin-top: 7px;
+  margin-bottom: 0;
+}
+.manager-warning {
+  color: var(--accent);
+}
+.manager-tree {
+  display: grid;
+  gap: 1px;
+  padding: 0;
+  margin: 3px 4px 0 12px;
+  list-style: none;
+}
+.manager-tree .manager-tree {
+  margin-left: 13px;
+}
+.manager-folder {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.manager-folder > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manager-folder-glyph,
+.manager-repository-glyph {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 9px;
+}
+.manager-repository {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 5px;
+  text-align: left;
+}
+.manager-repository-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.manager-repository-copy strong,
+.manager-repository-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manager-repository-copy strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+.manager-repository-copy small {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+}
+.manager-open-label {
+  color: var(--green);
+  font-size: 9px;
+}
 .nav-item {
   width: 100%;
   display: flex;

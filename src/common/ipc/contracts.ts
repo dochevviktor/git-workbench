@@ -42,6 +42,10 @@ export const repositoryPathSchema = z
 
 export const repositoryIdSchema = z.string().regex(/^repo-[a-f0-9]{64}$/);
 
+export const sourceDirectoryIdSchema = z.string().regex(/^source-[a-f0-9]{64}$/);
+export const repositoryManagerFolderIdSchema = z.string().regex(/^folder-[a-f0-9]{64}$/);
+export const repositoryManagerRepositoryIdSchema = z.string().regex(/^manager-repo-[a-f0-9]{64}$/);
+
 export const repositoryHeadSchema = z.strictObject({
   state: z.enum(['branch', 'detached', 'unborn', 'unknown']),
   name: z.string().nullable(),
@@ -68,6 +72,50 @@ export const recentRepositorySchema = z.strictObject({
   open: z.boolean(),
 });
 
+export const sourceDirectoryStatusSchema = z.enum(['available', 'missing', 'not-directory', 'unreadable']);
+
+export const repositoryManagerSourceDirectorySchema = z.strictObject({
+  id: sourceDirectoryIdSchema,
+  name: z.string().min(1).max(512),
+  path: repositoryPathSchema,
+  status: sourceDirectoryStatusSchema,
+  repositoryCount: z.number().int().nonnegative().max(5_000),
+  lastScannedAt: z.string().datetime({ offset: true }).nullable(),
+  truncated: z.boolean(),
+});
+
+export const repositoryManagerFolderSchema = z.strictObject({
+  id: repositoryManagerFolderIdSchema,
+  sourceDirectoryId: sourceDirectoryIdSchema,
+  name: z.string().min(1).max(512),
+  relativePath: z.string().max(32_768),
+  parentId: repositoryManagerFolderIdSchema.nullable(),
+});
+
+export const repositoryManagerRepositorySchema = z.strictObject({
+  id: repositoryManagerRepositoryIdSchema,
+  sourceDirectoryId: sourceDirectoryIdSchema,
+  folderId: repositoryManagerFolderIdSchema.nullable(),
+  name: z.string().min(1).max(512),
+  path: repositoryPathSchema,
+  relativePath: z.string().max(32_768),
+  kind: z.enum(['worktree', 'bare']),
+  sessionId: repositoryIdSchema.nullable(),
+});
+
+export const repositoryManagerWarningSchema = z.strictObject({
+  code: z.enum(['unreadable', 'scan-limit', 'depth-limit', 'symlink-skipped']),
+  path: repositoryPathSchema,
+  message: z.string().min(1).max(512),
+});
+
+export const repositoryManagerSnapshotSchema = z.strictObject({
+  sourceDirectories: z.array(repositoryManagerSourceDirectorySchema).max(20),
+  folders: z.array(repositoryManagerFolderSchema).max(20_000),
+  repositories: z.array(repositoryManagerRepositorySchema).max(5_000),
+  warnings: z.array(repositoryManagerWarningSchema).max(100),
+});
+
 export const gitInfoSchema = z.strictObject({
   status: z.enum(['available', 'missing', 'error']),
   version: z.string().nullable(),
@@ -80,6 +128,8 @@ export const repositoryInitializeSchema = z.strictObject({
   bare: z.boolean(),
 });
 export const repositorySessionSchema = z.strictObject({ id: repositoryIdSchema });
+export const sourceDirectoryRequestSchema = z.strictObject({ path: repositoryPathSchema });
+export const sourceDirectorySessionSchema = z.strictObject({ id: sourceDirectoryIdSchema });
 
 export const requests = {
   getAppInfo: request('app:get-info', z.undefined(), appInfoSchema),
@@ -105,6 +155,22 @@ export const requests = {
   initializeRepository: request('repository:initialize', repositoryInitializeSchema, repositorySummarySchema),
   closeRepository: request('repository:close', repositorySessionSchema, z.null()),
   removeRecentRepository: request('repository:remove-recent', repositorySessionSchema, z.null()),
+  listRepositoryManager: request('repository-manager:list', z.undefined(), repositoryManagerSnapshotSchema),
+  addSourceDirectory: request(
+    'repository-manager:add-source-directory',
+    sourceDirectoryRequestSchema,
+    repositoryManagerSnapshotSchema,
+  ),
+  removeSourceDirectory: request(
+    'repository-manager:remove-source-directory',
+    sourceDirectorySessionSchema,
+    z.null(),
+  ),
+  rescanSourceDirectory: request(
+    'repository-manager:rescan-source-directory',
+    sourceDirectorySessionSchema,
+    repositoryManagerSnapshotSchema,
+  ),
 } as const;
 
 export const events = {
@@ -118,6 +184,14 @@ export type GitInfo = z.infer<typeof gitInfoSchema>;
 export type RepositoryHead = z.infer<typeof repositoryHeadSchema>;
 export type RepositorySummary = z.infer<typeof repositorySummarySchema>;
 export type RecentRepository = z.infer<typeof recentRepositorySchema>;
+export type SourceDirectoryStatus = z.infer<typeof sourceDirectoryStatusSchema>;
+export type RepositoryManagerSourceDirectory = z.infer<typeof repositoryManagerSourceDirectorySchema>;
+export type RepositoryManagerFolder = z.infer<typeof repositoryManagerFolderSchema>;
+export type RepositoryManagerRepository = z.infer<typeof repositoryManagerRepositorySchema>;
+export type RepositoryManagerWarning = z.infer<typeof repositoryManagerWarningSchema>;
+export type RepositoryManagerSnapshot = z.infer<typeof repositoryManagerSnapshotSchema>;
 export type RepositoryOpenRequest = z.infer<typeof repositoryOpenSchema>;
 export type RepositoryInitializeRequest = z.infer<typeof repositoryInitializeSchema>;
 export type RepositorySession = z.infer<typeof repositorySessionSchema>;
+export type SourceDirectoryRequest = z.infer<typeof sourceDirectoryRequestSchema>;
+export type SourceDirectorySession = z.infer<typeof sourceDirectorySessionSchema>;

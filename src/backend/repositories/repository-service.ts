@@ -5,6 +5,11 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryHead,
+  RepositoryManagerFolder,
+  RepositoryManagerRepository,
+  RepositoryManagerSnapshot,
+  RepositoryManagerSourceDirectory,
+  RepositoryManagerWarning,
   RepositorySummary,
 } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
@@ -19,9 +24,15 @@ import {
 } from '../git/runner';
 import type { GitCommandResult, GitRunOptions, GitVersion } from '../git/runner';
 import { RecentRepositoryStore, recentPathStatus } from './recent-store';
+import { RepositoryManagerStore } from './repository-manager-store';
+import type { SourceDirectoryRecord } from './repository-manager-store';
+import { scanSourceDirectory } from './source-scanner';
+import type { SourceScanOptions, SourceScanResult } from './source-scanner';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
+const managerMaxRepositories = 5_000;
+const managerMaxFolders = 20_000;
 
 export interface GitRunnerLike {
   readonly executable: string;
@@ -31,16 +42,21 @@ export interface GitRunnerLike {
 
 export interface RepositoryServiceOptions {
   readonly storagePath: string;
+  readonly managerStoragePath?: string;
   readonly runner?: GitRunnerLike;
   readonly clock?: () => Date;
   readonly maxRecentEntries?: number;
+  readonly maxSourceDirectories?: number;
+  readonly sourceScanOptions?: SourceScanOptions;
 }
 
-/** Owns canonical repository identities, sessions, and the local F01 repository workflow. */
+/** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
   private readonly store: RecentRepositoryStore;
+  private readonly managerStore: RepositoryManagerStore;
   private readonly runner: GitRunnerLike;
   private readonly clock: () => Date;
+  private readonly sourceScanOptions: SourceScanOptions;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
   private gitInfoPromise: Promise<GitInfo> | undefined;
 
@@ -49,8 +65,13 @@ export class RepositoryService {
       filePath: options.storagePath,
       maxEntries: options.maxRecentEntries ?? 20,
     });
+    this.managerStore = new RepositoryManagerStore({
+      filePath: options.managerStoragePath ?? `${options.storagePath}.manager`,
+      maxSourceDirectories: options.maxSourceDirectories ?? 10,
+    });
     this.runner = options.runner ?? new GitRunner();
     this.clock = options.clock ?? (() => new Date());
+    this.sourceScanOptions = options.sourceScanOptions ?? {};
   }
 
   async getGitInfo(): Promise<GitInfo> {
@@ -113,6 +134,62 @@ export class RepositoryService {
 
   async removeRecent(id: string): Promise<void> {
     await this.store.remove(id);
+  }
+
+  async listManager(ownerId: number): Promise<RepositoryManagerSnapshot> {
+    const sourceDirectories = await this.managerStore.list();
+    const openRepositories = this.listOpen(ownerId);
+    const openByPath = new Map(
+      openRepositories.map((repository) => [this.pathKey(repository.path), repository.id]),
+    );
+    const snapshot: ManagerBuildState = {
+      sourceDirectories: [],
+      folders: [],
+      repositories: [],
+      warnings: [],
+      seenRepositories: new Set<string>(),
+      folderIds: new Map<string, string>(),
+      openByPath,
+    };
+
+    for (const sourceDirectory of sourceDirectories) {
+      const scan = await this.scanSource(sourceDirectory);
+      this.addManagerSource(snapshot, sourceDirectory, scan);
+    }
+
+    return {
+      sourceDirectories: snapshot.sourceDirectories,
+      folders: snapshot.folders,
+      repositories: snapshot.repositories,
+      warnings: snapshot.warnings,
+    };
+  }
+
+  async addSourceDirectory(ownerId: number, inputPath: string): Promise<RepositoryManagerSnapshot> {
+    const directory = await this.canonicalDirectory(inputPath);
+    await this.managerStore.add({ id: this.sourceDirectoryId(directory), path: directory });
+    return this.listManager(ownerId);
+  }
+
+  async removeSourceDirectory(id: string): Promise<void> {
+    const removed = await this.managerStore.remove(id);
+    if (!removed) {
+      throw new ExpectedBackendError(
+        'SOURCE_DIRECTORY_NOT_FOUND',
+        'That source directory is no longer configured.',
+      );
+    }
+  }
+
+  async rescanSourceDirectory(ownerId: number, id: string): Promise<RepositoryManagerSnapshot> {
+    const sourceDirectories = await this.managerStore.list();
+    if (!sourceDirectories.some((sourceDirectory) => sourceDirectory.id === id)) {
+      throw new ExpectedBackendError(
+        'SOURCE_DIRECTORY_NOT_FOUND',
+        'That source directory is no longer configured.',
+      );
+    }
+    return this.listManager(ownerId);
   }
 
   disposeWindow(ownerId: number): void {
@@ -292,6 +369,156 @@ export class RepositoryService {
     const identity = `${worktreePath ?? ''}\0${commonDir}`;
     return `repo-${createHash('sha256').update(identity, 'utf8').digest('hex')}`;
   }
+
+  private async scanSource(
+    sourceDirectory: SourceDirectoryRecord,
+  ): Promise<SourceScanResult & { readonly status: RepositoryManagerSourceDirectory['status'] }> {
+    const status = await this.sourceDirectoryStatus(sourceDirectory.path);
+    if (status !== 'available') {
+      return {
+        repositories: [],
+        warnings: [],
+        scannedEntries: 0,
+        truncated: false,
+        rootReadable: false,
+        status,
+      };
+    }
+
+    const scan = await scanSourceDirectory(sourceDirectory.path, this.sourceScanOptions);
+    return { ...scan, status: scan.rootReadable ? 'available' : 'unreadable' };
+  }
+
+  private addManagerSource(
+    state: ManagerBuildState,
+    sourceDirectory: SourceDirectoryRecord,
+    scan: SourceScanResult & { readonly status: RepositoryManagerSourceDirectory['status'] },
+  ): void {
+    const source: RepositoryManagerSourceDirectory = {
+      id: sourceDirectory.id,
+      name: basename(sourceDirectory.path) || sourceDirectory.path,
+      path: sourceDirectory.path,
+      status: scan.status,
+      repositoryCount: 0,
+      lastScannedAt: this.clock().toISOString(),
+      truncated: scan.truncated,
+    };
+    state.sourceDirectories.push(source);
+
+    for (const warning of scan.warnings) this.addManagerWarning(state, warning);
+
+    for (const repository of scan.repositories) {
+      const repositoryKey = this.pathKey(repository.path);
+      if (state.seenRepositories.has(repositoryKey)) continue;
+      if (state.repositories.length >= managerMaxRepositories) {
+        state.sourceDirectories[state.sourceDirectories.length - 1]!.truncated = true;
+        this.addManagerWarning(state, {
+          code: 'scan-limit',
+          path: sourceDirectory.path,
+          message: 'The repository manager reached its total repository limit.',
+        });
+        break;
+      }
+
+      const folderId = this.ensureManagerFolders(state, sourceDirectory.id, repository.relativePath);
+      if (folderId === 'limit') {
+        state.sourceDirectories[state.sourceDirectories.length - 1]!.truncated = true;
+        this.addManagerWarning(state, {
+          code: 'scan-limit',
+          path: repository.path,
+          message: 'The repository manager reached its folder limit.',
+        });
+        break;
+      }
+
+      state.seenRepositories.add(repositoryKey);
+      state.repositories.push({
+        id: this.managerRepositoryId(repository.path),
+        sourceDirectoryId: sourceDirectory.id,
+        folderId,
+        name: repository.name,
+        path: repository.path,
+        relativePath: repository.relativePath,
+        kind: repository.kind,
+        sessionId: state.openByPath.get(repositoryKey) ?? null,
+      });
+      state.sourceDirectories[state.sourceDirectories.length - 1]!.repositoryCount += 1;
+    }
+  }
+
+  private ensureManagerFolders(
+    state: ManagerBuildState,
+    sourceDirectoryId: string,
+    relativeRepositoryPath: string,
+  ): string | null | 'limit' {
+    const parts = relativeRepositoryPath ? relativeRepositoryPath.split('/') : [];
+    parts.pop();
+    let parentId: string | null = null;
+    let relativeFolderPath = '';
+    for (const part of parts) {
+      relativeFolderPath = relativeFolderPath ? `${relativeFolderPath}/${part}` : part;
+      const key = `${sourceDirectoryId}\0${relativeFolderPath}`;
+      const existingId = state.folderIds.get(key);
+      if (existingId) {
+        parentId = existingId;
+        continue;
+      }
+      if (state.folders.length >= managerMaxFolders) return 'limit';
+      const id = this.managerFolderId(sourceDirectoryId, relativeFolderPath);
+      state.folderIds.set(key, id);
+      state.folders.push({
+        id,
+        sourceDirectoryId,
+        name: part,
+        relativePath: relativeFolderPath,
+        parentId,
+      });
+      parentId = id;
+    }
+    return parentId;
+  }
+
+  private addManagerWarning(state: ManagerBuildState, warning: RepositoryManagerWarning): void {
+    if (state.warnings.length < 100) state.warnings.push(warning);
+  }
+
+  private async sourceDirectoryStatus(
+    directory: string,
+  ): Promise<RepositoryManagerSourceDirectory['status']> {
+    try {
+      const details = await stat(directory);
+      return details.isDirectory() ? 'available' : 'not-directory';
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === 'ENOENT' ? 'missing' : 'unreadable';
+    }
+  }
+
+  private pathKey(path: string): string {
+    return process.platform === 'win32' ? path.toLocaleLowerCase('en-US') : path;
+  }
+
+  private sourceDirectoryId(path: string): string {
+    return `source-${createHash('sha256').update(this.pathKey(path), 'utf8').digest('hex')}`;
+  }
+
+  private managerFolderId(sourceDirectoryId: string, relativePath: string): string {
+    return `folder-${createHash('sha256').update(`${sourceDirectoryId}\0${relativePath}`, 'utf8').digest('hex')}`;
+  }
+
+  private managerRepositoryId(path: string): string {
+    return `manager-repo-${createHash('sha256').update(this.pathKey(path), 'utf8').digest('hex')}`;
+  }
+}
+
+interface ManagerBuildState {
+  readonly sourceDirectories: RepositoryManagerSourceDirectory[];
+  readonly folders: RepositoryManagerFolder[];
+  readonly repositories: RepositoryManagerRepository[];
+  readonly warnings: RepositoryManagerWarning[];
+  readonly seenRepositories: Set<string>;
+  readonly folderIds: Map<string, string>;
+  readonly openByPath: ReadonlyMap<string, string>;
 }
 
 function removeFinalLineEnding(value: string): string {

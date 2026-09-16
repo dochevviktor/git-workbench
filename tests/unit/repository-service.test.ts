@@ -186,4 +186,136 @@ describe('repository service', () => {
       expect.arrayContaining([expect.stringMatching(/^recent\.json\.corrupt-/u)]),
     );
   });
+
+  it('persists source directories and rebuilds a nested repository manager tree', async () => {
+    const directory = await fixtureDirectory();
+    const source = join(directory, 'source folder');
+    const teamRepository = join(source, 'team', 'alpha');
+    const secondTeamRepository = join(source, 'team', 'beta');
+    const bareRepository = join(source, 'infra', 'mirror.git');
+    const outsideRepository = join(directory, 'outside');
+    await mkdir(teamRepository, { recursive: true });
+    await mkdir(secondTeamRepository, { recursive: true });
+    await mkdir(bareRepository, { recursive: true });
+    await mkdir(outsideRepository);
+
+    const storagePath = join(directory, 'recent.json');
+    const managerStoragePath = join(directory, 'manager.json');
+    const service = new RepositoryService({ storagePath, managerStoragePath });
+    const alpha = await service.initialize(1, teamRepository, false);
+    const beta = await service.initialize(1, secondTeamRepository, false);
+    const bare = await service.initialize(1, bareRepository, true);
+    await service.initialize(1, outsideRepository, false);
+
+    if (process.platform !== 'win32') {
+      await symlink(outsideRepository, join(source, 'linked-outside'), 'dir');
+    }
+
+    const firstSnapshot = await service.addSourceDirectory(1, source);
+    expect(firstSnapshot.sourceDirectories).toMatchObject([
+      {
+        path: source,
+        name: 'source folder',
+        status: 'available',
+        repositoryCount: 3,
+        truncated: false,
+      },
+    ]);
+    expect(firstSnapshot.repositories.map((repository) => repository.path)).toEqual(
+      expect.arrayContaining([teamRepository, secondTeamRepository, bareRepository]),
+    );
+    expect(firstSnapshot.repositories.map((repository) => repository.path)).not.toContain(outsideRepository);
+    expect(firstSnapshot.repositories.find((repository) => repository.path === alpha.path)?.sessionId).toBe(
+      alpha.id,
+    );
+    expect(firstSnapshot.repositories.find((repository) => repository.path === bare.path)?.kind).toBe('bare');
+
+    const teamFolder = firstSnapshot.folders.find((folder) => folder.relativePath === 'team');
+    expect(teamFolder).toMatchObject({ name: 'team', parentId: null });
+    expect(
+      firstSnapshot.repositories
+        .filter(
+          (repository) => repository.path === teamRepository || repository.path === secondTeamRepository,
+        )
+        .every((repository) => repository.folderId === teamFolder?.id),
+    ).toBe(true);
+    expect(firstSnapshot.repositories.find((repository) => repository.path === beta.path)?.sessionId).toBe(
+      beta.id,
+    );
+
+    const reopened = new RepositoryService({ storagePath, managerStoragePath });
+    const reopenedSnapshot = await reopened.listManager(2);
+    expect(reopenedSnapshot.sourceDirectories[0]).toMatchObject({ path: source, repositoryCount: 3 });
+    expect(
+      reopenedSnapshot.repositories.find((repository) => repository.path === alpha.path)?.sessionId,
+    ).toBe(null);
+
+    const duplicate = await reopened.addSourceDirectory(2, source);
+    expect(duplicate.sourceDirectories).toHaveLength(1);
+    const overlapping = await reopened.addSourceDirectory(2, join(source, 'team'));
+    expect(overlapping.sourceDirectories.map((sourceDirectory) => sourceDirectory.repositoryCount)).toEqual([
+      2, 1,
+    ]);
+    expect(overlapping.repositories).toHaveLength(3);
+    await reopened.removeSourceDirectory(overlapping.sourceDirectories[0]!.id);
+    const secondSource = join(directory, 'second source');
+    await mkdir(secondSource);
+    const twoSources = await reopened.addSourceDirectory(2, secondSource);
+    expect(twoSources.sourceDirectories.map((sourceDirectory) => sourceDirectory.path)).toEqual([
+      secondSource,
+      source,
+    ]);
+    await reopened.removeSourceDirectory(twoSources.sourceDirectories[0]!.id);
+    await reopened.removeSourceDirectory(twoSources.sourceDirectories[1]!.id);
+    await expect(reopened.listManager(2)).resolves.toMatchObject({
+      sourceDirectories: [],
+      folders: [],
+      repositories: [],
+    });
+  });
+
+  it('reports missing roots and bounds source scans without following links', async () => {
+    const directory = await fixtureDirectory();
+    const source = join(directory, 'source');
+    const outside = join(directory, 'outside');
+    const nestedRepository = join(source, 'one', 'two', 'repository');
+    await mkdir(nestedRepository, { recursive: true });
+    await mkdir(outside);
+    const service = new RepositoryService({
+      storagePath: join(directory, 'recent.json'),
+      managerStoragePath: join(directory, 'manager.json'),
+      sourceScanOptions: { maxDepth: 1, maxEntries: 100 },
+    });
+    await service.initialize(1, nestedRepository, false);
+    if (process.platform !== 'win32') await symlink(outside, join(source, 'outside-link'), 'dir');
+
+    const limited = await service.addSourceDirectory(1, source);
+    expect(limited.sourceDirectories[0]).toMatchObject({ truncated: true, repositoryCount: 0 });
+    expect(limited.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'depth-limit' })]),
+    );
+
+    await rm(source, { recursive: true, force: true });
+    const missing = await service.listManager(1);
+    expect(missing.sourceDirectories[0]).toMatchObject({ status: 'missing', repositoryCount: 0 });
+  });
+
+  it('quarantines invalid repository-manager settings', async () => {
+    const directory = await fixtureDirectory();
+    const managerStoragePath = join(directory, 'manager.json');
+    await writeFile(managerStoragePath, '{not-json', 'utf8');
+    const service = new RepositoryService({
+      storagePath: join(directory, 'recent.json'),
+      managerStoragePath,
+    });
+
+    await expect(service.listManager(1)).resolves.toMatchObject({
+      sourceDirectories: [],
+      folders: [],
+      repositories: [],
+    });
+    await expect(readdir(directory)).resolves.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^manager\.json\.corrupt-/u)]),
+    );
+  });
 });

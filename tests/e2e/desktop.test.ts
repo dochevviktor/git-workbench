@@ -70,6 +70,20 @@ test('production build loads its isolated preload and renderer', async () => {
         .getByText(/Unborn /u)
         .first(),
     ).toBeVisible();
+    const manager = await page.evaluate(async (path) => {
+      if (!window.desktop) throw new Error('Desktop API missing');
+      return window.desktop.repository.addSourceDirectory({ path });
+    }, fixtureRoot);
+    expect(manager).toMatchObject({
+      ok: true,
+      value: {
+        sourceDirectories: [{ path: fixtureRoot, repositoryCount: 1 }],
+        repositories: [{ path: fixtureRepository, kind: 'worktree' }],
+      },
+    });
+    await page.reload();
+    await expect(page.getByTestId('backend-status')).toHaveText('Desktop connected');
+    await expect(page.getByTestId('manager-repository').filter({ hasText: 'sample' })).toBeVisible();
     await expect(
       page.evaluate(async (id) => {
         if (!window.desktop) throw new Error('Desktop API missing');
