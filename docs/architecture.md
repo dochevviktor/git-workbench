@@ -1,7 +1,7 @@
 # Architecture and implementation decisions
 
-Status: foundation, the local F01 repository slice, the first F02 manager scan slice, and the initial
-F03 tab slice implemented.
+Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
+F03 tab slice, and the initial F04 history/selection slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -66,8 +66,9 @@ named `desktop.repository` methods for Git diagnostics, directory selection, ope
 session queries, close, and recent-entry removal. The first F02 slice adds manager listing, source-root
 add/remove, and explicit rescan methods. The initial F03 slice adds validated tab-preference reads and
 writes plus active-tab selection; open-session DTOs include a bounded Git-derived working-tree state.
-The window commands are minimize, toggle-maximize, and close. Native titlebar/menu controls remain
-available.
+The initial F04 slice adds a bounded `desktop.repository.getHistory()` query for validated, paged
+commit/reference DTOs. The window commands are minimize, toggle-maximize, and close. Native titlebar/menu
+controls remain available.
 
 Requests return typed result envelopes because errors crossing Electron/contextBridge lose useful
 structure. Expected failures have stable codes; backend exceptions become a generic internal error.
@@ -147,15 +148,18 @@ active selection, and orientation; its status probe uses bounded NUL-delimited p
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
 directory symlinks, or descend into a found repository. Remote clone, operation jobs, watcher
-invalidation, and the trust policy for commands that can run repository programs are still future work.
+invalidation, history collapse/filter/detail queries, and the trust policy for commands that can run
+repository programs are still future work. The initial F04 history service uses bounded `git log`,
+`for-each-ref`, and `show-ref --dereference` reads; its renderer graph lane assignment remains pure
+shared code and never receives a Git command surface.
 
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
-manager slice, and the initial persisted tab/status workflow are implemented. There is still no general
-job queue, operation activity surface, remote authentication, clone workflow, filesystem watcher,
-full-app closed-tab recovery, custom manager folders, external integration, automatic updater, or final
-branding. The sidebar's references and history/changes panes remain scaffolding. Tests establish the
-local topology, tab/status behavior, manager behavior against disposable repositories, and the Electron
-bridge; later Git correctness will continue to be checked against independent CLI assertions as each
-workflow is added.
+manager slice, the initial persisted tab/status workflow, and the first paged history/graph/selection
+workflow are implemented. There is still no general job queue, operation activity surface, remote
+authentication, clone workflow, filesystem watcher, full-app closed-tab recovery, custom manager
+folders, history collapse/filtering, changed-file or revision-tree inspection, external integration,
+automatic updater, or final branding. Tests establish the local topology, tab/status behavior, manager
+behavior, history ancestry/metadata, and the Electron bridge; later Git correctness will continue to be
+checked against independent CLI assertions as each workflow is added.

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
+import { GitRunner } from '../../src/backend/git/runner';
 
 test('production build loads its isolated preload and renderer', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'git-workbench-test-'));
@@ -67,12 +68,29 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.reload();
     await expect(page.getByTestId('backend-status')).toHaveText('Desktop connected');
     await expect(page.getByRole('heading', { name: 'sample' })).toBeVisible();
-    await expect(
-      page
-        .getByRole('main')
-        .getByText(/Unborn /u)
-        .first(),
-    ).toBeVisible();
+    await expect(page.getByText('This repository has no commits yet.')).toBeVisible();
+    const fixtureGit = new GitRunner();
+    await writeFile(join(fixtureRepository, 'history.txt'), 'first commit\n', 'utf8');
+    await fixtureGit.run(['add', '--', 'history.txt'], { cwd: fixtureRepository });
+    await fixtureGit.run(
+      [
+        '-c',
+        'user.name=History Author',
+        '-c',
+        'user.email=history@example.test',
+        'commit',
+        '--quiet',
+        '-m',
+        'First history commit',
+      ],
+      { cwd: fixtureRepository },
+    );
+    await page.reload();
+    await expect(page.getByTestId('history-commit')).toHaveCount(1);
+    await expect(page.getByTestId('history-commit').first()).toContainText('First history commit');
+    await page.getByTestId('history-commit').first().click();
+    await expect(page.getByRole('heading', { name: 'First history commit' })).toBeVisible();
+    await expect(page.locator('.history-full-hash')).toHaveText(/^[0-9a-f]{40}$/u);
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.initialize({ path, bare: false });

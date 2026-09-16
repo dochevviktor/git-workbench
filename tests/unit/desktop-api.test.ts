@@ -54,6 +54,35 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('validates history requests and uses the history channel', async () => {
+    const { api, invoke } = fixture();
+    const invalid = await api.repository.getHistory({ id: 'not-a-repository', offset: 0, limit: 50 });
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+
+    const repositoryId = `repo-${'a'.repeat(64)}`;
+    const page = {
+      repositoryId,
+      offset: 0,
+      commits: [],
+      references: [],
+      head: { state: 'unborn', name: 'main', commit: null },
+      tracking: { upstream: null, ahead: null, behind: null },
+      hasMore: false,
+      nextOffset: null,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: page });
+    await expect(api.repository.getHistory({ id: repositoryId, offset: 0, limit: 50 })).resolves.toEqual({
+      ok: true,
+      value: page,
+    });
+    expect(invoke).toHaveBeenCalledWith(requests.getRepositoryHistory.channel, {
+      id: repositoryId,
+      offset: 0,
+      limit: 50,
+    });
+  });
+
   it('validates tab preferences and uses named tab channels', async () => {
     const { api, invoke } = fixture();
     const preferences = { tabOrientation: 'horizontal', activeRepositoryId: null } as const;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type {
+  RepositoryHistoryReference,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
   RepositorySummary,
@@ -7,6 +8,8 @@ import type {
 } from '../../../common/ipc/contracts';
 import { useDesktop } from '../hooks/use-desktop';
 import { useRepositories } from '../hooks/use-repositories';
+import { useRepositoryHistory } from '../hooks/use-repository-history';
+import { HistoryView } from '../components/HistoryView';
 
 const views = {
   history: {
@@ -108,6 +111,57 @@ function tabIndicator(repository: RepositorySummary): string {
     case 'unknown':
       return '?';
   }
+}
+
+function referenceKindLabel(kind: RepositoryHistoryReference['kind']): string {
+  switch (kind) {
+    case 'branch':
+      return 'Branches';
+    case 'remote':
+      return 'Remotes';
+    case 'tag':
+      return 'Tags';
+    case 'stash':
+      return 'Stashes';
+    case 'head':
+      return 'HEAD';
+    case 'other':
+      return 'Other';
+  }
+}
+
+function SidebarReferences({ references }: { readonly references: readonly RepositoryHistoryReference[] }) {
+  const visibleReferences = references.slice(0, 100);
+  return (
+    <div className="sidebar-references">
+      {visibleReferences.length === 0 ? (
+        <p>No references found.</p>
+      ) : (
+        <ul className="reference-list">
+          {visibleReferences.map((reference) => (
+            <li key={reference.fullName}>
+              <span className={`reference-kind ${reference.kind}`} aria-hidden="true">
+                {reference.kind === 'branch' ? '●' : reference.kind === 'tag' ? '◆' : '○'}
+              </span>
+              <span className="reference-copy" title={reference.fullName}>
+                <strong>
+                  {reference.isHead && reference.kind === 'branch'
+                    ? `HEAD → ${reference.name}`
+                    : reference.name}
+                </strong>
+                <small>{referenceKindLabel(reference.kind)}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {references.length > visibleReferences.length && (
+        <p>
+          Showing the first {visibleReferences.length} of {references.length} references.
+        </p>
+      )}
+    </div>
+  );
 }
 
 interface RepositoryTabsProps {
@@ -270,6 +324,7 @@ export default function App() {
     select,
     setTabOrientation,
   } = useRepositories();
+  const history = useRepositoryHistory(active?.id);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -329,7 +384,7 @@ export default function App() {
           </span>{' '}
           Git Workbench
         </div>
-        <span className="build-label">F03 repository tabs</span>
+        <span className="build-label">F04 commit history</span>
         <div className="repository-actions" aria-label="Repository actions">
           <button disabled={repositoryBusy} onClick={() => void openExisting()}>
             {busy === 'opening' ? 'Opening…' : 'Open repository'}
@@ -514,11 +569,15 @@ export default function App() {
           </nav>
           <div className="sidebar-section">
             <div className="sidebar-title">REFERENCES</div>
-            <p>
-              {active
-                ? 'Branch, tag, remote, and stash browsing will be added after repository sessions.'
-                : 'Open a repository to inspect its references.'}
-            </p>
+            {active ? (
+              history.loading && history.references.length === 0 ? (
+                <p>Loading references…</p>
+              ) : (
+                <SidebarReferences references={history.references} />
+              )
+            ) : (
+              <p>Open a repository to inspect its references.</p>
+            )}
           </div>
           <div className="sidebar-section recent-section">
             <div className="sidebar-title">RECENT REPOSITORIES</div>
@@ -570,7 +629,9 @@ export default function App() {
             <h1>{currentView.label}</h1>
             <span>{active?.path ?? 'No repository selected'}</span>
           </div>
-          {active ? (
+          {active && view === 'history' ? (
+            <HistoryView history={history} repository={active} />
+          ) : active ? (
             <section className="repository-open-state" aria-labelledby="repository-title">
               <p className="eyebrow">REPOSITORY OPEN</p>
               <h2 id="repository-title">{active.name}</h2>
@@ -621,21 +682,23 @@ export default function App() {
               </div>
             </section>
           )}
-          <section className="detail-panel" aria-labelledby="details-heading">
-            <div className="detail-heading">
-              <h2 id="details-heading">{active ? 'Repository session' : 'Commit details'}</h2>
-              {active && (
-                <button disabled={repositoryBusy} onClick={() => void closeRepository(active.id)}>
-                  {busy === 'closing' ? 'Closing…' : 'Close repository'}
-                </button>
-              )}
-            </div>
-            <p>
-              {active
-                ? 'The repository is connected to this window. History and working changes are the next views.'
-                : 'Select a commit to inspect its message, changed files, and diff.'}
-            </p>
-          </section>
+          {view !== 'history' && (
+            <section className="detail-panel" aria-labelledby="details-heading">
+              <div className="detail-heading">
+                <h2 id="details-heading">{active ? 'Repository session' : 'Commit details'}</h2>
+                {active && (
+                  <button disabled={repositoryBusy} onClick={() => void closeRepository(active.id)}>
+                    {busy === 'closing' ? 'Closing…' : 'Close repository'}
+                  </button>
+                )}
+              </div>
+              <p>
+                {active
+                  ? 'The repository is connected to this window. History and working changes are the next views.'
+                  : 'Select a commit to inspect its message, changed files, and diff.'}
+              </p>
+            </section>
+          )}
         </main>
 
         <aside className="inspector" aria-label="Workspace information">

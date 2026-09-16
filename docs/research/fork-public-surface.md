@@ -29,7 +29,8 @@ Evidence labels:
 
 The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
-F01 and the first F02 slice are **partial** in this project; all other F-items remain **planned**.
+F01, the first F02 slice, the initial F03 slice, and the initial F04 slice are **partial** in this
+project; all other F-items remain **planned**.
 
 ### F01 source refresh
 
@@ -90,49 +91,72 @@ history is not yet restored after a full application restart, automatic invalida
 than a filesystem watcher, and P12 still covers multiwindow ownership, drag ordering, colors, and layout
 refinements.
 
+### F04 source refresh
+
+Accessed **2026-09-16**. Fork’s public [history screenshot][history-image] is **O** evidence for a
+history workspace with a commit table, graph lanes, reference decorations, and selected-commit details;
+the image is a 2020 Windows view and is not a current spacing or Linux specification. Fork’s
+[collapsible graph article][graph], tagged for Mac and Windows, is high-confidence historical **D**
+evidence that its graph represents merge ancestry and supports branch-focused inspection, but collapse
+behavior is outside the initial F04 slice. Platform differences beyond the tagged article remain **U**.
+
+The public [git-log documentation][git-log] defines the underlying observable history semantics used by
+this project: commit logs follow parent links, default output is reverse chronological, `--max-count`
+and `--skip` support bounded pages, and decoration can expose ref names. The [git-for-each-ref
+documentation][for-each-ref] supplies the reference enumeration contract. These are Git CLI semantics,
+not observations of Fork, and are used here to keep the backend machine-readable and independent of
+Fork’s implementation.
+
+This project’s initial F04 slice is an **I** choice: `--all --topo-order` supplies a bounded local stream;
+separate ref enumeration keeps full names and tracking metadata; a pure lane pass preserves parent edges
+when already-loaded pages are recomputed; and commit messages are rendered as inert text. It is verified
+against disposable merge/tag/unborn repositories and a real Electron selection flow. Detached-head and
+multiple-root integration fixtures, large-history performance, collapse/filtering, changed-file details,
+and revision-tree inspection remain unverified.
+
 ## Feature coverage
 
 Phase IDs refer to [the implementation plan](../implementation-plan.md).
 
-| ID  | Public capability                                                                              | Evidence                                                                            | Planned phase |
-| --- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------- |
-| F01 | Initialize, clone, add existing repositories, recent repositories                              | D: [product][home]                                                                  | P02, P05      |
-| F02 | Repository manager, folder hierarchy, source-directory scanning                                | D: [Mac 1.0.79][manager], [Mac releases][mac], [Windows releases][win]              | P02, P12      |
-| F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts       | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                 | P02, P12      |
-| F04 | Commit graph, reference labels, authors, hashes, dates, selection                              | O: [history screenshot][history-image]                                              | P03           |
-| F05 | Collapse/expand merge branches in the graph                                                    | D: [graph article][graph]                                                           | P03           |
-| F06 | Branch/file filters, commit search, path/diff-content search                                   | D: [Windows 1.38][diff], [Mac releases][mac]                                        | P03, P08      |
-| F07 | Commit metadata, parents, changed files, tree at a revision                                    | D/O: [product][home], [history screenshot][history-image]                           | P03           |
-| F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                            | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                    | P04           |
-| F09 | Unified/split diffs, inline changes/search, whitespace display                                 | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]   | P04           |
-| F10 | File, hunk, and line staging/unstaging; hunk discard controls                                  | D/O: [product][home], [changes screenshot][changes-image]                           | P04           |
-| F11 | Commit, amend, recent messages, templates, hooks                                               | D: [product][home], [Mac 1.0.73][merge], [Mac 1.0.79][manager]                      | P04           |
-| F12 | Branch/tag creation and deletion; checkout a branch or revision                                | D: [product][home]                                                                  | P05           |
-| F13 | Remotes; fetch/pull/push; upstream indicators; multiple-branch push                            | D: [product][home], [Windows 1.48][operations]                                      | P05, P06      |
-| F14 | Background fetch; cancellable network work; activity and command output                        | D: [Mac 1.0.67][activity], [Windows 1.48][operations]                               | P01, P05      |
-| F15 | Stashes in history, partial stashes, patch export                                              | D: [product][home], [Windows 1.48][operations], [Windows releases][win]             | P06, P08      |
-| F16 | Merge/rebase; drag branches to initiate either operation                                       | D: [product][home], [Windows 1.48][operations]                                      | P06, P07      |
-| F17 | Built-in conflict helper and editable merge result                                             | D: [product][home], [Mac 1.0.73][merge]                                             | P06           |
-| F18 | Visual interactive rebase: ordering, pick/edit/reword/squash/fixup/drop                        | D: [Windows 1.23][rebase]                                                           | P07           |
-| F19 | Cherry-pick and revert                                                                         | D: [product][home]                                                                  | P06           |
-| F20 | Reflog/lost-commit recovery                                                                    | D: [product][home]                                                                  | P08           |
-| F21 | File/directory history, blame; selected-code history                                           | D: [product][home], [Windows releases][win]                                         | P08           |
-| F22 | Worktree creation/removal; remote-branch checkout into worktrees                               | D: [Mac releases][mac], [Windows releases][win]                                     | P09           |
-| F23 | Submodules and informative submodule revision comparisons                                      | D: [product][home], [Mac 1.0.73][merge]                                             | P09           |
-| F24 | Git LFS, image preview/download, server locks                                                  | D: [product][home], [Mac 1.0.79][manager], [Windows 1.48][operations]               | P10           |
-| F25 | Git-flow workflows                                                                             | D: [product][home]                                                                  | P09           |
-| F26 | Bisect with visible progress; good/bad/skip actions                                            | D: [Windows 1.48][operations], [Windows releases][win]                              | P08           |
-| F27 | Image comparison: side-by-side, swipe, onion skin; pixel differences                           | D: [Windows 1.38][diff], [Mac releases][mac]                                        | P10           |
-| F28 | GPG support, including signed tags                                                             | D: [product][home], [Mac releases][mac]                                             | P10           |
-| F29 | Hosted repository accounts; GitHub, GitLab, Bitbucket, Azure PR entry points; Gitea references | D: [Windows 1.48][operations], [Windows releases][win]                              | P11           |
-| F30 | GitHub notifications; pull-request/issue lists and filters                                     | D: [product][home], [Windows releases][win]                                         | P11           |
-| F31 | Quick Launch: fuzzy command/branch/file lookup; user commands                                  | D: [Quick Launch][quick]                                                            | P12           |
-| F32 | Contextual custom commands; shared definitions and configurable input controls                 | D: [Mac 1.0.67][activity], [Windows releases][win]                                  | P12           |
-| F33 | External editors, diff/merge tools, terminal/file-manager actions, CLI repository opening      | D: [Mac 1.0.67][activity], [Windows 1.23][rebase], [Windows releases][win]          | P02, P12      |
-| F34 | Theme/appearance, keyboard navigation, split panes, issue links, avatars                       | D/O: [Windows 1.38][diff], [history screenshot][history-image], [Mac releases][mac] | P03–P04, P12  |
-| F35 | Repository summaries/statistics and activity treemap                                           | D: [product][home], [Windows releases][win]                                         | P13           |
-| F36 | Save/apply patches, including clipboard entry points                                           | D: [Mac 1.0.67][activity], [Mac releases][mac]                                      | P08           |
-| F37 | External AI tools for commit messages and branch/range review                                  | D: [Mac releases][mac], [Windows releases][win]                                     | P13           |
+| ID  | Public capability                                                                              | Evidence                                                                                                                        | Planned phase |
+| --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| F01 | Initialize, clone, add existing repositories, recent repositories                              | D: [product][home]                                                                                                              | P02, P05      |
+| F02 | Repository manager, folder hierarchy, source-directory scanning                                | D: [Mac 1.0.79][manager], [Mac releases][mac], [Windows releases][win]                                                          | P02, P12      |
+| F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts       | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                                                             | P02, P12      |
+| F04 | Commit graph, reference labels, authors, hashes, dates, selection                              | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures | P03           |
+| F05 | Collapse/expand merge branches in the graph                                                    | D: [graph article][graph]                                                                                                       | P03           |
+| F06 | Branch/file filters, commit search, path/diff-content search                                   | D: [Windows 1.38][diff], [Mac releases][mac]                                                                                    | P03, P08      |
+| F07 | Commit metadata, parents, changed files, tree at a revision                                    | D/O: [product][home], [history screenshot][history-image]                                                                       | P03           |
+| F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                            | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                                                                | P04           |
+| F09 | Unified/split diffs, inline changes/search, whitespace display                                 | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                               | P04           |
+| F10 | File, hunk, and line staging/unstaging; hunk discard controls                                  | D/O: [product][home], [changes screenshot][changes-image]                                                                       | P04           |
+| F11 | Commit, amend, recent messages, templates, hooks                                               | D: [product][home], [Mac 1.0.73][merge], [Mac 1.0.79][manager]                                                                  | P04           |
+| F12 | Branch/tag creation and deletion; checkout a branch or revision                                | D: [product][home]                                                                                                              | P05           |
+| F13 | Remotes; fetch/pull/push; upstream indicators; multiple-branch push                            | D: [product][home], [Windows 1.48][operations]                                                                                  | P05, P06      |
+| F14 | Background fetch; cancellable network work; activity and command output                        | D: [Mac 1.0.67][activity], [Windows 1.48][operations]                                                                           | P01, P05      |
+| F15 | Stashes in history, partial stashes, patch export                                              | D: [product][home], [Windows 1.48][operations], [Windows releases][win]                                                         | P06, P08      |
+| F16 | Merge/rebase; drag branches to initiate either operation                                       | D: [product][home], [Windows 1.48][operations]                                                                                  | P06, P07      |
+| F17 | Built-in conflict helper and editable merge result                                             | D: [product][home], [Mac 1.0.73][merge]                                                                                         | P06           |
+| F18 | Visual interactive rebase: ordering, pick/edit/reword/squash/fixup/drop                        | D: [Windows 1.23][rebase]                                                                                                       | P07           |
+| F19 | Cherry-pick and revert                                                                         | D: [product][home]                                                                                                              | P06           |
+| F20 | Reflog/lost-commit recovery                                                                    | D: [product][home]                                                                                                              | P08           |
+| F21 | File/directory history, blame; selected-code history                                           | D: [product][home], [Windows releases][win]                                                                                     | P08           |
+| F22 | Worktree creation/removal; remote-branch checkout into worktrees                               | D: [Mac releases][mac], [Windows releases][win]                                                                                 | P09           |
+| F23 | Submodules and informative submodule revision comparisons                                      | D: [product][home], [Mac 1.0.73][merge]                                                                                         | P09           |
+| F24 | Git LFS, image preview/download, server locks                                                  | D: [product][home], [Mac 1.0.79][manager], [Windows 1.48][operations]                                                           | P10           |
+| F25 | Git-flow workflows                                                                             | D: [product][home]                                                                                                              | P09           |
+| F26 | Bisect with visible progress; good/bad/skip actions                                            | D: [Windows 1.48][operations], [Windows releases][win]                                                                          | P08           |
+| F27 | Image comparison: side-by-side, swipe, onion skin; pixel differences                           | D: [Windows 1.38][diff], [Mac releases][mac]                                                                                    | P10           |
+| F28 | GPG support, including signed tags                                                             | D: [product][home], [Mac releases][mac]                                                                                         | P10           |
+| F29 | Hosted repository accounts; GitHub, GitLab, Bitbucket, Azure PR entry points; Gitea references | D: [Windows 1.48][operations], [Windows releases][win]                                                                          | P11           |
+| F30 | GitHub notifications; pull-request/issue lists and filters                                     | D: [product][home], [Windows releases][win]                                                                                     | P11           |
+| F31 | Quick Launch: fuzzy command/branch/file lookup; user commands                                  | D: [Quick Launch][quick]                                                                                                        | P12           |
+| F32 | Contextual custom commands; shared definitions and configurable input controls                 | D: [Mac 1.0.67][activity], [Windows releases][win]                                                                              | P12           |
+| F33 | External editors, diff/merge tools, terminal/file-manager actions, CLI repository opening      | D: [Mac 1.0.67][activity], [Windows 1.23][rebase], [Windows releases][win]                                                      | P02, P12      |
+| F34 | Theme/appearance, keyboard navigation, split panes, issue links, avatars                       | D/O: [Windows 1.38][diff], [history screenshot][history-image], [Mac releases][mac]                                             | P03–P04, P12  |
+| F35 | Repository summaries/statistics and activity treemap                                           | D: [product][home], [Windows releases][win]                                                                                     | P13           |
+| F36 | Save/apply patches, including clipboard entry points                                           | D: [Mac 1.0.67][activity], [Mac releases][mac]                                                                                  | P08           |
+| F37 | External AI tools for commit messages and branch/range review                                  | D: [Mac releases][mac], [Windows releases][win]                                                                                 | P13           |
 
 Recent release notes also describe conflict previews, rebase-dependent-reference updates, richer worktree
 navigation, and tab ergonomics. These are refinements within F03/F16/F18/F22, not reasons to declare the
@@ -211,6 +235,8 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [quick]: https://fork.dev/blog/posts/quick-launch/
 [operations]: https://fork.dev/blog/posts/forkwin-1.48/
 [rev-parse]: https://git-scm.com/docs/git-rev-parse
+[git-log]: https://git-scm.com/docs/git-log
+[for-each-ref]: https://git-scm.com/docs/git-for-each-ref
 [init]: https://git-scm.com/docs/git-init
 [diff]: https://fork.dev/blog/posts/forkwin-1.38/
 [rebase]: https://fork.dev/blog/posts/forkwin-1.23/

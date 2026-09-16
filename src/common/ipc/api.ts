@@ -3,6 +3,8 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryInitializeRequest,
+  RepositoryHistoryPage,
+  RepositoryHistoryRequest,
   RepositoryManagerSnapshot,
   RepositoryOpenRequest,
   RepositorySession,
@@ -44,5 +46,6 @@ export interface DesktopApi {
     addSourceDirectory(request: SourceDirectoryRequest): Promise<IpcResult<RepositoryManagerSnapshot>>;
     removeSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<null>>;
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
+    getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
   };
 }

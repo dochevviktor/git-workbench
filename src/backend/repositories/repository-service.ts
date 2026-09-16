@@ -5,6 +5,7 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryHead,
+  RepositoryHistoryPage,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
   RepositoryManagerSnapshot,
@@ -32,6 +33,7 @@ import type { SourceDirectoryRecord } from './repository-manager-store';
 import { RepositoryTabStore } from './repository-tab-store';
 import { scanSourceDirectory } from './source-scanner';
 import type { SourceScanOptions, SourceScanResult } from './source-scanner';
+import { readRepositoryHistory } from './history-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -209,6 +211,56 @@ export class RepositoryService {
     }
     await this.tabStore.setActiveRepositoryId(id);
     return this.tabStore.getPreferences();
+  }
+
+  async getHistory(
+    ownerId: number,
+    id: string,
+    offset: number,
+    limit: number,
+  ): Promise<RepositoryHistoryPage> {
+    await this.requireGit();
+    await this.ensureSessions(ownerId);
+    const ownerSessions = this.sessions.get(ownerId);
+    const cached = ownerSessions?.get(id);
+    if (!cached) {
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository tab is not open in this window.',
+      );
+    }
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+      throw new ExpectedBackendError('INVALID_REQUEST', 'The history offset is not valid.');
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new ExpectedBackendError('INVALID_REQUEST', 'The history page size is not valid.');
+    }
+
+    let summary: RepositorySummary;
+    try {
+      summary = await this.discover(cached.path);
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
+    }
+    if (summary.id !== id) {
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository is no longer open in this window.',
+      );
+    }
+    ownerSessions?.set(id, summary);
+
+    try {
+      return await readRepositoryHistory(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        head: summary.head,
+        offset,
+        limit,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
+    }
   }
 
   async removeRecent(id: string): Promise<void> {

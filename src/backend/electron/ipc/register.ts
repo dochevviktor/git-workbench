@@ -128,6 +128,9 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.rescanSourceDirectory, (window, { id }) =>
       repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
+    register(requests.getRepositoryHistory, (window, { id, offset, limit }) =>
+      repositoryService.getHistory(window.webContents.id, id, offset, limit),
+    );
   }
 
   return {

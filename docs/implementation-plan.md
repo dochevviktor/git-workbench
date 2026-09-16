@@ -18,7 +18,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                         | —          |
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)               | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16) | P01        |
-| P03   | History graph, references, commit details, revision tree             | Planned                                                       | P02        |
+| P03   | History graph, references, commit details, revision tree             | Partial; initial F04 history/selection slice (2026-09-16)     | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                       | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                       | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                       | P05        |
@@ -186,6 +186,17 @@ unit tests verify newline-containing filenames, dirty counts, preference persist
 the Electron test verifies two tabs, external dirty-state refresh, orientation switching, and shortcut
 reopening. Full-app closed-tab history across restart, filesystem watchers, drag reordering, multiwindow
 ownership, and the remaining P12 workspace polish remain unverified.
+
+Started F04 history slice (2026-09-16): add a bounded `repository:get-history` capability backed by
+machine-formatted Git log/reference reads; return full commit IDs, parents, author/committer identities
+and dates, subjects/bodies, branch/remote/tag/stash labels, detached HEAD labels, and tracking counts;
+validate the DTO at the IPC boundary; assign independently computed graph lanes; and render a selectable
+history list with full-hash commit details, inert commit messages, reference chips, refresh, and incremental
+page loading. Disposable merge/tag/unborn fixtures compare commit IDs and parents with `git rev-list`,
+and the Electron test selects a real commit through the isolated preload. Merge collapse, branch/file/
+content filters, changed-file/tree details, selection/scroll persistence, virtualization, detached and
+multiple-root integration fixtures, and the 100,000-commit/1,000-ref performance baseline remain
+unverified, so P03 and F04 remain partial.
 
 ## P03 — History, graph, and revision inspection
 
@@ -436,7 +447,6 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue F02 from docs/implementation-plan.md. Add user-managed Repository Manager folders and
-> rescan lifecycle refinements, then add background invalidation only after the P01 operation registry
-> is in place; keep the current Electron/shared/preload/React boundaries and update the partial feature
-> evidence.
+> Continue F04/P03 from docs/implementation-plan.md. Add merge collapse/expand and reference-driven
+> filtering while preserving graph lanes across pages; then connect selected-commit changed files and
+> revision-tree inspection with disposable Git fixtures and updated partial evidence.

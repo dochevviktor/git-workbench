@@ -87,6 +87,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       addSourceDirectory: (request) => invoke(requests.addSourceDirectory, request),
       removeSourceDirectory: (request) => invoke(requests.removeSourceDirectory, request),
       rescanSourceDirectory: (request) => invoke(requests.rescanSourceDirectory, request),
+      getHistory: (request) => invoke(requests.getRepositoryHistory, request),
     },
   };
 }

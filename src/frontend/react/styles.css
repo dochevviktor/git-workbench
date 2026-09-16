@@ -48,6 +48,11 @@ summary:focus-visible {
   --selected: #e0e8f8;
   --green: #368364;
   --dirty: #b5752a;
+  --graph-one: #416bc7;
+  --graph-two: #9b5fc0;
+  --graph-three: #2f8c83;
+  --graph-four: #bb7540;
+  --graph-five: #7b879d;
   color-scheme: light;
   color: var(--text);
   background: var(--background);
@@ -70,6 +75,11 @@ summary:focus-visible {
     --selected: #29364e;
     --green: #79bd9a;
     --dirty: #e2b36c;
+    --graph-one: #89a9f0;
+    --graph-two: #c18be0;
+    --graph-three: #76c9bf;
+    --graph-four: #e7a16f;
+    --graph-five: #aab6ca;
     color-scheme: dark;
   }
 }
@@ -85,6 +95,11 @@ summary:focus-visible {
   --selected: #29364e;
   --green: #79bd9a;
   --dirty: #e2b36c;
+  --graph-one: #89a9f0;
+  --graph-two: #c18be0;
+  --graph-three: #76c9bf;
+  --graph-four: #e7a16f;
+  --graph-five: #aab6ca;
   color-scheme: dark;
 }
 
@@ -511,6 +526,340 @@ button:hover:not(:disabled) {
   flex-direction: column;
   min-width: 0;
   overflow: auto;
+}
+.history-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.history-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.history-toolbar h2 {
+  margin: 3px 0 5px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.history-toolbar-path {
+  max-width: min(62vw, 720px);
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.history-tracking {
+  color: var(--muted);
+  font-size: 11px;
+}
+.history-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #d56b62;
+  padding: 10px 24px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 12px;
+}
+.history-list-panel {
+  display: flex;
+  flex: 1 1 390px;
+  flex-direction: column;
+  min-height: 240px;
+  background: var(--background);
+}
+.history-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 24px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.history-list-heading strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.history-commit-list {
+  min-height: 0;
+  overflow: auto;
+}
+.history-commit {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 5px 24px;
+  text-align: left;
+}
+.history-commit:hover:not(:disabled) {
+  background: var(--selected);
+}
+.history-commit.selected {
+  background: var(--selected);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.history-graph {
+  flex: 0 0 auto;
+  align-self: center;
+  overflow: visible;
+}
+.history-graph-line,
+.history-graph-edge {
+  fill: none;
+  stroke-width: 1.8;
+}
+.history-graph-node {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.history-graph-line.one,
+.history-graph-edge.one {
+  stroke: var(--graph-one);
+}
+.history-graph-line.two,
+.history-graph-edge.two {
+  stroke: var(--graph-two);
+}
+.history-graph-line.three,
+.history-graph-edge.three {
+  stroke: var(--graph-three);
+}
+.history-graph-line.four,
+.history-graph-edge.four {
+  stroke: var(--graph-four);
+}
+.history-graph-line.five,
+.history-graph-edge.five {
+  stroke: var(--graph-five);
+}
+.history-graph-node.one {
+  fill: var(--graph-one);
+}
+.history-graph-node.two {
+  fill: var(--graph-two);
+}
+.history-graph-node.three {
+  fill: var(--graph-three);
+}
+.history-graph-node.four {
+  fill: var(--graph-four);
+}
+.history-graph-node.five {
+  fill: var(--graph-five);
+}
+.history-commit-copy {
+  display: grid;
+  align-content: center;
+  flex: 1;
+  min-width: 0;
+  gap: 7px;
+}
+.history-commit-subject-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.history-commit-subject-row strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-reference-list {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.history-reference-chip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-reference-chip.tag {
+  color: var(--green);
+}
+.history-reference-chip.remote {
+  color: var(--muted);
+}
+.history-reference-chip.stash {
+  color: var(--dirty);
+}
+.history-commit-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.history-commit-meta code,
+.history-full-hash {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+}
+.history-merge-label {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.history-empty-message {
+  padding: 30px 24px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-load-more {
+  align-self: center;
+  margin: 12px;
+}
+.history-details {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 20px 24px 24px;
+}
+.history-details.empty {
+  min-height: 130px;
+}
+.history-details-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.history-details h2 {
+  max-width: 740px;
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.history-full-hash {
+  max-width: 48%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.history-metadata {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 18px;
+  max-width: 900px;
+  margin: 18px 0;
+  font-size: 11px;
+}
+.history-metadata dt {
+  color: var(--muted);
+}
+.history-metadata dd {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.history-commit-body,
+.history-empty-body {
+  max-width: 900px;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.history-empty-body,
+.history-details.empty p {
+  color: var(--muted);
+}
+.sidebar-references > p {
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.reference-list {
+  display: grid;
+  gap: 3px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+.reference-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 12px;
+}
+.reference-kind {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.reference-kind.branch {
+  color: var(--accent);
+}
+.reference-kind.tag {
+  color: var(--green);
+}
+.reference-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.reference-copy strong,
+.reference-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reference-copy strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+.reference-copy small {
+  color: var(--muted);
+  font-size: 9px;
 }
 .panel-heading {
   display: flex;
