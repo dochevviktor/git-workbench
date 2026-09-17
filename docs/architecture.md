@@ -1,8 +1,8 @@
 # Architecture and implementation decisions
 
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
-F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, and
-the initial F34 workspace-chrome slice implemented.
+F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
+initial F08 working-changes slice, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -70,7 +70,9 @@ writes plus active-tab selection; open-session DTOs include a bounded Git-derive
 The initial F04 slice adds a bounded `desktop.repository.getHistory()` query for validated, paged
 commit/reference DTOs. The initial F07 slice adds named, bounded `getCommitChanges()`, `getRevisionTree()`,
 and `getRevisionBlob()` capabilities for committed path metadata, lazy tree directories, and explicit
-text/binary/too-large blob states. The F34 workspace-chrome slice extends `desktop.window.command()` with full
+text/binary/too-large blob states. The initial F08 slice adds named, bounded `getWorkingChanges()` for
+porcelain-v2 staged, unstaged, untracked, and ignored working-tree entries. The F34 workspace-chrome slice
+extends `desktop.window.command()` with full
 screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
 adds `fullScreen` to window state, and adds three narrow capabilities: `desktop.edit.command()` for
 undo/redo/cut/copy/paste/select-all on the requesting window's focused element,
@@ -204,19 +206,25 @@ The initial F04 history service uses bounded `git log`, `for-each-ref`, and `sho
 the F06 slice adds only validated reference-target and literal commit-message filters to that same
 backend-owned argument builder. The initial F07 revision service uses bounded `diff-tree`, `ls-tree`, and
 `cat-file` reads; directory paths are validated and tree/blob content never becomes a navigable document.
-Its renderer graph lane assignment and F05 collapse projection remain pure shared code and never receive a
-Git command surface.
+The initial F08 working-tree service uses bounded `status --porcelain=v2 -z` reads with fsmonitor and
+untracked-cache helpers disabled; its parser preserves paths as data and maps index/worktree status into
+separate renderer sections. Its renderer tree projection remains pure UI code and never receives a Git
+command surface. The renderer graph lane assignment and F05 collapse projection also remain pure shared
+code and never receive a Git command surface.
 
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
 manager slice, the initial persisted tab/status workflow, the first paged history/graph/selection
-workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, and the
-renderer-drawn window chrome, menus, and context menus are implemented. There is still no general job
+workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, the initial F08
+working-changes listing, and the renderer-drawn window chrome, menus, and context menus are implemented.
+There is still no general job
 queue, operation activity surface, remote authentication, clone workflow, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, committed
 diff rendering, external integration, automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
-behavior, history ancestry/metadata, changed-path/tree/blob inspection, merge collapse, and the Electron bridge; later Git correctness
-will continue to be checked against independent CLI assertions as each workflow is added.
+behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
+merge collapse, and the Electron bridge; later Git correctness will continue to be checked against
+independent CLI assertions as each workflow is added. Working-tree diffs, staging, commits, discard, and
+conflict resolution remain future work.

@@ -20,6 +20,8 @@ import type {
   RepositoryRevisionTree,
   RepositoryRevisionTreeRequest,
   RepositorySummary,
+  RepositoryWorkingChanges,
+  RepositoryWorkingChangesRequest,
   SourceDirectoryRequest,
   SourceDirectorySession,
   WindowCommand,
@@ -63,6 +65,7 @@ export interface DesktopApi {
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
     getCommitChanges(request: RepositoryCommitChangesRequest): Promise<IpcResult<RepositoryCommitChanges>>;
+    getWorkingChanges(request: RepositoryWorkingChangesRequest): Promise<IpcResult<RepositoryWorkingChanges>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

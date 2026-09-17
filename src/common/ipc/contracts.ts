@@ -79,6 +79,21 @@ export const repositoryWorkingTreeSchema = z.strictObject({
   changedFileCount: z.number().int().nonnegative().max(100_000).nullable(),
 });
 
+export const repositoryWorkingChangeAreaSchema = z.enum(['staged', 'unstaged', 'untracked', 'ignored']);
+
+export const repositoryWorkingChangeStatusSchema = z.enum([
+  'added',
+  'copied',
+  'deleted',
+  'modified',
+  'renamed',
+  'type-changed',
+  'unmerged',
+  'untracked',
+  'ignored',
+  'unknown',
+]);
+
 export const repositoryTabOrientationSchema = z.enum(['vertical', 'horizontal']);
 
 export const repositoryTabPreferencesSchema = z.strictObject({
@@ -316,6 +331,47 @@ export const repositoryCommitChangesSchema = z.strictObject({
   truncated: z.boolean(),
 });
 
+const repositoryWorkingChangeCodeSchema = z.string().regex(/^[.ACDMRTUX?!]$/u);
+
+export const repositoryWorkingChangeSchema = z.strictObject({
+  area: repositoryWorkingChangeAreaSchema,
+  status: repositoryWorkingChangeStatusSchema,
+  statusCode: repositoryWorkingChangeCodeSchema,
+  indexStatus: repositoryWorkingChangeCodeSchema,
+  worktreeStatus: repositoryWorkingChangeCodeSchema,
+  path: z.string().min(1).max(32_768),
+  previousPath: z.string().min(1).max(32_768).nullable(),
+  similarity: z.number().int().nonnegative().max(100).nullable(),
+  oldMode: repositoryGitModeSchema.nullable(),
+  newMode: repositoryGitModeSchema.nullable(),
+  oldObjectId: gitObjectIdSchema.nullable(),
+  newObjectId: gitObjectIdSchema.nullable(),
+});
+
+export const repositoryWorkingChangeCountsSchema = z.strictObject({
+  staged: z.number().int().nonnegative().max(100_000),
+  unstaged: z.number().int().nonnegative().max(100_000),
+  untracked: z.number().int().nonnegative().max(100_000),
+  ignored: z.number().int().nonnegative().max(100_000),
+  conflicted: z.number().int().nonnegative().max(100_000),
+});
+
+export const repositoryWorkingChangesRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  includeUntracked: z.boolean(),
+  includeIgnored: z.boolean(),
+});
+
+export const repositoryWorkingChangesSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  staged: z.array(repositoryWorkingChangeSchema).max(10_000),
+  unstaged: z.array(repositoryWorkingChangeSchema).max(10_000),
+  untracked: z.array(repositoryWorkingChangeSchema).max(10_000),
+  ignored: z.array(repositoryWorkingChangeSchema).max(10_000),
+  counts: repositoryWorkingChangeCountsSchema,
+  truncated: z.boolean(),
+});
+
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
@@ -421,6 +477,11 @@ export const requests = {
     repositoryCommitChangesRequestSchema,
     repositoryCommitChangesSchema,
   ),
+  getRepositoryWorkingChanges: request(
+    'repository:get-working-changes',
+    repositoryWorkingChangesRequestSchema,
+    repositoryWorkingChangesSchema,
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -476,6 +537,12 @@ export type RepositoryCommitChangeStatus = z.infer<typeof repositoryCommitChange
 export type RepositoryCommitChange = z.infer<typeof repositoryCommitChangeSchema>;
 export type RepositoryCommitChangesRequest = z.infer<typeof repositoryCommitChangesRequestSchema>;
 export type RepositoryCommitChanges = z.infer<typeof repositoryCommitChangesSchema>;
+export type RepositoryWorkingChangeArea = z.infer<typeof repositoryWorkingChangeAreaSchema>;
+export type RepositoryWorkingChangeStatus = z.infer<typeof repositoryWorkingChangeStatusSchema>;
+export type RepositoryWorkingChange = z.infer<typeof repositoryWorkingChangeSchema>;
+export type RepositoryWorkingChangeCounts = z.infer<typeof repositoryWorkingChangeCountsSchema>;
+export type RepositoryWorkingChangesRequest = z.infer<typeof repositoryWorkingChangesRequestSchema>;
+export type RepositoryWorkingChanges = z.infer<typeof repositoryWorkingChangesSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
 export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;

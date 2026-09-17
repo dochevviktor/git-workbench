@@ -1582,30 +1582,233 @@ p {
 /* Local changes ------------------------------------------------------------------------------ */
 
 .changes-view {
-  display: grid;
+  display: flex;
   flex: 1;
-  place-items: center;
-  padding: 24px;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--list-bg);
 }
 
-.changes-placeholder {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  max-width: 440px;
-  color: var(--text-muted);
-  text-align: center;
+.changes-header {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
 }
 
-.changes-placeholder h2 {
-  margin: 8px 0 0;
-  color: var(--text);
-  font-size: 18px;
+.changes-heading-copy {
+  min-width: 180px;
+}
+
+.changes-heading-copy h1 {
+  margin: 0;
+  font-size: 19px;
   font-weight: 600;
 }
 
-.changes-placeholder p {
+.changes-heading-copy p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.changes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
+}
+
+.changes-segmented {
+  display: flex;
+  gap: 0;
+}
+
+.changes-segmented .button {
+  border-radius: 0;
+}
+
+.changes-segmented .button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.changes-segmented .button:last-child {
+  margin-left: -1px;
+  border-radius: 0 4px 4px 0;
+}
+
+.changes-segmented .button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--button-bg));
+  color: var(--accent);
+}
+
+.changes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.changes-toggle input {
+  accent-color: var(--accent);
+}
+
+.changes-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.changes-alert {
+  margin: 10px 20px 0;
+}
+
+.changes-loading,
+.changes-no-results {
   margin: 0;
+  padding: 22px 20px;
+  color: var(--text-muted);
+}
+
+.changes-truncated {
+  flex: none;
+  margin: 0;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--warning) 10%, var(--list-bg));
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.changes-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-content: start;
+  gap: 12px;
+  padding: 14px 20px;
+}
+
+.changes-section {
+  display: flex;
+  min-width: 0;
+  min-height: 76px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--list-bg);
+}
+
+.changes-section-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 31px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--input-bg) 70%, var(--list-bg));
+}
+
+.changes-section-header h2 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.changes-section-count {
+  min-width: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.changes-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.changes-tree {
+  max-height: 300px;
+  padding-bottom: 4px;
+}
+
+.changes-tree .tree-row {
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.changes-tree .tree-label {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.changes-tree .working-change-folder .tree-label {
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.changes-tree .working-change-row .tree-icon {
+  color: var(--text-muted);
+}
+
+.working-change-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(48vw, 420px);
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.working-change-status {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.working-change-status.added,
+.working-change-status.copied,
+.working-change-status.untracked {
+  color: var(--success);
+}
+
+.working-change-status.deleted,
+.working-change-status.unmerged {
+  color: var(--danger);
+}
+
+.working-change-status.renamed,
+.working-change-status.type-changed,
+.working-change-status.ignored {
+  color: var(--warning);
+}
+
+.changes-future-note {
+  flex: none;
+  margin: 0;
+  padding: 6px 20px 12px;
+  color: var(--text-dim);
+  font-size: 11.5px;
 }
 
 /* Repository manager ------------------------------------------------------------------------- */

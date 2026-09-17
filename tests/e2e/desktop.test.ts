@@ -243,6 +243,27 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('button', { name: 'All Commits' }).click();
     await expect(page.getByTestId('history-commit')).toHaveCount(5);
 
+    // F08: working-tree status exposes separate staged/unstaged and visibility sections.
+    await writeFile(join(fixtureRepository, 'partial.txt'), 'staged\n', 'utf8');
+    await fixtureGit.run(['add', '--', 'partial.txt'], { cwd: fixtureRepository });
+    await writeFile(join(fixtureRepository, 'partial.txt'), 'staged\nunstaged\n', 'utf8');
+    await writeFile(join(fixtureRepository, 'untracked.txt'), 'untracked\n', 'utf8');
+    await writeFile(join(fixtureRepository, '.gitignore'), 'ignored.txt\n', 'utf8');
+    await writeFile(join(fixtureRepository, 'ignored.txt'), 'ignored\n', 'utf8');
+    await page.getByRole('button', { name: /^Local Changes/u }).click();
+    await expect(page.getByTestId('working-changes')).toBeVisible();
+    await expect(page.getByTestId('working-changes-staged')).toContainText('partial.txt');
+    await expect(page.getByTestId('working-changes-unstaged')).toContainText('partial.txt');
+    await expect(page.getByTestId('working-changes-untracked')).toContainText('untracked.txt');
+    await expect(page.getByTestId('working-changes-ignored')).toHaveCount(0);
+    await page.getByLabel('Show ignored').check();
+    await expect(page.getByTestId('working-changes-ignored')).toContainText('ignored.txt');
+    await page.getByRole('button', { name: 'List view', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'List view', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.initialize({ path, bare: false });
@@ -250,7 +271,7 @@ test('production build loads its isolated preload and renderer', async () => {
     expect(secondInitialized).toMatchObject({ ok: true, value: { path: secondRepository, bare: false } });
     await page.reload();
     await waitForDesktop(page);
-    await expect(page.getByRole('tab', { name: /sample, Clean working tree/u })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /sample, Uncommitted changes/u })).toBeVisible();
     await expect(page.getByRole('tab', { name: /second, Clean working tree/u })).toBeVisible();
     await writeFile(join(secondRepository, 'dirty\nfile.txt'), 'uncommitted\n', 'utf8');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible({

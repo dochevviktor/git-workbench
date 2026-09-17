@@ -19,6 +19,7 @@ import type {
   RepositoryRevisionBlob,
   RepositoryRevisionTree,
   RepositorySummary,
+  RepositoryWorkingChanges,
   RepositoryWorkingTree,
 } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
@@ -46,6 +47,7 @@ import {
   RevisionNotFoundError,
   RevisionPathError,
 } from './revision-service';
+import { readWorkingChanges } from './working-tree-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -288,6 +290,28 @@ export class RepositoryService {
       });
     } catch (error) {
       throw this.mapRevisionFailure(error, 'Git could not read the selected commit changes.');
+    }
+  }
+
+  async getWorkingChanges(
+    ownerId: number,
+    id: string,
+    includeUntracked: boolean,
+    includeIgnored: boolean,
+  ): Promise<RepositoryWorkingChanges> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    if (!summary.worktreePath) {
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+    }
+    try {
+      return await readWorkingChanges(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        includeUntracked,
+        includeIgnored,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the working tree changes.');
     }
   }
 

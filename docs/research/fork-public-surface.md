@@ -1,6 +1,6 @@
 # Fork: public feature and layout baseline
 
-Research date: **2026-09-16**; F05 source refresh: **2026-09-17**. Scope: independently implementing
+Research date: **2026-09-16**; F05/F08 source refresh: **2026-09-17**. Scope: independently implementing
 publicly described workflows, with Linux as the primary target. This document is a requirements
 inventory, not a claim of verified equivalence.
 
@@ -30,9 +30,9 @@ Evidence labels:
 
 The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
-F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, and
-the initial F34 workspace chrome slice are **partial** in this project; all other F-items remain
-**planned**.
+F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, the
+initial F07 slice, the initial F08 slice, and the initial F34 workspace chrome slice are **partial** in
+this project; all other F-items remain **planned**.
 
 ### F01 source refresh
 
@@ -178,6 +178,22 @@ text-preview selection. Merge presentation, tree caching/virtualization, path pe
 multiple-root integration, and large-tree performance remain unverified. Fork’s exact current behavior,
 platform differences, and Linux support remain **U**.
 
+### F08 source refresh
+
+Accessed **2026-09-17** using the existing linked [working-changes image][changes-image] and [Windows
+1.23 article][rebase]. The screenshot is **O** evidence of separate staged and unstaged file areas in
+Fork’s working-changes workspace; the Windows article is **D** evidence for the documented staging and
+discard workflow around the same surface. These sources are historical Windows-oriented material and do
+not establish Fork’s current layout, exact status classification, ignored-file defaults, tree/list state,
+Linux support, or Mac/Windows parity. Those details remain **U**.
+
+This project’s initial F08 slice is an **I** choice: a backend-owned `status --porcelain=v2 -z` read
+returns bounded staged, unstaged, untracked, and ignored DTOs; a partially staged path appears in both
+relevant sections; rename/copy similarity, conflict status, and mode metadata remain visible; and the
+renderer offers per-repository tree/list presentation with persisted visibility toggles. Git status
+semantics are verified independently on Fedora Linux with disposable repositories; Fork equivalence,
+platform differences, actual merge-conflict presentation, and later diff/staging behavior remain **U**.
+
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
 Accessed **2026-09-16**, prompted by a request to bring the layout, graph drawing, context menus, and
@@ -268,7 +284,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                      | P03           |
 | F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; I: reference-scoped history and fixed-string commit-message search (partial)             | P03, P08      |
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                      | P03           |
-| F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                                                                       | P04           |
+| F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]; I: bounded local status listing (partial)                            | P04           |
 | F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                                      | P04           |
 | F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]                                                                              | P04           |
 | F11 | Commit, amend, recent messages, templates, hooks                                                            | D: [product][home], [Mac 1.0.73][merge], [Mac 1.0.79][manager]                                                                         | P04           |

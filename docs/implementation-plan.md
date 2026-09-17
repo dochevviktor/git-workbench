@@ -19,7 +19,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                                                                    | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                                                                            | P03        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 read-only working-changes slice (2026-09-17)                                                          | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                                                                            | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
@@ -243,6 +243,17 @@ Electron test covers a root commit's changed file, tree entry, and text preview;
 binary and oversized blob states. Merge diff presentation, tree caching/virtualization, selected path persistence, detached and
 multiple-root integration, and large-tree performance remain unverified, so F07 and P03 remain partial.
 
+Started F08 working-changes slice (2026-09-17): add a bounded `repository:get-working-changes` capability
+backed by NUL-delimited Git porcelain-v2 status; return separate staged, unstaged, untracked, and ignored
+entries, preserve partial-stage duplication, conflict visibility, rename/copy similarity, mode metadata,
+and truncation counts; and render per-repository tree/list views with persisted untracked/ignored visibility
+toggles and refresh polling. Disposable Git tests compare status categories, paths, rename metadata, and
+executable-bit changes, parser tests reject malformed records, the preload contract is validated, and the
+Electron fixture covers staged/unstaged partial changes, untracked/ignored toggles, and list mode. Actual
+merge-conflict fixture behavior, selection persistence, changed-file previews, diff rendering, staging,
+discard, and commit workflows remain unverified and belong to F08's remaining work or F09–F11, so F08 and
+P04 remain partial.
+
 Informal check on this Fedora host with software rendering (not the P03 performance baseline): a
 local mirror of a public project with 15,318 commits, 2,939 merges, and 116 refs showed its first
 50-commit page in about 0.2 s, loaded 2,050 rows by scrolling, and drew up to 13 lanes. Skipping
@@ -250,7 +261,8 @@ off-screen row rendering (`content-visibility`) reduced a keyboard selection ste
 about 78 ms to 31 ms, measured over two animation frames. At 125% and 150% device scale, a pixel scan
 found no breaks in lane lines at row boundaries.
 
-This slice does not complete F06 file/path/content filtering, F07's remaining merge/tree-scale work, P04 local changes,
+This slice does not complete F06 file/path/content filtering, F07's remaining merge/tree-scale work, P04's
+remaining diff/staging/commit work,
 or P12 command availability. On the forwarded Xwayland test display, `BrowserWindow.maximize()` and
 `minimize()` had no effect even for a normal framed window, so real maximize/minimize, title-bar
 double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output
@@ -520,6 +532,5 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue F06/P03 from docs/implementation-plan.md. Verify reference-scoped paging and stale-response
-> behavior on larger disposable histories; then add file/path and diff-content search once changed-file
-> and diff contracts are available.
+> Continue F08/P04 from docs/implementation-plan.md. Add an actual merge-conflict fixture and file
+> selection snapshot before implementing the F09 unified/split diff capability.

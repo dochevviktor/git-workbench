@@ -162,6 +162,37 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledTimes(3);
   });
 
+  it('validates and routes working-tree visibility requests', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'e'.repeat(64)}`;
+    const changes = {
+      repositoryId,
+      staged: [],
+      unstaged: [],
+      untracked: [],
+      ignored: [],
+      counts: { staged: 0, unstaged: 0, untracked: 0, ignored: 0, conflicted: 0 },
+      truncated: false,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: changes });
+    await expect(
+      api.repository.getWorkingChanges({ id: repositoryId, includeUntracked: true, includeIgnored: false }),
+    ).resolves.toEqual({ ok: true, value: changes });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryWorkingChanges.channel, {
+      id: repositoryId,
+      includeUntracked: true,
+      includeIgnored: false,
+    });
+
+    const invalid = await api.repository.getWorkingChanges({
+      id: repositoryId,
+      includeUntracked: 'yes',
+      includeIgnored: false,
+    } as never);
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
     const { api, invoke } = fixture();
     await api.edit.command({ action: 'copy' });

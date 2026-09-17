@@ -733,7 +733,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               onChange={setSidebarWidth}
             />
             <main className="repository-content">
-              {view === 'changes' ? <ChangesView repository={active} /> : <HistoryView history={history} />}
+              {view === 'changes' ? (
+                <ChangesView key={active.id} repository={active} />
+              ) : (
+                <HistoryView history={history} />
+              )}
             </main>
           </div>
         )}
