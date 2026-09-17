@@ -13,3 +13,6 @@ playwright-report/
 .DS_Store
 .idea/
 *.iml
+
+# Local copies of public Fork screenshots for design comparison; see docs/research/fork-references.json
+docs/research/fork-references/

@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { Platform } from '../../lib/platform';
 import type { MenuAnchor, MenuEntry } from './menu-model';
 
 export interface ContextMenuRequest {
@@ -14,4 +15,11 @@ export const ContextMenuContext = createContext<(request: ContextMenuRequest) =>
 
 export function useContextMenu(): (request: ContextMenuRequest) => void {
   return useContext(ContextMenuContext);
+}
+
+/** Menus format shortcuts for the platform reported by the backend. */
+export const MenuPlatformContext = createContext<Platform>('linux');
+
+export function useMenuPlatform(): Platform {
+  return useContext(MenuPlatformContext);
 }

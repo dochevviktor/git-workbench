@@ -5,6 +5,13 @@ export type Platform = AppInfo['platform'];
 const modifiers = ['Mod', 'Ctrl', 'Alt', 'Shift'] as const;
 /** macOS lists modifier symbols as Control, Option, Shift, Command. */
 const macModifierOrder = ['Ctrl', 'Alt', 'Shift', 'Mod'] as const;
+/** Arrow keys are shown as arrows on every platform. */
+const keyGlyphs: Readonly<Record<string, string>> = {
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+};
 const macSymbols: Readonly<Record<string, string>> = {
   Mod: '⌘',
   Ctrl: '⌃',
@@ -39,13 +46,13 @@ export function formatShortcut(shortcut: string, platform: Platform): string {
     const symbols = macModifierOrder
       .filter((modifier) => parts.has(modifier))
       .map((modifier) => macSymbols[modifier]);
-    return `${symbols.join('')}${macSymbols[key] ?? key}`;
+    return `${symbols.join('')}${keyGlyphs[key] ?? macSymbols[key] ?? key}`;
   }
   return [
     ...modifiers
       .filter((modifier) => parts.has(modifier))
       .map((modifier) => (modifier === 'Mod' ? 'Ctrl' : modifier)),
-    key === 'Plus' ? '+' : key,
+    keyGlyphs[key] ?? (key === 'Plus' ? '+' : key),
   ].join('+');
 }
 

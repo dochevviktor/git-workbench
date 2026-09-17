@@ -5,17 +5,17 @@ The long-term target is the publicly documented functionality of Fork, implement
 with Electron, shared TypeScript contracts, and React.
 
 The current milestone starts F01's local workflow, the first F02 repository-manager slice, the initial
-F03 tab slice, the first F04 history slice, and an initial F34 workspace-chrome slice. It includes a
-Fork-style workspace: a custom title bar with menus and window controls (native traffic lights on
-macOS), a toolbar, equal-width repository tabs or a vertical tab column, a Repository Manager new tab,
-a repository sidebar with a reference tree, a commit table with a lane graph and colored labels,
-commit details, and renderer-drawn context menus. It also covers Git discovery, opening existing
-repositories, local initialization, recent-repository persistence, persisted source directories,
-bounded folder-aware repository scanning, persisted tabs with dirty indicators, close/reopen
-shortcuts, paged commit history, and System/Light/Dark appearance. Toolbar and menu entries for Git
-operations from later phases are shown disabled with the phase that will enable them. Changes, graph
-collapse/filtering, revision trees, clone, custom manager folders, filesystem watchers, and the
-remaining Git operations are later work.
+F03 tab slice, the first F04–F08 history, collapse, filtering, revision-inspection, and working-changes
+slices, and an initial F34 workspace-chrome slice. It includes a Fork-style workspace: a custom title bar
+with menus and window controls (native traffic lights on macOS), a toolbar, equal-width repository tabs or
+a vertical tab column, a Repository Manager new tab, a repository sidebar with a reference tree and commit
+search, a commit table with a collapsible lane graph and colored labels, Commit/Changes/File Tree details,
+a read-only Local Changes view, and renderer-drawn context menus. It also covers Git discovery, opening
+existing repositories, local initialization, recent-repository persistence, persisted source directories,
+bounded folder-aware repository scanning, persisted tabs with dirty indicators, close/reopen shortcuts,
+paged commit history, and System/Light/Dark appearance. Toolbar and menu entries for Git operations from
+later phases are shown disabled with the phase that will enable them. Diffs, staging, committing, clone,
+custom manager folders, filesystem watchers, and the remaining Git operations are later work.
 
 ## Start
 
@@ -38,6 +38,7 @@ npm run build         # type checks and all three production bundles
 npm start             # run the built application
 npm run test:e2e      # build, then exercise the real Electron application
 npm run package:dir   # create an unpacked application in release/
+npm run research:references  # download the Fork screenshots listed in docs/research/fork-references.json
 npm run package       # build installers for the host OS; never publishes
 ```
 
@@ -108,6 +109,7 @@ src/common/ipc/         Runtime schemas, DTOs, result envelopes, public API type
 src/frontend/react/     React desktop shell (no Electron or Node imports): components/, menu/, hooks/, lib/
 tests/unit/             IPC validation, sender checks, timeouts, subscription cleanup
 tests/e2e/              Real Electron startup and bridge smoke test
+scripts/                Development scripts, such as restoring the local Fork reference screenshots
 docs/                   Research, architecture, and implementation roadmap
 ```
 
@@ -120,6 +122,9 @@ Both directories are ignored. Application dependencies are currently fully bundl
   and a prompt for the next step.
 - [Fork research](docs/research/fork-public-surface.md): dated public sources, feature coverage,
   observed layout, and unresolved questions.
+- [Fork reference screenshots](docs/research/fork-references.json): public images for design comparison.
+  `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
+  folder with a browsable `INDEX.md`; the images are never committed or used in the application.
 - [Architecture](docs/architecture.md): process boundaries, IPC conventions, and Git service direction.
 - [Contributor instructions](AGENTS.md): conventions for future implementation work.
 

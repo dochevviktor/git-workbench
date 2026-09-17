@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type { RepositoryHistoryReference, RepositorySummary } from '../../../common/ipc/contracts';
+import type { HistoryRevealRequest } from '../hooks/use-repository-history';
 import { referenceSections } from '../lib/references';
 import type { ReferenceTreeNode } from '../lib/references';
 import {
@@ -15,6 +16,7 @@ import {
   StashItemIcon,
   TagIcon,
 } from './Icons';
+import { CommitSearchPanel } from './CommitSearchPanel';
 import { TreeView } from './TreeView';
 import type { TreeItem } from './TreeView';
 
@@ -26,7 +28,9 @@ interface RepositorySidebarProps {
   readonly references: readonly RepositoryHistoryReference[];
   readonly referencesLoading: boolean;
   readonly onViewChange: (view: RepositoryView) => void;
-  readonly onCommitSearch: () => void;
+  readonly reveal: HistoryRevealRequest | undefined;
+  readonly historyFiltered: boolean;
+  readonly onRevealCommit: (commitId: string) => void;
   readonly onReferenceSelect: (reference: RepositoryHistoryReference) => void;
   readonly onReferenceContextMenu: (
     reference: RepositoryHistoryReference,
@@ -63,10 +67,13 @@ export function RepositorySidebar({
   references,
   referencesLoading,
   onViewChange,
-  onCommitSearch,
+  reveal,
+  historyFiltered,
+  onRevealCommit,
   onReferenceSelect,
   onReferenceContextMenu,
 }: RepositorySidebarProps) {
+  const [mode, setMode] = useState<'references' | 'search'>('references');
   const [filter, setFilter] = useState('');
   // Keys whose expansion differs from their default state.
   const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
@@ -206,61 +213,81 @@ export function RepositorySidebar({
         </button>
       </nav>
       <div className="sidebar-modes" role="group" aria-label="Sidebar content">
-        <button type="button" className="sidebar-mode active" aria-pressed="true" title="Branches">
+        <button
+          type="button"
+          className={mode === 'references' ? 'sidebar-mode active' : 'sidebar-mode'}
+          aria-pressed={mode === 'references'}
+          aria-label="Branches"
+          title="Branches"
+          onClick={() => setMode('references')}
+        >
           <BranchIcon size={16} />
         </button>
         <button
           type="button"
-          className="sidebar-mode"
-          aria-pressed="false"
+          className={mode === 'search' ? 'sidebar-mode active' : 'sidebar-mode'}
+          aria-pressed={mode === 'search'}
           aria-label="Search"
           title="Search commits"
-          onClick={onCommitSearch}
+          onClick={() => setMode('search')}
         >
           <SearchIcon size={16} />
         </button>
       </div>
-      <label className="sidebar-filter">
-        <SearchIcon size={13} />
-        <input
-          type="search"
-          value={filter}
-          placeholder="Filter"
-          aria-label="Filter references"
-          spellCheck={false}
-          onChange={(event) => setFilter(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && filter) {
-              event.preventDefault();
-              setFilter('');
-            }
-          }}
+      {mode === 'search' ? (
+        <CommitSearchPanel
+          repositoryId={repository.id}
+          reveal={reveal}
+          historyFiltered={historyFiltered}
+          onRevealCommit={onRevealCommit}
         />
-      </label>
-      <TreeView
-        className="sidebar-tree"
-        items={items}
-        label="References"
-        idPrefix="sidebar"
-        activeKey={activeKey}
-        onActiveChange={setActiveKey}
-        onToggle={toggle}
-        onSelect={(item) => {
-          const reference = referencesByKey.get(item.key);
-          if (reference) onReferenceSelect(reference);
-        }}
-        onActivate={(item) => {
-          const reference = referencesByKey.get(item.key);
-          if (reference) onReferenceSelect(reference);
-        }}
-        onContextMenu={(item, event) => {
-          const reference = referencesByKey.get(item.key);
-          if (reference) onReferenceContextMenu(reference, event);
-        }}
-      >
-        {referencesLoading && references.length === 0 && <p className="sidebar-note">Loading references…</p>}
-        {noMatches && <p className="sidebar-note">No references match “{filter.trim()}”.</p>}
-      </TreeView>
+      ) : (
+        <>
+          <label className="sidebar-filter">
+            <SearchIcon size={13} />
+            <input
+              type="search"
+              value={filter}
+              placeholder="Filter"
+              aria-label="Filter references"
+              spellCheck={false}
+              onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && filter) {
+                  event.preventDefault();
+                  setFilter('');
+                }
+              }}
+            />
+          </label>
+          <TreeView
+            className="sidebar-tree"
+            items={items}
+            label="References"
+            idPrefix="sidebar"
+            activeKey={activeKey}
+            onActiveChange={setActiveKey}
+            onToggle={toggle}
+            onSelect={(item) => {
+              const reference = referencesByKey.get(item.key);
+              if (reference) onReferenceSelect(reference);
+            }}
+            onActivate={(item) => {
+              const reference = referencesByKey.get(item.key);
+              if (reference) onReferenceSelect(reference);
+            }}
+            onContextMenu={(item, event) => {
+              const reference = referencesByKey.get(item.key);
+              if (reference) onReferenceContextMenu(reference, event);
+            }}
+          >
+            {referencesLoading && references.length === 0 && (
+              <p className="sidebar-note">Loading references…</p>
+            )}
+            {noMatches && <p className="sidebar-note">No references match “{filter.trim()}”.</p>}
+          </TreeView>
+        </>
+      )}
     </aside>
   );
 }

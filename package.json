@@ -29,6 +29,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
+    "research:references": "node scripts/fork-references.ts",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "package": "npm run build && electron-builder --config electron-builder.json --publish never",
     "package:dir": "npm run build && electron-builder --config electron-builder.json --dir --publish never"

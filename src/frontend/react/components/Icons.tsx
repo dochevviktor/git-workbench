@@ -252,6 +252,41 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+/** Marks a commit whose message continues past its subject line. */
+export function MessageBodyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12.75 4.25v2.5a2 2 0 0 1-2 2h-7.5M5.75 6.25l-2.5 2.5 2.5 2.5" />
+    </Icon>
+  );
+}
+
+export function ListOptionsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+    </Icon>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M1.5 8s2.4-4.25 6.5-4.25S14.5 8 14.5 8s-2.4 4.25-6.5 4.25S1.5 8 1.5 8Z" />
+      <circle cx="8" cy="8" r="1.9" />
+    </Icon>
+  );
+}
+
+export function FileIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.25 1.75H4.25a1 1 0 0 0-1 1v10.5a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-8Z" />
+      <path d="M9.25 1.75v3.5h3.5" />
+    </Icon>
+  );
+}
+
 export function WarningIcon(props: IconProps) {
   return (
     <Icon {...props}>

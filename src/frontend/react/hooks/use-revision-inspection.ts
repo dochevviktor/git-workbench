@@ -10,36 +10,36 @@ function actionError(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
 }
 
+export type RevisionDirectory =
+  | { readonly status: 'loading' }
+  | { readonly status: 'loaded'; readonly tree: RepositoryRevisionTree }
+  | { readonly status: 'error'; readonly message: string };
+
+export type RevisionInspection = ReturnType<typeof useRevisionInspection>;
+
 /** Loads committed revision data with guards for fast commit, directory, and file selection changes. */
 export function useRevisionInspection(repositoryId: string | undefined, commitId: string | undefined) {
   const [changes, setChanges] = useState<RepositoryCommitChanges>();
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string>();
-  const [tree, setTree] = useState<RepositoryRevisionTree>();
-  const [treePath, setTreePath] = useState('');
-  const [treeLoading, setTreeLoading] = useState(false);
-  const [treeError, setTreeError] = useState<string>();
+  // Directories load one at a time as folders expand, keyed by their path ('' is the root).
+  const [directories, setDirectories] = useState<ReadonlyMap<string, RevisionDirectory>>(() => new Map());
   const [blob, setBlob] = useState<RepositoryRevisionBlob>();
   const [blobPath, setBlobPath] = useState<string>();
   const [blobLoading, setBlobLoading] = useState(false);
   const [blobError, setBlobError] = useState<string>();
   const revisionGeneration = useRef(0);
   const changesRequestGeneration = useRef(0);
-  const treeRequestGeneration = useRef(0);
   const blobRequestGeneration = useRef(0);
 
   useEffect(() => {
     revisionGeneration.current += 1;
     changesRequestGeneration.current += 1;
-    treeRequestGeneration.current += 1;
     blobRequestGeneration.current += 1;
     setChanges(undefined);
     setChangesLoading(false);
     setChangesError(undefined);
-    setTree(undefined);
-    setTreePath('');
-    setTreeLoading(false);
-    setTreeError(undefined);
+    setDirectories(new Map());
     setBlob(undefined);
     setBlobPath(undefined);
     setBlobLoading(false);
@@ -70,34 +70,21 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
     }
   }, [commitId, repositoryId]);
 
-  const loadTree = useCallback(
+  const loadDirectory = useCallback(
     async (path: string) => {
       if (!repositoryId || !commitId) return;
       const revision = revisionGeneration.current;
-      const request = treeRequestGeneration.current + 1;
-      treeRequestGeneration.current = request;
-      setTreePath(path);
-      setTree(undefined);
-      setTreeLoading(true);
-      setTreeError(undefined);
-      setBlob(undefined);
-      setBlobPath(undefined);
-      setBlobError(undefined);
+      const update = (state: RevisionDirectory) =>
+        setDirectories((current) => new Map(current).set(path, state));
+      update({ status: 'loading' });
       try {
         const api = window.desktop;
         if (!api) throw new Error('Open this application in Electron to inspect the revision tree.');
-        const value = unwrapResult(
-          await api.repository.getRevisionTree({ id: repositoryId, commitId, path }),
-        );
-        if (revision !== revisionGeneration.current || request !== treeRequestGeneration.current) return;
-        setTree(value);
+        const tree = unwrapResult(await api.repository.getRevisionTree({ id: repositoryId, commitId, path }));
+        if (revision === revisionGeneration.current) update({ status: 'loaded', tree });
       } catch (reason: unknown) {
-        if (revision === revisionGeneration.current && request === treeRequestGeneration.current) {
-          setTreeError(actionError(reason, 'The revision tree could not be loaded.'));
-        }
-      } finally {
-        if (revision === revisionGeneration.current && request === treeRequestGeneration.current) {
-          setTreeLoading(false);
+        if (revision === revisionGeneration.current) {
+          update({ status: 'error', message: actionError(reason, 'The revision tree could not be loaded.') });
         }
       }
     },
@@ -140,11 +127,8 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
     changesLoading,
     changesError,
     loadChanges,
-    tree,
-    treePath,
-    treeLoading,
-    treeError,
-    loadTree,
+    directories,
+    loadDirectory,
     blob,
     blobPath,
     blobLoading,

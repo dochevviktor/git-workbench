@@ -27,7 +27,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P08        |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                            | P09        |
 | P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                                                                            | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16)                                                   | P11        |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16); Fork design refresh (2026-09-17)                 | P11        |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                            | P12        |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                            | P13        |
 
@@ -227,8 +227,8 @@ interaction, large-history performance, and exact Fork visual parity remain unve
 Started F06 reference/commit filtering slice (2026-09-17): add a validated history-filter contract,
 reference context-menu actions that scope `git log` to a selected commit target, and a bounded
 case-insensitive fixed-string commit-message search with generation-safe replacement paging. The
-renderer exposes a search field, clear/show-all controls, a no-match state, and an enabled sidebar
-search action. Disposable Git tests compare reference results with `git rev-list` and verify literal
+renderer exposes a search field, clear controls, a no-match state, and an enabled sidebar search action;
+the 2026-09-17 design refresh below moved the search into a sidebar panel. Disposable Git tests compare reference results with `git rev-list` and verify literal
 search text; the Electron fixture covers reference filtering, clearing, search, and no-match behavior.
 File-list filtering, path history, diff-content search, author/hash search, recent-query persistence,
 and large-history search performance remain unverified, so F06 remains partial.
@@ -282,6 +282,27 @@ automatically. With the Vite development server on native Wayland, the hidden wi
 `ready-to-show` although the page rendered, so no window appeared; the event arrived only after the window
 was shown. The window now also shows when the page finishes loading, and the development run then mapped
 and presented the window on the host.
+
+Fork design refresh (2026-09-17, requested after the F05–F08 slices): the public screenshots used for
+comparison are listed in `docs/research/fork-references.json`, and `npm run research:references` restores
+them into the git-ignored `docs/research/fork-references/` library; the research record lists the dated
+observations. Commits are now drawn as dots and merges as rings with a collapse chevron; remote markers
+sit in their own label boxes, tags keep a fixed color, and subjects with a message body show an
+indicator. The toolbar is compact, with a Branch menu button and a Console button that stay disabled
+with their phases, and tabs mark uncommitted changes with a dot. Commit search moved from a bar above
+the list into a sidebar Search Commits panel: its results are separate backend-paged queries, and
+choosing one selects that commit in the unfiltered list after loading at most 40 further history pages.
+A reference filter shows a Filtered by strip with Clear filter. Right-clicking the graph column opens
+Collapse, Expand All, and Collapse All, which also end the commit menu. The Commit tab lists changed
+files. Changes and File Tree start with a one-line commit summary and place a resizable file list beside
+a change-metadata or line-numbered text preview; the File Tree loads folders lazily and lists them first.
+Local Changes uses Unstaged and Staged panes with an options menu for tree/list and untracked/ignored
+visibility, a change-metadata preview, and a commit composer; Stage, Unstage, diffs, and committing stay
+disabled for P04. Verified on Fedora Linux with `npm run check`, `npm run build`, the Electron test
+through the bridge's X11 display (covering search results, the filter strip, the graph menu, the options
+menu, and the dirty-tab dot), and light and dark screenshots of a disposable repository compared with
+the references. Exact current palettes and spacing, the Mac segmented detail tabs, View as Combined List,
+search scopes other than commit messages, and the eye toggle remain unverified or unimplemented.
 
 ## P03 — History, graph, and revision inspection
 

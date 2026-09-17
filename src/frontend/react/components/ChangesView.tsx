@@ -1,222 +1,152 @@
-import { useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { RepositorySummary, RepositoryWorkingChange } from '../../../common/ipc/contracts';
+import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
 import { useRepositoryWorkingChanges } from '../hooks/use-repository-working-changes';
-import { isOneOf, usePersistentState } from '../hooks/use-persistent-state';
-import { countLabel } from '../lib/format';
-import { ChangesIcon, FolderIcon } from './Icons';
-import { TreeView } from './TreeView';
-import type { TreeItem } from './TreeView';
+import { statusBadge } from '../lib/change-status';
+import { FileChangeList } from './FileChangeList';
+import type { FileChangeEntry, FileListMode } from './FileChangeList';
+import { ListOptionsIcon, SearchIcon } from './Icons';
+import { Splitter } from './Splitter';
+import { StatusBadge } from './StatusBadge';
+import { MenuButton } from './menu/MenuButton';
+import { menuSeparator, planned } from './menu/menu-model';
+import type { MenuEntry } from './menu/menu-model';
 
-const displayModes = ['tree', 'list'] as const;
-type DisplayMode = (typeof displayModes)[number];
+const fileListModes = ['tree', 'list'] as const;
+const stagingPlanned = planned('Staging', 'P04').disabledReason;
+const commitPlanned = planned('Committing', 'P04').disabledReason;
 
-interface ChangeSection {
-  readonly id: 'staged' | 'unstaged' | 'untracked' | 'ignored';
-  readonly title: string;
-  readonly changes: readonly RepositoryWorkingChange[];
-  readonly count: number;
-}
-
-interface ChangeTreeNode {
-  readonly key: string;
-  readonly name: string;
-  readonly path: string;
-  readonly change: RepositoryWorkingChange | undefined;
-  readonly children: ChangeTreeNode[];
-}
-
-const statusLabels: Record<RepositoryWorkingChange['status'], string> = {
-  added: 'Added',
-  copied: 'Copied',
-  deleted: 'Deleted',
-  modified: 'Modified',
-  renamed: 'Renamed',
-  'type-changed': 'Type changed',
-  unmerged: 'Conflict',
+const areaLabels: Record<RepositoryWorkingChange['area'], string> = {
+  staged: 'Staged',
+  unstaged: 'Unstaged',
   untracked: 'Untracked',
   ignored: 'Ignored',
-  unknown: 'Changed',
 };
 
-function encodedKey(sectionId: string, kind: 'file' | 'folder', path: string): string {
-  return `${sectionId}:${kind}:${encodeURIComponent(path)}`;
+interface WorkingEntry extends FileChangeEntry {
+  readonly change: RepositoryWorkingChange;
 }
 
-function buildChangeTree(sectionId: string, changes: readonly RepositoryWorkingChange[]): ChangeTreeNode[] {
-  const root: ChangeTreeNode = {
-    key: `${sectionId}:root`,
-    name: '',
-    path: '',
-    change: undefined,
-    children: [],
+function workingEntry(change: RepositoryWorkingChange): WorkingEntry {
+  return {
+    key: `${change.area}:${encodeURIComponent(change.path)}`,
+    status: change.status,
+    path: change.path,
+    previousPath: change.previousPath,
+    detail: change.previousPath ? `from ${change.previousPath}` : undefined,
+    change,
   };
-
-  for (const change of changes) {
-    const parts = change.path.split('/');
-    let parent = root;
-    let path = '';
-    for (let index = 0; index < parts.length; index += 1) {
-      const part = parts[index]!;
-      path = path ? `${path}/${part}` : part;
-      const isFile = index === parts.length - 1;
-      const key = encodedKey(sectionId, isFile ? 'file' : 'folder', path);
-      let node = parent.children.find((candidate) => candidate.key === key);
-      if (!node) {
-        node = {
-          key,
-          name: part,
-          path,
-          change: isFile ? change : undefined,
-          children: [],
-        };
-        parent.children.push(node);
-      }
-      parent = node;
-    }
-  }
-
-  const sort = (nodes: ChangeTreeNode[]) => {
-    nodes.sort((left, right) => {
-      const leftFolder = left.children.length > 0;
-      const rightFolder = right.children.length > 0;
-      if (leftFolder !== rightFolder) return leftFolder ? -1 : 1;
-      return left.name.localeCompare(right.name);
-    });
-    for (const node of nodes) sort(node.children);
-  };
-  sort(root.children);
-  return root.children;
 }
 
-function statusMeta(change: RepositoryWorkingChange): ReactNode {
-  const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
-  return (
-    <span className="working-change-meta">
-      <span className={`working-change-status ${change.status}`}>{statusLabels[change.status]}</span>
-      {modeChanged && <span title={`${change.oldMode} → ${change.newMode}`}>Mode</span>}
-      {change.previousPath && (
-        <span title={`Previous path: ${change.previousPath}`}>From {change.previousPath}</span>
-      )}
-    </span>
-  );
+interface ChangesPaneProps {
+  readonly id: 'unstaged' | 'staged';
+  readonly title: string;
+  readonly action: string;
+  readonly entries: readonly WorkingEntry[];
+  readonly mode: FileListMode;
+  readonly selectedKey: string | undefined;
+  readonly emptyText: string;
+  readonly onSelect: (key: string) => void;
+  readonly children?: ReactNode;
 }
 
-function changeItems(changes: readonly RepositoryWorkingChange[], sectionId: string): TreeItem[] {
-  return changes.map((change) => ({
-    key: encodedKey(sectionId, 'file', change.path),
-    level: 1,
-    label: change.path,
-    icon: <ChangesIcon size={14} />,
-    meta: statusMeta(change),
-    expandable: false,
-    expanded: false,
-    parentKey: null,
-    className: `working-change-row ${change.status}`,
-    title: change.path,
-    testId: 'working-change',
-  }));
-}
-
-function treeItems(nodes: readonly ChangeTreeNode[], collapsed: ReadonlySet<string>): TreeItem[] {
-  const items: TreeItem[] = [];
-  const append = (children: readonly ChangeTreeNode[], level: number, parentKey: string | null) => {
-    for (const node of children) {
-      const expandable = node.children.length > 0;
-      const expanded = expandable && !collapsed.has(node.key);
-      items.push({
-        key: node.key,
-        level,
-        label: node.name,
-        icon: expandable ? <FolderIcon size={14} /> : <ChangesIcon size={14} />,
-        meta: node.change ? statusMeta(node.change) : undefined,
-        expandable,
-        expanded,
-        parentKey,
-        className: node.change ? `working-change-row ${node.change.status}` : 'working-change-folder',
-        title: node.change?.path ?? `${node.path}/`,
-        toggleOnClick: expandable,
-        testId: node.change ? 'working-change' : 'working-change-folder',
-      });
-      if (expanded) append(node.children, level + 1, node.key);
-    }
-  };
-  append(nodes, 1, null);
-  return items;
-}
-
-function ChangeFileTree({ section }: { readonly section: ChangeSection }) {
-  const [activeKey, setActiveKey] = useState<string>();
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const nodes = useMemo(() => buildChangeTree(section.id, section.changes), [section.changes, section.id]);
-  const items = useMemo(() => treeItems(nodes, collapsed), [collapsed, nodes]);
-
-  return (
-    <TreeView
-      className="changes-tree"
-      items={items}
-      label={`${section.title} files`}
-      idPrefix={`working-${section.id}`}
-      activeKey={activeKey}
-      onActiveChange={setActiveKey}
-      onToggle={(item, expand) => {
-        if (!item.expandable) return;
-        setCollapsed((current) => {
-          const next = new Set(current);
-          if (expand) next.delete(item.key);
-          else next.add(item.key);
-          return next;
-        });
-      }}
-    />
-  );
-}
-
-function ChangeFileList({ section }: { readonly section: ChangeSection }) {
-  const [activeKey, setActiveKey] = useState<string>();
-  const items = useMemo(() => changeItems(section.changes, section.id), [section.changes, section.id]);
-  return (
-    <TreeView
-      className="changes-tree"
-      items={items}
-      label={`${section.title} files`}
-      idPrefix={`working-${section.id}`}
-      activeKey={activeKey}
-      onActiveChange={setActiveKey}
-      onToggle={() => undefined}
-    />
-  );
-}
-
-function ChangeSectionView({
-  section,
+function ChangesPane({
+  id,
+  title,
+  action,
+  entries,
   mode,
-}: {
-  readonly section: ChangeSection;
-  readonly mode: DisplayMode;
-}) {
+  selectedKey,
+  emptyText,
+  onSelect,
+  children,
+}: ChangesPaneProps) {
   return (
-    <section className="changes-section" data-testid={`working-changes-${section.id}`}>
-      <header className="changes-section-header">
-        <h2>{section.title}</h2>
-        <span className="changes-section-count">{section.count}</span>
+    <section
+      className={`changes-pane ${id}`}
+      aria-labelledby={`changes-pane-${id}`}
+      data-testid={`working-changes-${id}`}
+    >
+      <header className="changes-pane-header">
+        <h2 id={`changes-pane-${id}`}>{title}</h2>
+        <button type="button" className="button button-small" aria-disabled="true" title={stagingPlanned}>
+          {action}
+        </button>
       </header>
-      {section.changes.length === 0 ? (
-        <p className="changes-empty">No {section.title.toLocaleLowerCase()}.</p>
-      ) : mode === 'tree' ? (
-        <ChangeFileTree section={section} />
-      ) : (
-        <ChangeFileList section={section} />
-      )}
+      <div className="file-pane-body">
+        {children}
+        {entries.length === 0 ? (
+          <p className="changes-empty">{emptyText}</p>
+        ) : (
+          <FileChangeList
+            entries={entries}
+            mode={mode}
+            label={`${title} files`}
+            idPrefix={`working-${id}`}
+            selectedKey={selectedKey}
+            onSelect={(entry) => onSelect(entry.key)}
+            rowTestId="working-change"
+          />
+        )}
+      </div>
     </section>
   );
 }
 
-export function ChangesView({ repository }: { readonly repository: RepositorySummary }) {
-  const [mode, setMode] = usePersistentState<DisplayMode>(
+function ChangePreview({ change }: { readonly change: RepositoryWorkingChange }) {
+  const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
+  return (
+    <div className="file-preview" data-testid="working-change-preview">
+      <div className="preview-header">
+        <StatusBadge status={change.status} />
+        <span className="preview-path" title={change.path}>
+          {change.path}
+        </span>
+      </div>
+      <div className="preview-body">
+        <dl className="preview-facts">
+          <dt>Status</dt>
+          <dd>
+            {statusBadge(change.status).label}
+            {change.similarity !== null ? ` (${change.similarity}% similar)` : ''}
+          </dd>
+          <dt>Area</dt>
+          <dd>{areaLabels[change.area]}</dd>
+          {change.previousPath && (
+            <>
+              <dt>Previous path</dt>
+              <dd>
+                <code>{change.previousPath}</code>
+              </dd>
+            </>
+          )}
+          {modeChanged && (
+            <>
+              <dt>Mode</dt>
+              <dd>
+                <code>{change.oldMode}</code> → <code>{change.newMode}</code>
+              </dd>
+            </>
+          )}
+        </dl>
+        <p className="preview-note">Diff rendering is not available yet (planned for P04).</p>
+      </div>
+    </div>
+  );
+}
+
+interface ChangesViewProps {
+  readonly repository: RepositorySummary;
+  /** Increments when the user asks the application to refresh. */
+  readonly refreshSignal: number;
+}
+
+export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
+  const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
     'tree',
-    isOneOf(displayModes),
+    isOneOf(fileListModes),
   );
   const [includeUntracked, setIncludeUntracked] = usePersistentState(
     `repository.${repository.id}.changes.includeUntracked`,
@@ -228,130 +158,209 @@ export function ChangesView({ repository }: { readonly repository: RepositorySum
     false,
     (value): value is boolean => typeof value === 'boolean',
   );
+  const [filesWidth, setFilesWidth] = usePersistentState(
+    'changes.filesWidth',
+    380,
+    isNumberBetween(200, 1600),
+  );
+  const [unstagedHeight, setUnstagedHeight] = usePersistentState(
+    'changes.unstagedHeight',
+    Math.max(160, Math.round((window.innerHeight - 160) * 0.5)),
+    isNumberBetween(72, 4000),
+  );
+  const [filter, setFilter] = useState('');
+  const [selectedKey, setSelectedKey] = useState<string>();
   const { value, loading, error, refresh } = useRepositoryWorkingChanges(
     repository.id,
     includeUntracked,
     includeIgnored,
   );
 
-  const sections = useMemo<ChangeSection[]>(() => {
-    if (!value) return [];
-    const result: ChangeSection[] = [
-      { id: 'staged', title: 'Staged Changes', changes: value.staged, count: value.counts.staged },
-      { id: 'unstaged', title: 'Unstaged Changes', changes: value.unstaged, count: value.counts.unstaged },
-      {
-        id: 'untracked',
-        title: 'Untracked Files',
-        changes: value.untracked,
-        count: value.counts.untracked,
-      },
-    ];
-    if (includeIgnored) {
-      result.push({
-        id: 'ignored',
-        title: 'Ignored Files',
-        changes: value.ignored,
-        count: value.counts.ignored,
-      });
-    }
-    return result;
-  }, [includeIgnored, value]);
-  const visibleChanges = sections.some((section) => section.changes.length > 0);
-  const visibleCount = value
-    ? value.counts.staged +
-      value.counts.unstaged +
-      value.counts.untracked +
-      (includeIgnored ? value.counts.ignored : 0)
-    : 0;
+  const handledRefresh = useRef(refreshSignal);
+  useEffect(() => {
+    if (refreshSignal === handledRefresh.current) return;
+    handledRefresh.current = refreshSignal;
+    refresh();
+  }, [refresh, refreshSignal]);
+
+  const { unstaged, staged } = useMemo(() => {
+    const query = filter.trim().toLocaleLowerCase();
+    const visible = (change: RepositoryWorkingChange) =>
+      !query || change.path.toLocaleLowerCase().includes(query);
+    if (!value) return { unstaged: [], staged: [] };
+    return {
+      // Fork lists untracked and, when shown, ignored files with the other unstaged changes.
+      unstaged: [...value.unstaged, ...value.untracked, ...(includeIgnored ? value.ignored : [])]
+        .filter(visible)
+        .map(workingEntry),
+      staged: value.staged.filter(visible).map(workingEntry),
+    };
+  }, [filter, includeIgnored, value]);
+
+  const selected = [...unstaged, ...staged].find((entry) => entry.key === selectedKey)?.change;
+  const filtering = filter.trim().length > 0;
+  const optionItems: MenuEntry[] = [
+    {
+      id: 'view-tree',
+      label: 'View as Tree',
+      checkable: 'radio',
+      checked: mode === 'tree',
+      run: () => setMode('tree'),
+    },
+    {
+      id: 'view-list',
+      label: 'View as List',
+      checkable: 'radio',
+      checked: mode === 'list',
+      run: () => setMode('list'),
+    },
+    menuSeparator,
+    {
+      id: 'hide-untracked',
+      label: 'Hide Untracked Files',
+      checkable: 'checkbox',
+      checked: !includeUntracked,
+      run: () => setIncludeUntracked(!includeUntracked),
+    },
+    {
+      id: 'show-ignored',
+      label: 'Show Ignored Files',
+      checkable: 'checkbox',
+      checked: includeIgnored,
+      run: () => setIncludeIgnored(!includeIgnored),
+    },
+  ];
+  const status = !value
+    ? repository.workingTree.state === 'unknown'
+      ? 'The working-tree status could not be read.'
+      : loading
+        ? 'Reading working-tree status…'
+        : undefined
+    : undefined;
 
   return (
-    <section className="changes-view" aria-labelledby="changes-heading" data-testid="working-changes">
-      <header className="changes-header">
-        <div className="changes-heading-copy">
-          <h1 id="changes-heading">Local Changes</h1>
-          <p>
-            {value
-              ? visibleChanges
-                ? `${countLabel(
-                    visibleCount,
-                    'visible entry',
-                  )}${value.counts.conflicted ? `, ${countLabel(value.counts.conflicted, 'conflict')}` : ''}.`
-                : 'No visible local changes.'
-              : repository.workingTree.state === 'unknown'
-                ? 'The working-tree status could not be read.'
-                : 'Reading the working tree…'}
+    <section
+      className="changes-view"
+      aria-label="Local Changes"
+      data-testid="working-changes"
+      style={
+        {
+          '--changes-files-width': `${filesWidth}px`,
+          '--changes-unstaged-height': `${unstagedHeight}px`,
+        } as CSSProperties
+      }
+    >
+      <div className="changes-files">
+        <div className="pane-strip">
+          <label className="pane-filter">
+            <SearchIcon size={12} />
+            <input
+              type="search"
+              value={filter}
+              placeholder="Filter"
+              aria-label="Filter local changes"
+              spellCheck={false}
+              onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && filter) {
+                  event.preventDefault();
+                  setFilter('');
+                }
+              }}
+            />
+          </label>
+          <MenuButton
+            className="pane-icon-button"
+            aria-label="Local changes options"
+            title="Local changes options"
+            menuLabel="Local changes options"
+            items={optionItems}
+          >
+            <ListOptionsIcon size={14} />
+          </MenuButton>
+        </div>
+        {error && (
+          <div className="inline-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" className="button button-small" onClick={refresh}>
+              Retry
+            </button>
+          </div>
+        )}
+        {value?.truncated && (
+          <p className="changes-truncated" role="status">
+            Some sections are truncated at 10,000 entries.
           </p>
-        </div>
-        <div className="changes-toolbar" aria-label="Local changes controls">
-          <div className="changes-segmented" role="group" aria-label="Change display mode">
-            <button
-              type="button"
-              className={mode === 'tree' ? 'button button-small active' : 'button button-small'}
-              aria-pressed={mode === 'tree'}
-              onClick={() => setMode('tree')}
-            >
-              Tree view
-            </button>
-            <button
-              type="button"
-              className={mode === 'list' ? 'button button-small active' : 'button button-small'}
-              aria-pressed={mode === 'list'}
-              onClick={() => setMode('list')}
-            >
-              List view
-            </button>
-          </div>
-          <label className="changes-toggle">
-            <input
-              type="checkbox"
-              checked={includeUntracked}
-              onChange={(event) => setIncludeUntracked(event.target.checked)}
-            />
-            Show untracked
-          </label>
-          <label className="changes-toggle">
-            <input
-              type="checkbox"
-              checked={includeIgnored}
-              onChange={(event) => setIncludeIgnored(event.target.checked)}
-            />
-            Show ignored
-          </label>
-          <button type="button" className="button button-small" onClick={refresh} disabled={loading}>
-            {'Refresh'}
-          </button>
-        </div>
-      </header>
-      {error && (
-        <div className="inline-alert changes-alert" role="alert">
-          <span>{error}</span>
-          <button type="button" className="button button-small" onClick={refresh}>
-            Retry
-          </button>
-        </div>
-      )}
-      {loading && !value && <p className="changes-loading">Reading working-tree status…</p>}
-      {value && (
-        <div className="changes-body">
-          {value.truncated && (
-            <p className="changes-truncated" role="status">
-              This list is truncated at 10,000 entries in a section.
+        )}
+        <ChangesPane
+          id="unstaged"
+          title="Unstaged"
+          action="Stage"
+          entries={unstaged}
+          mode={mode}
+          selectedKey={selectedKey}
+          emptyText={status ?? (filtering ? 'No unstaged files match the filter.' : 'No unstaged changes.')}
+          onSelect={setSelectedKey}
+        >
+          {value && value.counts.conflicted > 0 && (
+            <p className="changes-conflicts" role="status">
+              {value.counts.conflicted === 1
+                ? '1 file has conflicts.'
+                : `${value.counts.conflicted} files have conflicts.`}
             </p>
           )}
-          <div className="changes-sections">
-            {sections.map((section) => (
-              <ChangeSectionView key={section.id} section={section} mode={mode} />
-            ))}
-          </div>
-          {!visibleChanges && (
-            <p className="changes-no-results">
-              No files are currently shown. Enable untracked or ignored visibility if those files are
-              expected.
-            </p>
+        </ChangesPane>
+        <Splitter
+          orientation="horizontal"
+          label="Resize unstaged and staged files"
+          value={unstagedHeight}
+          minimum={72}
+          maximum={4000}
+          onChange={setUnstagedHeight}
+        />
+        <ChangesPane
+          id="staged"
+          title="Staged"
+          action="Unstage"
+          entries={staged}
+          mode={mode}
+          selectedKey={selectedKey}
+          emptyText={status ?? (filtering ? 'No staged files match the filter.' : 'No staged changes.')}
+          onSelect={setSelectedKey}
+        />
+      </div>
+      <Splitter
+        orientation="vertical"
+        label="Resize local changes file list"
+        value={filesWidth}
+        minimum={200}
+        maximum={1600}
+        onChange={setFilesWidth}
+      />
+      <div className="changes-detail">
+        <div className="preview-pane">
+          {selected ? (
+            <ChangePreview change={selected} />
+          ) : (
+            <p className="preview-empty">Select a file to see its changes.</p>
           )}
-          <p className="changes-future-note">Diff preview and staging actions are planned for F09/F10.</p>
         </div>
-      )}
+        <form className="commit-composer" aria-label="Commit" onSubmit={(event) => event.preventDefault()}>
+          <div className="composer-message" title={commitPlanned}>
+            <input type="text" placeholder="Commit subject" aria-label="Commit subject" disabled />
+            <textarea placeholder="Description" aria-label="Commit description" rows={3} disabled />
+          </div>
+          <div className="composer-actions">
+            <label className="composer-amend" title={commitPlanned}>
+              <input type="checkbox" disabled />
+              Amend
+            </label>
+            <button type="button" className="button" aria-disabled="true" title={commitPlanned}>
+              Commit
+            </button>
+          </div>
+        </form>
+      </div>
     </section>
   );
 }

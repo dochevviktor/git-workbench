@@ -16,7 +16,7 @@ import { graphRowHeight, graphWidth } from '../lib/graph-geometry';
 import { referenceChips } from '../lib/references';
 import { CommitDetails } from './CommitDetails';
 import { CommitGraph } from './CommitGraph';
-import { SearchIcon } from './Icons';
+import { MessageBodyIcon } from './Icons';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { useContextMenu } from './menu/context-menu';
@@ -62,6 +62,7 @@ const CommitRow = memo(function CommitRow({
   const chips = referenceChips(commit.decorations, referencesByName);
   const author = authorName(commit);
   const date = formatListDate(commit.author.date);
+  const hasBody = commit.body.trim().length > 0;
   const classes = ['commit-row'];
   if (selected) classes.push('selected');
   if (head) classes.push('head');
@@ -74,7 +75,7 @@ const CommitRow = memo(function CommitRow({
       id={`history-commit-${commit.id}`}
       role="option"
       aria-selected={selected}
-      aria-label={`${commit.subject || 'Commit without a subject'}, ${author}, ${date}, ${shortHash(commit.id)}${
+      aria-label={`${commit.subject || 'Commit without a subject'}${hasBody ? ' (has description)' : ''}, ${author}, ${date}, ${shortHash(commit.id)}${
         graph.merge ? ', merge commit' : ''
       }${graph.collapsed ? ', merged branch collapsed' : ''}${head ? ', HEAD' : ''}`}
       className={classes.join(' ')}
@@ -97,6 +98,11 @@ const CommitRow = memo(function CommitRow({
         />
         {chips.length > 0 && <ReferenceChipList chips={chips} lane={graph.lane} />}
         <span className="commit-subject">{commit.subject || '(no subject)'}</span>
+        {hasBody && (
+          <span className="commit-body-indicator" title="The message has a description" aria-hidden="true">
+            <MessageBodyIcon size={12} />
+          </span>
+        )}
       </div>
       <div
         className="commit-cell commit-author-cell"
@@ -135,34 +141,19 @@ export function HistoryView({ history }: HistoryViewProps) {
     selectedCommitId,
     filter,
     filterKey,
-    setFilter,
     clearFilter,
     selectCommit,
     loadMore,
     hasMore,
     loadingMore,
+    reveal: revealRequest,
+    finishReveal,
   } = history;
   const [manualCollapsedMergeIds, setManualCollapsedMergeIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [collapseAllMode, setCollapseAllMode] = useState(false);
   const [expandedMergeIds, setExpandedMergeIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [searchText, setSearchText] = useState('');
-  const activeSearchQuery = filter.kind === 'commit-search' ? filter.query : '';
-
-  useEffect(() => {
-    setSearchText(activeSearchQuery);
-  }, [activeSearchQuery]);
-
-  useEffect(() => {
-    const normalized = searchText.trim();
-    if (normalized === activeSearchQuery) return;
-    const timer = window.setTimeout(() => {
-      if (normalized.length === 0) clearFilter();
-      else setFilter({ kind: 'commit-search', query: normalized.slice(0, 256) });
-    }, 220);
-    return () => window.clearTimeout(timer);
-  }, [activeSearchQuery, clearFilter, searchText, setFilter]);
 
   useEffect(() => {
     setManualCollapsedMergeIds(new Set());
@@ -195,6 +186,8 @@ export function HistoryView({ history }: HistoryViewProps) {
     [references],
   );
   const loadedCommitIds = useMemo(() => new Set(loadedCommits.map((commit) => commit.id)), [loadedCommits]);
+  // Reachability is only known from loaded commits; a filtered history without HEAD dims nothing.
+  const headLoaded = headCommit !== null && loadedCommitIds.has(headCommit);
   const currentBranch = references.find((reference) => reference.isHead && reference.kind === 'branch');
   const selectedIndex = commits.findIndex((commit) => commit.id === selectedCommitId);
 
@@ -232,7 +225,7 @@ export function HistoryView({ history }: HistoryViewProps) {
   }, []);
 
   const reveal = useCallback(
-    (id: string) => {
+    (id: string, block: ScrollLogicalPosition = 'nearest') => {
       const owners = projection.hiddenByMerge.get(id);
       if (owners && owners.length > 0) {
         if (collapseAllMode) {
@@ -247,25 +240,40 @@ export function HistoryView({ history }: HistoryViewProps) {
       }
       selectCommit(id);
       window.requestAnimationFrame(() =>
-        document.getElementById(`history-commit-${id}`)?.scrollIntoView({ block: 'nearest' }),
+        document.getElementById(`history-commit-${id}`)?.scrollIntoView({ block }),
       );
     },
     [collapseAllMode, projection.hiddenByMerge, selectCommit],
   );
 
-  const commitMenu = useCallback(
+  // A commit chosen elsewhere, such as a search result, is selected once its page has loaded.
+  useEffect(() => {
+    if (revealRequest?.status !== 'ready') return;
+    reveal(revealRequest.commitId, 'center');
+    finishReveal(revealRequest.token);
+  }, [finishReveal, reveal, revealRequest]);
+
+  /** Fork's graph menu: toggle the merge under the pointer, or every loaded merge at once. */
+  const graphMenu = useCallback(
     (commit: RepositoryHistoryCommit, row: HistoryGraphRow | undefined): MenuEntry[] =>
       compactMenu([
         row?.merge && {
           id: 'toggle-branch',
-          label: row.collapsed ? 'Expand Branch' : 'Collapse Branch',
+          label: row.collapsed ? 'Expand' : 'Collapse',
           shortcut: row.collapsed ? 'ArrowRight' : 'ArrowLeft',
           run: () => toggleBranch(commit.id, !row.collapsed),
         },
         row?.merge && menuSeparator,
         {
+          id: 'expand-all-branches',
+          label: 'Expand All',
+          disabled: collapsedMergeIds.size === 0,
+          disabledReason: 'All loaded merge branches are already expanded.',
+          run: expandAllBranches,
+        },
+        {
           id: 'collapse-all-branches',
-          label: 'Collapse All Branches',
+          label: 'Collapse All',
           disabled: mergeCommitIds.length === 0 || mergeCommitIds.every((id) => collapsedMergeIds.has(id)),
           disabledReason:
             mergeCommitIds.length === 0
@@ -273,16 +281,15 @@ export function HistoryView({ history }: HistoryViewProps) {
               : 'All loaded merge branches are already collapsed.',
           run: collapseAllBranches,
         },
-        {
-          id: 'expand-all-branches',
-          label: 'Expand All Branches',
-          disabled: collapsedMergeIds.size === 0,
-          disabledReason: 'All loaded merge branches are already expanded.',
-          run: expandAllBranches,
-        },
-        menuSeparator,
-        { id: 'create-branch', label: 'Create New Branch…', ...planned('Creating branches', 'P05') },
-        { id: 'create-tag', label: 'Create New Tag…', ...planned('Creating tags', 'P05') },
+      ]),
+    [collapseAllBranches, collapsedMergeIds, expandAllBranches, mergeCommitIds, toggleBranch],
+  );
+
+  const commitMenu = useCallback(
+    (commit: RepositoryHistoryCommit, row: HistoryGraphRow | undefined): MenuEntry[] =>
+      compactMenu([
+        { id: 'create-branch', label: 'New Branch…', ...planned('Creating branches', 'P05') },
+        { id: 'create-tag', label: 'New Tag…', ...planned('Creating tags', 'P05') },
         menuSeparator,
         {
           id: 'interactive-rebase',
@@ -309,15 +316,11 @@ export function HistoryView({ history }: HistoryViewProps) {
           label: 'Copy Commit Message',
           run: () => copyText(commit.body ? `${commit.subject}\n\n${commit.body}` : commit.subject),
         },
+        // The graph commands stay reachable from the keyboard-opened commit menu as well.
+        menuSeparator,
+        ...graphMenu(commit, row),
       ]),
-    [
-      collapseAllBranches,
-      collapsedMergeIds,
-      currentBranch?.name,
-      expandAllBranches,
-      mergeCommitIds,
-      toggleBranch,
-    ],
+    [currentBranch?.name, graphMenu],
   );
 
   const openCommitMenu = useCallback(
@@ -325,14 +328,20 @@ export function HistoryView({ history }: HistoryViewProps) {
       event.preventDefault();
       setContextCommitId(commit.id);
       const row = graph[commits.findIndex((candidate) => candidate.id === commit.id)];
+      const cell = event.currentTarget.querySelector('.commit-subject-cell');
+      const onGraph =
+        row !== undefined &&
+        cell !== null &&
+        event.clientX !== 0 &&
+        event.clientX - cell.getBoundingClientRect().left < graphWidth(row);
       showContextMenu({
         anchor: contextMenuAnchor(event, event.currentTarget),
-        items: commitMenu(commit, row),
-        label: `Commit ${shortHash(commit.id)}`,
+        items: onGraph ? graphMenu(commit, row) : commitMenu(commit, row),
+        label: `${onGraph ? 'Graph' : 'Commit'} ${shortHash(commit.id)}`,
         onClose: () => setContextCommitId(undefined),
       });
     },
-    [commitMenu, commits, graph, showContextMenu],
+    [commitMenu, commits, graph, graphMenu, showContextMenu],
   );
 
   const moveSelection = (index: number) => {
@@ -416,50 +425,19 @@ export function HistoryView({ history }: HistoryViewProps) {
       aria-label="Commit history"
       style={{ '--history-list-height': `${listHeight}px` } as CSSProperties}
     >
-      <div className="history-filter-bar">
-        <label className="history-search">
-          <SearchIcon size={14} />
-          <input
-            id="history-commit-search"
-            type="search"
-            value={searchText}
-            maxLength={256}
-            placeholder="Search commits"
-            aria-label="Search commits"
-            spellCheck={false}
-            onChange={(event) => setSearchText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && searchText) {
-                event.preventDefault();
-                setSearchText('');
-              }
-            }}
-          />
-          {searchText && (
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Clear commit search"
-              title="Clear commit search"
-              onClick={() => setSearchText('')}
-            >
-              ×
-            </button>
-          )}
-        </label>
-        {filter.kind === 'reference' && (
-          <div className="history-scope" role="status">
-            <span>
-              History:{' '}
-              {references.find((reference) => reference.target === filter.target)?.name ??
-                shortHash(filter.target)}
+      {filter.kind === 'reference' && (
+        <div className="history-filter-strip" role="status">
+          <span className="history-filter-label">
+            Filtered by:{' '}
+            <span className="history-filter-name">
+              {`'${references.find((reference) => reference.target === filter.target)?.name ?? shortHash(filter.target)}'`}
             </span>
-            <button type="button" className="button button-small" onClick={clearFilter}>
-              Show all commits
-            </button>
-          </div>
-        )}
-      </div>
+          </span>
+          <button type="button" className="link-button history-filter-clear" onClick={clearFilter}>
+            Clear filter
+          </button>
+        </div>
+      )}
       {history.error && (
         <div className="inline-alert" role="alert">
           <span>{history.error}</span>
@@ -475,11 +453,9 @@ export function HistoryView({ history }: HistoryViewProps) {
           <p className="list-message">History is unavailable. Retry to request it again.</p>
         ) : commits.length === 0 ? (
           <p className="list-message">
-            {filter.kind === 'commit-search'
-              ? `No commits match “${filter.query}”.`
-              : filter.kind === 'reference'
-                ? 'This reference has no commits to display.'
-                : 'This repository has no commits yet.'}
+            {filter.kind === 'all'
+              ? 'This repository has no commits yet.'
+              : 'The filtered history has no commits to display.'}
           </p>
         ) : (
           <div
@@ -502,7 +478,7 @@ export function HistoryView({ history }: HistoryViewProps) {
                   graph={row}
                   selected={commit.id === selectedCommitId}
                   head={commit.id === headCommit}
-                  dimmed={headCommit !== null && !reachable.has(commit.id)}
+                  dimmed={headLoaded && !reachable.has(commit.id)}
                   contextTarget={commit.id === contextCommitId}
                   referencesByName={referencesByName}
                   onSelect={reveal}

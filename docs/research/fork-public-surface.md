@@ -1,14 +1,20 @@
 # Fork: public feature and layout baseline
 
-Research date: **2026-09-16**; F05/F08 source refresh: **2026-09-17**. Scope: independently implementing
-publicly described workflows, with Linux as the primary target. This document is a requirements
-inventory, not a claim of verified equivalence.
+Research date: **2026-09-16**; F05/F08 source refresh and design reference refresh: **2026-09-17**.
+Scope: independently implementing publicly described workflows, with Linux as the primary target. This
+document is a requirements inventory, not a claim of verified equivalence.
 
 Only the public website, official release notes, official blog posts, and published screenshots were
 consulted. No Fork installation, application execution, binary download, decompilation, or proprietary
 source inspection was used. Screenshots were viewed as references and are linked below; they are not
-application assets and are not copied into this repository. Code, branding, icons, wording, and styling
+application assets and are not committed to this repository. Code, branding, icons, wording, and styling
 for this project must be independently authored.
+
+Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
+platform, stated version, and theme in [`fork-references.json`](fork-references.json).
+`npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
+folder and writes an `INDEX.md` there, grouped by topic and source. The local copies exist only for
+comparison: they are never committed, bundled, or used as application assets.
 
 ## Baseline and confidence
 
@@ -146,12 +152,14 @@ Mac release history, but the notes do not specify the complete query language, s
 Neither source establishes Linux support or parity between the two platforms.
 
 This project’s first F06 slice is an **I** choice: a reference context-menu action scopes the history
-query to the selected reference’s validated commit target, while the history search field performs a
-bounded, case-insensitive, fixed-string search over commit messages. Both filters use the existing
-generation guard and paged history request, and search text remains a single backend argument. The
-slice is verified against disposable Git fixtures and an Electron flow. File-list filtering, path
-history, diff-content search, author/hash search, recent-query persistence, and large-history search
-performance remain unverified and are deferred to the changed-file/diff and P08 investigation slices.
+query to the selected reference’s validated commit target, while the commit search field performs a
+bounded, case-insensitive, fixed-string search over commit messages. Since the 2026-09-17 design refresh
+below, that field and its results live in a sidebar Search Commits panel instead of filtering the list.
+Both filters use the existing generation guard and paged history request, and search text remains a
+single backend argument. The slice is verified against disposable Git fixtures and an Electron flow.
+File-list filtering, path history, diff-content search, author/hash search, recent-query persistence, and
+large-history search performance remain unverified and are deferred to the changed-file/diff and P08
+investigation slices.
 
 ### F07 source refresh
 
@@ -198,8 +206,8 @@ platform differences, actual merge-conflict presentation, and later diff/staging
 
 Accessed **2026-09-16**, prompted by a request to bring the layout, graph drawing, context menus, and
 title bar closer to Fork. Only the public images and release-note pages linked below were used; images
-were viewed in a temporary working directory and are not stored in this repository. Frames of the
-public blog GIFs were inspected individually.
+were viewed in a temporary working directory (they are now part of the local reference library described
+at the top of this document). Frames of the public blog GIFs were inspected individually.
 
 Observed in public images (**O**; contents date from 2019–2020, so current spacing may differ):
 
@@ -264,12 +272,82 @@ Unimplemented Git operations keep Fork’s menu and toolbar positions but are di
 naming the planned phase. Colors, icons, and wording are independently authored; Fork assets are not
 used.
 
-Unresolved (**U**): the 2026 “updated graph lines” and toolbar icon refresh are not shown in the
-public images examined; where vertical tabs are placed in Fork 2.70/2.22; Fork’s current dark palette;
-the full current commit, branch, and tab context-menu contents; whether lanes still move sideways;
-the rules behind “Compact branch labels” (Windows 1.55, Mac 2.19); and how tab badges for uncommitted
-changes (Mac 2.45) render. Linux has no Fork release to compare with, so Linux chrome follows the
-Windows layout.
+Unresolved (**U**): the full current commit, branch, and tab context-menu contents; whether lanes
+still move sideways; the rules behind “Compact branch labels” (Windows 1.55, Mac 2.19); and exact
+current palettes and spacing. Linux has no Fork release to compare with, so Linux chrome follows the
+Windows layout. The 2026-09-17 refresh below resolves the graph-marker refresh, tab indicators, and
+Mac vertical-tab placement from newer public screenshots.
+
+### Design reference refresh (2026-09-17)
+
+Accessed **2026-09-17**, prompted by a request to realign the design after the F05–F08 slices. The
+official images above date from 2018–2020, so current visuals come from user screenshots attached to
+Fork’s public issue trackers ([Mac][tracker-mac], [Windows][tracker-win]) between 2025-03 and 2026-09,
+plus the images already cited. File-name prefixes below identify images in the local reference library;
+each entry in [`fork-references.json`](fork-references.json) links its issue. Reporter annotations and
+redactions are not Fork UI, and a mockup attached to Mac issue 2707 was excluded. Versions are cited only
+where the reporter stated them.
+
+Observed (**O**):
+
+- Windows chrome, 2025-08 to 2026-08 (`win-2025-08-01-trackerwin2560-2`,
+  `win-2026-05-13-trackerwin2777-1`, and `win-2026-08-13-trackerwin2830-1`, which states 2.21): the title
+  row has menus, a centered title, and feedback (and, in `win-2026-05-23-trackerwin2789-1`, notification)
+  icons beside the window buttons. The compact toolbar reads Quick Launch, Fetch, Pull, Push, Stash ▾,
+  the repository panel (name and branch, without `*`), Branch ▾, then Open in ▾, Console, Appearance ▾,
+  and Work ▾. Equal-width tabs are low and mark uncommitted changes with a dot at their left edge
+  (`win-2025-06-08-trackerwin2514-1`); Windows preferences name a “Tab indicator for uncommitted changes”
+  (`win-2025-12-17-trackerwin2670-2`). Mac 2.x pill tabs show the dot at the right
+  (`mac-2026-04-13-tracker2598-1`).
+- Mac 2.70-era window (`mac-2026-09-10-tracker2707-1`, issue posted six days after the 2.70 release):
+  a left column lists workspace repositories while the horizontal pill tabs remain; the detail views
+  use a segmented Commit/Changes/File Tree control.
+- Graph (Windows 2.17–2.22, Mac 2026: `win-2026-03-24-trackerwin2747-1`,
+  `win-2026-09-10-trackerwin2847-1`, `mac-2026-09-10-tracker2707-1`): ordinary commits are small filled
+  dots; merge commits are rings holding a chevron, pointing down while expanded and right while
+  collapsed. This matches the Windows 2.16 (2026-02-20) release note “Refreshed visual style - chevron
+  icons, updated graph lines, new toolbar icons” (**D**). Right-clicking the graph at a merge showed a
+  menu with Collapse, Expand All, and Collapse All (`win-2025-07-23-trackerwin2548-1`).
+- Labels (`win-2026-04-16-trackerwin2763-1`, `win-2025-11-03-trackerwin2642-1`): a branch label is a
+  lane-tinted box; a hosting/remote icon sits in its own adjacent box; tags use one lavender box with an
+  icon segment. Subjects with a message body end in a return-arrow indicator
+  (`mac-2026-07-02-tracker2658-1`, `mac-2026-07-16-tracker2668-1`).
+- Commit menu (`win-2025-10-12-trackerwin2628-3`, `mac-2025-08-14-tracker2421-1`): New Branch…,
+  New Tag…, Interactive Rebase ▸, Reset '<branch>' to Here…; later entries are not shown.
+- Search (`win-2026-04-16-trackerwin2763-1`): the sidebar magnifier replaces the reference tree with
+  Search Commits, a query field, a “Commit Message ▾” scope, a result count, and result rows with avatar,
+  subject, and date. A reference-filtered commit list shows “Filtered by: '…' Clear filter” above it.
+- Commit details on Windows use underlined tabs (`win-2025-08-27-trackerwin2584-1`,
+  `win-2025-08-01-trackerwin2560-2`). The Commit tab lists changed files under the message. The Changes
+  tab starts with a one-line summary (avatar, author, short SHA, date, subject), then a file pane with a
+  search strip and a folder tree or Name/Location list with colored status badges, beside the diff
+  (`site-imagediffwin`, `win-2026-03-24-trackerwin2747-1`). The File Tree tab pairs a folder tree
+  (folders first) with a line-numbered preview (`mac-2026-09-10-tracker2707-1`,
+  `win-2025-10-07-trackerwin2626-1`).
+- Local changes (`win-2026-05-13-trackerwin2777-1`, `win-2026-03-23-trackerwin2743-1`,
+  `win-2025-10-30-trackerwin2641-1`, `mac-2025-09-23-tracker2464-1`, `site-commitviewwin1`): an Unstaged
+  pane with Stage sits above a Staged pane with Unstage; untracked files appear in Unstaged with an added
+  badge. A strip above them holds search, an eye toggle, and an options menu with View as Tree, View as
+  List, View as Combined List, Hide Untracked Files, and Show Ignored Files
+  (`mac-2026-04-25-tracker2616-1`). The diff fills the right side above a commit composer with subject,
+  description, Amend, and Commit.
+
+Implemented from these observations (**I**, independently drawn): commit dots and chevron merge rings;
+separate remote-marker label boxes and fixed-color tag labels; the message-body indicator; a compact
+toolbar with Branch ▾ and a Console button (both disabled with their phases); dot tab indicators; a
+sidebar Search Commits panel whose results select commits in the unfiltered list, loading at most 40
+further history pages to reveal one; a “Filtered by … Clear filter” strip; a graph menu on right-clicks
+inside the graph column, with the same commands appended to the commit menu so they stay reachable from
+the keyboard; the Commit tab file list; Changes and File Tree split panes with a lazily loaded folder
+tree; and the Local Changes Unstaged/Staged layout with its options menu. Views that depend on later
+phases keep Fork’s positions but explain themselves: the diff area shows change metadata and names
+P04, and Stage, Unstage, and the commit composer are disabled until P04. The active detail tab persists
+while other commits are selected. View as Combined List, the eye toggle, and search scopes other than
+commit messages are not implemented.
+
+Unresolved (**U**): whether choosing a Fork search result filters or only scrolls the commit list; the
+complete search scope list; the eye toggle’s meaning; whether colored tab dots are tab colors or change
+indicators; current dark and light palettes; and all Linux behavior.
 
 ## Feature coverage
 
@@ -282,7 +360,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts                    | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                                                                    | P02, P12      |
 | F04 | Commit graph, reference labels, authors, hashes, dates, selection                                           | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures        | P03           |
 | F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                      | P03           |
-| F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; I: reference-scoped history and fixed-string commit-message search (partial)             | P03, P08      |
+| F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; O: [tracker][tracker-win]; I: reference filter, sidebar message search (partial)         | P03, P08      |
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                      | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]; I: bounded local status listing (partial)                            | P04           |
 | F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                                      | P04           |
@@ -337,27 +415,28 @@ interaction behavior.
 Our mature layout (**I**, independently implemented, following the observations above):
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ File View Repository Window Help      Title            ─  □  ✕       │
-├─────────────────────────────────────────────────────────────────────┤
-│ Quick Launch Fetch Pull Push Stash▾ [≡ repo* / branch ↑↓] New Branch │
-│                                                 Open in▾ Appearance▾ │
-├─────────────────────────────────────────────────────────────────────┤
-│ repository tab* │ repository tab │ Repository Manager │            + │
-├───────────────┬─────────────────────────────────────────────────────┤
-│ repo       ⚙  │ graph + labels + subject │ author │ SHA │ date       │
-│ Local Changes │                                                     │
-│ All Commits   ├─────────────────────────────────────────────────────┤
-│ ⑂  🔍         │ Commit │ Changes │ File Tree                         │
-│ Filter        │ author/committer, refs, SHA, parents, message       │
-│ ▾ Branches    │                                                     │
-│ ▾ Remotes     │ Local Changes swaps the right side for               │
-│ ▸ Tags        │ staged + unstaged files | diff | commit composer    │
-│   Stashes     │                                                     │
-│   Submodules  │                                                     │
-└───────────────┴─────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│ File View Repository Window Help            Title                ─  □  ✕   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Quick Launch Fetch Pull Push Stash▾ [≡ repo / branch ↑↓] Branch▾           │
+│                                         Open in▾ Console Appearance▾       │
+├────────────────────────────────────────────────────────────────────────────┤
+│ ● repository tab │ repository tab │ Repository Manager │                 + │
+├───────────────┬────────────────────────────────────────────────────────────┤
+│ repo       ⚙  │ Filtered by: 'branch'  Clear filter   (only when filtered) │
+│ Local Changes │ graph + labels + subject ↩ │ author │ SHA │ date           │
+│ All Commits   ├────────────────────────────────────────────────────────────┤
+│ ⑂  ⌕          │ Commit │ Changes │ File Tree                               │
+│ Filter        │ Commit: people, refs, SHA, parents, message, files         │
+│ ▾ Branches    │ Changes, File Tree: summary row, file list │ preview       │
+│ ▾ Remotes     │                                                            │
+│ ▸ Tags        │ Local Changes swaps the right side for                     │
+│   Stashes     │ Unstaged/Stage, Staged/Unstage │ diff + commit composer    │
+│   Submodules  │                                                            │
+└───────────────┴────────────────────────────────────────────────────────────┘
 ```
 
+The sidebar magnifier (⌕) swaps the filter and reference tree for the Search Commits panel.
 Vertical tabs move the tab strip to a column left of the sidebar. The window has no status bar; long
 operations will use the activity surface planned for P01. Panes are resizable and remembered per
 renderer profile. Graph color supplements labels, and added/removed styling supplements signs so color
@@ -425,6 +504,8 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [labels-image]: https://fork.dev/blog/posts/forkwin-1.38/colored-branch-labels.jpg
 [sidebar-filter-image]: https://fork.dev/blog/posts/forkwin-1.38/sidebar-filter.jpg
 [branch-status-image]: https://fork.dev/blog/posts/forkwin-1.48/branch-status.jpg
+[tracker-mac]: https://github.com/fork-dev/Tracker/issues
+[tracker-win]: https://github.com/fork-dev/TrackerWin/issues
 [bisect-gif]: https://fork.dev/blog/posts/forkwin-1.48/bisect.gif
 [stash-gif]: https://fork.dev/blog/posts/forkwin-1.48/partial-stash.gif
 [dnd-gif]: https://fork.dev/blog/posts/forkwin-1.48/drag-and-drop-merge.gif

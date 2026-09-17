@@ -18,11 +18,22 @@ const detailDateFormat = new Intl.DateTimeFormat(undefined, {
   timeZoneName: 'shortOffset',
 });
 
+const shortDateFormat = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
 const relativeDateFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
 export function formatListDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : listDateFormat.format(date);
+}
+
+export function formatShortDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : shortDateFormat.format(date);
 }
 
 export function formatDetailDate(value: string): string {

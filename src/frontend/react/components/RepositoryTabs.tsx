@@ -93,17 +93,19 @@ export function RepositoryTabs({
               }}
             >
               {orientation === 'vertical' && (
-                <span
-                  className={dirty ? 'workspace-tab-icon dirty' : 'workspace-tab-icon'}
-                  aria-hidden="true"
-                >
+                <span className="workspace-tab-icon" aria-hidden="true">
                   <RepositoryIcon size={14} />
                 </span>
               )}
-              <span className="workspace-tab-title">
-                {tab.title}
-                {dirty ? '*' : ''}
-              </span>
+              {dirty && (
+                <span
+                  className="workspace-tab-dirty"
+                  data-testid="tab-dirty-indicator"
+                  title="Uncommitted changes"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="workspace-tab-title">{tab.title}</span>
               {closable(tab) && (
                 <button
                   type="button"

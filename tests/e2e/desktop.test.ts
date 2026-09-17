@@ -169,15 +169,21 @@ test('production build loads its isolated preload and renderer', async () => {
     await featureOneRow.click();
     await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
     await featureOneRow.click({ button: 'right' });
-    const graphMenu = page.getByRole('menu', { name: /^Commit / });
-    await graphMenu.getByRole('menuitem', { name: 'Collapse All Branches', exact: true }).click();
+    const rowMenu = page.getByRole('menu', { name: /^Commit / });
+    await rowMenu.getByRole('menuitem', { name: 'Collapse All', exact: true }).click();
     await expect(featureOneRow).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
 
     await mergeRow.click({ button: 'right' });
-    await expect(graphMenu.getByRole('menuitem', { name: /^Expand Branch/u })).toBeVisible();
-    await expect(graphMenu.getByRole('menuitem', { name: 'Expand All Branches', exact: true })).toBeVisible();
-    await graphMenu.getByRole('menuitem', { name: 'Expand All Branches', exact: true }).click();
+    await expect(rowMenu.getByRole('menuitem', { name: /^Expand(?! All)/u })).toBeVisible();
+    await expect(rowMenu.getByRole('menuitem', { name: 'Expand All', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    // Right-clicking the graph itself opens the compact graph menu.
+    await mergeRow.click({ button: 'right', position: { x: 8, y: 12 } });
+    const graphMenu = page.getByRole('menu', { name: /^Graph / });
+    await expect(graphMenu.getByRole('menuitem', { name: /^Expand(?! All)/u })).toBeVisible();
+    await expect(graphMenu.getByRole('menuitem', { name: 'New Branch…' })).toHaveCount(0);
+    await graphMenu.getByRole('menuitem', { name: 'Expand All', exact: true }).click();
     await expect(page.getByTestId('history-commit')).toHaveCount(5);
     await expect(page.getByRole('treeitem', { name: 'graph' })).toHaveCount(0);
     await page.getByRole('treeitem', { name: 'feature' }).dblclick();
@@ -189,22 +195,29 @@ test('production build loads its isolated preload and renderer', async () => {
     await referenceMenu
       .getByRole('menuitem', { name: "Filter History to 'feature/graph'", exact: true })
       .click();
-    await expect(page.getByRole('button', { name: 'Show all commits', exact: true })).toBeVisible();
+    await expect(page.getByText("Filtered by: 'feature/graph'", { exact: true })).toBeVisible();
     await expect(page.getByTestId('history-commit')).toHaveCount(3);
     await expect(page.getByText('Merge feature graph', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Show all commits', exact: true }).click();
+    await page.getByRole('button', { name: 'Clear filter', exact: true }).click();
     await expect(page.getByTestId('history-commit')).toHaveCount(5);
 
-    // F06: commit-message search is literal and paged by the backend.
+    // F06: the sidebar search panel runs a literal, backend-paged commit-message search. Its results stay
+    // separate from the commit list, and choosing one selects that commit in the unfiltered list.
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     const commitSearch = page.getByRole('searchbox', { name: 'Search commits' });
+    const searchResults = page.getByTestId('commit-search-result');
     await commitSearch.fill('Feature branch commit 2');
-    await expect(page.getByTestId('history-commit')).toHaveCount(1);
-    await expect(page.getByTestId('history-commit')).toContainText('Feature branch commit 2');
+    await expect(searchResults).toHaveCount(1);
+    await expect(searchResults).toContainText('Feature branch commit 2');
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
+    await searchResults.click();
+    await expect(page.locator('.commit-row.selected')).toContainText('Feature branch commit 2');
+    await expect(page.getByRole('heading', { name: 'Feature branch commit 2' })).toBeVisible();
     await commitSearch.fill('Feature [branch]');
     await expect(page.getByText('No commits match “Feature [branch]”.', { exact: true })).toBeVisible();
     await commitSearch.fill('');
-    await expect(page.getByTestId('history-commit')).toHaveCount(5);
+    await expect(searchResults).toHaveCount(0);
+    await page.getByRole('button', { name: 'Branches', exact: true }).click();
 
     await page.getByTestId('history-commit').filter({ hasText: 'First history commit' }).click();
     await expect(page.getByRole('heading', { name: 'First history commit' })).toBeVisible();
@@ -239,7 +252,7 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(page.getByRole('menu')).toHaveCount(0);
 
     await page.getByRole('button', { name: /^Local Changes/u }).click();
-    await expect(page.getByRole('heading', { name: 'Local Changes' })).toBeVisible();
+    await expect(page.getByTestId('working-changes')).toBeVisible();
     await page.getByRole('button', { name: 'All Commits' }).click();
     await expect(page.getByTestId('history-commit')).toHaveCount(5);
 
@@ -252,17 +265,22 @@ test('production build loads its isolated preload and renderer', async () => {
     await writeFile(join(fixtureRepository, 'ignored.txt'), 'ignored\n', 'utf8');
     await page.getByRole('button', { name: /^Local Changes/u }).click();
     await expect(page.getByTestId('working-changes')).toBeVisible();
-    await expect(page.getByTestId('working-changes-staged')).toContainText('partial.txt');
-    await expect(page.getByTestId('working-changes-unstaged')).toContainText('partial.txt');
-    await expect(page.getByTestId('working-changes-untracked')).toContainText('untracked.txt');
-    await expect(page.getByTestId('working-changes-ignored')).toHaveCount(0);
-    await page.getByLabel('Show ignored').check();
-    await expect(page.getByTestId('working-changes-ignored')).toContainText('ignored.txt');
-    await page.getByRole('button', { name: 'List view', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'List view', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    const stagedFiles = page.getByTestId('working-changes-staged');
+    const unstagedFiles = page.getByTestId('working-changes-unstaged');
+    await expect(stagedFiles).toContainText('partial.txt');
+    await expect(unstagedFiles).toContainText('partial.txt');
+    await expect(unstagedFiles).toContainText('untracked.txt');
+    await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'ignored.txt' })).toHaveCount(
+      0,
     );
+    await page.getByRole('button', { name: 'Local changes options', exact: true }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Show Ignored Files', exact: true }).click();
+    await expect(unstagedFiles).toContainText('ignored.txt');
+    await page.getByRole('button', { name: 'Local changes options', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: 'View as List', exact: true }).click();
+    await expect(unstagedFiles.locator('.file-change-columns')).toBeVisible();
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'untracked.txt' }).click();
+    await expect(page.getByTestId('working-change-preview')).toContainText('Untracked');
 
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
@@ -277,7 +295,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toContainText('second*');
+    await expect(
+      page.getByRole('tab', { name: /second, Uncommitted changes/u }).getByTestId('tab-dirty-indicator'),
+    ).toBeVisible();
     await expect(page.locator('.workspace-tabs.horizontal')).toBeVisible();
     if (platform !== 'darwin') {
       await chooseMenu(page, 'View', 'Vertical Tabs', 'menuitemradio');

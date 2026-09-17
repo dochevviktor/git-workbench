@@ -16,6 +16,11 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
   and platform differences in `docs/research/fork-public-surface.md`.
 - Use independently authored visual assets and implementation. Do not present inferred behavior as
   observed behavior or a placeholder as an implemented feature.
+- Before and after layout or styling work, compare the app with the local Fork screenshot library: run
+  `npm run research:references` to restore the git-ignored `docs/research/fork-references/` and browse its
+  `INDEX.md` by topic. Prefer the newest screenshots of the platform being matched (Linux follows Windows).
+  Add new public screenshots to `docs/research/fork-references.json` with source, date, platform, stated
+  version, and theme. Never commit the images or copy them into the application.
 - Use npm and the committed lockfile. Run relevant tests plus `npm run check` and `npm run build`
   for a completed phase; run the Electron smoke test when changing startup, preload, or packaging.
 - Update the plan's progress ledger and feature coverage when a phase is actually verified.
@@ -28,6 +33,8 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
 - For local Electron tests, read the bridge's X11 display from `$XDG_RUNTIME_DIR/piped-display` for each
   launch; do not hardcode a display number or execute the file as shell code. Use
   `DISPLAY="$(< "$XDG_RUNTIME_DIR/piped-display")" ELECTRON_TEST_DISABLE_GPU=1 npm run test:e2e` in Bash.
+  If the shell reports `XDG_SESSION_TYPE=wayland`, also set `ELECTRON_TEST_OZONE_PLATFORM=x11`; otherwise
+  Electron starts on native Wayland, where Playwright startup times out.
 - Reuse the bridge rather than starting another X server. Preserve the Wayland/audio environment and
   Electron sandbox; do not change or restart the user's bridge or IDE services for routine testing.
   See `README.md` for the interactive launch command and native Wayland automation caveat.

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositoryHistoryDecoration, RepositoryHistoryReference } from '../../src/common/ipc/contracts';
 import { compactMenu, menuSeparator, planned } from '../../src/frontend/react/components/menu/menu-model';
+import { statusBadge } from '../../src/frontend/react/lib/change-status';
+import { buildPathTree, flattenPathTree, splitPath } from '../../src/frontend/react/lib/file-tree';
 import { ariaShortcut, formatShortcut, matchesShortcut } from '../../src/frontend/react/lib/platform';
 import { referenceChips, referenceSections } from '../../src/frontend/react/lib/references';
 import type { ReferenceTreeNode } from '../../src/frontend/react/lib/references';
@@ -132,6 +134,8 @@ describe('keyboard shortcuts', () => {
     expect(formatShortcut('Mod+Shift+T', 'darwin')).toBe('⇧⌘T');
     expect(formatShortcut('Ctrl+Shift+Tab', 'darwin')).toBe('⌃⇧Tab');
     expect(formatShortcut('Mod+Plus', 'linux')).toBe('Ctrl++');
+    expect(formatShortcut('ArrowLeft', 'linux')).toBe('←');
+    expect(formatShortcut('ArrowRight', 'darwin')).toBe('→');
     expect(ariaShortcut('Mod+Shift+T', 'linux')).toBe('Control+Shift+T');
     expect(ariaShortcut('Mod+W', 'darwin')).toBe('Meta+W');
   });
@@ -180,5 +184,66 @@ describe('menu model', () => {
       disabled: true,
       disabledReason: 'Fetching is not available yet (planned for P05).',
     });
+  });
+});
+
+describe('changed file trees', () => {
+  const paths = ['src/ui/theme.ts', 'README.md', 'src/app.ts', 'build/', 'src/ui/a b\nc.ts', 'docs/guide.md'];
+  const tree = buildPathTree(
+    paths,
+    (path) => path,
+    (path) => `file:${encodeURIComponent(path)}`,
+  );
+
+  it('lists folders before files and nests slash-separated paths', () => {
+    const rows = flattenPathTree(tree, new Set());
+    expect(rows.map((row) => `${'  '.repeat(row.level - 1)}${row.node.name}`)).toEqual([
+      'docs',
+      '  guide.md',
+      'src',
+      '  ui',
+      '    a b\nc.ts',
+      '    theme.ts',
+      '  app.ts',
+      'build/',
+      'README.md',
+    ]);
+    expect(rows.find((row) => row.node.name === 'theme.ts')?.parentKey).toBe('folder:src%2Fui');
+  });
+
+  it('hides the contents of collapsed folders and keeps keys safe for element IDs', () => {
+    const rows = flattenPathTree(tree, new Set(['folder:src']));
+    expect(rows.map((row) => row.node.name)).toEqual(['docs', 'guide.md', 'src', 'build/', 'README.md']);
+    expect(rows.find((row) => row.node.name === 'src')?.expanded).toBe(false);
+    expect(
+      buildPathTree(
+        ['a b/c'],
+        (path) => path,
+        (path) => path,
+      )[0]?.key,
+    ).toBe('folder:a%20b');
+  });
+
+  it('splits names from their folders, keeping a directory marker', () => {
+    expect(splitPath('src/ui/theme.ts')).toEqual({ name: 'theme.ts', location: 'src/ui' });
+    expect(splitPath('README.md')).toEqual({ name: 'README.md', location: '' });
+    expect(splitPath('cache/build/')).toEqual({ name: 'build/', location: 'cache' });
+  });
+
+  it('labels every status so the badge color is never the only cue', () => {
+    expect(statusBadge('modified')).toEqual({ symbol: 'M', tone: 'modified', label: 'Modified' });
+    expect(statusBadge('untracked')).toMatchObject({ symbol: '+', tone: 'added', label: 'Untracked' });
+    expect(statusBadge('unmerged')).toMatchObject({ tone: 'conflict', label: 'Conflict' });
+    for (const status of [
+      'added',
+      'copied',
+      'deleted',
+      'renamed',
+      'type-changed',
+      'ignored',
+      'unknown',
+    ] as const) {
+      expect(statusBadge(status).label.length).toBeGreaterThan(0);
+    }
   });
 });

@@ -3,6 +3,7 @@
   "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"] },
   "include": [
     "*.ts",
+    "scripts/**/*.ts",
     "src/backend/**/*.ts",
     "src/common/**/*.ts",
     "src/frontend/react/env.d.ts",

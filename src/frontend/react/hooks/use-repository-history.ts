@@ -8,7 +8,20 @@ import type {
 import { unwrapResult } from '../../../common/ipc/result';
 
 const historyPageSize = 50;
+/** Revealing a commit loads at most this many further pages before giving up. */
+const maximumRevealPages = 40;
 const allHistoryFilter = { kind: 'all' } as const satisfies RepositoryHistoryFilter;
+
+/**
+ * A request to show a commit that may not be loaded yet. The hook loads pages until the commit arrives
+ * (`ready`) or the history ends or the page limit is reached (`unavailable`); the view then selects it.
+ */
+export interface HistoryRevealRequest {
+  readonly token: number;
+  readonly commitId: string;
+  readonly status: 'loading' | 'ready' | 'unavailable';
+  readonly pages: number;
+}
 
 function historyFilterKey(filter: RepositoryHistoryFilter): string {
   return filter.kind === 'all'
@@ -44,6 +57,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     readonly repositoryId: string | undefined;
     readonly filter: RepositoryHistoryFilter;
   }>({ repositoryId: undefined, filter: allHistoryFilter });
+  const [reveal, setReveal] = useState<HistoryRevealRequest>();
+  const revealToken = useRef(0);
   const generation = useRef(0);
   const mounted = useRef(true);
   const filter = ownedFilter.repositoryId === repositoryId ? ownedFilter.filter : allHistoryFilter;
@@ -119,6 +134,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     setNextOffset(null);
     setHasMore(false);
     setError(undefined);
+    setReveal(undefined);
     if (!repositoryId) {
       setLoading(false);
       setLoadingMore(false);
@@ -158,6 +174,30 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     [commits],
   );
 
+  const requestReveal = useCallback((commitId: string) => {
+    revealToken.current += 1;
+    setReveal({ token: revealToken.current, commitId, status: 'loading', pages: 0 });
+  }, []);
+
+  const finishReveal = useCallback((token: number) => {
+    setReveal((current) => (current?.token === token ? undefined : current));
+  }, []);
+
+  useEffect(() => {
+    if (!reveal || reveal.status !== 'loading' || !repositoryId) return;
+    if (commits.some((commit) => commit.id === reveal.commitId)) {
+      setReveal({ ...reveal, status: 'ready' });
+      return;
+    }
+    if (loading || loadingMore) return;
+    if (!hasMore || nextOffset === null || reveal.pages >= maximumRevealPages) {
+      setReveal({ ...reveal, status: 'unavailable' });
+      return;
+    }
+    setReveal({ ...reveal, pages: reveal.pages + 1 });
+    void requestPage(repositoryId, nextOffset, false, generation.current, filter);
+  }, [commits, filter, hasMore, loading, loadingMore, nextOffset, repositoryId, requestPage, reveal]);
+
   return {
     repositoryId,
     filter,
@@ -177,5 +217,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     refresh,
     loadMore,
     selectCommit,
+    reveal,
+    requestReveal,
+    finishReveal,
   };
 }

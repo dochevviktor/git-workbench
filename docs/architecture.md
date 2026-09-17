@@ -129,7 +129,8 @@ title-bar menus, toolbar dropdowns, and context menus: it clamps to the viewport
 radio/check items, disabled items with an explanation, typeahead, and arrow/Home/End/Escape/Tab keys,
 and restores focus when it closes. A context-menu host lets components supply menus and falls back to
 Undo/Redo/Cut/Copy/Paste/Select All for text fields or Copy for selected text; editing commands run
-through `desktop.edit.command()` after focus returns to the original element. Menus reserve Fork's
+through `desktop.edit.command()` after focus returns to the original element. `MenuButton` opens the
+same popup below toolbar and pane buttons and toggles it on repeated presses. Menus reserve Fork's
 positions for workflows planned in later phases, but those entries stay disabled and name the phase.
 
 Theme tokens live on the document root and use CSS `light-dark()`, so portaled menus follow the
@@ -146,8 +147,14 @@ already carries them or open the first free column to the right, drawn as a `bra
 released by a join are not reused in the same row. Each row returns drawing segments (`pass`, `top`,
 `bottom`, `join`, `branch`) and depends only on earlier rows, so appending pages leaves existing rows
 unchanged. The renderer draws each row as an SVG with quarter-circle elbows, overlaps row boundaries to
-avoid seams at fractional scale, colors lines by column, and dims commits that are not reachable from
-HEAD among the loaded commits. Unit tests check hand-built cases and seeded random histories by
+avoid seams at fractional scale, colors lines by column, draws commits as dots and merges as rings whose
+chevron shows the collapse state, and dims commits that are not reachable from HEAD when HEAD is among
+the loaded commits.
+
+Sidebar commit search runs its own bounded history queries and never replaces the commit list. Choosing
+a result asks the history hook to load further pages, at most 40, until that commit is present; the
+history view then expands any collapsed merge hiding it and selects it. Revision trees are cached per
+directory for the selected commit and load as folders expand. Unit tests check hand-built cases and seeded random histories by
 following every drawn line to the expected parent.
 
 ## Desktop security and lifecycle

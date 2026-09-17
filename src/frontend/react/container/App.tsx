@@ -81,7 +81,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   } = repositories;
   // History stays loaded for the last repository tab while the Repository Manager tab is in front.
   const history = useRepositoryHistory(lastActive?.id);
-  const { refresh: refreshHistory, selectCommit, references, setFilter: setHistoryFilter } = history;
+  const {
+    refresh: refreshHistory,
+    selectCommit,
+    references,
+    setFilter: setHistoryFilter,
+    requestReveal,
+  } = history;
   const showContextMenu = useContextMenu();
   const [appearance, setAppearance] = usePersistentState<Appearance>(
     'appearance',
@@ -95,6 +101,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [refreshSignal, setRefreshSignal] = useState(0);
   const development = info?.mode === 'development';
   const nativeMenu = platform === 'darwin';
   const repositoryBusy = busy !== undefined;
@@ -179,6 +186,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const refresh = useCallback(() => {
     refreshHistory();
     void refreshOpen();
+    setRefreshSignal((value) => value + 1);
   }, [refreshHistory, refreshOpen]);
 
   const revealCommit = useCallback(
@@ -192,10 +200,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [selectCommit, setView],
   );
 
-  const focusCommitSearch = useCallback(() => {
-    setView('history');
-    window.requestAnimationFrame(() => document.getElementById('history-commit-search')?.focus());
-  }, [setView]);
+  const revealSearchResult = useCallback(
+    (commitId: string) => {
+      setView('history');
+      requestReveal(commitId);
+    },
+    [requestReveal, setView],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -679,7 +690,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onWindowCommand={windowCommand}
       />
       <Toolbar
-        platform={platform}
         repository={active}
         tracking={active ? history.tracking : undefined}
         openInItems={openInItems}
@@ -717,7 +727,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               references={references}
               referencesLoading={history.loading}
               onViewChange={setView}
-              onCommitSearch={focusCommitSearch}
+              reveal={history.reveal}
+              historyFiltered={history.filter.kind !== 'all'}
+              onRevealCommit={revealSearchResult}
               onReferenceSelect={(reference) => {
                 if (history.commits.some((commit) => commit.id === reference.target))
                   revealCommit(reference.target);
@@ -734,7 +746,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             />
             <main className="repository-content">
               {view === 'changes' ? (
-                <ChangesView key={active.id} repository={active} />
+                <ChangesView key={active.id} repository={active} refreshSignal={refreshSignal} />
               ) : (
                 <HistoryView history={history} />
               )}

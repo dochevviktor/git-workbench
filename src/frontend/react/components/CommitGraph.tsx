@@ -92,18 +92,19 @@ export const CommitGraph = memo(function CommitGraph({ row, onToggle, onSelect }
       ))}
       {row.merge ? (
         <>
-          <circle className={`graph-node merge ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={5} />
+          <circle className={`graph-node merge ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={5.5} />
+          {/* A merge ring holds a chevron: pointing down while its branch is shown, right when collapsed. */}
           <path
-            className="graph-toggle-symbol"
+            className={`graph-toggle-symbol ${laneColorClass(row.lane)}`}
             d={
               row.collapsed
-                ? `M${nodeX - 2.25} ${nodeY}H${nodeX + 2.25}M${nodeX} ${nodeY - 2.25}V${nodeY + 2.25}`
-                : `M${nodeX - 2.25} ${nodeY}H${nodeX + 2.25}`
+                ? `M${nodeX - 1.25} ${nodeY - 2.5}L${nodeX + 1.25} ${nodeY}L${nodeX - 1.25} ${nodeY + 2.5}`
+                : `M${nodeX - 2.5} ${nodeY - 1.25}L${nodeX} ${nodeY + 1.25}L${nodeX + 2.5} ${nodeY - 1.25}`
             }
           />
         </>
       ) : (
-        <circle className={`graph-node commit ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={3.5} />
+        <circle className={`graph-node commit ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={3} />
       )}
     </svg>
   );

@@ -1,8 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import type { RepositoryHistoryTracking, RepositorySummary } from '../../../common/ipc/contracts';
-import type { Platform } from '../lib/platform';
 import {
   ActivityIcon,
   AppearanceIcon,
@@ -15,12 +12,12 @@ import {
   PushIcon,
   QuickLaunchIcon,
   StashIcon,
+  TerminalIcon,
 } from './Icons';
-import { MenuPopup } from './menu/MenuPopup';
-import type { MenuAnchor, MenuCommand, MenuEntry } from './menu/menu-model';
+import { MenuButton } from './menu/MenuButton';
+import type { MenuEntry } from './menu/menu-model';
 
 interface ToolbarProps {
-  readonly platform: Platform;
   readonly repository: RepositorySummary | undefined;
   readonly tracking: RepositoryHistoryTracking | undefined;
   readonly openInItems: readonly MenuEntry[];
@@ -32,88 +29,45 @@ interface ToolbarButtonProps {
   readonly label: string;
   readonly disabledReason?: string | undefined;
   readonly menuItems?: readonly MenuEntry[] | undefined;
-  readonly platform: Platform;
   readonly onClick?: (() => void) | undefined;
 }
 
-function ToolbarButton({ icon, label, disabledReason, menuItems, platform, onClick }: ToolbarButtonProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const restoreFocus = useRef<HTMLElement | null>(null);
-  const [anchor, setAnchor] = useState<MenuAnchor>();
-  const [keyboard, setKeyboard] = useState(false);
-  const disabled = disabledReason !== undefined;
-
-  const close = useCallback(() => {
-    setAnchor(undefined);
-    const target = restoreFocus.current;
-    restoreFocus.current = null;
-    if (target?.isConnected) target.focus({ preventScroll: true });
-  }, []);
-  const activate = useCallback(
-    (command: MenuCommand) => {
-      close();
-      command.run?.();
-    },
-    [close],
-  );
-  const isOutsideIgnored = useCallback((target: Element) => buttonRef.current?.contains(target) ?? false, []);
-
-  const open = (fromKeyboard: boolean) => {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setKeyboard(fromKeyboard);
-    setAnchor({ type: 'below', rect });
-  };
-
-  return (
+function ToolbarButton({ icon, label, disabledReason, menuItems, onClick }: ToolbarButtonProps) {
+  const content = (
     <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={menuItems ? 'toolbar-button has-menu' : 'toolbar-button'}
-        aria-disabled={disabled || undefined}
-        aria-haspopup={menuItems ? 'menu' : undefined}
-        aria-expanded={menuItems ? anchor !== undefined : undefined}
-        title={disabledReason ?? label}
-        onMouseDown={(event) => {
-          if (!menuItems || disabled || event.button !== 0) return;
-          event.preventDefault();
-          if (anchor) close();
-          else open(false);
-        }}
-        onKeyDown={(event) => {
-          if (!menuItems || disabled) return;
-          if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'ArrowDown') return;
-          event.preventDefault();
-          open(true);
-        }}
-        onClick={() => {
-          if (!disabled && !menuItems) onClick?.();
-        }}
-      >
-        <span className="toolbar-button-icon">
-          {icon}
-          {menuItems && <ChevronDownIcon className="toolbar-button-chevron" size={9} />}
-        </span>
-        <span className="toolbar-button-label">{label}</span>
-      </button>
-      {anchor &&
-        menuItems &&
-        createPortal(
-          <MenuPopup
-            items={menuItems}
-            anchor={anchor}
-            platform={platform}
-            label={label}
-            initialActive={keyboard ? 'first' : 'none'}
-            onActivate={activate}
-            onDismiss={close}
-            isOutsideIgnored={isOutsideIgnored}
-          />,
-          document.body,
-        )}
+      <span className="toolbar-button-icon">
+        {icon}
+        {menuItems && <ChevronDownIcon className="toolbar-button-chevron" size={9} />}
+      </span>
+      <span className="toolbar-button-label">{label}</span>
     </>
+  );
+  if (menuItems) {
+    return (
+      <MenuButton
+        className="toolbar-button has-menu"
+        items={menuItems}
+        menuLabel={label}
+        disabledReason={disabledReason}
+        title={label}
+      >
+        {content}
+      </MenuButton>
+    );
+  }
+  const disabled = disabledReason !== undefined;
+  return (
+    <button
+      type="button"
+      className="toolbar-button"
+      aria-disabled={disabled || undefined}
+      title={disabledReason ?? label}
+      onClick={() => {
+        if (!disabled) onClick?.();
+      }}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -139,44 +93,38 @@ function headDescription(repository: RepositorySummary): string {
 
 const networkPhase = 'P05';
 
-export function Toolbar({ platform, repository, tracking, openInItems, appearanceItems }: ToolbarProps) {
+export function Toolbar({ repository, tracking, openInItems, appearanceItems }: ToolbarProps) {
   const noRepository = repository ? undefined : 'Open a repository first.';
   const counts = trackingCounts(tracking);
-  const dirty = repository?.workingTree.state === 'dirty';
 
   return (
     <div className="toolbar" role="toolbar" aria-label="Repository commands">
       <div className="toolbar-group">
         <ToolbarButton
-          icon={<QuickLaunchIcon size={20} />}
+          icon={<QuickLaunchIcon size={18} />}
           label="Quick Launch"
           disabledReason="Quick Launch is not available yet (planned for P12)."
-          platform={platform}
         />
         <ToolbarButton
-          icon={<FetchIcon size={20} />}
+          icon={<FetchIcon size={18} />}
           label="Fetch"
           disabledReason={noRepository ?? `Fetching is not available yet (planned for ${networkPhase}).`}
-          platform={platform}
         />
         <ToolbarButton
-          icon={<PullIcon size={20} />}
+          icon={<PullIcon size={18} />}
           label="Pull"
           disabledReason={noRepository ?? `Pulling is not available yet (planned for ${networkPhase}).`}
-          platform={platform}
         />
         <ToolbarButton
-          icon={<PushIcon size={20} />}
+          icon={<PushIcon size={18} />}
           label="Push"
           disabledReason={noRepository ?? `Pushing is not available yet (planned for ${networkPhase}).`}
-          platform={platform}
         />
         <ToolbarButton
-          icon={<StashIcon size={20} />}
+          icon={<StashIcon size={18} />}
           label="Stash"
           disabledReason={noRepository ?? 'Stashing is not available yet (planned for P06).'}
           menuItems={[]}
-          platform={platform}
         />
       </div>
 
@@ -192,10 +140,7 @@ export function Toolbar({ platform, repository, tracking, openInItems, appearanc
         </button>
         {repository ? (
           <div className="toolbar-repository-copy">
-            <strong title={repository.path}>
-              {repository.name}
-              {dirty ? '*' : ''}
-            </strong>
+            <strong title={repository.path}>{repository.name}</strong>
             <span className="toolbar-repository-branch">
               <BranchIcon size={12} />
               {repository.bare ? 'Bare repository' : headDescription(repository)}
@@ -214,29 +159,28 @@ export function Toolbar({ platform, repository, tracking, openInItems, appearanc
 
       <div className="toolbar-group">
         <ToolbarButton
-          icon={<NewBranchIcon size={20} />}
-          label="New Branch"
+          icon={<NewBranchIcon size={18} />}
+          label="Branch"
           disabledReason={
             noRepository ?? `Creating branches is not available yet (planned for ${networkPhase}).`
           }
-          platform={platform}
+          menuItems={[]}
         />
       </div>
 
       <div className="toolbar-group toolbar-end">
         <ToolbarButton
-          icon={<OpenInIcon size={20} />}
+          icon={<OpenInIcon size={18} />}
           label="Open in"
           disabledReason={noRepository}
           menuItems={openInItems}
-          platform={platform}
         />
         <ToolbarButton
-          icon={<AppearanceIcon size={20} />}
-          label="Appearance"
-          menuItems={appearanceItems}
-          platform={platform}
+          icon={<TerminalIcon size={18} />}
+          label="Console"
+          disabledReason={noRepository ?? 'Opening a console is not available yet (planned for P12).'}
         />
+        <ToolbarButton icon={<AppearanceIcon size={18} />} label="Appearance" menuItems={appearanceItems} />
       </div>
     </div>
   );

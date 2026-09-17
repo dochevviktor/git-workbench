@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { EditCommand } from '../../../../common/ipc/contracts';
 import type { Platform } from '../../lib/platform';
-import { ContextMenuContext } from './context-menu';
+import { ContextMenuContext, MenuPlatformContext } from './context-menu';
 import type { ContextMenuRequest } from './context-menu';
 import { menuSeparator } from './menu-model';
 import type { MenuCommand, MenuEntry } from './menu-model';
@@ -143,20 +143,22 @@ export function ContextMenuHost({ platform, children }: ContextMenuHostProps) {
   }, [show]);
 
   return (
-    <ContextMenuContext.Provider value={show}>
-      {children}
-      {request && (
-        <MenuPopup
-          key={generation}
-          items={request.items}
-          anchor={request.anchor}
-          platform={platform}
-          label={request.label}
-          initialActive={request.keyboard ? 'first' : 'none'}
-          onActivate={activate}
-          onDismiss={close}
-        />
-      )}
-    </ContextMenuContext.Provider>
+    <MenuPlatformContext.Provider value={platform}>
+      <ContextMenuContext.Provider value={show}>
+        {children}
+        {request && (
+          <MenuPopup
+            key={generation}
+            items={request.items}
+            anchor={request.anchor}
+            platform={platform}
+            label={request.label}
+            initialActive={request.keyboard ? 'first' : 'none'}
+            onActivate={activate}
+            onDismiss={close}
+          />
+        )}
+      </ContextMenuContext.Provider>
+    </MenuPlatformContext.Provider>
   );
 }
