@@ -96,6 +96,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       applyWorkingChange: (request) => invoke(requests.applyRepositoryWorkingChange, request),
       getCommitContext: (request) => invoke(requests.getRepositoryCommitContext, request),
       commit: (request) => invoke(requests.commitRepositoryChanges, request),
+      getAmendChanges: (request) => invoke(requests.getRepositoryAmendChanges, request),
       getRevisionTree: (request) => invoke(requests.getRepositoryRevisionTree, request),
       getRevisionBlob: (request) => invoke(requests.getRepositoryRevisionBlob, request),
       openInFileManager: (location) => invoke(requests.openRepositoryInFileManager, location),

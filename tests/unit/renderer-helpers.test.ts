@@ -3,6 +3,12 @@ import type { RepositoryHistoryDecoration, RepositoryHistoryReference } from '..
 import { compactMenu, menuSeparator, planned } from '../../src/frontend/react/components/menu/menu-model';
 import { changeDetail, statusBadge } from '../../src/frontend/react/lib/change-status';
 import { buildPathTree, flattenPathTree, splitPath } from '../../src/frontend/react/lib/file-tree';
+import {
+  emptySelection,
+  pruneSelection,
+  selectKey,
+  selectKeys,
+} from '../../src/frontend/react/lib/list-selection';
 import { ariaShortcut, formatShortcut, matchesShortcut } from '../../src/frontend/react/lib/platform';
 import { referenceChips, referenceSections } from '../../src/frontend/react/lib/references';
 import type { ReferenceTreeNode } from '../../src/frontend/react/lib/references';
@@ -265,5 +271,59 @@ describe('file header detail', () => {
     expect(changeDetail({ previousPath: 'old.ts', similarity: null, oldMode: null, newMode: '100644' })).toBe(
       'from old.ts',
     );
+  });
+});
+
+describe('list selection', () => {
+  const order = ['a', 'b', 'c', 'd'];
+
+  it('replaces the selection on a plain click', () => {
+    const first = selectKey(order, emptySelection, 'b');
+    expect(first).toEqual({ keys: ['b'], activeKey: 'b', anchorKey: 'b' });
+    expect(selectKey(order, first, 'd')).toEqual({ keys: ['d'], activeKey: 'd', anchorKey: 'd' });
+  });
+
+  it('adds and removes single rows with the toggle modifier', () => {
+    const toggle = { toggle: true, range: false };
+    const two = selectKey(order, selectKey(order, emptySelection, 'a'), 'c', toggle);
+    expect(two.keys).toEqual(['a', 'c']);
+    expect(selectKey(order, two, 'a', toggle).keys).toEqual(['c']);
+  });
+
+  it('selects a range from the anchor in list order, in either direction', () => {
+    const anchored = selectKey(order, emptySelection, 'c');
+    const upwards = selectKey(order, anchored, 'a', { toggle: false, range: true });
+    expect(upwards.keys).toEqual(['a', 'b', 'c']);
+    expect(upwards.anchorKey).toBe('c');
+    expect(selectKey(order, anchored, 'd', { toggle: false, range: true }).keys).toEqual(['c', 'd']);
+  });
+
+  it('keeps the earlier selection when a range extends it', () => {
+    const first = selectKey(order, emptySelection, 'a');
+    const anchored = selectKey(order, first, 'c', { toggle: true, range: false });
+    expect(selectKey(order, anchored, 'd', { toggle: true, range: true }).keys).toEqual(['a', 'c', 'd']);
+  });
+
+  it('drops keys the list no longer has and keeps the rest', () => {
+    const selection = selectKey(order, selectKey(order, emptySelection, 'a'), 'c', {
+      toggle: true,
+      range: false,
+    });
+    const pruned = pruneSelection(['a', 'd'], selection);
+    expect(pruned.keys).toEqual(['a']);
+    expect(pruned.activeKey).toBe('a');
+  });
+
+  it('ignores a key the list does not contain', () => {
+    expect(selectKey(order, emptySelection, 'missing')).toBe(emptySelection);
+  });
+
+  it('follows files that moved to another list', () => {
+    const moved = selectKeys(['staged:one', 'staged:two'], ['staged:two', 'staged:missing']);
+    expect(moved).toEqual({
+      keys: ['staged:two'],
+      activeKey: 'staged:two',
+      anchorKey: 'staged:two',
+    });
   });
 });

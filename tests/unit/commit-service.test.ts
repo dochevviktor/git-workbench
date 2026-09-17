@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { GitRunner } from '../../src/backend/git/runner';
 import type { RepositoryHead } from '../../src/common/ipc/contracts';
 import {
+  AmendUnavailableError,
   buildCommitMessage,
   commitChanges,
+  readAmendChanges,
   readCommitContext,
   StaleCommitSnapshotError,
 } from '../../src/backend/repositories/commit-service';
@@ -391,6 +393,59 @@ describe('commit service', () => {
     expect(await run(fixture, ['log', '-1', '--format=%B'])).toBe(
       'Fix #42\n\n# not a comment\nSecond line\n',
     );
+  });
+
+  it("previews the amended commit as the index against HEAD's parent", async () => {
+    const fixture = await fixtureRepository();
+    await stage(fixture, 'kept.txt', 'kept\n');
+    await commit(fixture, { subject: 'base' });
+    await stage(fixture, 'committed.txt', 'from the commit\n');
+    await commit(fixture, { subject: 'commit to amend' });
+    await stage(fixture, 'staged-now.txt', 'staged after the commit\n');
+
+    const preview = await readAmendChanges(fixture.git, {
+      repositoryId,
+      cwd: fixture.root,
+      gitDir: fixture.gitDir,
+      head: await head(fixture),
+    });
+
+    expect(preview.commitId).toBe(await run(fixture, ['rev-parse', 'HEAD']));
+    expect(preview.parentId).toBe(await run(fixture, ['rev-parse', 'HEAD^']));
+    // Both the commit's own file and the newly staged one, because both land in the amended commit.
+    expect(preview.changes.map((change) => change.path).sort()).toEqual(['committed.txt', 'staged-now.txt']);
+    expect(preview.stagedPaths).toEqual(['staged-now.txt']);
+    // Nothing moved: the commit is still there and the index still holds only the new file.
+    expect(await run(fixture, ['rev-list', '--count', 'HEAD'])).toBe('2');
+    expect(await run(fixture, ['diff', '--cached', '--name-only'])).toBe('staged-now.txt');
+  });
+
+  it('previews a root commit against the empty tree', async () => {
+    const fixture = await fixtureRepository();
+    await stage(fixture, 'first.txt', 'first\n');
+    await commit(fixture, { subject: 'root commit' });
+
+    const preview = await readAmendChanges(fixture.git, {
+      repositoryId,
+      cwd: fixture.root,
+      gitDir: fixture.gitDir,
+      head: await head(fixture),
+    });
+    expect(preview.parentId).toBeNull();
+    expect(preview.changes.map((change) => change.path)).toEqual(['first.txt']);
+  });
+
+  it('refuses an amend preview before the first commit', async () => {
+    const fixture = await fixtureRepository();
+    await stage(fixture, 'file.txt', 'one\n');
+    await expect(
+      readAmendChanges(fixture.git, {
+        repositoryId,
+        cwd: fixture.root,
+        gitDir: fixture.gitDir,
+        head: await head(fixture),
+      }),
+    ).rejects.toBeInstanceOf(AmendUnavailableError);
   });
 
   it('reports the new commit and leaves the index clean after committing', async () => {

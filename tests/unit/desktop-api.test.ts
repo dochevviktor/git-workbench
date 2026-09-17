@@ -228,11 +228,11 @@ describe('preload capability API', () => {
     const target = { area: 'unstaged', path: 'file.txt', previousPath: null } as const;
     const request = {
       id: repositoryId,
-      action: 'stage',
-      target,
+      action: 'stage' as const,
+      targets: [target],
       snapshot: 'a'.repeat(64),
-      selection: { kind: 'lines', hunk: 0, lineIndexes: [1, 2] },
-    } as const;
+      selection: { kind: 'lines' as const, hunk: 0, lineIndexes: [1, 2] },
+    };
     const changes = {
       repositoryId,
       staged: [],
@@ -242,7 +242,13 @@ describe('preload capability API', () => {
       counts: { staged: 0, unstaged: 0, untracked: 0, ignored: 0, conflicted: 0 },
       truncated: false,
     } as const;
-    const result = { repositoryId, action: 'stage', target, selection: request.selection, changes } as const;
+    const result = {
+      repositoryId,
+      action: 'stage',
+      targets: [target],
+      selection: request.selection,
+      changes,
+    } as const;
     invoke.mockResolvedValueOnce({ ok: true, value: result });
     await expect(api.repository.applyWorkingChange(request)).resolves.toEqual({ ok: true, value: result });
     expect(invoke).toHaveBeenCalledWith(requests.applyRepositoryWorkingChange.channel, request);

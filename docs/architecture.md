@@ -79,11 +79,16 @@ owns unified/split presentation, inline edit highlighting, search, and visible w
 initial F10 slice adds `applyWorkingChange()` for explicit file, hunk, and line stage/unstage actions plus
 hunk/line discard; working diff responses carry a backend-issued snapshot token, and the main process
 revalidates it before applying a backend-built patch. The renderer owns line selection but never sends
-Git patch text or arguments. The initial F11 slice adds `getCommitContext()` and `commit()`: the context
+Git patch text or arguments. One request names several files for a whole-file action, so staging a
+selection is one round trip and one Git invocation per batch; a hunk or line action still names exactly
+one file and must carry its diff snapshot. The initial F11 slice adds `getCommitContext()` and `commit()`: the context
 read returns the identity Git would use, the amend target with its published state, a configured template,
 pending merge state, recent messages, present commit hooks, and a compare-and-swap token over HEAD, that
 pending state, and the staged entries. `commit()` takes only a subject, body, amend flag, token, and an
-explicit skip-hooks flag; the message crosses IPC as text and never as Git arguments. Expected commit
+explicit skip-hooks flag; the message crosses IPC as text and never as Git arguments. `getAmendChanges()`
+and the `amend` diff target report what an amended commit would contain, by comparing the index with
+HEAD's parent (the empty tree for a root commit). Amend mode is a read: it never moves a commit's changes
+into the index, so unticking it cannot lose staged work. Expected commit
 failures (a hook, a missing identity, an empty message, nothing staged, unmerged files) return a
 structured `failed` result with bounded inert output rather than an exception. The
 F34 workspace-chrome slice
@@ -238,8 +243,9 @@ diff/textconv programs, and sends only named targets and whitespace modes across
 display projection stay in the renderer. The F10 staging service re-reads the selected working diff, hashes
 the relevant index metadata and working-tree entries for a compare-and-swap token, serializes mutations by
 repository, and feeds only its own freshly assembled patch to `git apply`; whole-file actions use explicit
-`git add`, `git reset`, or unborn-repository `git rm --cached` arguments. Untracked files are never included
-implicitly in a discard operation. The F11 commit service re-reads that context inside the same
+`git add`, `git reset`, or unborn-repository `git rm --cached` arguments, batched so one selection is one
+invocation, and revalidate every named file against a fresh status read rather than the exact bytes a diff
+showed. Untracked files are never included implicitly in a discard operation. The F11 commit service re-reads that context inside the same
 per-repository mutation queue, refuses a stale token, and runs one `git commit --cleanup=whitespace
 --file=-` with the message on standard input. Hooks, filters, and configured signing programs run because
 committing is an explicit user action; the call has its own longer timeout, its output is captured,

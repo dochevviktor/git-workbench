@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChangeStatus } from '../lib/change-status';
 import { buildPathTree, flattenPathTree, splitPath } from '../lib/file-tree';
+import type { SelectionModifiers } from '../lib/list-selection';
 import { FileIcon, FolderIcon } from './Icons';
 import { StatusBadge } from './StatusBadge';
 import { TreeView } from './TreeView';
@@ -18,13 +19,16 @@ export interface FileChangeEntry {
   readonly detail?: string | undefined;
 }
 
-interface FileChangeListProps {
-  readonly entries: readonly FileChangeEntry[];
+interface FileChangeListProps<Entry extends FileChangeEntry> {
+  readonly entries: readonly Entry[];
   readonly mode: FileListMode;
   readonly label: string;
   readonly idPrefix: string;
+  /** The entry whose detail is shown. */
   readonly selectedKey: string | undefined;
-  readonly onSelect: (entry: FileChangeEntry) => void;
+  /** All selected entries when the list allows selecting several; omit for single selection. */
+  readonly selectedKeys?: ReadonlySet<string> | undefined;
+  readonly onSelect: (entry: Entry, modifiers: SelectionModifiers) => void;
   readonly rowTestId?: string | undefined;
   readonly children?: ReactNode;
 }
@@ -43,16 +47,17 @@ function entryTitle(entry: FileChangeEntry): string {
 }
 
 /** Changed files as a folder tree or as Name/Location rows, each with a status badge. */
-export function FileChangeList({
+export function FileChangeList<Entry extends FileChangeEntry>({
   entries,
   mode,
   label,
   idPrefix,
   selectedKey,
+  selectedKeys,
   onSelect,
   rowTestId,
   children,
-}: FileChangeListProps) {
+}: FileChangeListProps<Entry>) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   // The keyboard cursor can rest on folders; only files become the selection.
   const [activeKey, setActiveKey] = useState(selectedKey);
@@ -131,10 +136,11 @@ export function FileChangeList({
         label={label}
         idPrefix={idPrefix}
         activeKey={activeKey}
-        onActiveChange={(key) => {
+        selectedKeys={selectedKeys}
+        onActiveChange={(key, modifiers) => {
           setActiveKey(key);
           const entry = byKey.get(key);
-          if (entry) onSelect(entry);
+          if (entry) onSelect(entry, modifiers);
         }}
         onToggle={(item, expand) => {
           if (!item.expandable) return;

@@ -351,6 +351,12 @@ export const repositoryDiffTargetSchema = z.discriminatedUnion('kind', [
     path: repositoryDiffFilePathSchema,
     previousPath: repositoryDiffFilePathSchema.nullable(),
   }),
+  /** What an amended commit would contain for one path: the index compared with HEAD's parent. */
+  z.strictObject({
+    kind: z.literal('amend'),
+    path: repositoryDiffFilePathSchema,
+    previousPath: repositoryDiffFilePathSchema.nullable(),
+  }),
   z.strictObject({
     kind: z.literal('commit'),
     commitId: gitObjectIdSchema,
@@ -446,18 +452,29 @@ export const repositoryWorkingChangeSelectionSchema = z.discriminatedUnion('kind
   }),
 ]);
 
-export const repositoryWorkingChangeActionRequestSchema = z.strictObject({
-  id: repositoryIdSchema,
-  action: repositoryWorkingChangeActionSchema,
-  target: repositoryWorkingChangeTargetSchema,
-  snapshot: repositoryDiffSnapshotSchema,
-  selection: repositoryWorkingChangeSelectionSchema,
-});
+/**
+ * One action applies to whole files, or to a hunk or line selection inside a single file. A hunk or
+ * line selection carries the diff's snapshot token, because rebuilding that patch depends on the exact
+ * content the renderer displayed. Whole-file actions may name several files and revalidate each one
+ * against a fresh status read instead.
+ */
+export const repositoryWorkingChangeActionRequestSchema = z
+  .strictObject({
+    id: repositoryIdSchema,
+    action: repositoryWorkingChangeActionSchema,
+    targets: z.array(repositoryWorkingChangeTargetSchema).min(1).max(1_000),
+    snapshot: repositoryDiffSnapshotSchema.nullable(),
+    selection: repositoryWorkingChangeSelectionSchema,
+  })
+  .refine(
+    (request) => request.selection.kind === 'file' || (request.targets.length === 1 && request.snapshot),
+    'A hunk or line action needs exactly one file and its diff snapshot.',
+  );
 
 export const repositoryWorkingChangeActionResultSchema = z.strictObject({
   repositoryId: repositoryIdSchema,
   action: repositoryWorkingChangeActionSchema,
-  target: repositoryWorkingChangeTargetSchema,
+  targets: z.array(repositoryWorkingChangeTargetSchema).min(1).max(1_000),
   selection: repositoryWorkingChangeSelectionSchema,
   changes: repositoryWorkingChangesSchema,
 });
@@ -509,6 +526,20 @@ export const repositoryCommitContextSchema = z.strictObject({
   hooks: z.array(z.string().min(1).max(64)).max(8),
   /** Compare-and-swap token over HEAD, the pending operation, and the staged entries. */
   snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryAmendChangesRequestSchema = z.strictObject({ id: repositoryIdSchema });
+
+/** Everything an amended commit would contain: the current index compared with HEAD's parent. */
+export const repositoryAmendChangesSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  /** `null` when HEAD is a root commit, so the comparison uses the empty tree. */
+  parentId: gitObjectIdSchema.nullable(),
+  changes: z.array(repositoryCommitChangeSchema).max(10_000),
+  /** Paths that are also staged in the index right now, so the view can separate them. */
+  stagedPaths: z.array(z.string().min(1).max(32_768)).max(10_000),
+  truncated: z.boolean(),
 });
 
 export const repositoryCommitRequestSchema = z.strictObject({
@@ -676,6 +707,11 @@ export const requests = {
     repositoryCommitRequestSchema,
     repositoryCommitResultSchema,
   ),
+  getRepositoryAmendChanges: request(
+    'repository:get-amend-changes',
+    repositoryAmendChangesRequestSchema,
+    repositoryAmendChangesSchema,
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -753,6 +789,8 @@ export type RepositoryCommitAmendTarget = z.infer<typeof repositoryCommitAmendTa
 export type RepositoryCommitPendingOperation = z.infer<typeof repositoryCommitPendingOperationSchema>;
 export type RepositoryCommitContextRequest = z.infer<typeof repositoryCommitContextRequestSchema>;
 export type RepositoryCommitContext = z.infer<typeof repositoryCommitContextSchema>;
+export type RepositoryAmendChangesRequest = z.infer<typeof repositoryAmendChangesRequestSchema>;
+export type RepositoryAmendChanges = z.infer<typeof repositoryAmendChangesSchema>;
 export type RepositoryCommitRequest = z.infer<typeof repositoryCommitRequestSchema>;
 export type RepositoryCommitFailureReason = z.infer<typeof repositoryCommitFailureReasonSchema>;
 export type RepositoryCommitResult = z.infer<typeof repositoryCommitResultSchema>;

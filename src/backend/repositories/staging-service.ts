@@ -5,6 +5,7 @@ import type {
 } from '../../common/ipc/contracts';
 import { readRepositoryDiff } from './diff-service';
 import type { DiffRunner } from './diff-service';
+import { readWorkingChanges } from './working-tree-service';
 import { GitCommandError } from '../git/runner';
 import type { GitRunOptions } from '../git/runner';
 
@@ -12,6 +13,8 @@ const stagingTimeoutMs = 20_000;
 const stagingOutputLimit = 512 * 1024;
 const maximumPatchBytes = 8 * 1024 * 1024;
 const patchContextLines = 3;
+/** Keeps one Git invocation's argument list well inside platform limits. */
+const pathBatchSize = 100;
 
 export interface StagingRunner extends DiffRunner {
   run(
@@ -29,8 +32,9 @@ export interface ApplyWorkingChangeInput {
   readonly repositoryId: string;
   readonly cwd: string;
   readonly action: RepositoryWorkingChangeAction;
-  readonly target: RepositoryWorkingChangeTarget;
-  readonly snapshot: string;
+  /** Whole-file actions may name several files; a hunk or line selection names exactly one. */
+  readonly targets: readonly RepositoryWorkingChangeTarget[];
+  readonly snapshot: string | null;
   readonly selection: RepositoryWorkingChangeSelection;
 }
 
@@ -71,28 +75,33 @@ interface ParsedPatch {
 }
 
 /**
- * Applies one validated working-tree selection. The current diff is read again immediately before
- * the mutation, so the renderer's snapshot is a compare-and-swap guard rather than an instruction to
- * trust stale patch text.
+ * Applies one validated working-tree selection. A hunk or line selection re-reads that file's diff
+ * immediately before the mutation, so the renderer's snapshot is a compare-and-swap guard rather than
+ * an instruction to trust stale patch text. Whole-file actions revalidate every named file against a
+ * fresh status read and then run as one Git invocation per batch.
  */
 export async function applyWorkingChange(
   runner: StagingRunner,
   input: ApplyWorkingChangeInput,
 ): Promise<void> {
-  validateAction(input.action, input.target, input.selection);
-  const target = { kind: 'working' as const, ...input.target };
+  for (const target of input.targets) validateAction(input.action, target, input.selection);
+
+  if (input.selection.kind === 'file') {
+    await applyFileTargets(runner, input);
+    return;
+  }
+
+  const target = input.targets[0];
+  if (!target || input.targets.length !== 1 || !input.snapshot) {
+    throw new WorkingChangeActionError('A hunk or line action applies to exactly one file.');
+  }
   const current = await readRepositoryDiff(runner, {
     repositoryId: input.repositoryId,
     cwd: input.cwd,
-    target,
+    target: { kind: 'working' as const, ...target },
     whitespace: 'normal',
   });
   if (!current.snapshot || current.snapshot !== input.snapshot) throw new StaleWorkingSnapshotError();
-
-  if (input.selection.kind === 'file') {
-    await applyFileSelection(runner, input);
-    return;
-  }
   if (current.state !== 'text') {
     throw new WorkingChangeActionError(
       current.message ?? 'Only textual changes can be selected by hunk or line.',
@@ -192,26 +201,74 @@ function validateAction(
   }
 }
 
-async function applyFileSelection(runner: StagingRunner, input: ApplyWorkingChangeInput): Promise<void> {
+async function applyFileTargets(runner: StagingRunner, input: ApplyWorkingChangeInput): Promise<void> {
   if (input.action === 'discard') {
     throw new WorkingChangeActionError(
       'File discard is not enabled yet; use a hunk or line discard with a preview.',
     );
   }
-  const paths = uniquePaths(input.target.previousPath, input.target.path);
-  if (input.action === 'stage') {
-    await runMutation(runner, input.cwd, ['add', '--', ...paths]);
-    return;
+
+  await ensureTargetsCurrent(runner, input);
+  if (input.snapshot && input.targets.length === 1 && input.targets[0]) {
+    // A single file staged from its diff keeps the exact content guard the renderer was shown.
+    const current = await readRepositoryDiff(runner, {
+      repositoryId: input.repositoryId,
+      cwd: input.cwd,
+      target: { kind: 'working' as const, ...input.targets[0] },
+      whitespace: 'normal',
+    });
+    if (!current.snapshot || current.snapshot !== input.snapshot) throw new StaleWorkingSnapshotError();
   }
 
+  const paths = [
+    ...new Set(input.targets.flatMap((target) => uniquePaths(target.previousPath, target.path))),
+  ];
   // `git reset <paths>` needs a HEAD. An unborn repository has only index additions, which can be
   // safely removed from the index with `rm --cached` while leaving the working file intact.
-  const hasHead = await repositoryHasHead(runner, input.cwd);
-  await runMutation(
-    runner,
-    input.cwd,
-    hasHead ? ['reset', '--quiet', '--', ...paths] : ['rm', '--cached', '--', ...paths],
+  const hasHead = input.action === 'stage' || (await repositoryHasHead(runner, input.cwd));
+  for (const batch of batches(paths, pathBatchSize)) {
+    const args =
+      input.action === 'stage'
+        ? ['add', '--', ...batch]
+        : hasHead
+          ? ['reset', '--quiet', '--', ...batch]
+          : ['rm', '--cached', '--quiet', '--', ...batch];
+    await runMutation(runner, input.cwd, args);
+  }
+}
+
+/**
+ * Whole-file actions do not depend on the exact bytes the renderer displayed, but they must still act
+ * on the files the user actually selected, in the area they were selected from.
+ */
+async function ensureTargetsCurrent(runner: StagingRunner, input: ApplyWorkingChangeInput): Promise<void> {
+  const changes = await readWorkingChanges(runner, {
+    repositoryId: input.repositoryId,
+    cwd: input.cwd,
+    includeUntracked: true,
+    includeIgnored: false,
+  });
+  const missing = input.targets.filter(
+    (target) =>
+      !changes[target.area].some(
+        (change) => change.path === target.path && change.previousPath === target.previousPath,
+      ),
   );
+  if (missing.length === 0) return;
+  const [first] = missing;
+  throw new WorkingChangeActionError(
+    missing.length === 1 && first
+      ? `${first.path} is no longer among the ${first.area} changes. Refresh and try again.`
+      : `${missing.length} selected files are no longer in the expected changes. Refresh and try again.`,
+  );
+}
+
+function batches<Value>(values: readonly Value[], size: number): Value[][] {
+  const result: Value[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
 }
 
 async function repositoryHasHead(runner: StagingRunner, cwd: string): Promise<boolean> {

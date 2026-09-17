@@ -282,7 +282,11 @@ is returned as bounded inert text, and `--no-verify` is offered only as a separa
 action after a hook failure. Expected refusals (empty message, nothing staged, unmerged files, missing
 identity) are reported as structured results rather than exceptions. The renderer keeps subject and body
 drafts per repository, counts down from 50 characters, labels the button "Commit N Files", and prefills
-an amend from the previous message. Signing, `--signoff`, co-author autocomplete, commit-and-push,
+an amend from the previous message. Ticking Amend also shows what the amended commit would contain in the
+Staged pane, by reading the index against HEAD's parent: the commit's own files are marked, files staged
+since then appear beside them, and nothing is reset, so unticking restores the ordinary view. Fork's Mac
+1.0.44 (2017-04-20) "Show changes from the latest commit in amend mode" documents the outcome; its exact
+presentation, and whether Fork mutates anything, remain **U**. Signing, `--signoff`, co-author autocomplete, commit-and-push,
 spell checking, a configurable subject limit, and Fork's exact recent-message definition are not
 implemented; Fork equivalence remains **U**.
 

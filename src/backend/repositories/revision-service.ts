@@ -95,6 +95,49 @@ export async function readCommitChanges(
   return repositoryCommitChangesSchema.parse(response);
 }
 
+export interface AmendBase {
+  readonly commitId: string;
+  /** `null` for a root commit, where the comparison uses the repository's empty tree. */
+  readonly parentId: string | null;
+  /** The tree-ish an amended commit is compared against. */
+  readonly base: string;
+}
+
+/**
+ * Resolves what an amended commit would be compared against: HEAD's first parent, or the empty tree
+ * for a root commit. Returns `null` when HEAD has no commit to amend.
+ */
+export async function resolveAmendBase(runner: RevisionRunner, cwd: string): Promise<AmendBase | null> {
+  const commitId = await optionalRevision(runner, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+  if (!commitId) return null;
+  const parentId = await optionalRevision(runner, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^']);
+  if (parentId) return { commitId, parentId, base: parentId };
+
+  // `hash-object` without `-w` only computes the empty tree's ID for this repository's hash algorithm.
+  const emptyTree = await runner.run(['hash-object', '-t', 'tree', '--stdin'], {
+    ...readOptions(cwd, 1_024),
+    stdin: '',
+  });
+  const base = emptyTree.stdout.trim();
+  if (!objectIdPattern.test(base)) throw new RevisionNotFoundError();
+  return { commitId, parentId: null, base };
+}
+
+async function optionalRevision(
+  runner: RevisionRunner,
+  cwd: string,
+  args: readonly string[],
+): Promise<string | null> {
+  try {
+    const result = await runner.run(args, readOptions(cwd, 1_024));
+    const value = result.stdout.trim();
+    return objectIdPattern.test(value) ? value : null;
+  } catch (error) {
+    if (error instanceof GitCommandError) return null;
+    throw error;
+  }
+}
+
 /** Reads one directory of a committed tree. The renderer can request children lazily. */
 export async function readRevisionTree(
   runner: RevisionRunner,

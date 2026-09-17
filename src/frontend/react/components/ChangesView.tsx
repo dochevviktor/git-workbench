@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type {
+  RepositoryCommitChange,
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
   RepositorySummary,
@@ -11,7 +12,11 @@ import type {
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import { changeDetail } from '../lib/change-status';
+import { shortHash } from '../lib/format';
+import { emptySelection, pruneSelection, selectKey, selectKeys } from '../lib/list-selection';
+import type { ListSelection, SelectionModifiers } from '../lib/list-selection';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
+import { useAmendChanges } from '../hooks/use-amend-changes';
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRepositoryWorkingChanges } from '../hooks/use-repository-working-changes';
 import { FileChangeList } from './FileChangeList';
@@ -38,11 +43,22 @@ const areaLabels: Record<RepositoryWorkingChange['area'], string> = {
 };
 
 interface WorkingEntry extends FileChangeEntry {
+  readonly kind: 'working';
   readonly change: RepositoryWorkingChange;
 }
 
+/** A file the amended commit would contain, which may or may not also be staged right now. */
+interface AmendEntry extends FileChangeEntry {
+  readonly kind: 'amend';
+  readonly change: RepositoryCommitChange;
+  readonly inIndex: boolean;
+}
+
+type PaneEntry = WorkingEntry | AmendEntry;
+
 function workingEntry(change: RepositoryWorkingChange): WorkingEntry {
   return {
+    kind: 'working',
     key: `${change.area}:${encodeURIComponent(change.path)}`,
     status: change.status,
     path: change.path,
@@ -52,15 +68,46 @@ function workingEntry(change: RepositoryWorkingChange): WorkingEntry {
   };
 }
 
+function amendEntry(change: RepositoryCommitChange, inIndex: boolean): AmendEntry {
+  return {
+    kind: 'amend',
+    key: `amend:${encodeURIComponent(change.path)}`,
+    status: change.status,
+    path: change.path,
+    previousPath: change.previousPath,
+    detail: inIndex ? undefined : 'in the amended commit',
+    change,
+    inIndex,
+  };
+}
+
+/**
+ * The working-tree file an action would touch. An amend preview row only has one when that path is
+ * also staged right now; the rest of the amended commit cannot be unstaged without rewriting it.
+ */
+function workingTarget(
+  entry: PaneEntry,
+  stagedByPath: ReadonlyMap<string, WorkingEntry>,
+): RepositoryWorkingChangeTarget | undefined {
+  const working = entry.kind === 'working' ? entry : stagedByPath.get(entry.path);
+  if (!working || working.change.area === 'ignored') return undefined;
+  return {
+    area: working.change.area,
+    path: working.change.path,
+    previousPath: working.change.previousPath,
+  };
+}
+
 interface ChangesPaneProps {
   readonly id: 'unstaged' | 'staged';
   readonly title: string;
   readonly action: 'stage' | 'unstage';
-  readonly entries: readonly WorkingEntry[];
+  readonly entries: readonly PaneEntry[];
   readonly mode: FileListMode;
-  readonly selectedKey: string | undefined;
+  readonly activeKey: string | undefined;
+  readonly selectedKeys: ReadonlySet<string>;
   readonly emptyText: string;
-  readonly onSelect: (key: string) => void;
+  readonly onSelect: (entry: PaneEntry, modifiers: SelectionModifiers) => void;
   readonly onAction: () => void;
   readonly actionDisabled: boolean;
   readonly actionDisabledReason: string | undefined;
@@ -73,7 +120,8 @@ function ChangesPane({
   action,
   entries,
   mode,
-  selectedKey,
+  activeKey,
+  selectedKeys,
   emptyText,
   onSelect,
   onAction,
@@ -81,6 +129,8 @@ function ChangesPane({
   actionDisabledReason,
   children,
 }: ChangesPaneProps) {
+  const chosen = entries.filter((entry) => selectedKeys.has(entry.key)).length;
+  const verb = action[0]!.toLocaleUpperCase() + action.slice(1);
   return (
     <section
       className={`changes-pane ${id}`}
@@ -93,11 +143,16 @@ function ChangesPane({
           type="button"
           className="button button-small"
           disabled={actionDisabled}
-          title={actionDisabledReason}
+          title={
+            actionDisabledReason ??
+            (chosen > 0
+              ? `${verb} the ${chosen === 1 ? 'selected file' : `${chosen} selected files`}.`
+              : `${verb} every file in this pane.`)
+          }
           data-testid={`working-${id}-action`}
           onClick={onAction}
         >
-          {action[0]!.toLocaleUpperCase() + action.slice(1)}
+          {chosen > 0 ? verb : `${verb} All`}
         </button>
       </header>
       <div className="file-pane-body">
@@ -110,8 +165,9 @@ function ChangesPane({
             mode={mode}
             label={`${title} files`}
             idPrefix={`working-${id}`}
-            selectedKey={selectedKey}
-            onSelect={(entry) => onSelect(entry.key)}
+            selectedKey={activeKey}
+            selectedKeys={selectedKeys}
+            onSelect={onSelect}
             rowTestId="working-change"
           />
         )}
@@ -121,7 +177,7 @@ function ChangesPane({
 }
 
 interface ChangePreviewProps {
-  readonly change: RepositoryWorkingChange;
+  readonly entry: PaneEntry;
   readonly diff: ReturnType<typeof useRepositoryDiff>;
   readonly mode: DiffDisplayMode;
   readonly onModeChange: (mode: DiffDisplayMode) => void;
@@ -138,7 +194,7 @@ interface ChangePreviewProps {
 }
 
 function ChangePreview({
-  change,
+  entry,
   diff,
   mode,
   onModeChange,
@@ -149,13 +205,16 @@ function ChangePreview({
   busy,
   onWorkingAction,
 }: ChangePreviewProps) {
+  const change = entry.change;
+  const area = entry.kind === 'working' ? entry.change.area : undefined;
   const workingActions = useMemo<DiffWorkingAction[]>(() => {
+    // The amend preview is a read of what the commit would contain, so it offers no staging actions.
     const actions: RepositoryWorkingChangeAction[] =
-      change.area === 'staged'
+      area === 'staged'
         ? ['unstage']
-        : change.area === 'unstaged'
+        : area === 'unstaged'
           ? ['stage', ...(change.status === 'unmerged' ? [] : ['discard' as const])]
-          : change.area === 'untracked'
+          : area === 'untracked'
             ? ['stage']
             : [];
     return actions.map((action) => ({
@@ -164,12 +223,15 @@ function ChangePreview({
       disabledReason: busy ? 'Another working-tree action is in progress.' : undefined,
       onApply: (selection) => onWorkingAction(action, selection, diff.value?.snapshot ?? undefined),
     }));
-  }, [busy, change.area, change.status, diff.value?.snapshot, onWorkingAction]);
+  }, [area, busy, change.status, diff.value?.snapshot, onWorkingAction]);
   return (
     <div className="file-preview" data-testid="working-change-preview">
       <div className="preview-header">
         <StatusBadge status={change.status} />
-        <span className="preview-path" title={`${areaLabels[change.area]}: ${change.path}`}>
+        <span
+          className="preview-path"
+          title={`${area ? areaLabels[area] : 'Amended commit'}: ${change.path}`}
+        >
           {change.path}
         </span>
         {changeDetail(change) && <span className="preview-detail">{changeDetail(change)}</span>}
@@ -187,7 +249,7 @@ function ChangePreview({
           showWhitespace={showWhitespace}
           onShowWhitespaceChange={onShowWhitespaceChange}
           workingActions={workingActions}
-          label="Working tree diff"
+          label={entry.kind === 'amend' ? 'Amended commit diff' : 'Working tree diff'}
         />
       </div>
     </div>
@@ -229,7 +291,12 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
     isNumberBetween(72, 4000),
   );
   const [filter, setFilter] = useState('');
-  const [selectedKey, setSelectedKey] = useState<string>();
+  const [selection, setSelection] = useState<ListSelection>(emptySelection);
+  const [amend, setAmend] = usePersistentState(
+    `repository.${repository.id}.commit.amend`,
+    false,
+    (candidate): candidate is boolean => typeof candidate === 'boolean',
+  );
   const [diffMode, setDiffMode] = usePersistentState<DiffDisplayMode>(
     `repository.${repository.id}.diff.mode`,
     'unified',
@@ -247,6 +314,9 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
   );
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string>();
+  const pendingSelection = useRef<
+    { readonly paths: readonly string[]; readonly area: 'staged' | 'unstaged' } | undefined
+  >(undefined);
   const { value, loading, error, refresh } = useRepositoryWorkingChanges(
     repository.id,
     includeUntracked,
@@ -292,19 +362,55 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
     return `${head}|${value.counts.conflicted}|${entries}`;
   }, [repository.head.commit, repository.head.state, value]);
 
-  const selected = [...unstaged, ...staged].find((entry) => entry.key === selectedKey)?.change;
-  const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
-    () =>
-      selected
-        ? {
-            kind: 'working',
-            area: selected.area,
-            path: selected.path,
-            previousPath: selected.previousPath,
-          }
-        : undefined,
-    [selected],
+  const amendChanges = useAmendChanges(repository.id, amend, changeToken);
+
+  /** Ticking Amend previews what the amended commit would contain; nothing is moved or reset. */
+  const amendEntries = useMemo<AmendEntry[]>(() => {
+    const preview = amendChanges.value;
+    if (!amend || !preview) return [];
+    const query = filter.trim().toLocaleLowerCase();
+    const inIndex = new Set(preview.stagedPaths);
+    return preview.changes
+      .filter((change) => !query || change.path.toLocaleLowerCase().includes(query))
+      .map((change) => amendEntry(change, inIndex.has(change.path)));
+  }, [amend, amendChanges.value, filter]);
+
+  const amendPreview = amend && amendChanges.value !== undefined;
+  const stagedByPath = useMemo(() => new Map(staged.map((entry) => [entry.path, entry] as const)), [staged]);
+  const stagedEntries: readonly PaneEntry[] = amendPreview ? amendEntries : staged;
+  const order = useMemo(
+    () => [...unstaged, ...stagedEntries].map((entry) => entry.key),
+    [stagedEntries, unstaged],
   );
+
+  useEffect(() => {
+    setSelection((current) => pruneSelection(order, current));
+  }, [order]);
+
+  const selectEntry = useCallback(
+    (entries: readonly PaneEntry[], entry: PaneEntry, modifiers: SelectionModifiers) => {
+      // A pane owns its selection, so clicking in one pane drops what the other one had selected.
+      const paneOrder = entries.map((candidate) => candidate.key);
+      setSelection((current) =>
+        selectKey(paneOrder, pruneSelection(paneOrder, current), entry.key, modifiers),
+      );
+    },
+    [],
+  );
+
+  const selectedKeys = useMemo(() => new Set(selection.keys), [selection.keys]);
+  const selected = [...unstaged, ...stagedEntries].find((entry) => entry.key === selection.activeKey);
+  const diffTarget = useMemo<RepositoryDiffTarget | undefined>(() => {
+    if (!selected) return undefined;
+    return selected.kind === 'amend'
+      ? { kind: 'amend', path: selected.path, previousPath: selected.previousPath }
+      : {
+          kind: 'working',
+          area: selected.change.area,
+          path: selected.change.path,
+          previousPath: selected.change.previousPath,
+        };
+  }, [selected]);
   const diff = useRepositoryDiff(repository.id, diffTarget, diffWhitespace);
   const refreshDiff = diff.refresh;
   const filtering = filter.trim().length > 0;
@@ -312,7 +418,7 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
   const applyAction = useCallback(
     async (
       action: RepositoryWorkingChangeAction,
-      target: RepositoryWorkingChangeTarget,
+      targets: readonly RepositoryWorkingChangeTarget[],
       selection: RepositoryWorkingChangeSelection,
       snapshot?: string,
     ): Promise<boolean> => {
@@ -321,26 +427,30 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
         setActionError('Open this application in Electron to change working-tree files.');
         return false;
       }
+      if (targets.length === 0) return false;
       setActionBusy(true);
       setActionError(undefined);
       try {
-        let expectedSnapshot = snapshot;
-        if (!expectedSnapshot) {
+        let expectedSnapshot = snapshot ?? null;
+        const first = targets[0];
+        if (selection.kind !== 'file' && !expectedSnapshot && first) {
           const currentDiff = unwrapResult(
             await api.repository.getDiff({
               id: repository.id,
-              target: { kind: 'working', ...target },
+              target: { kind: 'working', ...first },
               whitespace: 'normal',
             }),
           );
-          expectedSnapshot = currentDiff.snapshot ?? undefined;
+          expectedSnapshot = currentDiff.snapshot;
         }
-        if (!expectedSnapshot) throw new Error('That file does not have a mutable working-tree snapshot.');
+        if (selection.kind !== 'file' && !expectedSnapshot) {
+          throw new Error('That file does not have a mutable working-tree snapshot.');
+        }
         unwrapResult(
           await api.repository.applyWorkingChange({
             id: repository.id,
             action,
-            target,
+            targets: [...targets],
             snapshot: expectedSnapshot,
             selection,
           }),
@@ -360,26 +470,51 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
     [refresh, refreshDiff, repository.id],
   );
 
+  /** One Git invocation stages or unstages every chosen file, instead of one round trip each. */
   const applyFileEntries = useCallback(
-    async (action: RepositoryWorkingChangeAction, entries: readonly WorkingEntry[]) => {
-      for (const entry of entries) {
-        if (entry.change.area === 'ignored') continue;
-        const succeeded = await applyAction(
-          action,
-          {
-            area: entry.change.area,
-            path: entry.change.path,
-            previousPath: entry.change.previousPath,
-          },
-          { kind: 'file' },
-        );
-        if (!succeeded) break;
-      }
+    async (action: 'stage' | 'unstage', entries: readonly PaneEntry[]) => {
+      const targets = entries
+        .map((entry) => workingTarget(entry, stagedByPath))
+        .filter((target): target is RepositoryWorkingChangeTarget => target !== undefined);
+      if (targets.length === 0) return;
+      // Keep the same files selected once they arrive in the other pane.
+      pendingSelection.current = {
+        paths: targets.map((target) => target.path),
+        area: action === 'stage' ? 'staged' : 'unstaged',
+      };
+      await applyAction(action, targets, { kind: 'file' });
     },
-    [applyAction],
+    [applyAction, stagedByPath],
   );
 
-  const stageEntries = useMemo(() => unstaged.filter((entry) => entry.change.area !== 'ignored'), [unstaged]);
+  useEffect(() => {
+    const pending = pendingSelection.current;
+    if (!pending) return;
+    pendingSelection.current = undefined;
+    const pool = pending.area === 'staged' ? stagedEntries : unstaged;
+    const moved = pool.filter((entry) => pending.paths.includes(entry.path)).map((entry) => entry.key);
+    if (moved.length > 0) {
+      setSelection(
+        selectKeys(
+          pool.map((entry) => entry.key),
+          moved,
+        ),
+      );
+    }
+  }, [stagedEntries, unstaged]);
+
+  const stageEntries = useMemo<PaneEntry[]>(
+    () => unstaged.filter((entry) => entry.kind === 'working' && entry.change.area !== 'ignored'),
+    [unstaged],
+  );
+  const selectedIn = useCallback(
+    (entries: readonly PaneEntry[]) => entries.filter((entry) => selectedKeys.has(entry.key)),
+    [selectedKeys],
+  );
+  const unstageEntries = useMemo<PaneEntry[]>(
+    () => stagedEntries.filter((entry) => workingTarget(entry, stagedByPath) !== undefined),
+    [stagedByPath, stagedEntries],
+  );
   const actionFailure = actionError ? (
     <div className="inline-alert" role="alert">
       <span>{actionError}</span>
@@ -496,10 +631,14 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
           action="stage"
           entries={unstaged}
           mode={mode}
-          selectedKey={selectedKey}
+          activeKey={selection.activeKey}
+          selectedKeys={selectedKeys}
           emptyText={status ?? (filtering ? 'No unstaged files match the filter.' : 'No unstaged changes.')}
-          onSelect={setSelectedKey}
-          onAction={() => void applyFileEntries('stage', stageEntries)}
+          onSelect={(entry, modifiers) => selectEntry(unstaged, entry, modifiers)}
+          onAction={() => {
+            const chosen = selectedIn(stageEntries);
+            void applyFileEntries('stage', chosen.length > 0 ? chosen : stageEntries);
+          }}
           actionDisabled={actionBusy || loading || stageEntries.length === 0}
           actionDisabledReason={
             stageEntries.length === 0 ? 'There are no unstaged files to stage.' : undefined
@@ -523,17 +662,45 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
         />
         <ChangesPane
           id="staged"
-          title="Staged"
+          title={amendPreview ? 'Staged and amended' : 'Staged'}
           action="unstage"
-          entries={staged}
+          entries={stagedEntries}
           mode={mode}
-          selectedKey={selectedKey}
-          emptyText={status ?? (filtering ? 'No staged files match the filter.' : 'No staged changes.')}
-          onSelect={setSelectedKey}
-          onAction={() => void applyFileEntries('unstage', staged)}
-          actionDisabled={actionBusy || loading || staged.length === 0}
-          actionDisabledReason={staged.length === 0 ? 'There are no staged files to unstage.' : undefined}
-        />
+          activeKey={selection.activeKey}
+          selectedKeys={selectedKeys}
+          emptyText={
+            amendPreview
+              ? 'The amended commit would be empty.'
+              : (status ?? (filtering ? 'No staged files match the filter.' : 'No staged changes.'))
+          }
+          onSelect={(entry, modifiers) => selectEntry(stagedEntries, entry, modifiers)}
+          onAction={() => {
+            const chosen = selectedIn(unstageEntries);
+            void applyFileEntries('unstage', chosen.length > 0 ? chosen : unstageEntries);
+          }}
+          actionDisabled={actionBusy || loading || unstageEntries.length === 0}
+          actionDisabledReason={
+            unstageEntries.length === 0
+              ? amendPreview
+                ? 'These changes belong to the commit being amended.'
+                : 'There are no staged files to unstage.'
+              : undefined
+          }
+        >
+          {amendPreview && (
+            <p className="changes-amend-note" role="status" data-testid="amend-note">
+              Showing what amending {shortHash(amendChanges.value?.commitId ?? '')} would commit.
+            </p>
+          )}
+          {amendChanges.error && (
+            <div className="inline-alert" role="alert">
+              <span>{amendChanges.error}</span>
+              <button type="button" className="button button-small" onClick={amendChanges.refresh}>
+                Retry
+              </button>
+            </div>
+          )}
+        </ChangesPane>
       </div>
       <Splitter
         orientation="vertical"
@@ -547,7 +714,7 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
         <div className="preview-pane">
           {selected ? (
             <ChangePreview
-              change={selected}
+              entry={selected}
               diff={diff}
               mode={diffMode}
               onModeChange={setDiffMode}
@@ -556,18 +723,10 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
               showWhitespace={showWhitespace}
               onShowWhitespaceChange={setShowWhitespace}
               busy={actionBusy}
-              onWorkingAction={(action, selection, snapshot) =>
-                applyAction(
-                  action,
-                  {
-                    area: selected.area,
-                    path: selected.path,
-                    previousPath: selected.previousPath,
-                  },
-                  selection,
-                  snapshot,
-                )
-              }
+              onWorkingAction={(action, lines, snapshot) => {
+                const target = workingTarget(selected, stagedByPath);
+                return target ? applyAction(action, [target], lines, snapshot) : Promise.resolve(false);
+              }}
             />
           ) : (
             <p className="preview-empty">Select a file to see its changes.</p>
@@ -576,8 +735,10 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
         <CommitComposer
           repository={repository}
           changeToken={changeToken}
-          stagedCount={value?.counts.staged ?? 0}
+          stagedCount={amendPreview ? amendEntries.length : (value?.counts.staged ?? 0)}
           conflictedCount={value?.counts.conflicted ?? 0}
+          amend={amend}
+          onAmendChange={setAmend}
           busy={actionBusy}
           onCommitted={onCommitted}
         />

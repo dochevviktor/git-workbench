@@ -218,6 +218,9 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.commitRepositoryChanges, (window, request) =>
       repositoryService.commit(window.webContents.id, request),
     );
+    register(requests.getRepositoryAmendChanges, (window, { id }) =>
+      repositoryService.getAmendChanges(window.webContents.id, id),
+    );
     register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
       repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),
     );

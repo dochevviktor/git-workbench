@@ -23,6 +23,57 @@ afterEach(async () => {
 });
 
 describe('repository diff service', () => {
+  it("diffs an amend target against the commit's parent, including files only in the commit", async () => {
+    const root = await fixtureDirectory();
+    const repository = join(root, 'repository');
+    await mkdir(repository);
+    const git = new GitRunner();
+    await git.run(['init', '--quiet'], { cwd: repository });
+    await writeFile(join(repository, 'file.txt'), 'base\n', 'utf8');
+    await git.run(['add', '--', 'file.txt'], { cwd: repository });
+    await git.run([...author, 'commit', '--quiet', '-m', 'base'], { cwd: repository });
+    await writeFile(join(repository, 'file.txt'), 'amended\n', 'utf8');
+    await git.run(['add', '--', 'file.txt'], { cwd: repository });
+    await git.run([...author, 'commit', '--quiet', '-m', 'commit to amend'], { cwd: repository });
+    await writeFile(join(repository, 'extra.txt'), 'staged later\n', 'utf8');
+    await git.run(['add', '--', 'extra.txt'], { cwd: repository });
+
+    const committed = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: repository,
+      target: { kind: 'amend', path: 'file.txt', previousPath: null },
+      whitespace: 'normal',
+    });
+    expect(committed).toMatchObject({ state: 'text', target: { kind: 'amend' }, snapshot: null });
+    expect(committed.content).toContain('-base');
+    expect(committed.content).toContain('+amended');
+
+    const alsoStaged = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: repository,
+      target: { kind: 'amend', path: 'extra.txt', previousPath: null },
+      whitespace: 'normal',
+    });
+    expect(alsoStaged.content).toContain('+staged later');
+  });
+
+  it('reports an amend diff as unavailable before the first commit', async () => {
+    const root = await fixtureDirectory();
+    const repository = join(root, 'repository');
+    await mkdir(repository);
+    const git = new GitRunner();
+    await git.run(['init', '--quiet'], { cwd: repository });
+
+    await expect(
+      readRepositoryDiff(git, {
+        repositoryId,
+        cwd: repository,
+        target: { kind: 'amend', path: 'file.txt', previousPath: null },
+        whitespace: 'normal',
+      }),
+    ).resolves.toMatchObject({ state: 'unavailable' });
+  });
+
   it('reads staged, unstaged, untracked, and committed text diffs with literal paths', async () => {
     const root = await fixtureDirectory();
     const repository = join(root, 'repository');

@@ -1,5 +1,16 @@
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { SelectionModifiers } from '../lib/list-selection';
 import { ChevronDownIcon, ChevronRightIcon } from './Icons';
+
+const noModifiers: SelectionModifiers = { toggle: false, range: false };
+
+function selectionModifiers(event: {
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly shiftKey: boolean;
+}): SelectionModifiers {
+  return { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey };
+}
 
 export interface TreeItem {
   readonly key: string;
@@ -24,7 +35,9 @@ interface TreeViewProps {
   readonly activeKey: string | undefined;
   readonly idPrefix: string;
   readonly className?: string | undefined;
-  readonly onActiveChange: (key: string) => void;
+  /** Rows shown as selected when the list supports selecting several at once. */
+  readonly selectedKeys?: ReadonlySet<string> | undefined;
+  readonly onActiveChange: (key: string, modifiers: SelectionModifiers) => void;
   readonly onToggle: (item: TreeItem, expand: boolean) => void;
   /** Enter or double click. */
   readonly onActivate?: ((item: TreeItem) => void) | undefined;
@@ -44,6 +57,7 @@ export function TreeView({
   activeKey,
   idPrefix,
   className,
+  selectedKeys,
   onActiveChange,
   onToggle,
   onActivate,
@@ -54,28 +68,29 @@ export function TreeView({
   const activeIndex = items.findIndex((item) => item.key === activeKey);
   const rowId = (item: TreeItem) => `${idPrefix}-${item.key}`;
 
-  const moveTo = (index: number) => {
+  const moveTo = (index: number, extend = false) => {
     const item = items[Math.max(0, Math.min(items.length - 1, index))];
     if (!item) return;
-    onActiveChange(item.key);
+    onActiveChange(item.key, { toggle: false, range: extend });
     onSelect?.(item);
     document.getElementById(rowId(item))?.scrollIntoView({ block: 'nearest' });
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const item = items[activeIndex];
+    const extend = event.shiftKey;
     switch (event.key) {
       case 'ArrowDown':
-        moveTo(activeIndex + 1);
+        moveTo(activeIndex + 1, extend);
         break;
       case 'ArrowUp':
-        moveTo(activeIndex < 0 ? items.length - 1 : activeIndex - 1);
+        moveTo(activeIndex < 0 ? items.length - 1 : activeIndex - 1, extend);
         break;
       case 'Home':
-        moveTo(0);
+        moveTo(0, extend);
         break;
       case 'End':
-        moveTo(items.length - 1);
+        moveTo(items.length - 1, extend);
         break;
       case 'ArrowRight':
         if (item?.expandable && !item.expanded) onToggle(item, true);
@@ -101,17 +116,21 @@ export function TreeView({
       className={className ? `tree ${className}` : 'tree'}
       role="tree"
       aria-label={label}
+      aria-multiselectable={selectedKeys ? true : undefined}
       tabIndex={0}
       aria-activedescendant={activeIndex >= 0 ? rowId(items[activeIndex]!) : undefined}
       onKeyDown={onKeyDown}
       onFocus={(event) => {
-        if (event.target === event.currentTarget && activeIndex < 0 && items[0]) onActiveChange(items[0].key);
+        if (event.target === event.currentTarget && activeIndex < 0 && items[0])
+          onActiveChange(items[0].key, noModifiers);
       }}
     >
       {items.map((item) => {
+        const selected = selectedKeys ? selectedKeys.has(item.key) : item.key === activeKey;
         const classes = ['tree-row'];
         if (item.className) classes.push(item.className);
-        if (item.key === activeKey) classes.push('active');
+        if (selected) classes.push('active');
+        if (selectedKeys && item.key === activeKey) classes.push('focused');
         if (item.unavailable) classes.push('unavailable');
         return (
           <div
@@ -121,14 +140,16 @@ export function TreeView({
             className={classes.join(' ')}
             aria-level={item.level}
             aria-expanded={item.expandable ? item.expanded : undefined}
-            aria-selected={item.key === activeKey}
+            aria-selected={selected}
             aria-disabled={item.unavailable ? true : undefined}
             title={item.title}
             data-testid={item.testId}
             style={{ paddingLeft: 4 + (item.level - 1) * 16 }}
             onMouseDown={(event) => {
               if (event.button !== 0 && event.button !== 2) return;
-              onActiveChange(item.key);
+              // A right click keeps an existing multi-selection the menu is about to act on.
+              const keepSelection = event.button === 2 && selected;
+              if (!keepSelection) onActiveChange(item.key, selectionModifiers(event));
               if (event.button === 0) onSelect?.(item);
             }}
             onClick={(event) => {
@@ -143,7 +164,6 @@ export function TreeView({
             onContextMenu={(event) => {
               if (!onContextMenu) return;
               event.preventDefault();
-              onActiveChange(item.key);
               onContextMenu(item, event);
             }}
           >
@@ -153,7 +173,7 @@ export function TreeView({
               onMouseDown={(event) => {
                 if (!item.expandable || event.button !== 0) return;
                 event.stopPropagation();
-                onActiveChange(item.key);
+                onActiveChange(item.key, noModifiers);
                 onToggle(item, !item.expanded);
               }}
             >

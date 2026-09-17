@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { access, constants, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type {
+  RepositoryAmendChanges,
   RepositoryCommitAmendTarget,
   RepositoryCommitContext,
   RepositoryCommitFailureReason,
@@ -12,9 +13,14 @@ import type {
   RepositoryHead,
   RepositoryWorkingChange,
 } from '../../common/ipc/contracts';
-import { repositoryCommitContextSchema, repositoryCommitResultSchema } from '../../common/ipc/contracts';
+import {
+  repositoryAmendChangesSchema,
+  repositoryCommitContextSchema,
+  repositoryCommitResultSchema,
+} from '../../common/ipc/contracts';
 import { GitCommandError, GitTimeoutError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
+import { parseRawChanges, resolveAmendBase } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
 
 const commitReadTimeoutMs = 10_000;
@@ -26,6 +32,8 @@ const recentMessageLimit = 20;
 const recentMessageScanLimit = 100;
 const templateByteLimit = 64 * 1024;
 const outputDisplayLimit = 64 * 1024;
+const amendReadOutputLimit = 8 * 1024 * 1024;
+const amendChangeLimit = 10_000;
 const commitHookNames = ['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit'] as const;
 const objectIdPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
@@ -47,6 +55,13 @@ export interface CommitChangesInput extends CommitContextInput {
   readonly amend: boolean;
   readonly snapshot: string;
   readonly skipHooks: boolean;
+}
+
+export class AmendUnavailableError extends Error {
+  constructor() {
+    super('This branch has no commit to amend.');
+    this.name = 'AmendUnavailableError';
+  }
 }
 
 export class StaleCommitSnapshotError extends Error {
@@ -99,6 +114,52 @@ export async function readCommitContext(
     hooks,
     snapshot: commitSnapshot(input.head, pending.operation, changes.staged),
   } satisfies RepositoryCommitContext);
+}
+
+/**
+ * Lists everything an amended commit would contain: the current index compared with HEAD's parent.
+ * This is a read; ticking Amend never moves a commit's changes into the index.
+ */
+export async function readAmendChanges(
+  runner: CommitRunner,
+  input: CommitContextInput,
+): Promise<RepositoryAmendChanges> {
+  const amendBase = await resolveAmendBase(runner, input.cwd);
+  if (!amendBase) throw new AmendUnavailableError();
+
+  const [raw, staged] = await Promise.all([
+    runner.run(
+      [
+        'diff-index',
+        '--cached',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--raw',
+        '-M',
+        '-C',
+        '-z',
+        amendBase.base,
+        '--',
+      ],
+      { cwd: input.cwd, timeoutMs: commitReadTimeoutMs, maxOutputBytes: amendReadOutputLimit },
+    ),
+    readWorkingChanges(runner, {
+      repositoryId: input.repositoryId,
+      cwd: input.cwd,
+      includeUntracked: false,
+      includeIgnored: false,
+    }),
+  ]);
+
+  const changes = parseRawChanges(raw.stdout);
+  return repositoryAmendChangesSchema.parse({
+    repositoryId: input.repositoryId,
+    commitId: amendBase.commitId,
+    parentId: amendBase.parentId,
+    changes: changes.slice(0, amendChangeLimit),
+    stagedPaths: staged.staged.map((change) => change.path).slice(0, amendChangeLimit),
+    truncated: changes.length > amendChangeLimit,
+  } satisfies RepositoryAmendChanges);
 }
 
 /**

@@ -4,6 +4,7 @@ import { basename, isAbsolute, resolve } from 'node:path';
 import type {
   GitInfo,
   RecentRepository,
+  RepositoryAmendChanges,
   RepositoryCommitChanges,
   RepositoryCommitContext,
   RepositoryCommitRequest,
@@ -56,7 +57,13 @@ import {
   RevisionPathError,
 } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
-import { commitChanges, readCommitContext, StaleCommitSnapshotError } from './commit-service';
+import {
+  AmendUnavailableError,
+  commitChanges,
+  readAmendChanges,
+  readCommitContext,
+  StaleCommitSnapshotError,
+} from './commit-service';
 import { readRepositoryDiff } from './diff-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 
@@ -364,7 +371,7 @@ export class RepositoryService {
           repositoryId: request.id,
           cwd: summary.worktreePath,
           action: request.action,
-          target: request.target,
+          targets: request.targets,
           snapshot: request.snapshot,
           selection: request.selection,
         });
@@ -391,7 +398,7 @@ export class RepositoryService {
         return {
           repositoryId: request.id,
           action: request.action,
-          target: request.target,
+          targets: request.targets,
           selection: request.selection,
           changes,
         } satisfies RepositoryWorkingChangeActionResult;
@@ -412,6 +419,23 @@ export class RepositoryService {
       });
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the commit details.');
+    }
+  }
+
+  async getAmendChanges(ownerId: number, id: string): Promise<RepositoryAmendChanges> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readAmendChanges(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        head: summary.head,
+      });
+    } catch (error) {
+      if (error instanceof AmendUnavailableError) {
+        throw new ExpectedBackendError('UNAVAILABLE', error.message);
+      }
+      throw this.mapGitFailure(error, 'Git could not read the amended commit changes.');
     }
   }
 

@@ -9,7 +9,7 @@ import { repositoryDiffSchema } from '../../common/ipc/contracts';
 import { GitCommandError, GitOutputLimitError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readWorkingChanges } from './working-tree-service';
-import { RevisionNotFoundError, RevisionPathError } from './revision-service';
+import { resolveAmendBase, RevisionNotFoundError, RevisionPathError } from './revision-service';
 import { createWorkingSnapshot } from './working-snapshot';
 
 const diffReadTimeoutMs = 15_000;
@@ -34,8 +34,13 @@ export async function readRepositoryDiff(
 ): Promise<RepositoryDiff> {
   let snapshot: string | null = null;
   let workingChange: RepositoryWorkingChange | undefined;
+  let amendBase: string | undefined;
   if (input.target.kind === 'commit') await ensureCommit(runner, input.cwd, input.target.commitId);
-  else {
+  else if (input.target.kind === 'amend') {
+    const base = await resolveAmendBase(runner, input.cwd);
+    if (!base) return unavailable(input, 'This branch has no commit to amend.', null);
+    amendBase = base.base;
+  } else {
     const validated = await ensureWorkingTarget(runner, input);
     workingChange = validated.change;
     snapshot = await createWorkingSnapshot(input.cwd, input.target, workingChange);
@@ -44,7 +49,7 @@ export async function readRepositoryDiff(
 
   let result: GitCommandResult;
   try {
-    result = await runner.run(diffArguments(input.target, input.whitespace), {
+    result = await runner.run(diffArguments(input.target, input.whitespace, amendBase), {
       cwd: input.cwd,
       timeoutMs: diffReadTimeoutMs,
       maxOutputBytes: diffReadOutputLimit,
@@ -82,7 +87,11 @@ export async function readRepositoryDiff(
   });
 }
 
-function diffArguments(target: RepositoryDiffTarget, whitespace: RepositoryDiffWhitespace): string[] {
+function diffArguments(
+  target: RepositoryDiffTarget,
+  whitespace: RepositoryDiffWhitespace,
+  amendBase: string | undefined,
+): string[] {
   if (target.kind === 'commit') {
     const args = [
       'diff-tree',
@@ -119,6 +128,11 @@ function diffArguments(target: RepositoryDiffTarget, whitespace: RepositoryDiffW
   ];
   const whitespaceFlag = whitespaceArgument(whitespace);
   if (whitespaceFlag) args.push(whitespaceFlag);
+  if (target.kind === 'amend') {
+    if (!amendBase) throw new RevisionNotFoundError();
+    // What the amended commit would contain for this path: the index against HEAD's parent.
+    return args.concat(['--cached', amendBase, '--', ...pathsForTarget(target)]);
+  }
   if (target.area === 'staged') args.push('--cached');
   if (target.area === 'untracked' || target.area === 'ignored') {
     return args.concat(['--no-index', '--', devNull, target.path]);

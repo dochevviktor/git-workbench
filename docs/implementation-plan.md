@@ -296,6 +296,18 @@ contract, repository service, and a full Electron commit/amend/hook flow are cov
 `--signoff`, co-authors, commit-and-push, spell checking, a configurable subject limit, and prepare-commit-msg
 drafting are not implemented, so F11 and P04 remain partial.
 
+Follow-up fixes in the same slice (2026-09-17): the Unstaged and Staged panes now support
+Ctrl/Cmd-click, Shift-click and Shift+arrow multiple selection; their button acts on that selection and
+reads "Stage All"/"Unstage All" only when nothing is selected; and one request carries every chosen file,
+so staging a selection is a single `git add` instead of one round trip per file. Whole-file actions
+revalidate each named file against a fresh status read, while hunk and line actions keep the exact content
+snapshot. Ticking Amend now previews the amended commit in the Staged pane from
+`repository:get-amend-changes` (the index compared with HEAD's parent, or the empty tree for a root commit)
+with a matching `amend` diff target; it is a read, so nothing is reset and unticking restores the ordinary
+panes. Disposable Git tests cover batched staging, a selection that no longer matches the working tree, the
+amend preview including a root commit, and the amend diff; renderer tests cover the selection model; and
+the Electron test exercises Ctrl+click staging and the amend preview.
+
 Design realignment with this slice (2026-09-17): the F08 placeholder metadata list (Status, Area,
 Previous path, Mode, Blob) above the diff was removed from both the working-change and committed-change
 previews, because Fork's published local-changes and Changes views put the diff directly under the file

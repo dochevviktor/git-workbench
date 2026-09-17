@@ -19,9 +19,15 @@ function actionError(reason: unknown): string {
 
 function targetKey(target: RepositoryDiffTarget | undefined): string | undefined {
   if (!target) return undefined;
-  return target.kind === 'commit'
-    ? `commit:${target.commitId}:${target.previousPath ?? ''}:${target.path}`
-    : `working:${target.area}:${target.previousPath ?? ''}:${target.path}`;
+  const path = `${target.previousPath ?? ''}:${target.path}`;
+  switch (target.kind) {
+    case 'commit':
+      return `commit:${target.commitId}:${path}`;
+    case 'amend':
+      return `amend:${path}`;
+    case 'working':
+      return `working:${target.area}:${path}`;
+  }
 }
 
 /** Loads a selected diff and ignores late responses from a previous repository or file selection. */

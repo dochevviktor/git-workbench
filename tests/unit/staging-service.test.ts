@@ -55,7 +55,7 @@ async function apply(
     repositoryId,
     cwd: repository,
     action,
-    target,
+    targets: [target],
     snapshot,
     selection,
   });
@@ -293,7 +293,7 @@ describe('working-change staging service', () => {
         repositoryId: repositoryIdForFixture,
         cwd: root,
         action: 'stage',
-        target,
+        targets: [target],
         snapshot: current.snapshot,
         selection: { kind: 'file' },
       });
@@ -304,6 +304,90 @@ describe('working-change staging service', () => {
     expect(stagedNames).toContain('delete.txt');
     expect(stagedNames).toContain('binary.bin');
     if (process.platform !== 'win32') expect(stagedNames).toContain('mode.txt');
+  });
+
+  it('stages several selected files in one action and leaves the rest alone', async () => {
+    const { root, git } = await fixtureRepository();
+    await commit(git, root, 'file.txt', 'base\n');
+    for (const name of ['first.txt', 'second.txt', 'third.txt']) {
+      await writeFile(join(root, name), `${name}\n`, 'utf8');
+    }
+    await writeFile(join(root, 'file.txt'), 'changed\n', 'utf8');
+
+    const commands: string[][] = [];
+    const recording = {
+      run: (args: readonly string[], options: Parameters<GitRunner['run']>[1]) => {
+        commands.push([...args]);
+        return git.run(args, options);
+      },
+    };
+    await applyWorkingChange(recording, {
+      repositoryId,
+      cwd: root,
+      action: 'stage',
+      targets: [
+        { area: 'untracked', path: 'first.txt', previousPath: null },
+        { area: 'untracked', path: 'third.txt', previousPath: null },
+      ],
+      snapshot: null,
+      selection: { kind: 'file' },
+    });
+
+    const staged = (await git.run(['diff', '--cached', '--name-only'], { cwd: root })).stdout;
+    expect(staged.split('\n').filter(Boolean)).toEqual(['first.txt', 'third.txt']);
+    // One `git add` for the whole selection, not one Git invocation per file.
+    expect(commands.filter((command) => command[0] === 'add')).toEqual([
+      ['add', '--', 'first.txt', 'third.txt'],
+    ]);
+  });
+
+  it('unstages several files in one action', async () => {
+    const { root, git } = await fixtureRepository();
+    await commit(git, root, 'file.txt', 'base\n');
+    for (const name of ['first.txt', 'second.txt']) {
+      await writeFile(join(root, name), `${name}\n`, 'utf8');
+      await git.run(['add', '--', name], { cwd: root });
+    }
+
+    await applyWorkingChange(git, {
+      repositoryId,
+      cwd: root,
+      action: 'unstage',
+      targets: [
+        { area: 'staged', path: 'first.txt', previousPath: null },
+        { area: 'staged', path: 'second.txt', previousPath: null },
+      ],
+      snapshot: null,
+      selection: { kind: 'file' },
+    });
+
+    await expect(git.run(['diff', '--cached', '--name-only'], { cwd: root })).resolves.toMatchObject({
+      stdout: '',
+    });
+    await expect(readFile(join(root, 'first.txt'), 'utf8')).resolves.toBe('first.txt\n');
+  });
+
+  it('refuses a selection that no longer matches the working tree', async () => {
+    const { root, git } = await fixtureRepository();
+    await commit(git, root, 'file.txt', 'base\n');
+    await writeFile(join(root, 'present.txt'), 'present\n', 'utf8');
+
+    await expect(
+      applyWorkingChange(git, {
+        repositoryId,
+        cwd: root,
+        action: 'stage',
+        targets: [
+          { area: 'untracked', path: 'present.txt', previousPath: null },
+          { area: 'untracked', path: 'vanished.txt', previousPath: null },
+        ],
+        snapshot: null,
+        selection: { kind: 'file' },
+      }),
+    ).rejects.toThrow(/vanished\.txt/u);
+    await expect(git.run(['diff', '--cached', '--name-only'], { cwd: root })).resolves.toMatchObject({
+      stdout: '',
+    });
   });
 
   it('unstages a file in an unborn repository without deleting the worktree file', async () => {
@@ -323,7 +407,7 @@ describe('working-change staging service', () => {
       repositoryId: repositoryIdForFixture,
       cwd: root,
       action: 'unstage',
-      target: { area: 'staged', path: 'new.txt', previousPath: null },
+      targets: [{ area: 'staged', path: 'new.txt', previousPath: null }],
       snapshot: staged.snapshot,
       selection: { kind: 'file' },
     });

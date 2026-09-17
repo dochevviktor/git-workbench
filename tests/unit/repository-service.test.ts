@@ -192,7 +192,7 @@ describe('repository service', () => {
     const result = await service.applyWorkingChange(1, {
       id: repository.id,
       action: 'stage',
-      target: { area: 'unstaged', path: 'file.txt', previousPath: null },
+      targets: [{ area: 'unstaged', path: 'file.txt', previousPath: null }],
       snapshot: diff.snapshot!,
       selection: { kind: 'hunk', hunk: 0 },
     });

@@ -4,6 +4,8 @@ import type {
   EditCommand,
   GitInfo,
   RecentRepository,
+  RepositoryAmendChanges,
+  RepositoryAmendChangesRequest,
   RepositoryCommitChanges,
   RepositoryCommitChangesRequest,
   RepositoryCommitContext,
@@ -80,6 +82,7 @@ export interface DesktopApi {
     ): Promise<IpcResult<RepositoryWorkingChangeActionResult>>;
     getCommitContext(request: RepositoryCommitContextRequest): Promise<IpcResult<RepositoryCommitContext>>;
     commit(request: RepositoryCommitRequest): Promise<IpcResult<RepositoryCommitResult>>;
+    getAmendChanges(request: RepositoryAmendChangesRequest): Promise<IpcResult<RepositoryAmendChanges>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

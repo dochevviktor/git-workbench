@@ -25,10 +25,6 @@ function isString(value: unknown): value is string {
   return typeof value === 'string';
 }
 
-function isBoolean(value: unknown): value is boolean {
-  return typeof value === 'boolean';
-}
-
 function splitMessage(message: string): { readonly subject: string; readonly body: string } {
   const [first, ...rest] = message.replace(/\r\n?/gu, '\n').split('\n');
   return { subject: first ?? '', body: rest.join('\n').replace(/^\n+/u, '') };
@@ -88,8 +84,12 @@ interface CommitComposerProps {
   readonly repository: RepositorySummary;
   /** Changes whenever the staged set or HEAD moves, so the composer reloads its guard token. */
   readonly changeToken: string;
+  /** How many files the commit would contain; in amend mode this includes the amended commit's own. */
   readonly stagedCount: number;
   readonly conflictedCount: number;
+  /** Amend lives in the view, because the Staged pane previews the amended commit while it is on. */
+  readonly amend: boolean;
+  readonly onAmendChange: (amend: boolean) => void;
   /** A staging action is running; commits wait for it. */
   readonly busy: boolean;
   readonly onCommitted: () => void;
@@ -101,6 +101,8 @@ export function CommitComposer({
   changeToken,
   stagedCount,
   conflictedCount,
+  amend,
+  onAmendChange,
   busy,
   onCommitted,
 }: CommitComposerProps) {
@@ -110,7 +112,7 @@ export function CommitComposer({
     isString,
   );
   const [body, setBody] = usePersistentState(`repository.${repository.id}.commit.body`, '', isString);
-  const [amend, setAmend] = usePersistentState(`repository.${repository.id}.commit.amend`, false, isBoolean);
+  const setAmend = onAmendChange;
   const [committing, setCommitting] = useState(false);
   const [failure, setFailure] = useState<CommitFailure>();
   const [error, setError] = useState<string>();

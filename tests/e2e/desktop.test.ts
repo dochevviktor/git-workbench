@@ -327,6 +327,38 @@ test('production build loads its isolated preload and renderer', async () => {
       unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }),
     ).toBeVisible();
 
+    // Ctrl+click selects several files, and the pane button acts on that selection alone.
+    await writeFile(join(fixtureRepository, 'multi-one.txt'), 'one\n', 'utf8');
+    await writeFile(join(fixtureRepository, 'multi-two.txt'), 'two\n', 'utf8');
+    await writeFile(join(fixtureRepository, 'multi-three.txt'), 'three\n', 'utf8');
+    await expect(
+      unstagedFiles.getByTestId('working-change').filter({ hasText: 'multi-three.txt' }),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('working-unstaged-action')).toHaveText('Stage All');
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'multi-one.txt' }).click();
+    await unstagedFiles
+      .getByTestId('working-change')
+      .filter({ hasText: 'multi-three.txt' })
+      .click({ modifiers: ['ControlOrMeta'] });
+    await expect(page.getByTestId('working-unstaged-action')).toHaveText('Stage');
+    await page.getByTestId('working-unstaged-action').click();
+    await expect(
+      stagedFiles.getByTestId('working-change').filter({ hasText: 'multi-one.txt' }),
+    ).toBeVisible();
+    await expect(
+      stagedFiles.getByTestId('working-change').filter({ hasText: 'multi-three.txt' }),
+    ).toBeVisible();
+    await expect(
+      unstagedFiles.getByTestId('working-change').filter({ hasText: 'multi-two.txt' }),
+    ).toBeVisible();
+    await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'multi-two.txt' })).toHaveCount(
+      0,
+    );
+    await page.getByTestId('working-staged-action').click();
+    await expect(stagedFiles.getByTestId('working-change')).toHaveCount(0);
+
     await writeFile(join(fixtureRepository, 'line-selection.txt'), 'before\nkeep\nafter\n', 'utf8');
     await fixtureGit.run(['add', '--', 'line-selection.txt'], { cwd: fixtureRepository });
     await fixtureGit.run([...author, 'commit', '--quiet', '-m', 'line selection base'], {
@@ -437,8 +469,18 @@ test('production build loads its isolated preload and renderer', async () => {
 
     await composer.getByTestId('commit-amend').check();
     await expect(composer.getByTestId('commit-subject')).toHaveValue(composerSubject);
+    // Amend previews the commit's own files in the staged pane without resetting anything.
+    await expect(page.getByTestId('amend-note')).toBeVisible();
+    await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' })).toBeVisible();
+    expect(
+      (await fixtureGit.run(['rev-list', '--count', 'HEAD'], { cwd: fixtureRepository })).stdout.trim(),
+    ).toBe(committedCount);
+    expect(
+      (await fixtureGit.run(['diff', '--cached', '--name-only'], { cwd: fixtureRepository })).stdout.trim(),
+    ).toBe('');
     await composer.getByTestId('commit-subject').fill('Amended from the composer');
-    await expect(composer.getByTestId('commit-submit')).toHaveText('Amend Commit');
+    // The button counts what the amended commit would contain, not just what is staged now.
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Amend 1 File');
     await composer.getByTestId('commit-submit').click();
     await expect
       .poll(async () =>
