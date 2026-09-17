@@ -134,6 +134,25 @@ large-history performance, exact current Fork visuals, and cross-platform pointe
 unverified; Linux follows the project’s independent implementation because Fork publishes no Linux
 build.
 
+### F06 source refresh
+
+Accessed **2026-09-17**. The official [Fork for Windows 1.38 article][diff] explicitly documents a
+sidebar filter for searching branches by name and a filter for file lists. This is high-confidence
+**D** evidence for the Windows workflow, published **2019-08-27**; it does not establish the current
+search panel layout or exact matching rules. The official [Mac release notes][mac] document a new
+commit search, file-path search, and file matches for diff/path searches in Fork 1.0.98 (**2020-09-04**),
+and recent search queries in Fork 2.9 (**2021-06-25**). These are high-confidence **D** outcomes for
+Mac release history, but the notes do not specify the complete query language, scope, or current UI.
+Neither source establishes Linux support or parity between the two platforms.
+
+This project’s first F06 slice is an **I** choice: a reference context-menu action scopes the history
+query to the selected reference’s validated commit target, while the history search field performs a
+bounded, case-insensitive, fixed-string search over commit messages. Both filters use the existing
+generation guard and paged history request, and search text remains a single backend argument. The
+slice is verified against disposable Git fixtures and an Electron flow. File-list filtering, path
+history, diff-content search, author/hash search, recent-query persistence, and large-history search
+performance remain unverified and are deferred to the changed-file/diff and P08 investigation slices.
+
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
 Accessed **2026-09-16**, prompted by a request to bring the layout, graph drawing, context menus, and
@@ -222,7 +241,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts                    | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                                                                    | P02, P12      |
 | F04 | Commit graph, reference labels, authors, hashes, dates, selection                                           | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures        | P03           |
 | F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                      | P03           |
-| F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]                                                                                           | P03, P08      |
+| F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; I: reference-scoped history and fixed-string commit-message search (partial)             | P03, P08      |
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]                                                                              | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                                                                       | P04           |
 | F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                                      | P04           |

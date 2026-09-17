@@ -183,6 +183,29 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('treeitem', { name: 'feature' }).dblclick();
     await expect(page.getByRole('treeitem', { name: 'graph' })).toBeVisible();
 
+    // F06: reference-scoped history uses the branch tip as a backend-owned Git revision.
+    await page.getByRole('treeitem', { name: 'graph' }).click({ button: 'right' });
+    const referenceMenu = page.getByRole('menu', { name: 'feature/graph' });
+    await referenceMenu
+      .getByRole('menuitem', { name: "Filter History to 'feature/graph'", exact: true })
+      .click();
+    await expect(page.getByRole('button', { name: 'Show all commits', exact: true })).toBeVisible();
+    await expect(page.getByTestId('history-commit')).toHaveCount(3);
+    await expect(page.getByText('Merge feature graph', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show all commits', exact: true }).click();
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
+
+    // F06: commit-message search is literal and paged by the backend.
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    const commitSearch = page.getByRole('searchbox', { name: 'Search commits' });
+    await commitSearch.fill('Feature branch commit 2');
+    await expect(page.getByTestId('history-commit')).toHaveCount(1);
+    await expect(page.getByTestId('history-commit')).toContainText('Feature branch commit 2');
+    await commitSearch.fill('Feature [branch]');
+    await expect(page.getByText('No commits match “Feature [branch]”.', { exact: true })).toBeVisible();
+    await commitSearch.fill('');
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
+
     await page.getByTestId('history-commit').filter({ hasText: 'First history commit' }).click();
     await expect(page.getByRole('heading', { name: 'First history commit' })).toBeVisible();
     await expect(page.locator('.history-full-hash')).toHaveText(/^[0-9a-f]{40}$/u);

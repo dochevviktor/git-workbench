@@ -2,6 +2,7 @@ import type {
   RepositoryHead,
   RepositoryHistoryCommit,
   RepositoryHistoryDecoration,
+  RepositoryHistoryFilter,
   RepositoryHistoryPage,
   RepositoryHistoryReference,
   RepositoryHistoryTracking,
@@ -28,6 +29,7 @@ export interface ReadHistoryInput {
   readonly head: RepositoryHead;
   readonly offset: number;
   readonly limit: number;
+  readonly filter?: RepositoryHistoryFilter | undefined;
 }
 
 interface RawReference {
@@ -45,19 +47,9 @@ export async function readRepositoryHistory(
   runner: HistoryRunner,
   input: ReadHistoryInput,
 ): Promise<RepositoryHistoryPage> {
+  const filter = input.filter ?? { kind: 'all' as const };
   const rawHistory = await runner.run(
-    [
-      'log',
-      '--all',
-      '--topo-order',
-      '--no-decorate',
-      '--no-color',
-      `--skip=${input.offset}`,
-      `--max-count=${input.limit + 1}`,
-      `--pretty=format:${commitFormat}`,
-      ...(input.head.commit ? [input.head.commit] : []),
-      '--',
-    ],
+    historyArguments(input, filter),
     readOptions(input.cwd, historyReadOutputLimit),
   );
   const parsedCommits = parseCommits(rawHistory.stdout);
@@ -92,6 +84,26 @@ export async function readRepositoryHistory(
     hasMore: canContinue,
     nextOffset: canContinue ? input.offset + input.limit : null,
   });
+}
+
+function historyArguments(input: ReadHistoryInput, filter: RepositoryHistoryFilter): readonly string[] {
+  const argumentsList = ['log'];
+  if (filter.kind !== 'reference') argumentsList.push('--all');
+  argumentsList.push('--topo-order', '--no-decorate', '--no-color');
+  if (filter.kind === 'commit-search') {
+    // Search text is passed as one argument and treated literally. It never becomes shell code or
+    // a regular expression supplied by the renderer.
+    argumentsList.push('--fixed-strings', '--regexp-ignore-case', `--grep=${filter.query}`);
+  }
+  argumentsList.push(
+    `--skip=${input.offset}`,
+    `--max-count=${input.limit + 1}`,
+    `--pretty=format:${commitFormat}`,
+  );
+  const startingCommit = filter.kind === 'reference' ? filter.target : input.head.commit;
+  if (startingCommit) argumentsList.push(startingCommit);
+  argumentsList.push('--');
+  return argumentsList;
 }
 
 const commitFormat = ['%H', '%P', '%an', '%ae', '%aI', '%cn', '%ce', '%cI', '%s', '%b'].join('%x00') + '%x00';

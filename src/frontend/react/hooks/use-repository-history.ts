@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   RepositoryHistoryCommit,
+  RepositoryHistoryFilter,
   RepositoryHistoryReference,
   RepositoryHistoryTracking,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 
 const historyPageSize = 50;
+const allHistoryFilter = { kind: 'all' } as const satisfies RepositoryHistoryFilter;
+
+function historyFilterKey(filter: RepositoryHistoryFilter): string {
+  return filter.kind === 'all'
+    ? 'all'
+    : filter.kind === 'reference'
+      ? `reference:${filter.target}`
+      : `commit-search:${filter.query}`;
+}
 
 function actionError(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'The repository history could not be loaded.';
 }
 
 export type RepositoryHistory = ReturnType<typeof useRepositoryHistory>;
+export type HistoryFilter = RepositoryHistoryFilter;
 
 export function useRepositoryHistory(repositoryId: string | undefined) {
   const [commits, setCommits] = useState<RepositoryHistoryCommit[]>([]);
@@ -29,8 +40,14 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string>();
+  const [ownedFilter, setOwnedFilter] = useState<{
+    readonly repositoryId: string | undefined;
+    readonly filter: RepositoryHistoryFilter;
+  }>({ repositoryId: undefined, filter: allHistoryFilter });
   const generation = useRef(0);
   const mounted = useRef(true);
+  const filter = ownedFilter.repositoryId === repositoryId ? ownedFilter.filter : allHistoryFilter;
+  const filterKey = historyFilterKey(filter);
 
   useEffect(() => {
     mounted.current = true;
@@ -40,7 +57,13 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   }, []);
 
   const requestPage = useCallback(
-    async (id: string, offset: number, replace: boolean, requestGeneration: number) => {
+    async (
+      id: string,
+      offset: number,
+      replace: boolean,
+      requestGeneration: number,
+      requestFilter: RepositoryHistoryFilter,
+    ) => {
       const api = window.desktop;
       if (!api) {
         if (mounted.current && generation.current === requestGeneration) {
@@ -53,7 +76,9 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       if (replace) setLoading(true);
       else setLoadingMore(true);
       try {
-        const page = unwrapResult(await api.repository.getHistory({ id, offset, limit: historyPageSize }));
+        const page = unwrapResult(
+          await api.repository.getHistory({ id, offset, limit: historyPageSize, filter: requestFilter }),
+        );
         if (!mounted.current || generation.current !== requestGeneration) return;
         setCommits((current) => {
           if (replace) return page.commits;
@@ -99,21 +124,32 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       setLoadingMore(false);
       return;
     }
-    void requestPage(repositoryId, 0, true, requestGeneration);
-  }, [repositoryId, requestPage]);
+    void requestPage(repositoryId, 0, true, requestGeneration, filter);
+  }, [filter, repositoryId, requestPage]);
+
+  const setFilter = useCallback(
+    (next: RepositoryHistoryFilter) => {
+      setOwnedFilter({ repositoryId, filter: next });
+    },
+    [repositoryId],
+  );
+
+  const clearFilter = useCallback(() => {
+    setFilter(allHistoryFilter);
+  }, [setFilter]);
 
   const refresh = useCallback(() => {
     if (!repositoryId) return;
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
     setError(undefined);
-    void requestPage(repositoryId, 0, true, requestGeneration);
-  }, [repositoryId, requestPage]);
+    void requestPage(repositoryId, 0, true, requestGeneration, filter);
+  }, [filter, repositoryId, requestPage]);
 
   const loadMore = useCallback(() => {
     if (!repositoryId || loading || loadingMore || !hasMore || nextOffset === null) return;
-    void requestPage(repositoryId, nextOffset, false, generation.current);
-  }, [hasMore, loading, loadingMore, nextOffset, repositoryId, requestPage]);
+    void requestPage(repositoryId, nextOffset, false, generation.current, filter);
+  }, [filter, hasMore, loading, loadingMore, nextOffset, repositoryId, requestPage]);
 
   const selectCommit = useCallback(
     (id: string) => {
@@ -124,6 +160,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
 
   return {
     repositoryId,
+    filter,
+    filterKey,
     commits,
     references,
     tracking,
@@ -134,6 +172,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     loadingMore,
     hasMore,
     error,
+    setFilter,
+    clearFilter,
     refresh,
     loadMore,
     selectCommit,

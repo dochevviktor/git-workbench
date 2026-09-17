@@ -6,6 +6,7 @@ import type {
   RecentRepository,
   RepositoryHead,
   RepositoryHistoryPage,
+  RepositoryHistoryFilter,
   RepositoryLocation,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
@@ -220,6 +221,7 @@ export class RepositoryService {
     id: string,
     offset: number,
     limit: number,
+    filter?: RepositoryHistoryFilter,
   ): Promise<RepositoryHistoryPage> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
@@ -259,6 +261,7 @@ export class RepositoryService {
         head: summary.head,
         offset,
         limit,
+        filter,
       });
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the selected repository history.');

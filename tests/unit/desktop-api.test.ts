@@ -61,6 +61,15 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
 
     const repositoryId = `repo-${'a'.repeat(64)}`;
+    const invalidFilter = await api.repository.getHistory({
+      id: repositoryId,
+      offset: 0,
+      limit: 50,
+      filter: { kind: 'commit-search', query: '   ' },
+    });
+    expect(invalidFilter).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+
     const page = {
       repositoryId,
       offset: 0,
@@ -72,7 +81,10 @@ describe('preload capability API', () => {
       nextOffset: null,
     } as const;
     invoke.mockResolvedValueOnce({ ok: true, value: page });
-    await expect(api.repository.getHistory({ id: repositoryId, offset: 0, limit: 50 })).resolves.toEqual({
+    const filter = { kind: 'commit-search', query: '[literal]' } as const;
+    await expect(
+      api.repository.getHistory({ id: repositoryId, offset: 0, limit: 50, filter }),
+    ).resolves.toEqual({
       ok: true,
       value: page,
     });
@@ -80,6 +92,7 @@ describe('preload capability API', () => {
       id: repositoryId,
       offset: 0,
       limit: 50,
+      filter,
     });
   });
 

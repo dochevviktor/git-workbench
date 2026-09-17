@@ -228,10 +228,31 @@ export const repositoryHistoryTrackingSchema = z.strictObject({
   behind: z.number().int().nonnegative().max(1_000_000_000).nullable(),
 });
 
+const repositoryHistoryFilterQuerySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .refine((value) => !value.includes('\0'), 'A history search cannot contain a NUL byte.');
+
+/** The first F06 slice keeps filtering explicit so Git arguments remain backend-owned. */
+export const repositoryHistoryFilterSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('all') }),
+  z.strictObject({
+    kind: z.literal('reference'),
+    target: gitObjectIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('commit-search'),
+    query: repositoryHistoryFilterQuerySchema,
+  }),
+]);
+
 export const repositoryHistoryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   offset: z.number().int().nonnegative().max(1_000_000),
   limit: z.number().int().min(1).max(100),
+  filter: repositoryHistoryFilterSchema.optional(),
 });
 
 export const repositoryHistoryPageSchema = z.strictObject({
@@ -345,5 +366,6 @@ export type RepositoryHistoryPerson = z.infer<typeof repositoryHistoryPersonSche
 export type RepositoryHistoryCommit = z.infer<typeof repositoryHistoryCommitSchema>;
 export type RepositoryHistoryReference = z.infer<typeof repositoryHistoryReferenceSchema>;
 export type RepositoryHistoryTracking = z.infer<typeof repositoryHistoryTrackingSchema>;
+export type RepositoryHistoryFilter = z.infer<typeof repositoryHistoryFilterSchema>;
 export type RepositoryHistoryRequest = z.infer<typeof repositoryHistoryRequestSchema>;
 export type RepositoryHistoryPage = z.infer<typeof repositoryHistoryPageSchema>;

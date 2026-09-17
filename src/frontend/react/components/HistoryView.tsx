@@ -16,6 +16,7 @@ import { graphRowHeight, graphWidth } from '../lib/graph-geometry';
 import { referenceChips } from '../lib/references';
 import { CommitDetails } from './CommitDetails';
 import { CommitGraph } from './CommitGraph';
+import { SearchIcon } from './Icons';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { useContextMenu } from './menu/context-menu';
@@ -132,6 +133,10 @@ export function HistoryView({ history }: HistoryViewProps) {
     references,
     headCommit,
     selectedCommitId,
+    filter,
+    filterKey,
+    setFilter,
+    clearFilter,
     selectCommit,
     loadMore,
     hasMore,
@@ -142,12 +147,28 @@ export function HistoryView({ history }: HistoryViewProps) {
   );
   const [collapseAllMode, setCollapseAllMode] = useState(false);
   const [expandedMergeIds, setExpandedMergeIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [searchText, setSearchText] = useState('');
+  const activeSearchQuery = filter.kind === 'commit-search' ? filter.query : '';
+
+  useEffect(() => {
+    setSearchText(activeSearchQuery);
+  }, [activeSearchQuery]);
+
+  useEffect(() => {
+    const normalized = searchText.trim();
+    if (normalized === activeSearchQuery) return;
+    const timer = window.setTimeout(() => {
+      if (normalized.length === 0) clearFilter();
+      else setFilter({ kind: 'commit-search', query: normalized.slice(0, 256) });
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [activeSearchQuery, clearFilter, searchText, setFilter]);
 
   useEffect(() => {
     setManualCollapsedMergeIds(new Set());
     setCollapseAllMode(false);
     setExpandedMergeIds(new Set());
-  }, [history.repositoryId]);
+  }, [filterKey, history.repositoryId]);
 
   const mergeCommitIds = useMemo(() => getMergeCommitIds(loadedCommits), [loadedCommits]);
   const requestedCollapsedMergeIds = useMemo(
@@ -395,6 +416,50 @@ export function HistoryView({ history }: HistoryViewProps) {
       aria-label="Commit history"
       style={{ '--history-list-height': `${listHeight}px` } as CSSProperties}
     >
+      <div className="history-filter-bar">
+        <label className="history-search">
+          <SearchIcon size={14} />
+          <input
+            id="history-commit-search"
+            type="search"
+            value={searchText}
+            maxLength={256}
+            placeholder="Search commits"
+            aria-label="Search commits"
+            spellCheck={false}
+            onChange={(event) => setSearchText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && searchText) {
+                event.preventDefault();
+                setSearchText('');
+              }
+            }}
+          />
+          {searchText && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Clear commit search"
+              title="Clear commit search"
+              onClick={() => setSearchText('')}
+            >
+              ×
+            </button>
+          )}
+        </label>
+        {filter.kind === 'reference' && (
+          <div className="history-scope" role="status">
+            <span>
+              History:{' '}
+              {references.find((reference) => reference.target === filter.target)?.name ??
+                shortHash(filter.target)}
+            </span>
+            <button type="button" className="button button-small" onClick={clearFilter}>
+              Show all commits
+            </button>
+          </div>
+        )}
+      </div>
       {history.error && (
         <div className="inline-alert" role="alert">
           <span>{history.error}</span>
@@ -409,7 +474,13 @@ export function HistoryView({ history }: HistoryViewProps) {
         ) : history.error && commits.length === 0 ? (
           <p className="list-message">History is unavailable. Retry to request it again.</p>
         ) : commits.length === 0 ? (
-          <p className="list-message">This repository has no commits yet.</p>
+          <p className="list-message">
+            {filter.kind === 'commit-search'
+              ? `No commits match “${filter.query}”.`
+              : filter.kind === 'reference'
+                ? 'This reference has no commits to display.'
+                : 'This repository has no commits yet.'}
+          </p>
         ) : (
           <div
             className="commit-list"

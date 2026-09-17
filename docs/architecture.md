@@ -197,10 +197,11 @@ active selection, and orientation; its status probe uses bounded NUL-delimited p
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
 directory symlinks, or descend into a found repository. Remote clone, operation jobs, watcher
-invalidation, history filtering/detail queries, and the trust policy for commands that can run
-repository programs are still future work. The initial F04 history service uses bounded `git log`,
-`for-each-ref`, and `show-ref --dereference` reads; its renderer graph lane assignment and F05
-collapse projection remain pure shared code and never receive a Git command surface.
+invalidation, detailed revision queries, and the trust policy for commands that can run repository
+programs are still future work. The initial F04 history service uses bounded `git log`, `for-each-ref`,
+and `show-ref --dereference` reads; the F06 slice adds only validated reference-target and literal
+commit-message filters to that same backend-owned argument builder. Its renderer graph lane assignment
+and F05 collapse projection remain pure shared code and never receive a Git command surface.
 
 ## Current limitations
 
@@ -209,7 +210,7 @@ manager slice, the initial persisted tab/status workflow, the first paged histor
 workflow, the F05 merge-collapse projection, and the renderer-drawn window chrome, menus, and context
 menus are implemented. There is still no general job queue, operation activity surface, remote
 authentication, clone workflow, filesystem watcher, full-app closed-tab recovery, custom manager
-folders, history filtering, changed-file or revision-tree inspection, external integration,
+folders, path/diff-content or author/hash history search, changed-file or revision-tree inspection, external integration,
 automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager

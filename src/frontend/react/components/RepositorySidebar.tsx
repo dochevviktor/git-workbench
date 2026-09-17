@@ -26,6 +26,7 @@ interface RepositorySidebarProps {
   readonly references: readonly RepositoryHistoryReference[];
   readonly referencesLoading: boolean;
   readonly onViewChange: (view: RepositoryView) => void;
+  readonly onCommitSearch: () => void;
   readonly onReferenceSelect: (reference: RepositoryHistoryReference) => void;
   readonly onReferenceContextMenu: (
     reference: RepositoryHistoryReference,
@@ -62,6 +63,7 @@ export function RepositorySidebar({
   references,
   referencesLoading,
   onViewChange,
+  onCommitSearch,
   onReferenceSelect,
   onReferenceContextMenu,
 }: RepositorySidebarProps) {
@@ -211,9 +213,9 @@ export function RepositorySidebar({
           type="button"
           className="sidebar-mode"
           aria-pressed="false"
-          aria-disabled="true"
           aria-label="Search"
-          title="Commit search is not available yet (planned for P08)."
+          title="Search commits"
+          onClick={onCommitSearch}
         >
           <SearchIcon size={16} />
         </button>

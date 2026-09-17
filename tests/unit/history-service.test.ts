@@ -143,6 +143,47 @@ describe('repository history service', () => {
         }),
       ]),
     );
+
+    const featureHistory = await service.getHistory(11, repository.id, 0, 50, {
+      kind: 'reference',
+      target: featureCommit,
+    });
+    const expectedFeatureHistory = (
+      await runner.run(['rev-list', '--topo-order', 'feature'], {
+        cwd: repositoryPath,
+      })
+    ).stdout
+      .trim()
+      .split(/\r?\n/u)
+      .filter(Boolean);
+    expect(featureHistory.commits.map((commit) => commit.id)).toEqual(expectedFeatureHistory);
+    expect(featureHistory.commits.map((commit) => commit.id)).not.toContain(mergeCommit);
+
+    const searched = await service.getHistory(11, repository.id, 0, 50, {
+      kind: 'commit-search',
+      query: 'Feature subject',
+    });
+    expect(searched.commits.map((commit) => commit.id)).toEqual([featureCommit]);
+
+    const firstSearchPage = await service.getHistory(11, repository.id, 0, 1, {
+      kind: 'commit-search',
+      query: 'subject',
+    });
+    const secondSearchPage = await service.getHistory(11, repository.id, 1, 2, {
+      kind: 'commit-search',
+      query: 'subject',
+    });
+    expect(firstSearchPage.hasMore).toBe(true);
+    expect(firstSearchPage.nextOffset).toBe(1);
+    expect(
+      new Set([...firstSearchPage.commits, ...secondSearchPage.commits].map((commit) => commit.subject)),
+    ).toEqual(new Set(['Feature subject', 'Main subject', 'Root subject']));
+
+    const literalSearch = await service.getHistory(11, repository.id, 0, 50, {
+      kind: 'commit-search',
+      query: 'Feature [subject]',
+    });
+    expect(literalSearch.commits).toEqual([]);
   });
 
   it('returns a valid empty history for an unborn repository', async () => {

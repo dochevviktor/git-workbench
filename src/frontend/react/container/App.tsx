@@ -81,7 +81,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   } = repositories;
   // History stays loaded for the last repository tab while the Repository Manager tab is in front.
   const history = useRepositoryHistory(lastActive?.id);
-  const { refresh: refreshHistory, selectCommit, references } = history;
+  const { refresh: refreshHistory, selectCommit, references, setFilter: setHistoryFilter } = history;
   const showContextMenu = useContextMenu();
   const [appearance, setAppearance] = usePersistentState<Appearance>(
     'appearance',
@@ -191,6 +191,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     },
     [selectCommit, setView],
   );
+
+  const focusCommitSearch = useCallback(() => {
+    setView('history');
+    window.requestAnimationFrame(() => document.getElementById('history-commit-search')?.focus());
+  }, [setView]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -528,6 +533,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
     const current = references.find((candidate) => candidate.isHead && candidate.kind === 'branch');
     const loaded = history.commits.some((commit) => commit.id === reference.target);
+    const filterHistory: MenuEntry = {
+      id: 'filter-history',
+      label: `Filter History to '${reference.name}'`,
+      run: () => {
+        setView('history');
+        setHistoryFilter({ kind: 'reference', target: reference.target });
+      },
+    };
     const reveal: MenuEntry = {
       id: 'select-commit',
       label: 'Select Commit in List',
@@ -573,6 +586,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             ...planned('Deleting branches', 'P05'),
           },
           menuSeparator,
+          filterHistory,
+          menuSeparator,
           reveal,
           { id: 'copy-name', label: 'Copy Branch Name', run: () => copyText(reference.name) },
         ]);
@@ -591,6 +606,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             ...planned('Deleting remote branches', 'P05'),
           },
           menuSeparator,
+          filterHistory,
+          menuSeparator,
           reveal,
           { id: 'copy-name', label: 'Copy Branch Name', run: () => copyText(reference.name) },
         ];
@@ -605,6 +622,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             ...planned('Deleting tags', 'P05'),
           },
           menuSeparator,
+          filterHistory,
+          menuSeparator,
           reveal,
           { id: 'copy-name', label: 'Copy Tag Name', run: () => copyText(reference.name) },
         ];
@@ -614,11 +633,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           { id: 'apply', label: 'Apply Stash…', ...planned('Applying stashes', 'P06') },
           { id: 'delete', label: 'Delete Stash…', danger: true, ...planned('Deleting stashes', 'P06') },
           menuSeparator,
+          filterHistory,
+          menuSeparator,
           reveal,
         ];
         break;
       default:
         items = [
+          filterHistory,
+          menuSeparator,
           reveal,
           { id: 'copy-name', label: 'Copy Reference Name', run: () => copyText(reference.fullName) },
         ];
@@ -694,6 +717,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               references={references}
               referencesLoading={history.loading}
               onViewChange={setView}
+              onCommitSearch={focusCommitSearch}
               onReferenceSelect={(reference) => {
                 if (history.commits.some((commit) => commit.id === reference.target))
                   revealCommit(reference.target);
