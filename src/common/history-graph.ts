@@ -25,11 +25,27 @@ export interface HistoryGraphRow {
   /** Column that carries each (deduplicated) parent below this row, in parent order. */
   readonly parentLanes: readonly number[];
   readonly merge: boolean;
+  /** Whether the row represents a merge whose secondary branch is currently collapsed. */
+  readonly collapsed: boolean;
+  /** Number of original parent edges whose immediate parent was intentionally elided. */
+  readonly collapsedParentCount: number;
   readonly root: boolean;
   readonly segments: readonly HistoryGraphSegment[];
 }
 
-type GraphCommit = Pick<RepositoryHistoryCommit, 'id' | 'parents'>;
+/**
+ * The graph can be rendered from a projected history as well as the raw Git history. A projected
+ * merge keeps its original merge marker even when one or more of its parent branches have been
+ * elided from the visible rows.
+ */
+export interface GraphCommit extends Pick<RepositoryHistoryCommit, 'id' | 'parents'> {
+  /** Preserves a merge marker when the projected parent list has collapsed to one edge. */
+  readonly merge?: boolean | undefined;
+  /** True when this merge's secondary branch is hidden in the current projection. */
+  readonly collapsed?: boolean | undefined;
+  /** Number of original parent edges whose immediate parent was intentionally elided. */
+  readonly collapsedParentCount?: number | undefined;
+}
 
 const noReleasedColumns: ReadonlySet<number> = new Set();
 
@@ -68,6 +84,9 @@ export function buildHistoryGraph(commits: readonly GraphCommit[]): HistoryGraph
     }
 
     const parents = [...new Set(commit.parents)];
+    const merge = commit.merge ?? parents.length > 1;
+    const collapsed = commit.collapsed ?? false;
+    const collapsedParentCount = commit.collapsedParentCount ?? 0;
     const parentLanes: number[] = [];
     const firstParent = parents[0];
     setColumn(columns, lane, firstParent ?? null);
@@ -89,7 +108,9 @@ export function buildHistoryGraph(commits: readonly GraphCommit[]): HistoryGraph
       lane,
       width: rowWidth(lane, segments),
       parentLanes,
-      merge: parents.length > 1,
+      merge,
+      collapsed,
+      collapsedParentCount,
       root: parents.length === 0,
       segments,
     });

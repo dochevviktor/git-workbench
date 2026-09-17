@@ -197,20 +197,21 @@ active selection, and orientation; its status probe uses bounded NUL-delimited p
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
 directory symlinks, or descend into a found repository. Remote clone, operation jobs, watcher
-invalidation, history collapse/filter/detail queries, and the trust policy for commands that can run
+invalidation, history filtering/detail queries, and the trust policy for commands that can run
 repository programs are still future work. The initial F04 history service uses bounded `git log`,
-`for-each-ref`, and `show-ref --dereference` reads; its renderer graph lane assignment remains pure
-shared code and never receives a Git command surface.
+`for-each-ref`, and `show-ref --dereference` reads; its renderer graph lane assignment and F05
+collapse projection remain pure shared code and never receive a Git command surface.
 
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
 manager slice, the initial persisted tab/status workflow, the first paged history/graph/selection
-workflow, and the renderer-drawn window chrome, menus, and context menus are implemented. There is still no general job queue, operation activity surface, remote
+workflow, the F05 merge-collapse projection, and the renderer-drawn window chrome, menus, and context
+menus are implemented. There is still no general job queue, operation activity surface, remote
 authentication, clone workflow, filesystem watcher, full-app closed-tab recovery, custom manager
-folders, history collapse/filtering, changed-file or revision-tree inspection, external integration,
+folders, history filtering, changed-file or revision-tree inspection, external integration,
 automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
-behavior, history ancestry/metadata, and the Electron bridge; later Git correctness will continue to be
-checked against independent CLI assertions as each workflow is added.
+behavior, history ancestry/metadata, merge collapse, and the Electron bridge; later Git correctness
+will continue to be checked against independent CLI assertions as each workflow is added.

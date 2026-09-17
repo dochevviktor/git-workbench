@@ -1,7 +1,8 @@
 # Fork: public feature and layout baseline
 
-Research date: **2026-09-16**. Scope: independently implementing publicly described workflows, with Linux
-as the primary target. This document is a requirements inventory, not a claim of verified equivalence.
+Research date: **2026-09-16**; F05 source refresh: **2026-09-17**. Scope: independently implementing
+publicly described workflows, with Linux as the primary target. This document is a requirements
+inventory, not a claim of verified equivalence.
 
 Only the public website, official release notes, official blog posts, and published screenshots were
 consulted. No Fork installation, application execution, binary download, decompilation, or proprietary
@@ -29,8 +30,9 @@ Evidence labels:
 
 The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
-F01, the first F02 slice, the initial F03 slice, the initial F04 slice, and the initial F34 workspace
-chrome slice are **partial** in this project; all other F-items remain **planned**.
+F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, and
+the initial F34 workspace chrome slice are **partial** in this project; all other F-items remain
+**planned**.
 
 ### F01 source refresh
 
@@ -113,6 +115,24 @@ when already-loaded pages are recomputed; and commit messages are rendered as in
 against disposable merge/tag/unborn repositories and a real Electron selection flow. Detached-head and
 multiple-root integration fixtures, large-history performance, collapse/filtering, changed-file details,
 and revision-tree inspection remain unverified.
+
+### F05 source refresh
+
+Accessed **2026-09-17**. The official [collapsible graph article][graph], published **2020-08-03** and
+tagged for **Mac and Windows**, explicitly documents collapsing and expanding merge commits by clicking
+their graph tips or using `←`/`→`, and collapsing all branches from the graph context menu before
+expanding the branches of interest. This is high-confidence historical **D** evidence for those
+advertised platform workflows. The article does not establish Linux support, the exact merge-boundary
+rules, nested-merge behavior, persistence, paging behavior, or accessibility details.
+
+This project’s first F05 slice is an **I** choice: collapsing a merge hides loaded commits reachable
+only from its non-first parent, keeps merge tips and reference-decorated tips visible as navigation
+handles, reconnects hidden edges at the nearest visible ancestor, and keeps collapse state scoped to
+the active repository view. Left/Right keyboard commands, merge-tip buttons, and graph context-menu
+actions are covered by unit tests and a disposable-repository Electron flow. Paged-history continuity,
+large-history performance, exact current Fork visuals, and cross-platform pointer behavior remain
+unverified; Linux follows the project’s independent implementation because Fork publishes no Linux
+build.
 
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
@@ -201,7 +221,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F02 | Repository manager, folder hierarchy, source-directory scanning                                             | D: [Mac 1.0.79][manager], [Mac releases][mac], [Windows releases][win]                                                                 | P02, P12      |
 | F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts                    | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                                                                    | P02, P12      |
 | F04 | Commit graph, reference labels, authors, hashes, dates, selection                                           | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures        | P03           |
-| F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]                                                                                                              | P03           |
+| F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                      | P03           |
 | F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]                                                                                           | P03, P08      |
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]                                                                              | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                                                                       | P04           |
@@ -316,7 +336,7 @@ image][sidebar-filter-image] 2019-08-27; [bisect GIF][bisect-gif], [partial stas
 Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [rebase][rebase] 2018-11-10; [merge][merge] 2019-02-06; [manager][manager] 2019-06-12;
 [diff][diff] 2019-08-27; [Quick Launch][quick] 2019-10-23; [operations][operations] 2020-05-05;
-[graph][graph] 2020-08-03. All accessed 2026-09-16.
+[graph][graph] 2020-08-03. All accessed 2026-09-16; the graph article was revisited 2026-09-17 for F05.
 
 [home]: https://fork.dev/
 [mac]: https://fork.dev/releasenotes

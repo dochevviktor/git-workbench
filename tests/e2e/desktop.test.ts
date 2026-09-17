@@ -130,7 +130,8 @@ test('production build loads its isolated preload and renderer', async () => {
       await fixtureGit.run(['symbolic-ref', '--short', 'HEAD'], { cwd: fixtureRepository })
     ).stdout.trim();
     await fixtureGit.run(['checkout', '--quiet', '-b', 'feature/graph'], { cwd: fixtureRepository });
-    await commitFile(fixtureGit, fixtureRepository, 'feature.txt', 'Feature branch commit');
+    await commitFile(fixtureGit, fixtureRepository, 'feature.txt', 'Feature branch commit 1');
+    await commitFile(fixtureGit, fixtureRepository, 'feature.txt', 'Feature branch commit 2');
     await fixtureGit.run(['checkout', '--quiet', mainBranch], { cwd: fixtureRepository });
     await commitFile(fixtureGit, fixtureRepository, 'main.txt', 'Main line commit');
     await fixtureGit.run(
@@ -143,12 +144,41 @@ test('production build loads its isolated preload and renderer', async () => {
 
     await page.reload();
     await waitForDesktop(page);
-    await expect(page.getByTestId('history-commit')).toHaveCount(4);
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
     await expect(page.getByTestId('history-commit').first()).toContainText('Merge feature graph');
     await expect(page.locator('.commit-row.head')).toContainText('Merge feature graph');
     await expect(page.locator('path.graph-branch')).toHaveCount(1);
     await expect(page.locator('path.graph-join')).toHaveCount(1);
     await expect(page.locator('path.graph-branch')).toHaveAttribute('d', /A/u);
+
+    // Collapse and expand the merge's secondary branch from its graph tip and keyboard focus.
+    const mergeRow = page.getByTestId('history-commit').filter({ hasText: 'Merge feature graph' });
+    const graphToggle = mergeRow.getByTestId('graph-toggle');
+    await expect(graphToggle).toHaveAttribute('aria-label', 'Collapse merged branch');
+    await graphToggle.click();
+    await expect(graphToggle).toHaveAttribute('aria-label', 'Expand merged branch');
+    await expect(page.getByText('Feature branch commit 1', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Feature branch commit 2', { exact: true })).toHaveCount(1);
+    await page.getByRole('listbox', { name: 'Commits' }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(graphToggle).toHaveAttribute('aria-label', 'Collapse merged branch');
+    await expect(page.getByText('Feature branch commit 1', { exact: true })).toHaveCount(1);
+
+    // A context-menu collapse keeps a selected hidden commit available in the details pane.
+    const featureOneRow = page.getByTestId('history-commit').filter({ hasText: 'Feature branch commit 1' });
+    await featureOneRow.click();
+    await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
+    await featureOneRow.click({ button: 'right' });
+    const graphMenu = page.getByRole('menu', { name: /^Commit / });
+    await graphMenu.getByRole('menuitem', { name: 'Collapse All Branches', exact: true }).click();
+    await expect(featureOneRow).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
+
+    await mergeRow.click({ button: 'right' });
+    await expect(graphMenu.getByRole('menuitem', { name: /^Expand Branch/u })).toBeVisible();
+    await expect(graphMenu.getByRole('menuitem', { name: 'Expand All Branches', exact: true })).toBeVisible();
+    await graphMenu.getByRole('menuitem', { name: 'Expand All Branches', exact: true }).click();
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
     await expect(page.getByRole('treeitem', { name: 'graph' })).toHaveCount(0);
     await page.getByRole('treeitem', { name: 'feature' }).dblclick();
     await expect(page.getByRole('treeitem', { name: 'graph' })).toBeVisible();
@@ -176,7 +206,7 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('button', { name: /^Local Changes/u }).click();
     await expect(page.getByRole('heading', { name: 'Local Changes' })).toBeVisible();
     await page.getByRole('button', { name: 'All Commits' }).click();
-    await expect(page.getByTestId('history-commit')).toHaveCount(4);
+    await expect(page.getByTestId('history-commit')).toHaveCount(5);
 
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');

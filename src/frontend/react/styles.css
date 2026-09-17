@@ -970,6 +970,33 @@ p {
   pointer-events: none;
 }
 
+.graph-toggle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.graph-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.graph-toggle .commit-graph {
+  pointer-events: auto;
+}
+
+.commit-row.collapsed .commit-subject {
+  font-weight: 600;
+}
+
 .graph-line {
   fill: none;
   stroke: var(--lane);
@@ -987,6 +1014,14 @@ p {
   fill: var(--lane);
   stroke: var(--graph-node-fill);
   stroke-width: 1.5;
+}
+
+.graph-toggle-symbol {
+  fill: none;
+  stroke: var(--graph-node-fill);
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .lane-0 {

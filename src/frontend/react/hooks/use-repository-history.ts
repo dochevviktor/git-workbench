@@ -123,6 +123,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   );
 
   return {
+    repositoryId,
     commits,
     references,
     tracking,

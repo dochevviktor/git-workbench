@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import type { CSSProperties } from 'react';
 import type { HistoryGraphRow, HistoryGraphSegment } from '../../../common/history-graph';
 import { graphLaneWidth, graphRowHeight, graphWidth, laneColorClass, laneX } from '../lib/graph-geometry';
 
@@ -59,14 +60,20 @@ function segmentKey(segment: HistoryGraphSegment): string {
     : `${segment.kind}-${segment.from}-${segment.to}`;
 }
 
-export const CommitGraph = memo(function CommitGraph({ row }: { readonly row: HistoryGraphRow }) {
+interface CommitGraphProps {
+  readonly row: HistoryGraphRow;
+  readonly onToggle?: (() => void) | undefined;
+  readonly onSelect?: (() => void) | undefined;
+}
+
+export const CommitGraph = memo(function CommitGraph({ row, onToggle, onSelect }: CommitGraphProps) {
   const width = graphWidth(row);
   const straight = row.segments.filter((segment) => 'lane' in segment);
   const elbows = row.segments.filter((segment) => !('lane' in segment));
   const nodeX = laneX(row.lane);
   const nodeY = graphRowHeight / 2;
 
-  return (
+  const svg = (
     <svg
       className="commit-graph"
       width={width}
@@ -84,10 +91,46 @@ export const CommitGraph = memo(function CommitGraph({ row }: { readonly row: Hi
         />
       ))}
       {row.merge ? (
-        <circle className={`graph-node merge ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={5} />
+        <>
+          <circle className={`graph-node merge ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={5} />
+          <path
+            className="graph-toggle-symbol"
+            d={
+              row.collapsed
+                ? `M${nodeX - 2.25} ${nodeY}H${nodeX + 2.25}M${nodeX} ${nodeY - 2.25}V${nodeY + 2.25}`
+                : `M${nodeX - 2.25} ${nodeY}H${nodeX + 2.25}`
+            }
+          />
+        </>
       ) : (
         <circle className={`graph-node commit ${laneColorClass(row.lane)}`} cx={nodeX} cy={nodeY} r={3.5} />
       )}
     </svg>
+  );
+
+  if (!row.merge || !onToggle) return svg;
+  const action = row.collapsed ? 'Expand' : 'Collapse';
+  const hiddenParentText =
+    row.collapsedParentCount > 0
+      ? `; ${row.collapsedParentCount} parent ${row.collapsedParentCount === 1 ? 'edge' : 'edges'} hidden`
+      : '';
+  return (
+    <button
+      type="button"
+      className={`graph-toggle${row.collapsed ? ' collapsed' : ''}`}
+      aria-label={`${action} merged branch`}
+      aria-expanded={!row.collapsed}
+      title={`${action} merged branch${hiddenParentText}`}
+      data-testid="graph-toggle"
+      data-commit-id={row.commitId}
+      style={{ width } as CSSProperties}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect?.();
+        onToggle();
+      }}
+    >
+      {svg}
+    </button>
   );
 });
