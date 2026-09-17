@@ -50,10 +50,15 @@ does not invent release contact information.
 On Linux and Windows the window is frameless: the application draws its own title bar, menu bar
 (Alt+letter opens a menu), and window controls, and it handles shortcuts itself instead of installing
 a native menu. macOS keeps inset traffic lights and a small native application menu.
+The window manager still moves, resizes, minimizes, and maximizes the window. On Linux, Electron draws
+the shadow and resize margin around it; where the window manager cannot show client-drawn shadows,
+Electron draws a solid 4px frame instead.
 
 Linux desktop execution needs Electron's shared libraries and a working graphical session.
-For a Wayland-only desktop, launch with `npm run dev -- -- --ozone-platform=wayland`
-(or pass `--ozone-platform=wayland` to the packaged executable).
+Electron chooses Wayland by itself only when `XDG_SESSION_TYPE=wayland`. `npm run dev` and `npm start`
+also choose Wayland when `WAYLAND_DISPLAY` is set outside an X11 session; add `-- -- --ozone-platform=x11`
+to use X11 instead. Pass `--ozone-platform=wayland` to a packaged executable started without that
+session type.
 For automation without a display, use `xvfb-run -a npm run test:e2e` where Xvfb is installed.
 The smoke test can select native Wayland with `ELECTRON_TEST_OZONE_PLATFORM=wayland`.
 The test also supports `ELECTRON_TEST_EXECUTABLE=/absolute/path/to/git-workbench`
@@ -70,22 +75,27 @@ Xwayland `DISPLAY` to `$XDG_RUNTIME_DIR/piped-display`. The dependent `idea.serv
 `WAYLAND_DISPLAY=wayland-piped` and `PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse-vsock.sock`, but does not
 import that X11 display into the IDE's environment.
 
-Use the existing forwarded display for local tests and interactive development (Bash):
+Run the Electron tests through the bridge's Xwayland display (Bash):
 
 ```bash
 DISPLAY="$(< "$XDG_RUNTIME_DIR/piped-display")" ELECTRON_TEST_DISABLE_GPU=1 npm run test:e2e
-DISPLAY="$(< "$XDG_RUNTIME_DIR/piped-display")" npm run dev -- -- --disable-gpu
 ```
 
 Read the display file for each launch; do not hardcode its current display number or source it as shell
-code. These commands preserve the Wayland and audio environment and keep Electron's sandbox enabled.
-The smoke test passed through this bridge. Native Wayland application startup was also checked, but
-native Wayland Playwright startup previously timed out amid virtual-driver diagnostics; use the
-bridge's Xwayland path for automation here. No additional X server or service changes are needed.
+code. This command preserves the Wayland and audio environment and keeps Electron's sandbox enabled.
+The smoke test passed through this bridge. Native Wayland Playwright startup times out here, so use the
+bridge's Xwayland path for automation. No additional X server or service changes are needed.
 The GPU switch is local to this software-rendered testing setup, not a production application default.
-This forwarded display ignores window-manager state requests: even a normal framed window does not
-maximize or minimize there. The Electron test therefore checks that the title-bar buttons reach the
-main-process window methods rather than asserting the resulting window state.
+
+Run the application itself natively on Wayland: `npm run dev` chooses it from the IDE's
+`WAYLAND_DISPLAY`, even when `DISPLAY` is also set. The bridge's X11 window manager, xwayland-satellite,
+cannot manage the frameless window. It rejects Chromium's title-bar move and edge-resize requests and
+ignores minimize and maximize requests; even a normal framed window does not maximize or minimize there.
+It also cannot show client-drawn shadows, so Electron draws the solid frame in system theme colors, which
+stand out against the app's dark appearance.
+Over native Wayland to the host's KDE Plasma session, the title-bar buttons maximized, restored, and
+minimized the real window. The Electron test checks only that the title-bar buttons reach the
+main-process window methods, because the bridge cannot change the window state.
 
 ## Project map
 

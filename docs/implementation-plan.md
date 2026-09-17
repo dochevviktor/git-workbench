@@ -227,6 +227,21 @@ or P12 command availability. On the forwarded Xwayland test display, `BrowserWin
 double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output
 for the custom menus and tree, fractional scaling, and very wide graphs remain unverified.
 
+Frameless window follow-up (2026-09-17): on that display the title bar could not move the window, edges
+did not resize it, the minimize and maximize buttons did nothing, and a light frame surrounded the window.
+The bridge's xwayland-satellite 0.8.2 logged that it rejected Chromium's move/resize requests
+(`_NET_WM_MOVERESIZE` with button 0) and did not recognize `WM_CHANGE_STATE`. Its source handles only
+full screen in `_NET_WM_STATE`. The frame was Electron's solid 4px fallback, drawn because that window
+manager cannot show client-drawn shadows. Electron chooses Wayland only from `XDG_SESSION_TYPE`, so
+development launches now set it when `WAYLAND_DISPLAY` is reachable outside an X11 session. Over native
+Wayland to the host's KDE Plasma session, the title-bar Maximize, Restore, and Minimize buttons changed
+the real window state, and Electron used its shadow margin instead of the solid frame. Moving by the
+title bar, edge resizing, and title-bar double-click need real pointer input and were not verified
+automatically. With the Vite development server on native Wayland, the hidden window never received
+`ready-to-show` although the page rendered, so no window appeared; the event arrived only after the window
+was shown. The window now also shows when the page finishes loading, and the development run then mapped
+and presented the window on the host.
+
 ## P03 — History, graph, and revision inspection
 
 Coverage: F04–F07, F34 foundation.

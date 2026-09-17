@@ -31,3 +31,6 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
 - Reuse the bridge rather than starting another X server. Preserve the Wayland/audio environment and
   Electron sandbox; do not change or restart the user's bridge or IDE services for routine testing.
   See `README.md` for the interactive launch command and native Wayland automation caveat.
+- Check window moving, edge resizing, minimize/maximize, and the window frame on native Wayland
+  (`npm run dev` chooses it when `WAYLAND_DISPLAY` is set). The bridge's xwayland-satellite ignores
+  Electron's requests for those actions, and Electron draws a solid fallback frame there.

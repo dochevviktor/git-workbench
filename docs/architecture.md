@@ -109,9 +109,14 @@ To add a capability:
 Linux and Windows windows are frameless; the renderer draws the title bar, its File/View/Repository/
 Window/Help menu bar, and minimize/maximize/close buttons. The title bar is an app-region drag area and
 its interactive children opt out, so native moving, resize borders, and platform double-click handling
-remain with Electron and the window manager. macOS uses `hiddenInset` traffic lights and keeps a small
-native application menu, because the global menu bar and standard editing key equivalents depend on it;
-that menu omits roles that would close the window for tab shortcuts.
+remain with Electron and the window manager. On Linux, Electron draws the shadow and resize margin around
+the window, or a solid 4px frame where the window manager cannot show client-drawn shadows. Window
+managers must handle the move, resize, minimize, and maximize requests; xwayland-satellite does not.
+Because Electron chooses Wayland only from `XDG_SESSION_TYPE`, before the main process runs,
+`electron.vite.config.ts` sets it for development launches that can reach a Wayland display. macOS uses
+`hiddenInset` traffic lights and keeps a small native application menu, because the global menu bar and
+standard editing key equivalents depend on it; that menu omits roles that would close the window for tab
+shortcuts.
 
 There is no native application menu on Linux or Windows, and main no longer builds a native context
 menu. Renderer keyboard handling owns application shortcuts (tabs, open, refresh, zoom, full screen,

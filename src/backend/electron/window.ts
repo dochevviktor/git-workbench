@@ -38,7 +38,13 @@ export function createMainWindow(attachWindow: (window: BrowserWindow, url: stri
   });
 
   attachWindow(window, rendererUrl);
-  window.once('ready-to-show', () => window.show());
+  // A hidden window on Wayland can miss `ready-to-show`: with the development server the page rendered, but
+  // the event arrived only after the window was shown. Show the window once the page has loaded at the latest.
+  const showWindow = () => {
+    if (!window.isVisible()) window.show();
+  };
+  window.once('ready-to-show', showWindow);
+  window.webContents.once('did-finish-load', showWindow);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {
     if (!isTrustedDocument(url, rendererUrl)) event.preventDefault();
