@@ -5,6 +5,9 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryCommitChanges,
+  RepositoryDiff,
+  RepositoryDiffTarget,
+  RepositoryDiffWhitespace,
   RepositoryHead,
   RepositoryHistoryPage,
   RepositoryHistoryFilter,
@@ -48,6 +51,7 @@ import {
   RevisionPathError,
 } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
+import { readRepositoryDiff } from './diff-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -290,6 +294,25 @@ export class RepositoryService {
       });
     } catch (error) {
       throw this.mapRevisionFailure(error, 'Git could not read the selected commit changes.');
+    }
+  }
+
+  async getDiff(
+    ownerId: number,
+    id: string,
+    target: RepositoryDiffTarget,
+    whitespace: RepositoryDiffWhitespace,
+  ): Promise<RepositoryDiff> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    try {
+      return await readRepositoryDiff(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        target,
+        whitespace,
+      });
+    } catch (error) {
+      throw this.mapRevisionFailure(error, 'Git could not read the selected diff.');
     }
   }
 

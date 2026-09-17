@@ -6,6 +6,8 @@ import type {
   RecentRepository,
   RepositoryCommitChanges,
   RepositoryCommitChangesRequest,
+  RepositoryDiff,
+  RepositoryDiffRequest,
   RepositoryInitializeRequest,
   RepositoryHistoryPage,
   RepositoryHistoryRequest,
@@ -65,6 +67,7 @@ export interface DesktopApi {
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
     getCommitChanges(request: RepositoryCommitChangesRequest): Promise<IpcResult<RepositoryCommitChanges>>;
+    getDiff(request: RepositoryDiffRequest): Promise<IpcResult<RepositoryDiff>>;
     getWorkingChanges(request: RepositoryWorkingChangesRequest): Promise<IpcResult<RepositoryWorkingChanges>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;

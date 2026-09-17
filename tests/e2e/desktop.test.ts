@@ -228,6 +228,10 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(page.getByTestId('commit-changes')).toBeVisible();
     await expect(page.getByTestId('commit-change')).toHaveCount(1);
     await expect(page.getByTestId('commit-change')).toContainText('history.txt');
+    await page.getByTestId('commit-change').filter({ hasText: 'history.txt' }).click();
+    await expect(page.getByTestId('diff-content').locator('.diff-cell.add')).toContainText(
+      'First history commit',
+    );
     await page.getByRole('tab', { name: 'File Tree', exact: true }).click();
     await expect(page.getByRole('tree', { name: 'Files at revision' })).toBeVisible();
     const historyFile = page.getByTestId('revision-tree-entry').filter({ hasText: 'history.txt' });
@@ -281,6 +285,25 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(unstagedFiles.locator('.file-change-columns')).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'untracked.txt' }).click();
     await expect(page.getByTestId('working-change-preview')).toContainText('Untracked');
+
+    // F09: a selected working-tree file loads a real patch with split mode, literal search, and
+    // optional whitespace markers. The controls stay in the renderer; Git receives only the named target.
+    await writeFile(join(fixtureRepository, 'history.txt'), 'First history commit  \n', 'utf8');
+    const diffFile = unstagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' });
+    await expect(diffFile).toBeVisible({ timeout: 10_000 });
+    await diffFile.click();
+    await expect(page.getByTestId('diff-viewer')).toBeVisible();
+    await expect(page.getByTestId('diff-content').locator('.diff-cell.add')).toContainText(
+      'First history commit',
+    );
+    await page.getByRole('button', { name: 'Split', exact: true }).click();
+    await expect(page.locator('.diff-body.split')).toBeVisible();
+    const diffSearch = page.getByRole('searchbox', { name: 'Search diff' });
+    await diffSearch.fill('history');
+    await expect(page.getByText(/^\d+ \/ \d+$/u)).toBeVisible();
+    await page.getByRole('button', { name: 'Diff options', exact: true }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Show hidden characters', exact: true }).click();
+    await expect(page.getByTestId('diff-content')).toContainText('··');
 
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');

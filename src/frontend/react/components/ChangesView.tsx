@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { RepositorySummary, RepositoryWorkingChange } from '../../../common/ipc/contracts';
+import type {
+  RepositoryDiffTarget,
+  RepositoryDiffWhitespace,
+  RepositorySummary,
+  RepositoryWorkingChange,
+} from '../../../common/ipc/contracts';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
+import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRepositoryWorkingChanges } from '../hooks/use-repository-working-changes';
 import { statusBadge } from '../lib/change-status';
 import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
+import { DiffViewer } from './DiffViewer';
+import type { DiffDisplayMode } from './DiffViewer';
 import { ListOptionsIcon, SearchIcon } from './Icons';
 import { Splitter } from './Splitter';
 import { StatusBadge } from './StatusBadge';
@@ -14,6 +22,8 @@ import { menuSeparator, planned } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 const fileListModes = ['tree', 'list'] as const;
+const diffDisplayModes = ['unified', 'split'] as const;
+const diffWhitespaceModes = ['normal', 'ignore-all', 'ignore-space-change', 'ignore-space-at-eol'] as const;
 const stagingPlanned = planned('Staging', 'P04').disabledReason;
 const commitPlanned = planned('Committing', 'P04').disabledReason;
 
@@ -94,7 +104,27 @@ function ChangesPane({
   );
 }
 
-function ChangePreview({ change }: { readonly change: RepositoryWorkingChange }) {
+interface ChangePreviewProps {
+  readonly change: RepositoryWorkingChange;
+  readonly diff: ReturnType<typeof useRepositoryDiff>;
+  readonly mode: DiffDisplayMode;
+  readonly onModeChange: (mode: DiffDisplayMode) => void;
+  readonly whitespace: RepositoryDiffWhitespace;
+  readonly onWhitespaceChange: (whitespace: RepositoryDiffWhitespace) => void;
+  readonly showWhitespace: boolean;
+  readonly onShowWhitespaceChange: (show: boolean) => void;
+}
+
+function ChangePreview({
+  change,
+  diff,
+  mode,
+  onModeChange,
+  whitespace,
+  onWhitespaceChange,
+  showWhitespace,
+  onShowWhitespaceChange,
+}: ChangePreviewProps) {
   const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
   return (
     <div className="file-preview" data-testid="working-change-preview">
@@ -104,7 +134,7 @@ function ChangePreview({ change }: { readonly change: RepositoryWorkingChange })
           {change.path}
         </span>
       </div>
-      <div className="preview-body">
+      <div className="preview-body diff-preview-body">
         <dl className="preview-facts">
           <dt>Status</dt>
           <dd>
@@ -130,7 +160,19 @@ function ChangePreview({ change }: { readonly change: RepositoryWorkingChange })
             </>
           )}
         </dl>
-        <p className="preview-note">Diff rendering is not available yet (planned for P04).</p>
+        <DiffViewer
+          value={diff.value}
+          loading={diff.loading}
+          error={diff.error}
+          onRetry={diff.refresh}
+          mode={mode}
+          onModeChange={onModeChange}
+          whitespace={whitespace}
+          onWhitespaceChange={onWhitespaceChange}
+          showWhitespace={showWhitespace}
+          onShowWhitespaceChange={onShowWhitespaceChange}
+          label="Working tree diff"
+        />
       </div>
     </div>
   );
@@ -170,6 +212,21 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
   );
   const [filter, setFilter] = useState('');
   const [selectedKey, setSelectedKey] = useState<string>();
+  const [diffMode, setDiffMode] = usePersistentState<DiffDisplayMode>(
+    `repository.${repository.id}.diff.mode`,
+    'unified',
+    isOneOf(diffDisplayModes),
+  );
+  const [diffWhitespace, setDiffWhitespace] = usePersistentState<RepositoryDiffWhitespace>(
+    `repository.${repository.id}.diff.whitespace`,
+    'normal',
+    isOneOf(diffWhitespaceModes),
+  );
+  const [showWhitespace, setShowWhitespace] = usePersistentState(
+    `repository.${repository.id}.diff.showWhitespace`,
+    false,
+    (candidate): candidate is boolean => typeof candidate === 'boolean',
+  );
   const { value, loading, error, refresh } = useRepositoryWorkingChanges(
     repository.id,
     includeUntracked,
@@ -198,6 +255,19 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
   }, [filter, includeIgnored, value]);
 
   const selected = [...unstaged, ...staged].find((entry) => entry.key === selectedKey)?.change;
+  const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
+    () =>
+      selected
+        ? {
+            kind: 'working',
+            area: selected.area,
+            path: selected.path,
+            previousPath: selected.previousPath,
+          }
+        : undefined,
+    [selected],
+  );
+  const diff = useRepositoryDiff(repository.id, diffTarget, diffWhitespace);
   const filtering = filter.trim().length > 0;
   const optionItems: MenuEntry[] = [
     {
@@ -340,7 +410,16 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
       <div className="changes-detail">
         <div className="preview-pane">
           {selected ? (
-            <ChangePreview change={selected} />
+            <ChangePreview
+              change={selected}
+              diff={diff}
+              mode={diffMode}
+              onModeChange={setDiffMode}
+              whitespace={diffWhitespace}
+              onWhitespaceChange={setDiffWhitespace}
+              showWhitespace={showWhitespace}
+              onShowWhitespaceChange={setShowWhitespace}
+            />
           ) : (
             <p className="preview-empty">Select a file to see its changes.</p>
           )}

@@ -155,11 +155,39 @@ describe('preload capability API', () => {
       path: 'README.md',
     });
 
+    const diff = {
+      repositoryId,
+      target: { kind: 'commit', commitId, path: 'README.md', previousPath: null },
+      state: 'text',
+      content: '@@ -1 +1 @@\n-old\n+new\n',
+      byteLength: 26,
+      message: null,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: diff });
+    await expect(
+      api.repository.getDiff({
+        id: repositoryId,
+        target: diff.target,
+        whitespace: 'normal',
+      }),
+    ).resolves.toEqual({ ok: true, value: diff });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryDiff.channel, {
+      id: repositoryId,
+      target: diff.target,
+      whitespace: 'normal',
+    });
+
     const invalidTreePath = await api.repository.getRevisionTree({ id: repositoryId, commitId, path: '../' });
     expect(invalidTreePath).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     const invalidBlobPath = await api.repository.getRevisionBlob({ id: repositoryId, commitId, path: '' });
     expect(invalidBlobPath).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    const invalidDiffPath = await api.repository.getDiff({
+      id: repositoryId,
+      target: { kind: 'working', area: 'untracked', path: '../secret', previousPath: null },
+      whitespace: 'normal',
+    });
+    expect(invalidDiffPath).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(4);
   });
 
   it('validates and routes working-tree visibility requests', async () => {

@@ -1963,6 +1963,298 @@ p {
   white-space: pre;
 }
 
+/* Text diffs -------------------------------------------------------------------------------- */
+
+.diff-preview-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.diff-preview-body > .preview-facts {
+  flex: none;
+  width: 100%;
+  margin: 0;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-viewer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--list-bg);
+}
+
+.diff-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.diff-search {
+  display: flex;
+  flex: 1 1 180px;
+  align-items: center;
+  min-width: 100px;
+  max-width: 360px;
+  height: 24px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text-muted);
+}
+
+.diff-search-icon {
+  flex: none;
+  padding: 0 5px 0 7px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.diff-search input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.diff-match-count {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diff-nav-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.diff-nav-button:hover:not(:disabled) {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+.diff-nav-button:disabled {
+  color: var(--text-dim);
+}
+
+.diff-mode-toggle {
+  display: flex;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+}
+
+.diff-mode-toggle button {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--button-bg);
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.diff-mode-toggle button + button {
+  border-left: 1px solid var(--button-border);
+}
+
+.diff-mode-toggle button:hover,
+.diff-mode-toggle button.active {
+  background: var(--button-hover);
+  color: var(--text);
+}
+
+.diff-options {
+  flex: none;
+  margin-left: 0;
+}
+
+.diff-status {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 18px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.diff-error {
+  align-content: center;
+}
+
+.diff-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--list-bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  user-select: text;
+}
+
+.diff-hunk {
+  min-width: max-content;
+}
+
+.diff-hunk + .diff-hunk {
+  border-top: 6px solid var(--list-bg);
+}
+
+.diff-hunk-header {
+  min-height: 20px;
+  padding: 1px 12px 1px 10px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--list-bg));
+  color: var(--accent);
+  white-space: pre;
+}
+
+.diff-cell {
+  display: grid;
+  grid-template-columns: 52px 20px minmax(0, 1fr);
+  min-height: 18px;
+  padding-right: 12px;
+  white-space: pre;
+}
+
+.diff-body.unified .diff-cell {
+  width: max-content;
+  min-width: 100%;
+}
+
+.diff-cell.add {
+  background: color-mix(in srgb, var(--status-added) 13%, var(--list-bg));
+}
+
+.diff-cell.remove {
+  background: color-mix(in srgb, var(--status-deleted) 13%, var(--list-bg));
+}
+
+.diff-cell.note {
+  display: block;
+  padding-left: 72px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--list-bg));
+  color: var(--text-muted);
+}
+
+.diff-line-number {
+  padding: 0 8px 0 6px;
+  color: var(--text-dim);
+  text-align: right;
+  user-select: none;
+}
+
+.diff-line-sign {
+  color: var(--text-muted);
+  text-align: center;
+  user-select: none;
+}
+
+.diff-cell.add .diff-line-sign {
+  color: var(--status-added);
+  font-weight: 700;
+}
+
+.diff-cell.remove .diff-line-sign {
+  color: var(--status-deleted);
+  font-weight: 700;
+}
+
+.diff-line-text {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: 0 8px;
+  font: inherit;
+  tab-size: 4;
+}
+
+.diff-text-segment {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.diff-text-segment.inline-change {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--warning) 34%, transparent);
+}
+
+.diff-text-segment.search-match {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+}
+
+.diff-text-segment.search-match[data-diff-match-active='true'] {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.diff-split-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.diff-split-row + .diff-split-row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.diff-body.split .diff-cell {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+
+.diff-body.split .diff-hunk {
+  width: 100%;
+  min-width: 0;
+}
+
+.diff-body.split .diff-line-text {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.diff-body.split .diff-cell.empty {
+  background: color-mix(in srgb, var(--text-muted) 3%, var(--list-bg));
+}
+
 /* Local changes ------------------------------------------------------------------------------ */
 
 .changes-view {

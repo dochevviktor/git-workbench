@@ -5,8 +5,11 @@ import type {
   RepositoryHistoryCommit,
   RepositoryHistoryPerson,
   RepositoryHistoryReference,
+  RepositoryDiffTarget,
+  RepositoryDiffWhitespace,
 } from '../../../common/ipc/contracts';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
+import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRevisionInspection } from '../hooks/use-revision-inspection';
 import type { RevisionInspection } from '../hooks/use-revision-inspection';
 import { statusBadge } from '../lib/change-status';
@@ -20,6 +23,8 @@ import {
 } from '../lib/format';
 import { referenceChips } from '../lib/references';
 import { CodePreview } from './CodePreview';
+import { DiffViewer } from './DiffViewer';
+import type { DiffDisplayMode } from './DiffViewer';
 import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
 import { FileIcon, FolderIcon, ListOptionsIcon, SearchIcon } from './Icons';
@@ -33,6 +38,8 @@ import { MenuButton } from './menu/MenuButton';
 type DetailTab = 'commit' | 'changes' | 'tree';
 
 const fileListModes = ['tree', 'list'] as const;
+const diffDisplayModes = ['unified', 'split'] as const;
+const diffWhitespaceModes = ['normal', 'ignore-all', 'ignore-space-change', 'ignore-space-at-eol'] as const;
 /** Changed files load shortly after selection so moving through the list does not request every commit. */
 const changesDelayMs = 120;
 
@@ -97,7 +104,27 @@ function CommitSummary({ commit }: { readonly commit: RepositoryHistoryCommit })
   );
 }
 
-function ChangeFacts({ change }: { readonly change: RepositoryCommitChange }) {
+interface ChangeFactsProps {
+  readonly change: RepositoryCommitChange;
+  readonly diff: ReturnType<typeof useRepositoryDiff>;
+  readonly mode: DiffDisplayMode;
+  readonly onModeChange: (mode: DiffDisplayMode) => void;
+  readonly whitespace: RepositoryDiffWhitespace;
+  readonly onWhitespaceChange: (whitespace: RepositoryDiffWhitespace) => void;
+  readonly showWhitespace: boolean;
+  readonly onShowWhitespaceChange: (show: boolean) => void;
+}
+
+function ChangeFacts({
+  change,
+  diff,
+  mode,
+  onModeChange,
+  whitespace,
+  onWhitespaceChange,
+  showWhitespace,
+  onShowWhitespaceChange,
+}: ChangeFactsProps) {
   const badge = statusBadge(change.status);
   const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
   return (
@@ -108,7 +135,7 @@ function ChangeFacts({ change }: { readonly change: RepositoryCommitChange }) {
           {change.path}
         </span>
       </div>
-      <div className="preview-body">
+      <div className="preview-body diff-preview-body">
         <dl className="preview-facts">
           <dt>Status</dt>
           <dd>
@@ -141,7 +168,19 @@ function ChangeFacts({ change }: { readonly change: RepositoryCommitChange }) {
             </>
           )}
         </dl>
-        <p className="preview-note">Diff rendering is not available yet (planned for P04).</p>
+        <DiffViewer
+          value={diff.value}
+          loading={diff.loading}
+          error={diff.error}
+          onRetry={diff.refresh}
+          mode={mode}
+          onModeChange={onModeChange}
+          whitespace={whitespace}
+          onWhitespaceChange={onWhitespaceChange}
+          showWhitespace={showWhitespace}
+          onShowWhitespaceChange={onShowWhitespaceChange}
+          label="Committed change diff"
+        />
       </div>
     </div>
   );
@@ -281,6 +320,21 @@ export function CommitDetails({
   );
   const [fileFilter, setFileFilter] = useState('');
   const [selectedChangeKey, setSelectedChangeKey] = useState<string>();
+  const [diffMode, setDiffMode] = usePersistentState<DiffDisplayMode>(
+    'details.diff.mode',
+    'unified',
+    isOneOf(diffDisplayModes),
+  );
+  const [diffWhitespace, setDiffWhitespace] = usePersistentState<RepositoryDiffWhitespace>(
+    'details.diff.whitespace',
+    'normal',
+    isOneOf(diffWhitespaceModes),
+  );
+  const [showWhitespace, setShowWhitespace] = usePersistentState(
+    'details.diff.showWhitespace',
+    false,
+    (candidate): candidate is boolean => typeof candidate === 'boolean',
+  );
   const [treeActiveKey, setTreeActiveKey] = useState<string>();
   const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(() => new Set());
   const inspection = useRevisionInspection(repositoryId, commit?.id);
@@ -316,6 +370,19 @@ export function CommitDetails({
       }));
   }, [changes, fileFilter]);
   const selectedChange = changes?.changes.find((change) => changeKey(change) === selectedChangeKey);
+  const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
+    () =>
+      commit && selectedChange
+        ? {
+            kind: 'commit',
+            commitId: commit.id,
+            path: selectedChange.path,
+            previousPath: selectedChange.previousPath,
+          }
+        : undefined,
+    [commit, selectedChange],
+  );
+  const diff = useRepositoryDiff(repositoryId, diffTarget, diffWhitespace);
 
   const renderChangesStatus = () => {
     if (changesError) return <RetryAlert message={changesError} onRetry={() => void loadChanges()} />;
@@ -487,7 +554,16 @@ export function CommitDetails({
           {splitter}
           <div className="preview-pane">
             {selectedChange ? (
-              <ChangeFacts change={selectedChange} />
+              <ChangeFacts
+                change={selectedChange}
+                diff={diff}
+                mode={diffMode}
+                onModeChange={setDiffMode}
+                whitespace={diffWhitespace}
+                onWhitespaceChange={setDiffWhitespace}
+                showWhitespace={showWhitespace}
+                onShowWhitespaceChange={setShowWhitespace}
+              />
             ) : (
               <p className="preview-empty">Select a file to see how it changed.</p>
             )}

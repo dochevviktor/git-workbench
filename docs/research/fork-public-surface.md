@@ -202,6 +202,25 @@ renderer offers per-repository tree/list presentation with persisted visibility 
 semantics are verified independently on Fedora Linux with disposable repositories; Fork equivalence,
 platform differences, actual merge-conflict presentation, and later diff/staging behavior remain **U**.
 
+### F09 source refresh
+
+Accessed **2026-09-17** using the official [Windows 1.38 article][diff], the official [Mac 1.0.79
+article][manager], and the published [side-by-side screenshot][split-image]. The Windows article is
+high-confidence **D** evidence, dated **2019-08-27**, for inline diff search and side-by-side viewing;
+the Mac article is **D/O** evidence, dated **2019-06-12**, for diff-mode controls and hidden-character
+display; and the product screenshot is **O** evidence of a two-pane line-numbered comparison. These
+historical Mac/Windows sources do not establish current defaults, complete whitespace semantics, merge
+diff presentation, Linux support, or behavior for binary and very large files.
+
+This project’s initial F09 slice is an **I** choice: a named backend diff capability returns bounded raw
+Git patches for a validated committed or working-tree target, with normal, `ignore-all-space`,
+`ignore-space-change`, and `ignore-space-at-eol` comparison modes. The renderer owns presentation state and renders unified or split
+rows, adjacent-line inline highlights, literal search navigation, and optional visible space/tab/CR
+markers. Binary, oversized, and conflict targets return explicit non-text states. Disposable Git and
+Electron tests verify the local workflow; hunk/line selection, syntax rendering, image viewers, patch
+snapshots, and exact current Fork parity remain **U**. Linux follows the independent implementation
+because Fork publishes no Linux build.
+
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
 Accessed **2026-09-16**, prompted by a request to bring the layout, graph drawing, context menus, and
@@ -363,7 +382,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; O: [tracker][tracker-win]; I: reference filter, sidebar message search (partial)         | P03, P08      |
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                      | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]; I: bounded local status listing (partial)                            | P04           |
-| F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                                      | P04           |
+| F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]; I: bounded text-diff viewer (partial)               | P04           |
 | F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]                                                                              | P04           |
 | F11 | Commit, amend, recent messages, templates, hooks                                                            | D: [product][home], [Mac 1.0.73][merge], [Mac 1.0.79][manager]                                                                         | P04           |
 | F12 | Branch/tag creation and deletion; checkout a branch or revision                                             | D: [product][home]                                                                                                                     | P05           |

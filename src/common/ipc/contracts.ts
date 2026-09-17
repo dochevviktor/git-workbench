@@ -281,7 +281,7 @@ export const repositoryHistoryPageSchema = z.strictObject({
   nextOffset: z.number().int().nonnegative().max(1_000_000).nullable(),
 });
 
-const repositoryRevisionPathSchema = z
+export const repositoryRevisionPathSchema = z
   .string()
   .max(32_768)
   .refine((value) => !value.includes('\0'), 'A revision path cannot contain a NUL byte.')
@@ -329,6 +329,54 @@ export const repositoryCommitChangesSchema = z.strictObject({
   commitId: gitObjectIdSchema,
   changes: z.array(repositoryCommitChangeSchema).max(10_000),
   truncated: z.boolean(),
+});
+
+export const repositoryDiffWhitespaceSchema = z.enum([
+  'normal',
+  'ignore-all',
+  'ignore-space-change',
+  'ignore-space-at-eol',
+]);
+
+const repositoryDiffFilePathSchema = repositoryRevisionPathSchema.refine(
+  (value) => value.length > 0,
+  'A diff file path is required.',
+);
+
+/** A diff target is issued by the repository views; paths remain data, never command strings. */
+export const repositoryDiffTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('working'),
+    area: repositoryWorkingChangeAreaSchema,
+    path: repositoryDiffFilePathSchema,
+    previousPath: repositoryDiffFilePathSchema.nullable(),
+  }),
+  z.strictObject({
+    kind: z.literal('commit'),
+    commitId: gitObjectIdSchema,
+    path: repositoryDiffFilePathSchema,
+    previousPath: repositoryDiffFilePathSchema.nullable(),
+  }),
+]);
+
+export const repositoryDiffRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  target: repositoryDiffTargetSchema,
+  whitespace: repositoryDiffWhitespaceSchema,
+});
+
+export const repositoryDiffSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  target: repositoryDiffTargetSchema,
+  state: z.enum(['text', 'binary', 'too-large', 'unavailable']),
+  content: z.string().max(8 * 1024 * 1024),
+  byteLength: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(8 * 1024 * 1024)
+    .nullable(),
+  message: z.string().max(512).nullable(),
 });
 
 const repositoryWorkingChangeCodeSchema = z.string().regex(/^[.ACDMRTUX?!]$/u);
@@ -477,6 +525,7 @@ export const requests = {
     repositoryCommitChangesRequestSchema,
     repositoryCommitChangesSchema,
   ),
+  getRepositoryDiff: request('repository:get-diff', repositoryDiffRequestSchema, repositoryDiffSchema),
   getRepositoryWorkingChanges: request(
     'repository:get-working-changes',
     repositoryWorkingChangesRequestSchema,
@@ -537,6 +586,10 @@ export type RepositoryCommitChangeStatus = z.infer<typeof repositoryCommitChange
 export type RepositoryCommitChange = z.infer<typeof repositoryCommitChangeSchema>;
 export type RepositoryCommitChangesRequest = z.infer<typeof repositoryCommitChangesRequestSchema>;
 export type RepositoryCommitChanges = z.infer<typeof repositoryCommitChangesSchema>;
+export type RepositoryDiffWhitespace = z.infer<typeof repositoryDiffWhitespaceSchema>;
+export type RepositoryDiffTarget = z.infer<typeof repositoryDiffTargetSchema>;
+export type RepositoryDiffRequest = z.infer<typeof repositoryDiffRequestSchema>;
+export type RepositoryDiff = z.infer<typeof repositoryDiffSchema>;
 export type RepositoryWorkingChangeArea = z.infer<typeof repositoryWorkingChangeAreaSchema>;
 export type RepositoryWorkingChangeStatus = z.infer<typeof repositoryWorkingChangeStatusSchema>;
 export type RepositoryWorkingChange = z.infer<typeof repositoryWorkingChangeSchema>;
