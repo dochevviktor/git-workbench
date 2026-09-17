@@ -162,6 +162,7 @@ describe('preload capability API', () => {
       content: '@@ -1 +1 @@\n-old\n+new\n',
       byteLength: 26,
       message: null,
+      snapshot: null,
     } as const;
     invoke.mockResolvedValueOnce({ ok: true, value: diff });
     await expect(
@@ -217,6 +218,39 @@ describe('preload capability API', () => {
       includeUntracked: 'yes',
       includeIgnored: false,
     } as never);
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates and routes named working-tree mutation requests', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'f'.repeat(64)}`;
+    const target = { area: 'unstaged', path: 'file.txt', previousPath: null } as const;
+    const request = {
+      id: repositoryId,
+      action: 'stage',
+      target,
+      snapshot: 'a'.repeat(64),
+      selection: { kind: 'lines', hunk: 0, lineIndexes: [1, 2] },
+    } as const;
+    const changes = {
+      repositoryId,
+      staged: [],
+      unstaged: [],
+      untracked: [],
+      ignored: [],
+      counts: { staged: 0, unstaged: 0, untracked: 0, ignored: 0, conflicted: 0 },
+      truncated: false,
+    } as const;
+    const result = { repositoryId, action: 'stage', target, selection: request.selection, changes } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: result });
+    await expect(api.repository.applyWorkingChange(request)).resolves.toEqual({ ok: true, value: result });
+    expect(invoke).toHaveBeenCalledWith(requests.applyRepositoryWorkingChange.channel, request);
+
+    const invalid = await api.repository.applyWorkingChange({
+      ...request,
+      snapshot: 'not-a-snapshot',
+    });
     expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     expect(invoke).toHaveBeenCalledTimes(1);
   });

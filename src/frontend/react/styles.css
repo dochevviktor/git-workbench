@@ -2095,6 +2095,16 @@ p {
   margin-left: 0;
 }
 
+.diff-selection-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
 .diff-status {
   display: grid;
   flex: 1;
@@ -2115,6 +2125,7 @@ p {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  container-type: inline-size;
   background: var(--list-bg);
   color: var(--text);
   font-family: var(--font-mono);
@@ -2124,7 +2135,8 @@ p {
 }
 
 .diff-hunk {
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
 }
 
 .diff-hunk + .diff-hunk {
@@ -2132,6 +2144,15 @@ p {
 }
 
 .diff-hunk-header {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100cqi;
+  max-width: 100cqi;
   min-height: 20px;
   padding: 1px 12px 1px 10px;
   background: color-mix(in srgb, var(--accent) 10%, var(--list-bg));
@@ -2139,9 +2160,17 @@ p {
   white-space: pre;
 }
 
+.diff-hunk-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  font-family: var(--font-ui);
+  white-space: normal;
+}
+
 .diff-cell {
   display: grid;
-  grid-template-columns: 52px 20px minmax(0, 1fr);
+  grid-template-columns: 24px 52px 20px minmax(0, 1fr);
   min-height: 18px;
   padding-right: 12px;
   white-space: pre;
@@ -2162,9 +2191,23 @@ p {
 
 .diff-cell.note {
   display: block;
-  padding-left: 72px;
+  padding-left: 96px;
   background: color-mix(in srgb, var(--warning) 10%, var(--list-bg));
   color: var(--text-muted);
+}
+
+.diff-line-select {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  user-select: none;
+}
+
+.diff-line-select input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .diff-line-number {

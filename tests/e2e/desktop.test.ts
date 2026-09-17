@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -305,6 +305,101 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('menuitemcheckbox', { name: 'Show hidden characters', exact: true }).click();
     await expect(page.getByTestId('diff-content')).toContainText('··');
 
+    // F10: file/hunk/line actions use a fresh backend snapshot and update both change panes.
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }).click();
+    await page.getByRole('button', { name: 'Unified', exact: true }).click();
+    await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible();
+    await page.getByTestId('diff-hunk-stage').first().click();
+    await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toHaveCount(
+      0,
+    );
+    await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toBeVisible();
+    await stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }).click();
+    await expect(page.getByTestId('diff-hunk-unstage').first()).toBeVisible();
+    await page.getByTestId('diff-hunk-unstage').first().click();
+    await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toHaveCount(0);
+    await expect(
+      unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }),
+    ).toBeVisible();
+
+    await writeFile(join(fixtureRepository, 'line-selection.txt'), 'before\nkeep\nafter\n', 'utf8');
+    await fixtureGit.run(['add', '--', 'line-selection.txt'], { cwd: fixtureRepository });
+    await fixtureGit.run([...author, 'commit', '--quiet', '-m', 'line selection base'], {
+      cwd: fixtureRepository,
+    });
+    await writeFile(join(fixtureRepository, 'line-selection.txt'), 'selected\nkeep\nafter\n', 'utf8');
+    await expect(
+      unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }).click();
+    await expect(page.locator('.diff-body.unified').getByTestId('diff-line-select')).toHaveCount(2);
+    await page.locator('.diff-body.unified .diff-cell.add input').check();
+    await expect(page.getByTestId('diff-selection-stage')).toBeVisible();
+    await page.getByTestId('diff-selection-stage').click();
+    await expect(
+      stagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }),
+    ).toBeVisible();
+
+    const discardBase = Array.from({ length: 16 }, (_, index) => `line-${index + 1}`).join('\n') + '\n';
+    await writeFile(join(fixtureRepository, 'discard.txt'), discardBase, 'utf8');
+    await fixtureGit.run(['add', '--', 'discard.txt'], { cwd: fixtureRepository });
+    await fixtureGit.run([...author, 'commit', '--quiet', '-m', 'discard base'], { cwd: fixtureRepository });
+    const discardChanged = discardBase.replace('line-2', 'discarded-2').replace('line-14', 'kept-14');
+    await writeFile(join(fixtureRepository, 'discard.txt'), discardChanged, 'utf8');
+    await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' }).click();
+    await expect(page.getByTestId('diff-hunk-discard')).toHaveCount(2);
+    await page.getByTestId('diff-hunk-discard').first().click();
+    await expect
+      .poll(() => readFile(join(fixtureRepository, 'discard.txt'), { encoding: 'utf8' }))
+      .toBe(discardBase.replace('line-14', 'kept-14'));
+    await writeFile(join(fixtureRepository, 'long-line.txt'), 'base\n', 'utf8');
+    await fixtureGit.run(['add', '--', 'long-line.txt'], { cwd: fixtureRepository });
+    await fixtureGit.run([...author, 'commit', '--quiet', '-m', 'long line base'], {
+      cwd: fixtureRepository,
+    });
+    await writeFile(join(fixtureRepository, 'long-line.txt'), `long-${'x'.repeat(2_000)}\n`, 'utf8');
+    await expect(
+      unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+    await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 10_000 });
+    const diffLayout = await page.evaluate(() => {
+      const body = document.querySelector<HTMLElement>('[data-testid="diff-content"]');
+      const header = body?.querySelector<HTMLElement>('.diff-hunk-header');
+      if (!body || !header) throw new Error('Diff layout missing');
+      return {
+        bodyClientWidth: body.clientWidth,
+        bodyScrollWidth: body.scrollWidth,
+        headerClientWidth: header.clientWidth,
+      };
+    });
+    expect(diffLayout.bodyScrollWidth).toBeGreaterThan(diffLayout.bodyClientWidth);
+    expect(diffLayout.headerClientWidth).toBeLessThanOrEqual(diffLayout.bodyClientWidth);
+    await page.getByTestId('diff-content').evaluate((element) => {
+      const body = element as HTMLElement;
+      body.scrollLeft = body.scrollWidth;
+    });
+    const stickyAction = await page.evaluate(() => {
+      const body = document.querySelector<HTMLElement>('[data-testid="diff-content"]');
+      const action = body?.querySelector<HTMLElement>('[data-testid="diff-hunk-stage"]');
+      if (!body || !action) throw new Error('Sticky diff action missing');
+      const bodyRect = body.getBoundingClientRect();
+      const actionRect = action.getBoundingClientRect();
+      return {
+        bodyLeft: bodyRect.left,
+        bodyRight: bodyRect.right,
+        actionLeft: actionRect.left,
+        actionRight: actionRect.right,
+      };
+    });
+    expect(stickyAction.actionLeft).toBeGreaterThanOrEqual(stickyAction.bodyLeft - 1);
+    expect(stickyAction.actionRight).toBeLessThanOrEqual(stickyAction.bodyRight + 1);
+    await page.screenshot({ path: 'test-results/f10-changes.png' });
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.initialize({ path, bare: false });

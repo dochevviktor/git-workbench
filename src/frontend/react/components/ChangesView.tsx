@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type {
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
   RepositorySummary,
+  RepositoryWorkingChangeAction,
+  RepositoryWorkingChangeSelection,
+  RepositoryWorkingChangeTarget,
   RepositoryWorkingChange,
 } from '../../../common/ipc/contracts';
+import { unwrapResult } from '../../../common/ipc/result';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRepositoryWorkingChanges } from '../hooks/use-repository-working-changes';
@@ -13,7 +17,7 @@ import { statusBadge } from '../lib/change-status';
 import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
 import { DiffViewer } from './DiffViewer';
-import type { DiffDisplayMode } from './DiffViewer';
+import type { DiffDisplayMode, DiffWorkingAction } from './DiffViewer';
 import { ListOptionsIcon, SearchIcon } from './Icons';
 import { Splitter } from './Splitter';
 import { StatusBadge } from './StatusBadge';
@@ -24,7 +28,6 @@ import type { MenuEntry } from './menu/menu-model';
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;
 const diffWhitespaceModes = ['normal', 'ignore-all', 'ignore-space-change', 'ignore-space-at-eol'] as const;
-const stagingPlanned = planned('Staging', 'P04').disabledReason;
 const commitPlanned = planned('Committing', 'P04').disabledReason;
 
 const areaLabels: Record<RepositoryWorkingChange['area'], string> = {
@@ -52,12 +55,15 @@ function workingEntry(change: RepositoryWorkingChange): WorkingEntry {
 interface ChangesPaneProps {
   readonly id: 'unstaged' | 'staged';
   readonly title: string;
-  readonly action: string;
+  readonly action: 'stage' | 'unstage';
   readonly entries: readonly WorkingEntry[];
   readonly mode: FileListMode;
   readonly selectedKey: string | undefined;
   readonly emptyText: string;
   readonly onSelect: (key: string) => void;
+  readonly onAction: () => void;
+  readonly actionDisabled: boolean;
+  readonly actionDisabledReason: string | undefined;
   readonly children?: ReactNode;
 }
 
@@ -70,6 +76,9 @@ function ChangesPane({
   selectedKey,
   emptyText,
   onSelect,
+  onAction,
+  actionDisabled,
+  actionDisabledReason,
   children,
 }: ChangesPaneProps) {
   return (
@@ -80,8 +89,15 @@ function ChangesPane({
     >
       <header className="changes-pane-header">
         <h2 id={`changes-pane-${id}`}>{title}</h2>
-        <button type="button" className="button button-small" aria-disabled="true" title={stagingPlanned}>
-          {action}
+        <button
+          type="button"
+          className="button button-small"
+          disabled={actionDisabled}
+          title={actionDisabledReason}
+          data-testid={`working-${id}-action`}
+          onClick={onAction}
+        >
+          {action[0]!.toLocaleUpperCase() + action.slice(1)}
         </button>
       </header>
       <div className="file-pane-body">
@@ -113,6 +129,12 @@ interface ChangePreviewProps {
   readonly onWhitespaceChange: (whitespace: RepositoryDiffWhitespace) => void;
   readonly showWhitespace: boolean;
   readonly onShowWhitespaceChange: (show: boolean) => void;
+  readonly busy: boolean;
+  readonly onWorkingAction: (
+    action: RepositoryWorkingChangeAction,
+    selection: RepositoryWorkingChangeSelection,
+    snapshot: string | undefined,
+  ) => Promise<boolean>;
 }
 
 function ChangePreview({
@@ -124,8 +146,26 @@ function ChangePreview({
   onWhitespaceChange,
   showWhitespace,
   onShowWhitespaceChange,
+  busy,
+  onWorkingAction,
 }: ChangePreviewProps) {
   const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
+  const workingActions = useMemo<DiffWorkingAction[]>(() => {
+    const actions: RepositoryWorkingChangeAction[] =
+      change.area === 'staged'
+        ? ['unstage']
+        : change.area === 'unstaged'
+          ? ['stage', ...(change.status === 'unmerged' ? [] : ['discard' as const])]
+          : change.area === 'untracked'
+            ? ['stage']
+            : [];
+    return actions.map((action) => ({
+      action,
+      disabled: busy,
+      disabledReason: busy ? 'Another working-tree action is in progress.' : undefined,
+      onApply: (selection) => onWorkingAction(action, selection, diff.value?.snapshot ?? undefined),
+    }));
+  }, [busy, change.area, change.status, diff.value?.snapshot, onWorkingAction]);
   return (
     <div className="file-preview" data-testid="working-change-preview">
       <div className="preview-header">
@@ -171,6 +211,7 @@ function ChangePreview({
           onWhitespaceChange={onWhitespaceChange}
           showWhitespace={showWhitespace}
           onShowWhitespaceChange={onShowWhitespaceChange}
+          workingActions={workingActions}
           label="Working tree diff"
         />
       </div>
@@ -227,6 +268,8 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
     false,
     (candidate): candidate is boolean => typeof candidate === 'boolean',
   );
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string>();
   const { value, loading, error, refresh } = useRepositoryWorkingChanges(
     repository.id,
     includeUntracked,
@@ -268,7 +311,96 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
     [selected],
   );
   const diff = useRepositoryDiff(repository.id, diffTarget, diffWhitespace);
+  const refreshDiff = diff.refresh;
   const filtering = filter.trim().length > 0;
+
+  const applyAction = useCallback(
+    async (
+      action: RepositoryWorkingChangeAction,
+      target: RepositoryWorkingChangeTarget,
+      selection: RepositoryWorkingChangeSelection,
+      snapshot?: string,
+    ): Promise<boolean> => {
+      const api = window.desktop;
+      if (!api) {
+        setActionError('Open this application in Electron to change working-tree files.');
+        return false;
+      }
+      setActionBusy(true);
+      setActionError(undefined);
+      try {
+        let expectedSnapshot = snapshot;
+        if (!expectedSnapshot) {
+          const currentDiff = unwrapResult(
+            await api.repository.getDiff({
+              id: repository.id,
+              target: { kind: 'working', ...target },
+              whitespace: 'normal',
+            }),
+          );
+          expectedSnapshot = currentDiff.snapshot ?? undefined;
+        }
+        if (!expectedSnapshot) throw new Error('That file does not have a mutable working-tree snapshot.');
+        unwrapResult(
+          await api.repository.applyWorkingChange({
+            id: repository.id,
+            action,
+            target,
+            snapshot: expectedSnapshot,
+            selection,
+          }),
+        );
+        await refresh();
+        refreshDiff();
+        return true;
+      } catch (reason: unknown) {
+        setActionError(
+          reason instanceof Error ? reason.message : 'The working-tree action could not be completed.',
+        );
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [refresh, refreshDiff, repository.id],
+  );
+
+  const applyFileEntries = useCallback(
+    async (action: RepositoryWorkingChangeAction, entries: readonly WorkingEntry[]) => {
+      for (const entry of entries) {
+        if (entry.change.area === 'ignored') continue;
+        const succeeded = await applyAction(
+          action,
+          {
+            area: entry.change.area,
+            path: entry.change.path,
+            previousPath: entry.change.previousPath,
+          },
+          { kind: 'file' },
+        );
+        if (!succeeded) break;
+      }
+    },
+    [applyAction],
+  );
+
+  const stageEntries = useMemo(() => unstaged.filter((entry) => entry.change.area !== 'ignored'), [unstaged]);
+  const actionFailure = actionError ? (
+    <div className="inline-alert" role="alert">
+      <span>{actionError}</span>
+      <button
+        type="button"
+        className="button button-small"
+        onClick={() => {
+          setActionError(undefined);
+          refresh();
+          refreshDiff();
+        }}
+      >
+        Refresh
+      </button>
+    </div>
+  ) : null;
   const optionItems: MenuEntry[] = [
     {
       id: 'view-tree',
@@ -357,6 +489,7 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
             </button>
           </div>
         )}
+        {actionFailure}
         {value?.truncated && (
           <p className="changes-truncated" role="status">
             Some sections are truncated at 10,000 entries.
@@ -365,12 +498,17 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
         <ChangesPane
           id="unstaged"
           title="Unstaged"
-          action="Stage"
+          action="stage"
           entries={unstaged}
           mode={mode}
           selectedKey={selectedKey}
           emptyText={status ?? (filtering ? 'No unstaged files match the filter.' : 'No unstaged changes.')}
           onSelect={setSelectedKey}
+          onAction={() => void applyFileEntries('stage', stageEntries)}
+          actionDisabled={actionBusy || loading || stageEntries.length === 0}
+          actionDisabledReason={
+            stageEntries.length === 0 ? 'There are no unstaged files to stage.' : undefined
+          }
         >
           {value && value.counts.conflicted > 0 && (
             <p className="changes-conflicts" role="status">
@@ -391,12 +529,15 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
         <ChangesPane
           id="staged"
           title="Staged"
-          action="Unstage"
+          action="unstage"
           entries={staged}
           mode={mode}
           selectedKey={selectedKey}
           emptyText={status ?? (filtering ? 'No staged files match the filter.' : 'No staged changes.')}
           onSelect={setSelectedKey}
+          onAction={() => void applyFileEntries('unstage', staged)}
+          actionDisabled={actionBusy || loading || staged.length === 0}
+          actionDisabledReason={staged.length === 0 ? 'There are no staged files to unstage.' : undefined}
         />
       </div>
       <Splitter
@@ -419,6 +560,19 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
               onWhitespaceChange={setDiffWhitespace}
               showWhitespace={showWhitespace}
               onShowWhitespaceChange={setShowWhitespace}
+              busy={actionBusy}
+              onWorkingAction={(action, selection, snapshot) =>
+                applyAction(
+                  action,
+                  {
+                    area: selected.area,
+                    path: selected.path,
+                    previousPath: selected.previousPath,
+                  },
+                  selection,
+                  snapshot,
+                )
+              }
             />
           ) : (
             <p className="preview-empty">Select a file to see its changes.</p>

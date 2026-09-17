@@ -41,6 +41,7 @@ describe('repository diff service', () => {
       whitespace: 'normal',
     });
     expect(unstaged).toMatchObject({ state: 'text', target: { kind: 'working', area: 'unstaged' } });
+    expect(unstaged.snapshot).toMatch(/^[a-f0-9]{64}$/u);
     expect(unstaged.content).toContain('-first');
     expect(unstaged.content).toContain('+changed');
 
@@ -72,6 +73,7 @@ describe('repository diff service', () => {
       whitespace: 'normal',
     });
     expect(committed.state).toBe('text');
+    expect(committed.snapshot).toBeNull();
     expect(committed.content).toContain('+first');
   });
 

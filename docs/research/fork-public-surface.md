@@ -200,7 +200,8 @@ returns bounded staged, unstaged, untracked, and ignored DTOs; a partially stage
 relevant sections; rename/copy similarity, conflict status, and mode metadata remain visible; and the
 renderer offers per-repository tree/list presentation with persisted visibility toggles. Git status
 semantics are verified independently on Fedora Linux with disposable repositories; Fork equivalence,
-platform differences, actual merge-conflict presentation, and later diff/staging behavior remain **U**.
+platform differences, actual merge-conflict presentation, and later conflict/commit behavior remain **U**;
+F10 records the independent staging implementation below.
 
 ### F09 source refresh
 
@@ -217,9 +218,25 @@ Git patches for a validated committed or working-tree target, with normal, `igno
 `ignore-space-change`, and `ignore-space-at-eol` comparison modes. The renderer owns presentation state and renders unified or split
 rows, adjacent-line inline highlights, literal search navigation, and optional visible space/tab/CR
 markers. Binary, oversized, and conflict targets return explicit non-text states. Disposable Git and
-Electron tests verify the local workflow; hunk/line selection, syntax rendering, image viewers, patch
-snapshots, and exact current Fork parity remain **U**. Linux follows the independent implementation
+Electron tests verify the local workflow; F10 adds snapshot-validated hunk/line actions; syntax rendering,
+image viewers, and exact current Fork parity remain **U**. Linux follows the independent implementation
 because Fork publishes no Linux build.
+
+### F10 source refresh
+
+Accessed **2026-09-17** using the existing official [Fork product page][home] and published [working-changes
+image][changes-image]. The product page is **D** evidence that file staging belongs to the Commit workflow;
+the Windows-oriented screenshot is **O** evidence of pane-level Stage/Unstage controls and inline hunk
+Stage/Discard controls. These sources do not document Fork’s exact line-selection patch model, stale-edit
+handling, conflict policy, binary behavior, current defaults, or Linux support; those details remain **U**.
+
+This project’s initial F10 slice is an **I** choice: whole-file stage/unstage, hunk and line stage/unstage,
+and hunk/line discard use a named backend capability with a filesystem/index snapshot token. The backend
+rebuilds selected patches from a fresh normal-whitespace diff, serializes repository mutations, and refuses
+stale snapshots; the renderer exposes explicit added/removed-line selection. Disposable Git tests compare
+the working tree and index after partial actions and cover CRLF, missing final newlines, rename/deletion,
+symlink, binary, mode, and unborn-repository cases. The implementation is Linux-first and is not presented
+as observed Fork behavior.
 
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
@@ -359,8 +376,9 @@ further history pages to reveal one; a “Filtered by … Clear filter” strip;
 inside the graph column, with the same commands appended to the commit menu so they stay reachable from
 the keyboard; the Commit tab file list; Changes and File Tree split panes with a lazily loaded folder
 tree; and the Local Changes Unstaged/Staged layout with its options menu. Views that depend on later
-phases keep Fork’s positions but explain themselves: the diff area shows change metadata and names
-P04, and Stage, Unstage, and the commit composer are disabled until P04. The active detail tab persists
+phases keep Fork’s positions but explain themselves: the diff area shows the independently implemented
+bounded local diff; Stage and Unstage plus hunk/line actions are enabled by F10, while committing remains
+disabled until F11. The active detail tab persists
 while other commits are selected. View as Combined List, the eye toggle, and search scopes other than
 commit messages are not implemented.
 
@@ -383,7 +401,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                      | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]; I: bounded local status listing (partial)                            | P04           |
 | F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]; I: bounded text-diff viewer (partial)               | P04           |
-| F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]                                                                              | P04           |
+| F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]; I: snapshot-validated local staging slice (partial)                         | P04           |
 | F11 | Commit, amend, recent messages, templates, hooks                                                            | D: [product][home], [Mac 1.0.73][merge], [Mac 1.0.79][manager]                                                                         | P04           |
 | F12 | Branch/tag creation and deletion; checkout a branch or revision                                             | D: [product][home]                                                                                                                     | P05           |
 | F13 | Remotes; fetch/pull/push; upstream indicators; multiple-branch push                                         | D: [product][home], [Windows 1.48][operations]                                                                                         | P05, P06      |

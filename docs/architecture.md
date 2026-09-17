@@ -2,8 +2,8 @@
 
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
-initial F08 working-changes slice, the initial F09 text-diff slice, and the initial F34 workspace-chrome
-slice implemented.
+initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, and the
+initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -76,6 +76,10 @@ porcelain-v2 staged, unstaged, untracked, and ignored working-tree entries. The 
 `getDiff()` capability for validated working or committed targets, bounded
 patch text, whitespace comparison modes, and explicit binary/too-large/unavailable states. The renderer
 owns unified/split presentation, inline edit highlighting, search, and visible whitespace markers. The
+initial F10 slice adds `applyWorkingChange()` for explicit file, hunk, and line stage/unstage actions plus
+hunk/line discard; working diff responses carry a backend-issued snapshot token, and the main process
+revalidates it before applying a backend-built patch. The renderer owns line selection but never sends
+Git patch text or arguments. The
 F34 workspace-chrome slice
 extends `desktop.window.command()` with full
 screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
@@ -225,23 +229,27 @@ command surface. The renderer graph lane assignment and F05 collapse projection 
 code and never receive a Git command surface. The initial F09 diff service uses bounded `diff-tree` and
 `diff`/`--no-index` reads, validates working targets against a fresh status snapshot, disables external
 diff/textconv programs, and sends only named targets and whitespace modes across IPC; its patch parser and
-display projection stay in the renderer.
+display projection stay in the renderer. The F10 staging service re-reads the selected working diff, hashes
+the relevant index metadata and working-tree entries for a compare-and-swap token, serializes mutations by
+repository, and feeds only its own freshly assembled patch to `git apply`; whole-file actions use explicit
+`git add`, `git reset`, or unborn-repository `git rm --cached` arguments. Untracked files are never included
+implicitly in a discard operation.
 
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
 manager slice, the initial persisted tab/status workflow, the first paged history/graph/selection
 workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, the initial F08
-working-changes listing, the initial F09 text-diff viewer, and the renderer-drawn window chrome, menus,
+working-changes listing, the initial F09 text-diff viewer, the initial F10 staging slice, and the renderer-drawn window chrome, menus,
 and context menus are implemented.
 There is still no general job
 queue, operation activity surface, remote authentication, clone workflow, filesystem watcher, full-app
-closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, diff
-snapshots or hunk/line actions, syntax/image/binary viewers, external integration, automatic updater, or
+closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
+discard, commit workflows, syntax/image/binary viewers, external integration, automatic updater, or
 final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
 merge collapse, and the Electron bridge; later Git correctness will continue to be checked against
-independent CLI assertions as each workflow is added. Diff merge presentation, staging, commits, discard,
-and conflict resolution remain future work.
+independent CLI assertions as each workflow is added. Diff merge presentation, commit workflows, whole-file
+discard, and conflict resolution remain future work.

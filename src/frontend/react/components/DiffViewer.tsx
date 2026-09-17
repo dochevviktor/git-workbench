@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { RepositoryDiff, RepositoryDiffWhitespace } from '../../../common/ipc/contracts';
+import type {
+  RepositoryDiff,
+  RepositoryDiffWhitespace,
+  RepositoryWorkingChangeAction,
+  RepositoryWorkingChangeSelection,
+} from '../../../common/ipc/contracts';
 import { parseUnifiedDiff } from '../lib/diff';
 import type { ParsedDiffLine, ParsedUnifiedDiff } from '../lib/diff';
 import { ListOptionsIcon } from './Icons';
@@ -9,6 +14,13 @@ import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 export type DiffDisplayMode = 'unified' | 'split';
+
+export interface DiffWorkingAction {
+  readonly action: RepositoryWorkingChangeAction;
+  readonly onApply: (selection: RepositoryWorkingChangeSelection) => Promise<boolean>;
+  readonly disabled?: boolean | undefined;
+  readonly disabledReason?: string | undefined;
+}
 
 interface DiffViewerProps {
   readonly value: RepositoryDiff | undefined;
@@ -21,6 +33,8 @@ interface DiffViewerProps {
   readonly onWhitespaceChange: (whitespace: RepositoryDiffWhitespace) => void;
   readonly showWhitespace: boolean;
   readonly onShowWhitespaceChange: (show: boolean) => void;
+  /** Working-tree actions are omitted for committed diffs. */
+  readonly workingActions?: readonly DiffWorkingAction[] | undefined;
   readonly label?: string | undefined;
 }
 
@@ -41,6 +55,9 @@ interface DiffCellProps {
   readonly showWhitespace: boolean;
   readonly cursor: MatchCursor;
   readonly activeMatch: number;
+  readonly lineIndex?: number | undefined;
+  readonly lineSelected?: boolean | undefined;
+  readonly onToggleLine?: (() => void) | undefined;
 }
 
 const whitespaceLabels: Record<RepositoryDiffWhitespace, string> = {
@@ -175,11 +192,35 @@ function highlightedText(
   });
 }
 
-function DiffCell({ line, side, inlineRange, query, showWhitespace, cursor, activeMatch }: DiffCellProps) {
+function DiffCell({
+  line,
+  side,
+  inlineRange,
+  query,
+  showWhitespace,
+  cursor,
+  activeMatch,
+  lineIndex,
+  lineSelected,
+  onToggleLine,
+}: DiffCellProps) {
   if (!line) return <div className={`diff-cell ${side} empty`} aria-hidden="true" />;
   const sign = line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' ';
+  const selectable =
+    lineIndex !== undefined && onToggleLine !== undefined && (line.kind === 'add' || line.kind === 'remove');
   return (
     <div className={`diff-cell ${side} ${line.kind}`} data-testid="diff-line">
+      <span className="diff-line-select">
+        {selectable ? (
+          <input
+            type="checkbox"
+            checked={lineSelected ?? false}
+            aria-label={`Select ${line.kind === 'add' ? 'added' : 'removed'} line ${line.newLine ?? line.oldLine ?? ''}`}
+            data-testid="diff-line-select"
+            onChange={onToggleLine}
+          />
+        ) : null}
+      </span>
       <span className="diff-line-number">{side === 'old' ? (line.oldLine ?? '') : (line.newLine ?? '')}</span>
       <span className="diff-line-sign" aria-hidden="true">
         {sign}
@@ -239,6 +280,12 @@ function DiffToolbar({
   matchCount,
   activeMatch,
   onMoveMatch,
+  selectedLineCount,
+  workingActions,
+  actionsDisabledReason,
+  applyingAction,
+  onApplySelection,
+  onClearSelection,
 }: Pick<
   DiffViewerProps,
   'mode' | 'onModeChange' | 'whitespace' | 'onWhitespaceChange' | 'showWhitespace' | 'onShowWhitespaceChange'
@@ -248,6 +295,12 @@ function DiffToolbar({
   readonly matchCount: number;
   readonly activeMatch: number;
   readonly onMoveMatch: (direction: 1 | -1) => void;
+  readonly selectedLineCount: number;
+  readonly workingActions: readonly DiffWorkingAction[];
+  readonly actionsDisabledReason: string | undefined;
+  readonly applyingAction: RepositoryWorkingChangeAction | undefined;
+  readonly onApplySelection: (action: DiffWorkingAction) => void;
+  readonly onClearSelection: () => void;
 }) {
   const options: MenuEntry[] = [
     ...(['normal', 'ignore-all', 'ignore-space-change', 'ignore-space-at-eol'] as const).map((value) => ({
@@ -340,8 +393,38 @@ function DiffToolbar({
       >
         <ListOptionsIcon size={14} />
       </MenuButton>
+      {selectedLineCount > 0 && (
+        <div className="diff-selection-actions" role="group" aria-label="Selected diff lines">
+          <span>{selectedLineCount} lines</span>
+          {workingActions.map((workingAction) => (
+            <button
+              key={workingAction.action}
+              type="button"
+              className="button button-small"
+              disabled={
+                actionsDisabledReason !== undefined ||
+                workingAction.disabled === true ||
+                applyingAction !== undefined
+              }
+              title={workingAction.disabledReason ?? actionsDisabledReason}
+              data-testid={`diff-selection-${workingAction.action}`}
+              onClick={() => onApplySelection(workingAction)}
+            >
+              {actionLabel(workingAction.action, 'lines')}
+            </button>
+          ))}
+          <button type="button" className="button button-small" onClick={onClearSelection}>
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+function actionLabel(action: RepositoryWorkingChangeAction, selection: 'hunk' | 'lines'): string {
+  const verb = action[0]!.toLocaleUpperCase() + action.slice(1);
+  return `${verb} ${selection === 'hunk' ? 'hunk' : 'selected lines'}`;
 }
 
 function diffMessage(value: RepositoryDiff): string | undefined {
@@ -363,10 +446,13 @@ export function DiffViewer({
   onWhitespaceChange,
   showWhitespace,
   onShowWhitespaceChange,
+  workingActions = [],
   label,
 }: DiffViewerProps) {
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
+  const [selectedLines, setSelectedLines] = useState<{ hunk: number; indexes: ReadonlySet<number> }>();
+  const [applyingAction, setApplyingAction] = useState<RepositoryWorkingChangeAction>();
   const bodyRef = useRef<HTMLDivElement>(null);
   const document = useMemo(
     () => (value?.state === 'text' ? parseUnifiedDiff(value.content) : undefined),
@@ -385,6 +471,17 @@ export function DiffViewer({
         : 0,
     [document, query],
   );
+
+  const actionsDisabledReason =
+    whitespace !== 'normal'
+      ? 'Set whitespace comparison to Show all whitespace before selecting a hunk or line.'
+      : value?.snapshot === null || value?.snapshot === undefined
+        ? 'This diff cannot be changed.'
+        : undefined;
+
+  useEffect(() => {
+    setSelectedLines(undefined);
+  }, [value]);
 
   useEffect(() => {
     setActiveMatch((current) => (matchCount === 0 ? 0 : Math.min(current, matchCount - 1)));
@@ -405,6 +502,33 @@ export function DiffViewer({
     setActiveMatch((current) => (current + direction + matchCount) % matchCount);
   };
 
+  const toggleLine = (hunk: number, index: number) => {
+    setSelectedLines((current) => {
+      const indexes = current?.hunk === hunk ? new Set(current.indexes) : new Set<number>();
+      if (indexes.has(index)) indexes.delete(index);
+      else indexes.add(index);
+      return indexes.size === 0 ? undefined : { hunk, indexes };
+    });
+  };
+
+  const applySelection = async (
+    workingAction: DiffWorkingAction,
+    selection: RepositoryWorkingChangeSelection,
+  ) => {
+    if (
+      actionsDisabledReason !== undefined ||
+      workingAction.disabled === true ||
+      applyingAction !== undefined
+    )
+      return;
+    setApplyingAction(workingAction.action);
+    try {
+      if (await workingAction.onApply(selection)) setSelectedLines(undefined);
+    } finally {
+      setApplyingAction(undefined);
+    }
+  };
+
   const toolbar = (
     <DiffToolbar
       mode={mode}
@@ -418,6 +542,19 @@ export function DiffViewer({
       matchCount={matchCount}
       activeMatch={activeMatch}
       onMoveMatch={moveMatch}
+      selectedLineCount={selectedLines?.indexes.size ?? 0}
+      workingActions={workingActions}
+      actionsDisabledReason={actionsDisabledReason}
+      applyingAction={applyingAction}
+      onApplySelection={(workingAction) => {
+        if (!selectedLines) return;
+        void applySelection(workingAction, {
+          kind: 'lines',
+          hunk: selectedLines.hunk,
+          lineIndexes: [...selectedLines.indexes],
+        });
+      }}
+      onClearSelection={() => setSelectedLines(undefined)}
     />
   );
 
@@ -473,9 +610,32 @@ export function DiffViewer({
     <div className="diff-viewer" data-testid="diff-viewer" aria-label={label}>
       {toolbar}
       <div className={`diff-body ${mode}`} ref={bodyRef} data-testid="diff-content">
-        {document.hunks.map((hunk) => (
+        {document.hunks.map((hunk, hunkIndex) => (
           <section key={hunk.key} className="diff-hunk" aria-label={hunk.header}>
-            <div className="diff-hunk-header">{hunk.header}</div>
+            <div className="diff-hunk-header">
+              <span>{hunk.header}</span>
+              {workingActions.length > 0 && (
+                <span className="diff-hunk-actions">
+                  {workingActions.map((workingAction) => (
+                    <button
+                      key={workingAction.action}
+                      type="button"
+                      className="button button-small"
+                      disabled={
+                        actionsDisabledReason !== undefined ||
+                        workingAction.disabled === true ||
+                        applyingAction !== undefined
+                      }
+                      title={workingAction.disabledReason ?? actionsDisabledReason}
+                      data-testid={`diff-hunk-${workingAction.action}`}
+                      onClick={() => void applySelection(workingAction, { kind: 'hunk', hunk: hunkIndex })}
+                    >
+                      {actionLabel(workingAction.action, 'hunk')}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
             {mode === 'unified'
               ? hunk.lines.map((line) => (
                   <DiffCell
@@ -487,6 +647,17 @@ export function DiffViewer({
                     showWhitespace={showWhitespace}
                     cursor={cursor}
                     activeMatch={activeMatch}
+                    lineIndex={workingActions.length > 0 ? hunk.lines.indexOf(line) : undefined}
+                    lineSelected={
+                      workingActions.length > 0 &&
+                      selectedLines?.hunk === hunkIndex &&
+                      selectedLines.indexes.has(hunk.lines.indexOf(line))
+                    }
+                    onToggleLine={
+                      workingActions.length > 0
+                        ? () => toggleLine(hunkIndex, hunk.lines.indexOf(line))
+                        : undefined
+                    }
                   />
                 ))
               : splitRows(hunk.lines).map(([oldLine, newLine], index) => {
@@ -501,6 +672,20 @@ export function DiffViewer({
                         showWhitespace={showWhitespace}
                         cursor={cursor}
                         activeMatch={activeMatch}
+                        lineIndex={
+                          workingActions.length > 0 && oldLine ? hunk.lines.indexOf(oldLine) : undefined
+                        }
+                        lineSelected={
+                          workingActions.length > 0 && oldLine
+                            ? selectedLines?.hunk === hunkIndex &&
+                              selectedLines.indexes.has(hunk.lines.indexOf(oldLine))
+                            : undefined
+                        }
+                        onToggleLine={
+                          workingActions.length > 0 && oldLine
+                            ? () => toggleLine(hunkIndex, hunk.lines.indexOf(oldLine))
+                            : undefined
+                        }
                       />
                       <DiffCell
                         line={newLine}
@@ -510,6 +695,20 @@ export function DiffViewer({
                         showWhitespace={showWhitespace}
                         cursor={cursor}
                         activeMatch={activeMatch}
+                        lineIndex={
+                          workingActions.length > 0 && newLine ? hunk.lines.indexOf(newLine) : undefined
+                        }
+                        lineSelected={
+                          workingActions.length > 0 && newLine
+                            ? selectedLines?.hunk === hunkIndex &&
+                              selectedLines.indexes.has(hunk.lines.indexOf(newLine))
+                            : undefined
+                        }
+                        onToggleLine={
+                          workingActions.length > 0 && newLine
+                            ? () => toggleLine(hunkIndex, hunk.lines.indexOf(newLine))
+                            : undefined
+                        }
                       />
                     </div>
                   );

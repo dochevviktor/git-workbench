@@ -12,6 +12,8 @@ export interface GitRunOptions {
   readonly maxOutputBytes?: number;
   readonly signal?: AbortSignal;
   readonly env?: NodeJS.ProcessEnv;
+  /** Optional patch data supplied by a backend Git service, never by the renderer. */
+  readonly stdin?: string | Buffer;
 }
 
 export interface GitCommandResult {
@@ -174,7 +176,7 @@ export class GitRunner {
           env: controlledEnvironment(options.env),
           shell: false,
           windowsHide: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         } satisfies SpawnOptions) as ChildProcessWithoutNullStreams;
       } catch {
         reject(new GitSpawnError());
@@ -208,6 +210,10 @@ export class GitRunner {
 
       const onAbort = () => terminate(new GitCancelledError());
       options.signal?.addEventListener('abort', onAbort, { once: true });
+      if (options.stdin !== undefined && child.stdin) {
+        child.stdin.on('error', () => terminate(new GitSpawnError()));
+        child.stdin.end(options.stdin);
+      }
       child.stdout.on('data', (chunk: Buffer | string) => {
         if (termination) return;
         try {

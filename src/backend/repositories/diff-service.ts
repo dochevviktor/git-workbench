@@ -3,12 +3,14 @@ import type {
   RepositoryDiff,
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
+  RepositoryWorkingChange,
 } from '../../common/ipc/contracts';
 import { repositoryDiffSchema } from '../../common/ipc/contracts';
 import { GitCommandError, GitOutputLimitError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readWorkingChanges } from './working-tree-service';
 import { RevisionNotFoundError, RevisionPathError } from './revision-service';
+import { createWorkingSnapshot } from './working-snapshot';
 
 const diffReadTimeoutMs = 15_000;
 const diffReadOutputLimit = 8 * 1024 * 1024;
@@ -30,10 +32,14 @@ export async function readRepositoryDiff(
   runner: DiffRunner,
   input: ReadRepositoryDiffInput,
 ): Promise<RepositoryDiff> {
+  let snapshot: string | null = null;
+  let workingChange: RepositoryWorkingChange | undefined;
   if (input.target.kind === 'commit') await ensureCommit(runner, input.cwd, input.target.commitId);
   else {
-    const conflict = await ensureWorkingTarget(runner, input);
-    if (conflict) return unavailable(input, 'Conflict diffs are not available yet.');
+    const validated = await ensureWorkingTarget(runner, input);
+    workingChange = validated.change;
+    snapshot = await createWorkingSnapshot(input.cwd, input.target, workingChange);
+    if (validated.conflict) return unavailable(input, 'Conflict diffs are not available yet.', snapshot);
   }
 
   let result: GitCommandResult;
@@ -44,7 +50,7 @@ export async function readRepositoryDiff(
       maxOutputBytes: diffReadOutputLimit,
     });
   } catch (error) {
-    if (error instanceof GitOutputLimitError) return tooLarge(input);
+    if (error instanceof GitOutputLimitError) return tooLarge(input, snapshot);
     if (
       input.target.kind === 'working' &&
       (input.target.area === 'untracked' || input.target.area === 'ignored') &&
@@ -72,6 +78,7 @@ export async function readRepositoryDiff(
     content: binary ? '' : content,
     byteLength: Buffer.byteLength(content, 'utf8'),
     message: binary ? 'Binary changes do not have an inline text diff.' : null,
+    snapshot,
   });
 }
 
@@ -85,6 +92,7 @@ function diffArguments(target: RepositoryDiffTarget, whitespace: RepositoryDiffW
       '--no-textconv',
       '--no-color',
       '--full-index',
+      '--binary',
       '--patch',
       '--unified=3',
       '-M',
@@ -103,8 +111,11 @@ function diffArguments(target: RepositoryDiffTarget, whitespace: RepositoryDiffW
     '--no-textconv',
     '--no-color',
     '--full-index',
+    '--binary',
     '--patch',
     '--unified=3',
+    '-M',
+    '-C',
   ];
   const whitespaceFlag = whitespaceArgument(whitespace);
   if (whitespaceFlag) args.push(whitespaceFlag);
@@ -148,35 +159,34 @@ async function ensureCommit(runner: DiffRunner, cwd: string, commitId: string): 
   }
 }
 
-async function ensureWorkingTarget(runner: DiffRunner, input: ReadRepositoryDiffInput): Promise<boolean> {
-  if (input.target.kind !== 'working') return false;
+async function ensureWorkingTarget(
+  runner: DiffRunner,
+  input: ReadRepositoryDiffInput,
+): Promise<{ readonly change: RepositoryWorkingChange; readonly conflict: boolean }> {
+  if (input.target.kind !== 'working') throw new Error('A working target is required.');
   const changes = await readWorkingChanges(runner, {
     repositoryId: input.repositoryId,
     cwd: input.cwd,
     includeUntracked: true,
     includeIgnored: true,
   });
-  const found = changes[input.target.area].some(
-    (change) => change.path === input.target.path && change.previousPath === input.target.previousPath,
+  const change = changes[input.target.area].find(
+    (candidate) =>
+      candidate.path === input.target.path && candidate.previousPath === input.target.previousPath,
   );
-  if (!found) {
+  if (!change) {
     throw new RevisionPathError(
       'That file is no longer in the selected working-tree changes. Refresh and try again.',
     );
   }
-  return changes[input.target.area].some(
-    (change) =>
-      change.path === input.target.path &&
-      change.previousPath === input.target.previousPath &&
-      change.status === 'unmerged',
-  );
+  return { change, conflict: change.status === 'unmerged' };
 }
 
 function isBinaryDiff(content: string): boolean {
   return /(?:^|\n)(?:Binary files .* differ|GIT binary patch|Subproject commit )/u.test(content);
 }
 
-function tooLarge(input: ReadRepositoryDiffInput): RepositoryDiff {
+function tooLarge(input: ReadRepositoryDiffInput, snapshot: string | null): RepositoryDiff {
   return repositoryDiffSchema.parse({
     repositoryId: input.repositoryId,
     target: input.target,
@@ -184,10 +194,15 @@ function tooLarge(input: ReadRepositoryDiffInput): RepositoryDiff {
     content: '',
     byteLength: null,
     message: 'This diff is too large to display inline.',
+    snapshot,
   });
 }
 
-function unavailable(input: ReadRepositoryDiffInput, message: string): RepositoryDiff {
+function unavailable(
+  input: ReadRepositoryDiffInput,
+  message: string,
+  snapshot: string | null,
+): RepositoryDiff {
   return repositoryDiffSchema.parse({
     repositoryId: input.repositoryId,
     target: input.target,
@@ -195,5 +210,6 @@ function unavailable(input: ReadRepositoryDiffInput, message: string): Repositor
     content: '',
     byteLength: null,
     message,
+    snapshot,
   });
 }

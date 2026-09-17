@@ -365,6 +365,8 @@ export const repositoryDiffRequestSchema = z.strictObject({
   whitespace: repositoryDiffWhitespaceSchema,
 });
 
+export const repositoryDiffSnapshotSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+
 export const repositoryDiffSchema = z.strictObject({
   repositoryId: repositoryIdSchema,
   target: repositoryDiffTargetSchema,
@@ -377,6 +379,8 @@ export const repositoryDiffSchema = z.strictObject({
     .max(8 * 1024 * 1024)
     .nullable(),
   message: z.string().max(512).nullable(),
+  /** Working-tree diffs carry a backend-issued compare-and-swap token for mutations. */
+  snapshot: repositoryDiffSnapshotSchema.nullable(),
 });
 
 const repositoryWorkingChangeCodeSchema = z.string().regex(/^[.ACDMRTUX?!]$/u);
@@ -418,6 +422,44 @@ export const repositoryWorkingChangesSchema = z.strictObject({
   ignored: z.array(repositoryWorkingChangeSchema).max(10_000),
   counts: repositoryWorkingChangeCountsSchema,
   truncated: z.boolean(),
+});
+
+export const repositoryWorkingChangeActionSchema = z.enum(['stage', 'unstage', 'discard']);
+
+export const repositoryWorkingChangeTargetSchema = z.strictObject({
+  area: repositoryWorkingChangeAreaSchema,
+  path: repositoryDiffFilePathSchema,
+  previousPath: repositoryDiffFilePathSchema.nullable(),
+});
+
+/** Selection coordinates refer to the currently rendered, normal-whitespace diff. */
+export const repositoryWorkingChangeSelectionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('file') }),
+  z.strictObject({
+    kind: z.literal('hunk'),
+    hunk: z.number().int().nonnegative().max(1_000),
+  }),
+  z.strictObject({
+    kind: z.literal('lines'),
+    hunk: z.number().int().nonnegative().max(1_000),
+    lineIndexes: z.array(z.number().int().nonnegative().max(100_000)).min(1).max(10_000).readonly(),
+  }),
+]);
+
+export const repositoryWorkingChangeActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryWorkingChangeActionSchema,
+  target: repositoryWorkingChangeTargetSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+  selection: repositoryWorkingChangeSelectionSchema,
+});
+
+export const repositoryWorkingChangeActionResultSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  action: repositoryWorkingChangeActionSchema,
+  target: repositoryWorkingChangeTargetSchema,
+  selection: repositoryWorkingChangeSelectionSchema,
+  changes: repositoryWorkingChangesSchema,
 });
 
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
@@ -531,6 +573,11 @@ export const requests = {
     repositoryWorkingChangesRequestSchema,
     repositoryWorkingChangesSchema,
   ),
+  applyRepositoryWorkingChange: request(
+    'repository:apply-working-change',
+    repositoryWorkingChangeActionRequestSchema,
+    repositoryWorkingChangeActionResultSchema,
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -589,6 +636,7 @@ export type RepositoryCommitChanges = z.infer<typeof repositoryCommitChangesSche
 export type RepositoryDiffWhitespace = z.infer<typeof repositoryDiffWhitespaceSchema>;
 export type RepositoryDiffTarget = z.infer<typeof repositoryDiffTargetSchema>;
 export type RepositoryDiffRequest = z.infer<typeof repositoryDiffRequestSchema>;
+export type RepositoryDiffSnapshot = z.infer<typeof repositoryDiffSnapshotSchema>;
 export type RepositoryDiff = z.infer<typeof repositoryDiffSchema>;
 export type RepositoryWorkingChangeArea = z.infer<typeof repositoryWorkingChangeAreaSchema>;
 export type RepositoryWorkingChangeStatus = z.infer<typeof repositoryWorkingChangeStatusSchema>;
@@ -596,6 +644,11 @@ export type RepositoryWorkingChange = z.infer<typeof repositoryWorkingChangeSche
 export type RepositoryWorkingChangeCounts = z.infer<typeof repositoryWorkingChangeCountsSchema>;
 export type RepositoryWorkingChangesRequest = z.infer<typeof repositoryWorkingChangesRequestSchema>;
 export type RepositoryWorkingChanges = z.infer<typeof repositoryWorkingChangesSchema>;
+export type RepositoryWorkingChangeAction = z.infer<typeof repositoryWorkingChangeActionSchema>;
+export type RepositoryWorkingChangeTarget = z.infer<typeof repositoryWorkingChangeTargetSchema>;
+export type RepositoryWorkingChangeSelection = z.infer<typeof repositoryWorkingChangeSelectionSchema>;
+export type RepositoryWorkingChangeActionRequest = z.infer<typeof repositoryWorkingChangeActionRequestSchema>;
+export type RepositoryWorkingChangeActionResult = z.infer<typeof repositoryWorkingChangeActionResultSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
 export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;

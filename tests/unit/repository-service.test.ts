@@ -53,6 +53,14 @@ describe('Git runner', () => {
     expect(logs[0]).toContain('process.stdout.write');
   });
 
+  it('pipes backend patch data to Git without exposing a shell command', async () => {
+    const directory = await fixtureDirectory();
+    const runner = new GitRunner();
+    await expect(
+      runner.run(['hash-object', '--stdin'], { cwd: directory, stdin: 'patch data\n' }),
+    ).resolves.toMatchObject({ stdout: /^[0-9a-f]{40}\n$/u });
+  });
+
   it('reports cancellation after the child has been terminated', async () => {
     const directory = await fixtureDirectory();
     const runner = new GitRunner({ executable: process.execPath });
@@ -151,6 +159,55 @@ describe('repository service', () => {
     await expect(restarted.getTabPreferences(2)).resolves.toMatchObject({
       tabOrientation: 'vertical',
       activeRepositoryId: second.id,
+    });
+  });
+
+  it('applies a validated working-tree hunk through the repository service', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'repository');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(1, repositoryPath, false);
+    await writeFile(join(repositoryPath, 'file.txt'), 'one\ntwo\n', 'utf8');
+    await runner.run(['add', '--', 'file.txt'], { cwd: repositoryPath });
+    await runner.run(
+      [
+        '-c',
+        'user.name=Service Author',
+        '-c',
+        'user.email=service@example.test',
+        'commit',
+        '--quiet',
+        '-m',
+        'base',
+      ],
+      { cwd: repositoryPath },
+    );
+    await writeFile(join(repositoryPath, 'file.txt'), 'one changed\ntwo\n', 'utf8');
+
+    const target = { kind: 'working', area: 'unstaged', path: 'file.txt', previousPath: null } as const;
+    const diff = await service.getDiff(1, repository.id, target, 'normal');
+    expect(diff.snapshot).toMatch(/^[a-f0-9]{64}$/u);
+    const result = await service.applyWorkingChange(1, {
+      id: repository.id,
+      action: 'stage',
+      target: { area: 'unstaged', path: 'file.txt', previousPath: null },
+      snapshot: diff.snapshot!,
+      selection: { kind: 'hunk', hunk: 0 },
+    });
+    expect(result).toMatchObject({
+      repositoryId: repository.id,
+      action: 'stage',
+      changes: { staged: [expect.objectContaining({ path: 'file.txt' })], unstaged: [] },
+    });
+    await expect(
+      runner.run(['diff', '--cached', '--exit-code'], { cwd: repositoryPath }),
+    ).rejects.toMatchObject({
+      exitCode: 1,
+    });
+    await expect(runner.run(['diff', '--exit-code'], { cwd: repositoryPath })).resolves.toMatchObject({
+      stdout: '',
     });
   });
 

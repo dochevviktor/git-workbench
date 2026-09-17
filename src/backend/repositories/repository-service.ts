@@ -23,6 +23,8 @@ import type {
   RepositoryRevisionTree,
   RepositorySummary,
   RepositoryWorkingChanges,
+  RepositoryWorkingChangeActionRequest,
+  RepositoryWorkingChangeActionResult,
   RepositoryWorkingTree,
 } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
@@ -52,6 +54,7 @@ import {
 } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
 import { readRepositoryDiff } from './diff-service';
+import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -89,6 +92,7 @@ export class RepositoryService {
   private readonly restorePromises = new Map<number, Promise<void>>();
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
+  private readonly mutationQueues = new Map<string, Promise<void>>();
   private gitInfoPromise: Promise<GitInfo> | undefined;
 
   constructor(options: RepositoryServiceOptions) {
@@ -338,6 +342,61 @@ export class RepositoryService {
     }
   }
 
+  async applyWorkingChange(
+    ownerId: number,
+    request: RepositoryWorkingChangeActionRequest,
+  ): Promise<RepositoryWorkingChangeActionResult> {
+    const cached = await this.refreshOpenRepository(ownerId, request.id);
+    if (!cached.worktreePath) {
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+    }
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.refreshOpenRepository(ownerId, request.id);
+      if (!summary.worktreePath) {
+        throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+      }
+      try {
+        await applyWorkingChange(this.runner, {
+          repositoryId: request.id,
+          cwd: summary.worktreePath,
+          action: request.action,
+          target: request.target,
+          snapshot: request.snapshot,
+          selection: request.selection,
+        });
+      } catch (error) {
+        if (error instanceof StaleWorkingSnapshotError) {
+          throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+        }
+        if (error instanceof RevisionPathError) {
+          throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+        }
+        if (error instanceof WorkingChangeActionError) {
+          throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+        }
+        throw this.mapGitFailure(error, 'Git could not update the working tree changes.');
+      }
+
+      try {
+        const changes = await readWorkingChanges(this.runner, {
+          repositoryId: request.id,
+          cwd: summary.worktreePath,
+          includeUntracked: true,
+          includeIgnored: true,
+        });
+        return {
+          repositoryId: request.id,
+          action: request.action,
+          target: request.target,
+          selection: request.selection,
+          changes,
+        } satisfies RepositoryWorkingChangeActionResult;
+      } catch (error) {
+        throw this.mapGitFailure(error, 'Git could not refresh the working tree changes.');
+      }
+    });
+  }
+
   async getRevisionTree(
     ownerId: number,
     id: string,
@@ -500,6 +559,23 @@ export class RepositoryService {
     this.restorePromises.clear();
     this.sessions.clear();
     this.managerRepositoryPaths.clear();
+    this.mutationQueues.clear();
+  }
+
+  private async withRepositoryMutation<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.mutationQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.mutationQueues.set(key, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.mutationQueues.get(key) === current) this.mutationQueues.delete(key);
+    }
   }
 
   private async probeGit(): Promise<GitInfo> {

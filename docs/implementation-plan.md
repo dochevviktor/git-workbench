@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue F09/P04 — add diff snapshot validation and hunk/line workflows.**
+**Next implementation request: Continue F10/P04 — broaden partial-patch edge coverage and safe refresh feedback.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -19,7 +19,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                                                                    | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + initial F09 diff slice (2026-09-17)                                                          | P03        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + initial F10 staging slice (2026-09-17)                                            | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                                                                            | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
@@ -250,8 +250,8 @@ and truncation counts; and render per-repository tree/list views with persisted 
 toggles and refresh polling. Disposable Git tests compare status categories, paths, rename metadata, and
 executable-bit changes, parser tests reject malformed records, the preload contract is validated, and the
 Electron fixture covers staged/unstaged partial changes, untracked/ignored toggles, and list mode. Actual
-merge-conflict fixture behavior, selection persistence, staging, discard, and commit workflows remain
-unverified and belong to F08's remaining work or F10–F11, so F08 and P04 remain partial.
+merge-conflict fixture behavior and selection persistence remain unverified; staging and hunk discard are
+covered by F10, while commit workflows remain in F11, so F08 and P04 remain partial.
 
 Started F09 diff slice (2026-09-17): add a validated `repository:get-diff` capability with backend-owned
 argument construction for staged, unstaged, untracked, ignored, and committed targets; support normal and
@@ -260,8 +260,20 @@ explicitly. The renderer now shows real unified or split text diffs in both Loca
 Changes, highlights adjacent-line inline edits, provides literal search with navigation, and can display
 spaces, tabs, and CR characters. Disposable Git tests compare working and committed patch content and
 whitespace behavior; parser, preload, and Electron tests cover line metadata, target validation, split mode,
-search, and visible whitespace. Hunk/line selection, patch snapshots, syntax rendering, image/binary viewers,
-and exact merge-diff presentation remain unverified, so F09 and P04 remain partial.
+search, and visible whitespace. Syntax rendering, image/binary viewers, and exact merge-diff presentation
+remain unverified; F10 now covers the mutation slice, so F09 and P04 remain partial.
+
+Started F10 staging slice (2026-09-17): add a validated `repository:apply-working-change` capability
+for whole-file stage/unstage, hunk and line stage/unstage, and hunk/line discard. Working diffs now carry
+backend-issued filesystem/index snapshot tokens; the backend re-reads the target diff immediately before
+each mutation, rejects stale snapshots, serializes writes per repository, and builds selected patches from
+fresh Git output rather than trusting renderer text. The renderer enables Fork-style pane Stage/Unstage
+buttons, per-hunk Stage/Unstage/Discard controls, and explicit added/removed-line selection. Disposable
+Git tests verify partial staging reconstruction, repeated selections, CRLF and missing-final-newline
+handling, stale edits, unborn repositories, rename/deletion/symlink/binary/mode file actions, and selective
+hunk discard; the preload contract, repository service, and Electron flow are covered as well. Whole-file
+discard, conflict-specific staging policy, selection persistence, hook failures, and exact current Fork
+parity remain unverified, so F10 and P04 remain partial.
 
 Informal check on this Fedora host with software rendering (not the P03 performance baseline): a
 local mirror of a public project with 15,318 commits, 2,939 merges, and 116 refs showed its first
@@ -271,7 +283,7 @@ about 78 ms to 31 ms, measured over two animation frames. At 125% and 150% devic
 found no breaks in lane lines at row boundaries.
 
 This slice does not complete F06 file/path/content filtering, F07's remaining merge/tree-scale work, P04's
-remaining staging/commit/discard work,
+remaining commit and whole-file discard work,
 or P12 command availability. On the forwarded Xwayland test display, `BrowserWindow.maximize()` and
 `minimize()` had no effect even for a normal framed window, so real maximize/minimize, title-bar
 double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output
@@ -306,8 +318,9 @@ Collapse, Expand All, and Collapse All, which also end the commit menu. The Comm
 files. Changes and File Tree start with a one-line commit summary and place a resizable file list beside
 a change-metadata or line-numbered text preview; the File Tree loads folders lazily and lists them first.
 Local Changes uses Unstaged and Staged panes with an options menu for tree/list and untracked/ignored
-visibility, a change-metadata preview, and a commit composer; Stage, Unstage, diffs, and committing stay
-disabled for P04. Verified on Fedora Linux with `npm run check`, `npm run build`, the Electron test
+visibility, a change-metadata preview, and a commit composer; F10 now enables Stage, Unstage, and selected
+hunk/line actions with snapshot validation, while committing stays disabled for P04/F11. Verified on Fedora
+Linux with `npm run check`, `npm run build`, the Electron test
 through the bridge's X11 display (covering search results, the filter strip, the graph menu, the options
 menu, and the dirty-tab dot), and light and dark screenshots of a disposable repository compared with
 the references. Exact current palettes and spacing, the Mac segmented detail tabs, View as Combined List,
@@ -562,5 +575,5 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue F09/P04 from docs/implementation-plan.md. Add diff snapshot validation and hunk/line
-> selection before enabling staging, discard, or richer binary/image diff workflows.
+> Continue F10/P04 from docs/implementation-plan.md. Broaden partial-patch edge-case coverage and
+> refresh feedback before implementing commit or whole-file discard workflows.
