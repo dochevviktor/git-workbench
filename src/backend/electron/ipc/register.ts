@@ -200,6 +200,15 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryHistory, (window, { id, offset, limit, filter }) =>
       repositoryService.getHistory(window.webContents.id, id, offset, limit, filter),
     );
+    register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
+      repositoryService.getCommitChanges(window.webContents.id, id, commitId),
+    );
+    register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
+      repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),
+    );
+    register(requests.getRepositoryRevisionBlob, (window, { id, commitId, path }) =>
+      repositoryService.getRevisionBlob(window.webContents.id, id, commitId, path),
+    );
     register(requests.openRepositoryInFileManager, async (window, location) => {
       const path = await repositoryService.resolveLocation(window.webContents.id, location);
       const failure = await shell.openPath(path);

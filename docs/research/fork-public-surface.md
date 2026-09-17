@@ -153,6 +153,31 @@ slice is verified against disposable Git fixtures and an Electron flow. File-lis
 history, diff-content search, author/hash search, recent-query persistence, and large-history search
 performance remain unverified and are deferred to the changed-file/diff and P08 investigation slices.
 
+### F07 source refresh
+
+Accessed **2026-09-17**. The official [Fork product page][home] advertises a Commit List and says that
+history can find commits where a file or directory changed. It also explicitly advertises browsing the
+repository file tree at any commit. The page lists Mac and Windows downloads only, so this is high-confidence
+**D** evidence for the advertised outcomes on those platforms, not Linux support or a complete interaction
+specification. The published [history screenshot][history-image] is **O** evidence for the lower Commit,
+Changes, and File Tree detail views, including author/committer blocks, SHA, parent links, and message;
+it does not establish current spacing, changed-file merge rules, or blob-preview behavior.
+
+The official [git-diff-tree documentation][git-diff-tree] defines comparing a commit with its parents and
+machine-readable raw path metadata; [git-ls-tree][git-ls-tree] defines listing entries in a committed tree;
+and [git-cat-file][git-cat-file] defines reading an object's type, size, and contents. These are **D** Git
+semantics used to keep the backend independent of Fork and are not observations of Fork.
+
+This project’s first F07 slice is an **I** choice: committed changes use `diff-tree -m` so merge revisions
+show the union of paths changed against their parents, retain rename/copy similarity, modes, object IDs,
+and unusual path bytes, and deduplicate identical path pairs. Revision trees are requested one directory
+at a time through validated repository IDs and relative paths. Blob previews are bounded at 1 MiB and
+return explicit binary/too-large states; repository text remains inert text. Disposable Git tests compare
+paths and tree entries with independent CLI reads, and the Electron flow verifies changed-file, tree, and
+text-preview selection. Merge presentation, tree caching/virtualization, path persistence, detached and
+multiple-root integration, and large-tree performance remain unverified. Fork’s exact current behavior,
+platform differences, and Linux support remain **U**.
+
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
 Accessed **2026-09-16**, prompted by a request to bring the layout, graph drawing, context menus, and
@@ -242,7 +267,7 @@ Phase IDs refer to [the implementation plan](../implementation-plan.md).
 | F04 | Commit graph, reference labels, authors, hashes, dates, selection                                           | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures        | P03           |
 | F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                      | P03           |
 | F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; I: reference-scoped history and fixed-string commit-message search (partial)             | P03, P08      |
-| F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]                                                                              | P03           |
+| F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                      | P03           |
 | F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]                                                                       | P04           |
 | F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]                                                      | P04           |
 | F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]                                                                              | P04           |
@@ -366,6 +391,9 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [rev-parse]: https://git-scm.com/docs/git-rev-parse
 [git-log]: https://git-scm.com/docs/git-log
 [for-each-ref]: https://git-scm.com/docs/git-for-each-ref
+[git-diff-tree]: https://git-scm.com/docs/git-diff-tree
+[git-ls-tree]: https://git-scm.com/docs/git-ls-tree
+[git-cat-file]: https://git-scm.com/docs/git-cat-file
 [init]: https://git-scm.com/docs/git-init
 [diff]: https://fork.dev/blog/posts/forkwin-1.38/
 [rebase]: https://fork.dev/blog/posts/forkwin-1.23/

@@ -526,6 +526,7 @@ export function HistoryView({ history }: HistoryViewProps) {
         onChange={setListHeight}
       />
       <CommitDetails
+        repositoryId={history.repositoryId}
         commit={selectedCommit}
         lane={selectedIndex >= 0 ? graph[selectedIndex]?.lane : undefined}
         referencesByName={referencesByName}

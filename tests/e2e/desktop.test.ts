@@ -210,6 +210,18 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(page.getByRole('heading', { name: 'First history commit' })).toBeVisible();
     await expect(page.locator('.history-full-hash')).toHaveText(/^[0-9a-f]{40}$/u);
 
+    // F07: committed changes and the revision tree are read through named preload capabilities.
+    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await expect(page.getByTestId('commit-changes')).toBeVisible();
+    await expect(page.getByTestId('commit-change')).toHaveCount(1);
+    await expect(page.getByTestId('commit-change')).toContainText('history.txt');
+    await page.getByRole('tab', { name: 'File Tree', exact: true }).click();
+    await expect(page.getByRole('tree', { name: 'Files at revision' })).toBeVisible();
+    const historyFile = page.getByTestId('revision-tree-entry').filter({ hasText: 'history.txt' });
+    await expect(historyFile).toBeVisible();
+    await historyFile.click();
+    await expect(page.getByTestId('revision-blob')).toHaveText('First history commit\n');
+
     // Right click opens the renderer's context menu; copying uses the main-process clipboard.
     await page.getByTestId('history-commit').first().click({ button: 'right' });
     const commitMenu = page.getByRole('menu', { name: /^Commit / });

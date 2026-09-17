@@ -96,6 +96,72 @@ describe('preload capability API', () => {
     });
   });
 
+  it('validates and routes committed revision inspection capabilities', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'c'.repeat(64)}`;
+    const commitId = 'd'.repeat(40);
+    const changes = {
+      repositoryId,
+      commitId,
+      changes: [],
+      truncated: false,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: changes });
+    await expect(api.repository.getCommitChanges({ id: repositoryId, commitId })).resolves.toEqual({
+      ok: true,
+      value: changes,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryCommitChanges.channel, {
+      id: repositoryId,
+      commitId,
+    });
+
+    const tree = {
+      repositoryId,
+      commitId,
+      path: '',
+      entries: [],
+      truncated: false,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: tree });
+    await expect(api.repository.getRevisionTree({ id: repositoryId, commitId, path: '' })).resolves.toEqual({
+      ok: true,
+      value: tree,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryRevisionTree.channel, {
+      id: repositoryId,
+      commitId,
+      path: '',
+    });
+
+    const blob = {
+      repositoryId,
+      commitId,
+      path: 'README.md',
+      state: 'text',
+      content: 'hello\n',
+      byteLength: 6,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: blob });
+    await expect(
+      api.repository.getRevisionBlob({ id: repositoryId, commitId, path: 'README.md' }),
+    ).resolves.toEqual({
+      ok: true,
+      value: blob,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryRevisionBlob.channel, {
+      id: repositoryId,
+      commitId,
+      path: 'README.md',
+    });
+
+    const invalidTreePath = await api.repository.getRevisionTree({ id: repositoryId, commitId, path: '../' });
+    expect(invalidTreePath).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    const invalidBlobPath = await api.repository.getRevisionBlob({ id: repositoryId, commitId, path: '' });
+    expect(invalidBlobPath).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
+
   it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
     const { api, invoke } = fixture();
     await api.edit.command({ action: 'copy' });

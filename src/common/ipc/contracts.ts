@@ -266,6 +266,94 @@ export const repositoryHistoryPageSchema = z.strictObject({
   nextOffset: z.number().int().nonnegative().max(1_000_000).nullable(),
 });
 
+const repositoryRevisionPathSchema = z
+  .string()
+  .max(32_768)
+  .refine((value) => !value.includes('\0'), 'A revision path cannot contain a NUL byte.')
+  .refine(
+    (value) =>
+      value.length === 0 ||
+      (!value.startsWith('/') &&
+        !value.endsWith('/') &&
+        !value.includes('//') &&
+        !value.split('/').some((part) => part === '.' || part === '..')),
+    'A revision path must be relative and normalized.',
+  );
+
+export const repositoryCommitChangeStatusSchema = z.enum([
+  'added',
+  'copied',
+  'deleted',
+  'modified',
+  'renamed',
+  'type-changed',
+  'unmerged',
+  'unknown',
+]);
+
+const repositoryGitModeSchema = z.string().regex(/^\d{6}$/u);
+
+export const repositoryCommitChangeSchema = z.strictObject({
+  status: repositoryCommitChangeStatusSchema,
+  path: z.string().min(1).max(32_768),
+  previousPath: z.string().min(1).max(32_768).nullable(),
+  similarity: z.number().int().nonnegative().max(100).nullable(),
+  oldMode: repositoryGitModeSchema.nullable(),
+  newMode: repositoryGitModeSchema.nullable(),
+  oldObjectId: gitObjectIdSchema.nullable(),
+  newObjectId: gitObjectIdSchema.nullable(),
+});
+
+export const repositoryCommitChangesRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+});
+
+export const repositoryCommitChangesSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  changes: z.array(repositoryCommitChangeSchema).max(10_000),
+  truncated: z.boolean(),
+});
+
+export const repositoryRevisionTreeRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema,
+});
+
+export const repositoryRevisionTreeEntrySchema = z.strictObject({
+  name: z.string().min(1).max(4_096),
+  path: z.string().min(1).max(32_768),
+  type: z.enum(['blob', 'tree', 'commit', 'unknown']),
+  mode: repositoryGitModeSchema,
+  objectId: gitObjectIdSchema,
+  size: z.number().int().nonnegative().max(1_000_000_000_000).nullable(),
+});
+
+export const repositoryRevisionTreeSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema,
+  entries: z.array(repositoryRevisionTreeEntrySchema).max(5_000),
+  truncated: z.boolean(),
+});
+
+export const repositoryRevisionBlobRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A blob path is required.'),
+});
+
+export const repositoryRevisionBlobSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: z.string().min(1).max(32_768),
+  state: z.enum(['text', 'binary', 'too-large']),
+  content: z.string().max(1_048_576),
+  byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
+});
+
 export const requests = {
   getAppInfo: request('app:get-info', z.undefined(), appInfoSchema),
   getWindowState: request('window:get-state', z.undefined(), windowStateSchema),
@@ -328,6 +416,21 @@ export const requests = {
     repositoryHistoryRequestSchema,
     repositoryHistoryPageSchema,
   ),
+  getRepositoryCommitChanges: request(
+    'repository:get-commit-changes',
+    repositoryCommitChangesRequestSchema,
+    repositoryCommitChangesSchema,
+  ),
+  getRepositoryRevisionTree: request(
+    'repository:get-revision-tree',
+    repositoryRevisionTreeRequestSchema,
+    repositoryRevisionTreeSchema,
+  ),
+  getRepositoryRevisionBlob: request(
+    'repository:get-revision-blob',
+    repositoryRevisionBlobRequestSchema,
+    repositoryRevisionBlobSchema,
+  ),
   openRepositoryInFileManager: request('repository:open-in-file-manager', repositoryLocationSchema, z.null()),
 } as const;
 
@@ -369,3 +472,12 @@ export type RepositoryHistoryTracking = z.infer<typeof repositoryHistoryTracking
 export type RepositoryHistoryFilter = z.infer<typeof repositoryHistoryFilterSchema>;
 export type RepositoryHistoryRequest = z.infer<typeof repositoryHistoryRequestSchema>;
 export type RepositoryHistoryPage = z.infer<typeof repositoryHistoryPageSchema>;
+export type RepositoryCommitChangeStatus = z.infer<typeof repositoryCommitChangeStatusSchema>;
+export type RepositoryCommitChange = z.infer<typeof repositoryCommitChangeSchema>;
+export type RepositoryCommitChangesRequest = z.infer<typeof repositoryCommitChangesRequestSchema>;
+export type RepositoryCommitChanges = z.infer<typeof repositoryCommitChangesSchema>;
+export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
+export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
+export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;
+export type RepositoryRevisionBlobRequest = z.infer<typeof repositoryRevisionBlobRequestSchema>;
+export type RepositoryRevisionBlob = z.infer<typeof repositoryRevisionBlobSchema>;

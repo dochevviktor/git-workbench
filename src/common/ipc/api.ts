@@ -4,6 +4,8 @@ import type {
   EditCommand,
   GitInfo,
   RecentRepository,
+  RepositoryCommitChanges,
+  RepositoryCommitChangesRequest,
   RepositoryInitializeRequest,
   RepositoryHistoryPage,
   RepositoryHistoryRequest,
@@ -13,6 +15,10 @@ import type {
   RepositorySession,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
+  RepositoryRevisionBlob,
+  RepositoryRevisionBlobRequest,
+  RepositoryRevisionTree,
+  RepositoryRevisionTreeRequest,
   RepositorySummary,
   SourceDirectoryRequest,
   SourceDirectorySession,
@@ -56,6 +62,9 @@ export interface DesktopApi {
     removeSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<null>>;
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
+    getCommitChanges(request: RepositoryCommitChangesRequest): Promise<IpcResult<RepositoryCommitChanges>>;
+    getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
+    getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;
   };
 }

@@ -18,7 +18,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —          |
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                                                                    | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
-| P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, and initial F06 reference/commit filtering slices (2026-09-17) | P02        |
+| P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Planned                                                                                                            | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                                                                            | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
@@ -194,10 +194,10 @@ validate the DTO at the IPC boundary; assign independently computed graph lanes;
 history list with full-hash commit details, inert commit messages, reference chips, refresh, and incremental
 page loading. Disposable merge/tag/unborn fixtures compare commit IDs and parents with `git rev-list`,
 and the Electron test selects a real commit through the isolated preload. The initial reference/commit
-filtering slice is recorded under F06 below. File/path/content search, changed-file/tree details, selection/scroll persistence, virtualization, detached and
+filtering slice is recorded under F06 below. File/path/content search, selection/scroll persistence, virtualization, detached and
 multiple-root integration fixtures, and the 100,000-commit/1,000-ref performance baseline remain
 unverified, so P03 and F04 remain partial. The merge-collapse portion is covered by the partial F05
-slice below; the remaining revision-inspection work is not.
+slice below; the F07 revision-inspection portion is recorded below.
 
 Workspace chrome, graph drawing, and context-menu slice (2026-09-16, requested ahead of sequence):
 align the workspace with the public Fork layout recorded under F34 in the research document. Linux
@@ -233,6 +233,16 @@ search text; the Electron fixture covers reference filtering, clearing, search, 
 File-list filtering, path history, diff-content search, author/hash search, recent-query persistence,
 and large-history search performance remain unverified, so F06 remains partial.
 
+Started F07 revision-inspection slice (2026-09-17): add validated commit-change, revision-tree, and
+bounded revision-blob contracts; read raw committed paths with rename/copy, mode, and object metadata;
+read one revision-tree directory at a time; and expose text previews while explicitly classifying binary
+and oversized blobs. The Commit detail tabs now load real Changes and File Tree views with retry, empty,
+truncation, directory navigation, parent metadata, and inert text states. Disposable Git tests compare
+changed paths and tree entries with independent CLI reads, including a newline-containing filename; the
+Electron test covers a root commit's changed file, tree entry, and text preview; unit tests also cover
+binary and oversized blob states. Merge diff presentation, tree caching/virtualization, selected path persistence, detached and
+multiple-root integration, and large-tree performance remain unverified, so F07 and P03 remain partial.
+
 Informal check on this Fedora host with software rendering (not the P03 performance baseline): a
 local mirror of a public project with 15,318 commits, 2,939 merges, and 116 refs showed its first
 50-commit page in about 0.2 s, loaded 2,050 rows by scrolling, and drew up to 13 lanes. Skipping
@@ -240,7 +250,7 @@ off-screen row rendering (`content-visibility`) reduced a keyboard selection ste
 about 78 ms to 31 ms, measured over two animation frames. At 125% and 150% device scale, a pixel scan
 found no breaks in lane lines at row boundaries.
 
-This slice does not complete F06 file/path/content filtering, F07 changed files/tree, P04 local changes,
+This slice does not complete F06 file/path/content filtering, F07's remaining merge/tree-scale work, P04 local changes,
 or P12 command availability. On the forwarded Xwayland test display, `BrowserWindow.maximize()` and
 `minimize()` had no effect even for a normal framed window, so real maximize/minimize, title-bar
 double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output

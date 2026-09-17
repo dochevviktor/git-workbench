@@ -17,6 +17,7 @@
   --accent: light-dark(#1868db, #4a8ef0);
   --accent-text: #ffffff;
   --link: light-dark(#0f5fcf, #6aa5ff);
+  --success: light-dark(#237a3b, #72cf83);
   --danger: light-dark(#c42b25, #f06a62);
   --warning: light-dark(#a86200, #e6a23c);
 
@@ -1248,6 +1249,7 @@ p {
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text);
+  cursor: pointer;
   font-size: 13.5px;
 }
 
@@ -1258,6 +1260,11 @@ p {
 
 .details-tab[aria-disabled='true'] {
   color: var(--text-dim);
+}
+
+.details-tab:disabled {
+  color: var(--text-dim);
+  cursor: default;
 }
 
 .details-panel {
@@ -1380,6 +1387,196 @@ p {
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.revision-summary {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.revision-change-list,
+.revision-tree-list {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.revision-change-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--input-bg) 55%, var(--list-bg));
+}
+
+.revision-change-status {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.revision-change-status.added,
+.revision-change-status.copied {
+  color: var(--success);
+}
+
+.revision-change-status.deleted,
+.revision-change-status.unmerged {
+  color: var(--danger);
+}
+
+.revision-change-status.renamed,
+.revision-change-status.type-changed {
+  color: var(--warning);
+}
+
+.revision-change-paths {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.revision-change-paths code,
+.revision-tree-entry code,
+.revision-blob-heading code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.revision-previous-path {
+  color: var(--text-muted);
+}
+
+.revision-path-arrow {
+  margin: 0 6px;
+  color: var(--text-muted);
+}
+
+.revision-tree {
+  min-width: min(100%, 640px);
+}
+
+.revision-tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin-bottom: 10px;
+}
+
+.revision-tree-breadcrumbs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: auto;
+  white-space: nowrap;
+}
+
+.revision-tree-breadcrumbs button {
+  max-width: 260px;
+  padding: 2px 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--link);
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.revision-tree-breadcrumbs button.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.revision-tree-list {
+  border-top: 1px solid var(--border);
+}
+
+.revision-tree-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.revision-tree-entry {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 31px;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.revision-tree-entry:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+
+.revision-tree-entry:focus-visible,
+.revision-tree-breadcrumbs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.revision-tree-entry:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.revision-tree-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.revision-tree-kind,
+.revision-tree-size {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.revision-tree-note,
+.revision-empty {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.revision-blob-preview {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.revision-blob-heading {
+  min-height: 30px;
+  padding: 8px 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.revision-blob-content {
+  max-height: 360px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
 }
 
 /* Local changes ------------------------------------------------------------------------------ */

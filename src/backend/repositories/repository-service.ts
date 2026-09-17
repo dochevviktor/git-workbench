@@ -4,6 +4,7 @@ import { basename, isAbsolute, resolve } from 'node:path';
 import type {
   GitInfo,
   RecentRepository,
+  RepositoryCommitChanges,
   RepositoryHead,
   RepositoryHistoryPage,
   RepositoryHistoryFilter,
@@ -15,6 +16,8 @@ import type {
   RepositoryManagerWarning,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
+  RepositoryRevisionBlob,
+  RepositoryRevisionTree,
   RepositorySummary,
   RepositoryWorkingTree,
 } from '../../common/ipc/contracts';
@@ -36,6 +39,13 @@ import { RepositoryTabStore } from './repository-tab-store';
 import { scanSourceDirectory } from './source-scanner';
 import type { SourceScanOptions, SourceScanResult } from './source-scanner';
 import { readRepositoryHistory } from './history-service';
+import {
+  readCommitChanges,
+  readRevisionBlob,
+  readRevisionTree,
+  RevisionNotFoundError,
+  RevisionPathError,
+} from './revision-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -227,7 +237,7 @@ export class RepositoryService {
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
     const cached = ownerSessions?.get(id);
-    if (!cached) {
+    if (!ownerSessions || !cached) {
       throw new ExpectedBackendError(
         'REPOSITORY_NOT_OPEN',
         'That repository tab is not open in this window.',
@@ -265,6 +275,57 @@ export class RepositoryService {
       });
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
+    }
+  }
+
+  async getCommitChanges(ownerId: number, id: string, commitId: string): Promise<RepositoryCommitChanges> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    try {
+      return await readCommitChanges(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commitId,
+      });
+    } catch (error) {
+      throw this.mapRevisionFailure(error, 'Git could not read the selected commit changes.');
+    }
+  }
+
+  async getRevisionTree(
+    ownerId: number,
+    id: string,
+    commitId: string,
+    path: string,
+  ): Promise<RepositoryRevisionTree> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    try {
+      return await readRevisionTree(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commitId,
+        path,
+      });
+    } catch (error) {
+      throw this.mapRevisionFailure(error, 'Git could not read the selected revision tree.');
+    }
+  }
+
+  async getRevisionBlob(
+    ownerId: number,
+    id: string,
+    commitId: string,
+    path: string,
+  ): Promise<RepositoryRevisionBlob> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    try {
+      return await readRevisionBlob(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commitId,
+        path,
+      });
+    } catch (error) {
+      throw this.mapRevisionFailure(error, 'Git could not read the selected revision file.');
     }
   }
 
@@ -512,6 +573,34 @@ export class RepositoryService {
     });
   }
 
+  private async refreshOpenRepository(ownerId: number, id: string): Promise<RepositorySummary> {
+    await this.requireGit();
+    await this.ensureSessions(ownerId);
+    const ownerSessions = this.sessions.get(ownerId);
+    const cached = ownerSessions?.get(id);
+    if (!ownerSessions || !cached) {
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository tab is not open in this window.',
+      );
+    }
+
+    let summary: RepositorySummary;
+    try {
+      summary = await this.discover(cached.path);
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
+    }
+    if (summary.id !== id) {
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository is no longer open in this window.',
+      );
+    }
+    ownerSessions.set(id, summary);
+    return summary;
+  }
+
   private async refreshSummary(summary: RepositorySummary): Promise<RepositorySummary> {
     return {
       ...summary,
@@ -581,6 +670,19 @@ export class RepositoryService {
       return new ExpectedBackendError('OPERATION_FAILED', fallback);
     }
     return new ExpectedBackendError('OPERATION_FAILED', fallback);
+  }
+
+  private mapRevisionFailure(error: unknown, fallback: string): ExpectedBackendError {
+    if (error instanceof RevisionNotFoundError) {
+      return new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'That commit is no longer available in this repository.',
+      );
+    }
+    if (error instanceof RevisionPathError) {
+      return new ExpectedBackendError('OPERATION_FAILED', error.message);
+    }
+    return this.mapGitFailure(error, fallback);
   }
 
   private async remember(summary: RepositorySummary): Promise<void> {
