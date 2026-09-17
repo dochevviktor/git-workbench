@@ -1897,26 +1897,13 @@ p {
   user-select: text;
 }
 
-.preview-facts {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 5px 14px;
-  margin: 0 0 14px;
-  font-size: 12.5px;
-}
-
-.preview-facts dt {
+.preview-detail {
+  flex: none;
+  overflow: hidden;
   color: var(--text-muted);
-}
-
-.preview-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.preview-facts code {
-  font-family: var(--font-mono);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preview-note {
@@ -1970,14 +1957,6 @@ p {
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-}
-
-.diff-preview-body > .preview-facts {
-  flex: none;
-  width: 100%;
-  margin: 0;
-  padding: 9px 18px;
-  border-bottom: 1px solid var(--border);
 }
 
 .diff-viewer {
@@ -2402,16 +2381,38 @@ p {
   font-size: 13px;
 }
 
+.composer-subject {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
 .composer-message input {
   height: 28px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border);
+}
+
+.composer-counter {
+  flex: none;
+  min-width: 22px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.composer-counter.over {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .composer-message textarea {
   min-height: 52px;
   padding: 6px 8px;
   resize: none;
+  overflow-y: auto;
 }
 
 .composer-message input:disabled::placeholder,
@@ -2430,8 +2431,73 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-dim);
   font-size: 13px;
+}
+
+.composer-amend:has(input:disabled) {
+  color: var(--text-dim);
+}
+
+.composer-commit {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.composer-commit-button {
+  border-radius: 4px 0 0 4px;
+}
+
+.composer-commit-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  padding: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.commit-notice {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.commit-alert {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--window));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger) 10%, var(--window));
+  font-size: 12.5px;
+}
+
+.commit-alert-message {
+  margin: 0;
+  user-select: text;
+}
+
+.commit-output {
+  max-height: 160px;
+  margin: 0;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.commit-alert-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 /* Repository manager ------------------------------------------------------------------------- */

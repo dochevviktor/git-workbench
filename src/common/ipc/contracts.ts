@@ -462,6 +462,94 @@ export const repositoryWorkingChangeActionResultSchema = z.strictObject({
   changes: repositoryWorkingChangesSchema,
 });
 
+/** How the author/committer identity Git would use for a new commit was determined. */
+export const repositoryCommitIdentitySchema = z.strictObject({
+  name: z.string().max(4_096),
+  email: z.string().max(4_096),
+  source: z.enum(['configured', 'implicit', 'missing']),
+});
+
+export const repositoryCommitMessageSchema = z.strictObject({
+  subject: z.string().max(16_384),
+  body: z.string().max(262_144),
+});
+
+export const repositoryCommitAmendTargetSchema = z.strictObject({
+  commitId: gitObjectIdSchema,
+  subject: z.string().max(16_384),
+  body: z.string().max(262_144),
+  author: repositoryHistoryPersonSchema,
+  parentCount: z.number().int().nonnegative().max(128),
+  /** `null` when Git could not answer within the bounded check. */
+  published: z.boolean().nullable(),
+  publishedRefs: z.array(z.string().min(1).max(32_768)).max(10),
+});
+
+export const repositoryCommitPendingOperationSchema = z.enum(['merge', 'cherry-pick', 'revert', 'rebase']);
+
+export const repositoryCommitContextRequestSchema = z.strictObject({ id: repositoryIdSchema });
+
+export const repositoryCommitContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  head: repositoryHeadSchema,
+  identity: repositoryCommitIdentitySchema,
+  /** The commit an amend would replace, when one exists. */
+  amend: repositoryCommitAmendTargetSchema.nullable(),
+  amendBlockedReason: z.string().max(512).nullable(),
+  /** `commit.template` contents with comment lines removed, when configured and readable. */
+  template: z.string().max(65_536).nullable(),
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  /** A message Git prepared for the pending operation, such as `MERGE_MSG`. */
+  pendingMessage: z.string().max(262_144).nullable(),
+  recentMessages: z.array(repositoryCommitMessageSchema).max(20),
+  stagedCount: z.number().int().nonnegative().max(100_000),
+  conflictedCount: z.number().int().nonnegative().max(100_000),
+  /** `commit.gpgsign` is enabled; signing itself is a later phase. */
+  signing: z.boolean(),
+  hooks: z.array(z.string().min(1).max(64)).max(8),
+  /** Compare-and-swap token over HEAD, the pending operation, and the staged entries. */
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryCommitRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  subject: z.string().max(16_384),
+  body: z.string().max(262_144),
+  amend: z.boolean(),
+  snapshot: repositoryDiffSnapshotSchema,
+  /** Passing `--no-verify` is always an explicit second action by the user. */
+  skipHooks: z.boolean(),
+});
+
+export const repositoryCommitFailureReasonSchema = z.enum([
+  'hook',
+  'identity',
+  'empty-message',
+  'nothing-staged',
+  'conflicts',
+  'other',
+]);
+
+export const repositoryCommitResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('committed'),
+    repositoryId: repositoryIdSchema,
+    commitId: gitObjectIdSchema,
+    amended: z.boolean(),
+    subject: z.string().max(16_384),
+    output: z.string().max(65_536),
+  }),
+  z.strictObject({
+    status: z.literal('failed'),
+    repositoryId: repositoryIdSchema,
+    reason: repositoryCommitFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    /** Git and hook output, kept as inert text for display. */
+    output: z.string().max(65_536),
+    canSkipHooks: z.boolean(),
+  }),
+]);
+
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
@@ -578,6 +666,16 @@ export const requests = {
     repositoryWorkingChangeActionRequestSchema,
     repositoryWorkingChangeActionResultSchema,
   ),
+  getRepositoryCommitContext: request(
+    'repository:get-commit-context',
+    repositoryCommitContextRequestSchema,
+    repositoryCommitContextSchema,
+  ),
+  commitRepositoryChanges: request(
+    'repository:commit',
+    repositoryCommitRequestSchema,
+    repositoryCommitResultSchema,
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -649,6 +747,15 @@ export type RepositoryWorkingChangeTarget = z.infer<typeof repositoryWorkingChan
 export type RepositoryWorkingChangeSelection = z.infer<typeof repositoryWorkingChangeSelectionSchema>;
 export type RepositoryWorkingChangeActionRequest = z.infer<typeof repositoryWorkingChangeActionRequestSchema>;
 export type RepositoryWorkingChangeActionResult = z.infer<typeof repositoryWorkingChangeActionResultSchema>;
+export type RepositoryCommitIdentity = z.infer<typeof repositoryCommitIdentitySchema>;
+export type RepositoryCommitMessage = z.infer<typeof repositoryCommitMessageSchema>;
+export type RepositoryCommitAmendTarget = z.infer<typeof repositoryCommitAmendTargetSchema>;
+export type RepositoryCommitPendingOperation = z.infer<typeof repositoryCommitPendingOperationSchema>;
+export type RepositoryCommitContextRequest = z.infer<typeof repositoryCommitContextRequestSchema>;
+export type RepositoryCommitContext = z.infer<typeof repositoryCommitContextSchema>;
+export type RepositoryCommitRequest = z.infer<typeof repositoryCommitRequestSchema>;
+export type RepositoryCommitFailureReason = z.infer<typeof repositoryCommitFailureReasonSchema>;
+export type RepositoryCommitResult = z.infer<typeof repositoryCommitResultSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
 export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;

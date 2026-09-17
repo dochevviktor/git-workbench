@@ -5,6 +5,9 @@ import type {
   GitInfo,
   RecentRepository,
   RepositoryCommitChanges,
+  RepositoryCommitContext,
+  RepositoryCommitRequest,
+  RepositoryCommitResult,
   RepositoryDiff,
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
@@ -53,6 +56,7 @@ import {
   RevisionPathError,
 } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
+import { commitChanges, readCommitContext, StaleCommitSnapshotError } from './commit-service';
 import { readRepositoryDiff } from './diff-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 
@@ -397,6 +401,45 @@ export class RepositoryService {
     });
   }
 
+  async getCommitContext(ownerId: number, id: string): Promise<RepositoryCommitContext> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readCommitContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        head: summary.head,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the commit details.');
+    }
+  }
+
+  async commit(ownerId: number, request: RepositoryCommitRequest): Promise<RepositoryCommitResult> {
+    const cached = await this.requireWorktree(ownerId, request.id);
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.requireWorktree(ownerId, request.id);
+      try {
+        return await commitChanges(this.runner, {
+          repositoryId: request.id,
+          cwd: summary.worktreePath,
+          gitDir: summary.gitDir,
+          head: summary.head,
+          subject: request.subject,
+          body: request.body,
+          amend: request.amend,
+          snapshot: request.snapshot,
+          skipHooks: request.skipHooks,
+        });
+      } catch (error) {
+        if (error instanceof StaleCommitSnapshotError) {
+          throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+        }
+        throw this.mapGitFailure(error, 'Git could not complete the commit.');
+      }
+    });
+  }
+
   async getRevisionTree(
     ownerId: number,
     id: string,
@@ -694,6 +737,17 @@ export class RepositoryService {
       timeoutMs: repositoryReadTimeoutMs,
       maxOutputBytes: repositoryReadOutputLimit,
     });
+  }
+
+  private async requireWorktree(
+    ownerId: number,
+    id: string,
+  ): Promise<RepositorySummary & { readonly worktreePath: string }> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    if (!summary.worktreePath) {
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+    }
+    return { ...summary, worktreePath: summary.worktreePath };
   }
 
   private async refreshOpenRepository(ownerId: number, id: string): Promise<RepositorySummary> {

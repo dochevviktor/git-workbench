@@ -746,7 +746,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             />
             <main className="repository-content">
               {view === 'changes' ? (
-                <ChangesView key={active.id} repository={active} refreshSignal={refreshSignal} />
+                <ChangesView
+                  key={active.id}
+                  repository={active}
+                  refreshSignal={refreshSignal}
+                  onCommitted={refresh}
+                />
               ) : (
                 <HistoryView history={history} />
               )}

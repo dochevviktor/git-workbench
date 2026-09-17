@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositoryHistoryDecoration, RepositoryHistoryReference } from '../../src/common/ipc/contracts';
 import { compactMenu, menuSeparator, planned } from '../../src/frontend/react/components/menu/menu-model';
-import { statusBadge } from '../../src/frontend/react/lib/change-status';
+import { changeDetail, statusBadge } from '../../src/frontend/react/lib/change-status';
 import { buildPathTree, flattenPathTree, splitPath } from '../../src/frontend/react/lib/file-tree';
 import { ariaShortcut, formatShortcut, matchesShortcut } from '../../src/frontend/react/lib/platform';
 import { referenceChips, referenceSections } from '../../src/frontend/react/lib/references';
@@ -245,5 +245,25 @@ describe('changed file trees', () => {
     ] as const) {
       expect(statusBadge(status).label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('file header detail', () => {
+  const unchanged = { previousPath: null, similarity: null, oldMode: '100644', newMode: '100644' };
+
+  it('stays empty when nothing unusual happened', () => {
+    expect(changeDetail(unchanged)).toBeUndefined();
+  });
+
+  it('names the rename source with its similarity and a mode change', () => {
+    expect(
+      changeDetail({ previousPath: 'old/name.ts', similarity: 92, oldMode: '100644', newMode: '100755' }),
+    ).toBe('from old/name.ts (92% similar) · mode 100644 → 100755');
+  });
+
+  it('omits an unknown similarity and an unknown mode', () => {
+    expect(changeDetail({ previousPath: 'old.ts', similarity: null, oldMode: null, newMode: '100644' })).toBe(
+      'from old.ts',
+    );
   });
 });

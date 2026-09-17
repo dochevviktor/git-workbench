@@ -2,8 +2,8 @@
 
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
-initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, and the
-initial F34 workspace-chrome slice implemented.
+initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
+initial F11 commit slice, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -79,7 +79,13 @@ owns unified/split presentation, inline edit highlighting, search, and visible w
 initial F10 slice adds `applyWorkingChange()` for explicit file, hunk, and line stage/unstage actions plus
 hunk/line discard; working diff responses carry a backend-issued snapshot token, and the main process
 revalidates it before applying a backend-built patch. The renderer owns line selection but never sends
-Git patch text or arguments. The
+Git patch text or arguments. The initial F11 slice adds `getCommitContext()` and `commit()`: the context
+read returns the identity Git would use, the amend target with its published state, a configured template,
+pending merge state, recent messages, present commit hooks, and a compare-and-swap token over HEAD, that
+pending state, and the staged entries. `commit()` takes only a subject, body, amend flag, token, and an
+explicit skip-hooks flag; the message crosses IPC as text and never as Git arguments. Expected commit
+failures (a hook, a missing identity, an empty message, nothing staged, unmerged files) return a
+structured `failed` result with bounded inert output rather than an exception. The
 F34 workspace-chrome slice
 extends `desktop.window.command()` with full
 screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
@@ -233,7 +239,13 @@ display projection stay in the renderer. The F10 staging service re-reads the se
 the relevant index metadata and working-tree entries for a compare-and-swap token, serializes mutations by
 repository, and feeds only its own freshly assembled patch to `git apply`; whole-file actions use explicit
 `git add`, `git reset`, or unborn-repository `git rm --cached` arguments. Untracked files are never included
-implicitly in a discard operation.
+implicitly in a discard operation. The F11 commit service re-reads that context inside the same
+per-repository mutation queue, refuses a stale token, and runs one `git commit --cleanup=whitespace
+--file=-` with the message on standard input. Hooks, filters, and configured signing programs run because
+committing is an explicit user action; the call has its own longer timeout, its output is captured,
+stripped of terminal escapes, and bounded before display, and `--no-verify` is used only when the user
+explicitly chooses it after a failure. A commit that is interrupted reports an unknown outcome instead of
+being retried.
 
 ## Current limitations
 
@@ -245,11 +257,11 @@ and context menus are implemented.
 There is still no general job
 queue, operation activity surface, remote authentication, clone workflow, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
-discard, commit workflows, syntax/image/binary viewers, external integration, automatic updater, or
-final branding. Window chrome on macOS and Windows, title-bar double-click and
+discard, commit signing or commit-and-push, syntax/image/binary viewers, external integration, automatic
+updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
-merge collapse, and the Electron bridge; later Git correctness will continue to be checked against
-independent CLI assertions as each workflow is added. Diff merge presentation, commit workflows, whole-file
-discard, and conflict resolution remain future work.
+merge collapse, commit and amend behavior, and the Electron bridge; later Git correctness will continue to
+be checked against independent CLI assertions as each workflow is added. Diff merge presentation,
+whole-file discard, signing, and conflict resolution remain future work.

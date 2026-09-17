@@ -10,10 +10,10 @@ import type {
   RepositoryWorkingChange,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { changeDetail } from '../lib/change-status';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRepositoryWorkingChanges } from '../hooks/use-repository-working-changes';
-import { statusBadge } from '../lib/change-status';
 import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
 import { DiffViewer } from './DiffViewer';
@@ -21,14 +21,14 @@ import type { DiffDisplayMode, DiffWorkingAction } from './DiffViewer';
 import { ListOptionsIcon, SearchIcon } from './Icons';
 import { Splitter } from './Splitter';
 import { StatusBadge } from './StatusBadge';
+import { CommitComposer } from './CommitComposer';
 import { MenuButton } from './menu/MenuButton';
-import { menuSeparator, planned } from './menu/menu-model';
+import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;
 const diffWhitespaceModes = ['normal', 'ignore-all', 'ignore-space-change', 'ignore-space-at-eol'] as const;
-const commitPlanned = planned('Committing', 'P04').disabledReason;
 
 const areaLabels: Record<RepositoryWorkingChange['area'], string> = {
   staged: 'Staged',
@@ -149,7 +149,6 @@ function ChangePreview({
   busy,
   onWorkingAction,
 }: ChangePreviewProps) {
-  const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
   const workingActions = useMemo<DiffWorkingAction[]>(() => {
     const actions: RepositoryWorkingChangeAction[] =
       change.area === 'staged'
@@ -170,36 +169,12 @@ function ChangePreview({
     <div className="file-preview" data-testid="working-change-preview">
       <div className="preview-header">
         <StatusBadge status={change.status} />
-        <span className="preview-path" title={change.path}>
+        <span className="preview-path" title={`${areaLabels[change.area]}: ${change.path}`}>
           {change.path}
         </span>
+        {changeDetail(change) && <span className="preview-detail">{changeDetail(change)}</span>}
       </div>
       <div className="preview-body diff-preview-body">
-        <dl className="preview-facts">
-          <dt>Status</dt>
-          <dd>
-            {statusBadge(change.status).label}
-            {change.similarity !== null ? ` (${change.similarity}% similar)` : ''}
-          </dd>
-          <dt>Area</dt>
-          <dd>{areaLabels[change.area]}</dd>
-          {change.previousPath && (
-            <>
-              <dt>Previous path</dt>
-              <dd>
-                <code>{change.previousPath}</code>
-              </dd>
-            </>
-          )}
-          {modeChanged && (
-            <>
-              <dt>Mode</dt>
-              <dd>
-                <code>{change.oldMode}</code> → <code>{change.newMode}</code>
-              </dd>
-            </>
-          )}
-        </dl>
         <DiffViewer
           value={diff.value}
           loading={diff.loading}
@@ -223,9 +198,11 @@ interface ChangesViewProps {
   readonly repository: RepositorySummary;
   /** Increments when the user asks the application to refresh. */
   readonly refreshSignal: number;
+  /** Lets a completed commit refresh the history, tabs, and repository summary. */
+  readonly onCommitted: () => void;
 }
 
-export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
+export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesViewProps) {
   const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
     'tree',
@@ -296,6 +273,24 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
       staged: value.staged.filter(visible).map(workingEntry),
     };
   }, [filter, includeIgnored, value]);
+
+  /** The composer reloads its commit guard whenever HEAD or the staged entries change. */
+  const changeToken = useMemo(() => {
+    const head = `${repository.head.state}:${repository.head.commit ?? ''}`;
+    if (!value) return `${head}|pending`;
+    const entries = value.staged
+      .map((change) =>
+        [
+          change.path,
+          change.previousPath ?? '',
+          change.indexStatus,
+          change.oldObjectId ?? '',
+          change.newObjectId ?? '',
+        ].join(' '),
+      )
+      .join('');
+    return `${head}|${value.counts.conflicted}|${entries}`;
+  }, [repository.head.commit, repository.head.state, value]);
 
   const selected = [...unstaged, ...staged].find((entry) => entry.key === selectedKey)?.change;
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
@@ -578,21 +573,14 @@ export function ChangesView({ repository, refreshSignal }: ChangesViewProps) {
             <p className="preview-empty">Select a file to see its changes.</p>
           )}
         </div>
-        <form className="commit-composer" aria-label="Commit" onSubmit={(event) => event.preventDefault()}>
-          <div className="composer-message" title={commitPlanned}>
-            <input type="text" placeholder="Commit subject" aria-label="Commit subject" disabled />
-            <textarea placeholder="Description" aria-label="Commit description" rows={3} disabled />
-          </div>
-          <div className="composer-actions">
-            <label className="composer-amend" title={commitPlanned}>
-              <input type="checkbox" disabled />
-              Amend
-            </label>
-            <button type="button" className="button" aria-disabled="true" title={commitPlanned}>
-              Commit
-            </button>
-          </div>
-        </form>
+        <CommitComposer
+          repository={repository}
+          changeToken={changeToken}
+          stagedCount={value?.counts.staged ?? 0}
+          conflictedCount={value?.counts.conflicted ?? 0}
+          busy={actionBusy}
+          onCommitted={onCommitted}
+        />
       </div>
     </section>
   );

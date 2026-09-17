@@ -12,7 +12,7 @@ import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persi
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRevisionInspection } from '../hooks/use-revision-inspection';
 import type { RevisionInspection } from '../hooks/use-revision-inspection';
-import { statusBadge } from '../lib/change-status';
+import { changeDetail, statusBadge } from '../lib/change-status';
 import {
   avatarColor,
   countLabel,
@@ -126,48 +126,17 @@ function ChangeFacts({
   onShowWhitespaceChange,
 }: ChangeFactsProps) {
   const badge = statusBadge(change.status);
-  const modeChanged = change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode;
+  const detail = changeDetail(change);
   return (
     <div className="file-preview" data-testid="commit-change-preview">
       <div className="preview-header">
         <StatusBadge status={change.status} />
-        <span className="preview-path" title={change.path}>
+        <span className="preview-path" title={`${badge.label}: ${change.path}`}>
           {change.path}
         </span>
+        {detail && <span className="preview-detail">{detail}</span>}
       </div>
       <div className="preview-body diff-preview-body">
-        <dl className="preview-facts">
-          <dt>Status</dt>
-          <dd>
-            {badge.label}
-            {change.similarity !== null ? ` (${change.similarity}% similar)` : ''}
-          </dd>
-          {change.previousPath && (
-            <>
-              <dt>Previous path</dt>
-              <dd>
-                <code>{change.previousPath}</code>
-              </dd>
-            </>
-          )}
-          {modeChanged && (
-            <>
-              <dt>Mode</dt>
-              <dd>
-                <code>{change.oldMode}</code> → <code>{change.newMode}</code>
-              </dd>
-            </>
-          )}
-          {(change.oldObjectId || change.newObjectId) && (
-            <>
-              <dt>Blob</dt>
-              <dd>
-                <code>{change.oldObjectId ? shortHash(change.oldObjectId) : 'none'}</code> →{' '}
-                <code>{change.newObjectId ? shortHash(change.newObjectId) : 'none'}</code>
-              </dd>
-            </>
-          )}
-        </dl>
         <DiffViewer
           value={diff.value}
           loading={diff.loading}

@@ -269,6 +269,14 @@ export function ListOptionsIcon(props: IconProps) {
   );
 }
 
+export function RecentMessagesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 4h11M2.5 7.5h11M2.5 11h6.5" />
+    </Icon>
+  );
+}
+
 export function EyeIcon(props: IconProps) {
   return (
     <Icon {...props}>

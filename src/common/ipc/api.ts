@@ -6,6 +6,10 @@ import type {
   RecentRepository,
   RepositoryCommitChanges,
   RepositoryCommitChangesRequest,
+  RepositoryCommitContext,
+  RepositoryCommitContextRequest,
+  RepositoryCommitRequest,
+  RepositoryCommitResult,
   RepositoryDiff,
   RepositoryDiffRequest,
   RepositoryInitializeRequest,
@@ -74,6 +78,8 @@ export interface DesktopApi {
     applyWorkingChange(
       request: RepositoryWorkingChangeActionRequest,
     ): Promise<IpcResult<RepositoryWorkingChangeActionResult>>;
+    getCommitContext(request: RepositoryCommitContextRequest): Promise<IpcResult<RepositoryCommitContext>>;
+    commit(request: RepositoryCommitRequest): Promise<IpcResult<RepositoryCommitResult>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

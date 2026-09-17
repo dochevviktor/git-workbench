@@ -29,3 +29,29 @@ const badges: Record<ChangeStatus, StatusBadge> = {
 export function statusBadge(status: ChangeStatus): StatusBadge {
   return badges[status];
 }
+
+interface ChangeDetailFields {
+  readonly previousPath: string | null;
+  readonly similarity: number | null;
+  readonly oldMode: string | null;
+  readonly newMode: string | null;
+}
+
+/**
+ * The one line of extra facts a file header carries. Fork puts the diff directly under the path, so
+ * only a rename source or a mode change earns space there.
+ */
+export function changeDetail(change: ChangeDetailFields): string | undefined {
+  const details: string[] = [];
+  if (change.previousPath) {
+    details.push(
+      change.similarity === null
+        ? `from ${change.previousPath}`
+        : `from ${change.previousPath} (${change.similarity}% similar)`,
+    );
+  }
+  if (change.oldMode !== null && change.newMode !== null && change.oldMode !== change.newMode) {
+    details.push(`mode ${change.oldMode} → ${change.newMode}`);
+  }
+  return details.length > 0 ? details.join(' · ') : undefined;
+}

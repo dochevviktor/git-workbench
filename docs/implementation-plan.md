@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue F10/P04 — broaden partial-patch edge coverage and safe refresh feedback.**
+**Next implementation request: Continue P04 — whole-file discard with an exact preview, then conflict-aware staging.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -19,7 +19,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                                                                    | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + initial F10 staging slice (2026-09-17)                                            | P03        |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                                                                            | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
@@ -275,6 +275,34 @@ hunk discard; the preload contract, repository service, and Electron flow are co
 discard, conflict-specific staging policy, selection persistence, hook failures, and exact current Fork
 parity remain unverified, so F10 and P04 remain partial.
 
+Started F11 commit slice (2026-09-17): add validated `repository:get-commit-context` and
+`repository:commit` capabilities. The context read reports the identity Git would use (configured,
+guessed, or missing), the commit an amend would replace with whether a remote-tracking ref already
+contains it, a `commit.template` with comment lines removed, pending merge/cherry-pick/revert/rebase
+state with Git's own prepared message, recent messages, the executable commit hooks present, and a
+compare-and-swap token over HEAD, that pending state, and the staged entries. Committing re-reads the
+context inside the per-repository mutation queue, refuses a stale token, and runs one
+`git commit --cleanup=whitespace --file=-` with the message on standard input. Hooks run because a commit
+is an explicit user action; their output is returned as bounded inert text and `--no-verify` is offered
+only as a separate action after a hook failure. The composer now keeps per-repository subject and body
+drafts, counts down from a 50-character subject guide, offers recent messages, prefills an amend from the
+previous message, labels the button "Commit N Files", and explains published-amend, detached-HEAD,
+pending-merge, identity, and signing situations. Disposable Git tests cover the first commit of an unborn
+repository, partial staging, amend (including author-date preservation and unchanged commit count), empty
+message, nothing staged, stale snapshots, a failing pre-commit hook with its output and an explicit skip,
+a commit-msg hook rewriting the message, templates, recent-message de-duplication, published detection,
+merge commits, unmerged refusal, dash-prefixed paths, and comment-like message bodies; the preload
+contract, repository service, and a full Electron commit/amend/hook flow are covered as well. Signing,
+`--signoff`, co-authors, commit-and-push, spell checking, a configurable subject limit, and prepare-commit-msg
+drafting are not implemented, so F11 and P04 remain partial.
+
+Design realignment with this slice (2026-09-17): the F08 placeholder metadata list (Status, Area,
+Previous path, Mode, Blob) above the diff was removed from both the working-change and committed-change
+previews, because Fork's published local-changes and Changes views put the diff directly under the file
+header. Rename and mode facts now appear as one muted line beside the path, and the status stays available
+through the badge's label. Light and dark screenshots of a disposable repository were compared with the
+local reference library before and after the change.
+
 Informal check on this Fedora host with software rendering (not the P03 performance baseline): a
 local mirror of a public project with 15,318 commits, 2,939 merges, and 116 refs showed its first
 50-commit page in about 0.2 s, loaded 2,050 rows by scrolling, and drew up to 13 lanes. Skipping
@@ -283,7 +311,7 @@ about 78 ms to 31 ms, measured over two animation frames. At 125% and 150% devic
 found no breaks in lane lines at row boundaries.
 
 This slice does not complete F06 file/path/content filtering, F07's remaining merge/tree-scale work, P04's
-remaining commit and whole-file discard work,
+remaining whole-file discard and conflict work,
 or P12 command availability. On the forwarded Xwayland test display, `BrowserWindow.maximize()` and
 `minimize()` had no effect even for a normal framed window, so real maximize/minimize, title-bar
 double-click, and edge resizing were not verified there. macOS and Windows chrome, screen-reader output
@@ -318,8 +346,9 @@ Collapse, Expand All, and Collapse All, which also end the commit menu. The Comm
 files. Changes and File Tree start with a one-line commit summary and place a resizable file list beside
 a change-metadata or line-numbered text preview; the File Tree loads folders lazily and lists them first.
 Local Changes uses Unstaged and Staged panes with an options menu for tree/list and untracked/ignored
-visibility, a change-metadata preview, and a commit composer; F10 now enables Stage, Unstage, and selected
-hunk/line actions with snapshot validation, while committing stays disabled for P04/F11. Verified on Fedora
+visibility and a commit composer; F10 enables Stage, Unstage, and selected hunk/line actions with
+snapshot validation, and F11 enables the composer itself. The F11 slice also dropped the earlier
+change-metadata list above the diff, which Fork does not show. Verified on Fedora
 Linux with `npm run check`, `npm run build`, the Electron test
 through the bridge's X11 display (covering search results, the filter strip, the graph menu, the options
 menu, and the dirty-tab dot), and light and dark screenshots of a disposable repository compared with
@@ -575,5 +604,6 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue F10/P04 from docs/implementation-plan.md. Broaden partial-patch edge-case coverage and
-> refresh feedback before implementing commit or whole-file discard workflows.
+> Continue P04 from docs/implementation-plan.md. Add whole-file and multi-file discard with an exact
+> preview, confirmation, and recoverable backups, then decide the conflict-aware staging and commit
+> policy. Keep the commit composer's drafts and snapshot guard intact.

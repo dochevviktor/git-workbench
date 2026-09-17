@@ -212,6 +212,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.applyRepositoryWorkingChange, (window, request) =>
       repositoryService.applyWorkingChange(window.webContents.id, request),
     );
+    register(requests.getRepositoryCommitContext, (window, { id }) =>
+      repositoryService.getCommitContext(window.webContents.id, id),
+    );
+    register(requests.commitRepositoryChanges, (window, request) =>
+      repositoryService.commit(window.webContents.id, request),
+    );
     register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
       repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),
     );

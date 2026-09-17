@@ -255,6 +255,42 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it('validates and routes commit requests', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'9'.repeat(64)}`;
+    const request = {
+      id: repositoryId,
+      subject: 'Add a file',
+      body: 'Why it changed',
+      amend: false,
+      snapshot: 'b'.repeat(64),
+      skipHooks: false,
+    } as const;
+    const result = {
+      status: 'committed',
+      repositoryId,
+      commitId: 'c'.repeat(40),
+      amended: false,
+      subject: 'Add a file',
+      output: '',
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: result });
+    await expect(api.repository.commit(request)).resolves.toEqual({ ok: true, value: result });
+    expect(invoke).toHaveBeenLastCalledWith(requests.commitRepositoryChanges.channel, request);
+
+    const invalid = await api.repository.commit({ ...request, snapshot: 'short' });
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    // A backend answer that does not match the result contract must not reach the renderer.
+    invoke.mockResolvedValueOnce({ ok: true, value: { status: 'committed', repositoryId } });
+    const malformed = await api.repository.commit(request);
+    expect(malformed).toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });
+
+    const context = await api.repository.getCommitContext({ id: 'not-a-repository' } as never);
+    expect(context).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
   it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
     const { api, invoke } = fixture();
     await api.edit.command({ action: 'copy' });

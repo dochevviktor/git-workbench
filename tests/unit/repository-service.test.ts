@@ -211,6 +211,62 @@ describe('repository service', () => {
     });
   });
 
+  it('commits staged changes through the repository service and rejects a stale composer', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'repository');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(1, repositoryPath, false);
+    await runner.run(['config', 'user.name', 'Service Author'], { cwd: repositoryPath });
+    await runner.run(['config', 'user.email', 'service@example.test'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'file.txt'), 'one\n', 'utf8');
+    await runner.run(['add', '--', 'file.txt'], { cwd: repositoryPath });
+
+    const context = await service.getCommitContext(1, repository.id);
+    expect(context).toMatchObject({ repositoryId: repository.id, stagedCount: 1, amend: null });
+
+    // Only a repository this window has open can be addressed.
+    await expect(service.getCommitContext(1, `repo-${'7'.repeat(64)}`)).rejects.toMatchObject({
+      code: 'REPOSITORY_NOT_OPEN',
+    });
+
+    const committed = await service.commit(1, {
+      id: repository.id,
+      subject: 'Service commit',
+      body: '',
+      amend: false,
+      snapshot: context.snapshot,
+      skipHooks: false,
+    });
+    expect(committed).toMatchObject({ status: 'committed', amended: false, subject: 'Service commit' });
+    const log = await runner.run(['log', '-1', '--format=%s'], { cwd: repositoryPath });
+    expect(log.stdout.trim()).toBe('Service commit');
+
+    await expect(
+      service.commit(1, {
+        id: repository.id,
+        subject: 'Stale commit',
+        body: '',
+        amend: true,
+        snapshot: context.snapshot,
+        skipHooks: false,
+      }),
+    ).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+
+  it('refuses commit workflows for a bare repository', async () => {
+    const directory = await fixtureDirectory();
+    const barePath = join(directory, 'bare');
+    await mkdir(barePath);
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const repository = await service.initialize(1, barePath, true);
+
+    await expect(service.getCommitContext(1, repository.id)).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+    });
+  });
+
   it('discovers a repository whose Git directory is stored in a .git file', async () => {
     const directory = await fixtureDirectory();
     const worktree = join(directory, 'worktree');

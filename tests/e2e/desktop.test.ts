@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -125,6 +125,9 @@ test('production build loads its isolated preload and renderer', async () => {
 
     // A merged feature branch exercises lanes that split from and join the main line.
     const fixtureGit = new GitRunner();
+    // Give the fixture its own identity so the commit composer does not depend on the host's config.
+    await fixtureGit.run(['config', 'user.name', 'History Author'], { cwd: fixtureRepository });
+    await fixtureGit.run(['config', 'user.email', 'history@example.test'], { cwd: fixtureRepository });
     await commitFile(fixtureGit, fixtureRepository, 'history.txt', 'First history commit');
     const mainBranch = (
       await fixtureGit.run(['symbolic-ref', '--short', 'HEAD'], { cwd: fixtureRepository })
@@ -284,7 +287,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('menuitemradio', { name: 'View as List', exact: true }).click();
     await expect(unstagedFiles.locator('.file-change-columns')).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'untracked.txt' }).click();
-    await expect(page.getByTestId('working-change-preview')).toContainText('Untracked');
+    const untrackedPreview = page.getByTestId('working-change-preview');
+    await expect(untrackedPreview).toContainText('untracked.txt');
+    await expect(untrackedPreview.getByRole('img', { name: 'Untracked' })).toBeVisible();
 
     // F09: a selected working-tree file loads a real patch with split mode, literal search, and
     // optional whitespace markers. The controls stay in the renderer; Git receives only the named target.
@@ -366,8 +371,12 @@ test('production build loads its isolated preload and renderer', async () => {
     ).toBeVisible({
       timeout: 10_000,
     });
-    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
-    await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 10_000 });
+    // The background status refresh can move rows between the click and its effect, so retry the
+    // selection instead of assuming one click always lands on the intended row.
+    await expect(async () => {
+      await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 20_000 });
     const diffLayout = await page.evaluate(() => {
       const body = document.querySelector<HTMLElement>('[data-testid="diff-content"]');
       const header = body?.querySelector<HTMLElement>('.diff-hunk-header');
@@ -400,6 +409,83 @@ test('production build loads its isolated preload and renderer', async () => {
     expect(stickyAction.actionLeft).toBeGreaterThanOrEqual(stickyAction.bodyLeft - 1);
     expect(stickyAction.actionRight).toBeLessThanOrEqual(stickyAction.bodyRight + 1);
     await page.screenshot({ path: 'test-results/f10-changes.png' });
+
+    // F11: the composer commits the staged set, amends it, and surfaces a failing hook.
+    const composer = page.getByTestId('commit-composer');
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Commit');
+    await expect(async () => {
+      await unstagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' }).click();
+      await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.getByTestId('diff-hunk-stage').first().click();
+    await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' })).toBeVisible();
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Commit 1 File');
+    const composerSubject = 'Commit from the composer';
+    await composer.getByTestId('commit-subject').fill(composerSubject);
+    await composer.getByTestId('commit-description').fill('Body written in the composer.');
+    await expect(composer.locator('.composer-counter')).toHaveText(String(50 - composerSubject.length));
+    await composer.getByTestId('commit-submit').click();
+    await expect(stagedFiles.getByTestId('working-change')).toHaveCount(0);
+    await expect
+      .poll(async () =>
+        (await fixtureGit.run(['log', '-1', '--format=%B'], { cwd: fixtureRepository })).stdout.trim(),
+      )
+      .toBe('Commit from the composer\n\nBody written in the composer.');
+    const committedCount = (
+      await fixtureGit.run(['rev-list', '--count', 'HEAD'], { cwd: fixtureRepository })
+    ).stdout.trim();
+
+    await composer.getByTestId('commit-amend').check();
+    await expect(composer.getByTestId('commit-subject')).toHaveValue(composerSubject);
+    await composer.getByTestId('commit-subject').fill('Amended from the composer');
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Amend Commit');
+    await composer.getByTestId('commit-submit').click();
+    await expect
+      .poll(async () =>
+        (await fixtureGit.run(['log', '-1', '--format=%s'], { cwd: fixtureRepository })).stdout.trim(),
+      )
+      .toBe('Amended from the composer');
+    expect(
+      (await fixtureGit.run(['rev-list', '--count', 'HEAD'], { cwd: fixtureRepository })).stdout.trim(),
+    ).toBe(committedCount);
+    await expect(composer.getByTestId('commit-amend')).not.toBeChecked();
+
+    const hookPath = join(fixtureRepository, '.git', 'hooks', 'pre-commit');
+    await writeFile(hookPath, '#!/bin/sh\necho "hook refused this commit"\nexit 1\n', 'utf8');
+    await chmod(hookPath, 0o755);
+    await expect(async () => {
+      await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.getByTestId('diff-hunk-stage').first().click();
+    await expect(
+      stagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }),
+    ).toBeVisible();
+    await composer.getByTestId('commit-subject').fill('Blocked by the hook');
+    await composer.getByTestId('commit-description').fill('');
+    await composer.getByTestId('commit-submit').click();
+    await expect(page.getByTestId('commit-failure')).toContainText('hook refused this commit');
+    expect(
+      (await fixtureGit.run(['log', '-1', '--format=%s'], { cwd: fixtureRepository })).stdout.trim(),
+    ).toBe('Amended from the composer');
+    await page.getByRole('button', { name: 'Commit Without Hooks' }).click();
+    await expect
+      .poll(async () =>
+        (await fixtureGit.run(['log', '-1', '--format=%s'], { cwd: fixtureRepository })).stdout.trim(),
+      )
+      .toBe('Blocked by the hook');
+    await rm(hookPath, { force: true });
+
+    // Recent messages reuse a previous commit message. Wait for the committed state to settle first,
+    // because a reloaded context reorders the list.
+    await expect(composer.getByTestId('commit-subject')).toHaveValue('');
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Commit');
+    await page.getByRole('button', { name: 'Recent commit messages' }).click();
+    await page.getByRole('menuitem', { name: 'Blocked by the hook', exact: true }).click();
+    await expect(composer.getByTestId('commit-subject')).toHaveValue('Blocked by the hook');
+    await composer.getByTestId('commit-subject').fill('');
+    await page.screenshot({ path: 'test-results/f11-commit.png' });
+
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.initialize({ path, bare: false });
