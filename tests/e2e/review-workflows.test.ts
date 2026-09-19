@@ -268,6 +268,77 @@ test('F15 saves a selected working file as a named stash from its context menu',
   }
 });
 
+test('F16 starts ordinary merge and rebase jobs from branch menus', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'git-workbench-merge-rebase-ui-'));
+  const cwd = join(root, 'work');
+  const git = new GitRunner();
+  const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
+  let application: ElectronApplication | undefined;
+  try {
+    await mkdir(cwd);
+    await run('init', '--quiet', '--initial-branch=main');
+    await run('config', 'user.name', 'Merge Rebase UI');
+    await run('config', 'user.email', 'merge-rebase-ui@example.test');
+    await run('config', 'commit.gpgsign', 'false');
+    await writeFile(join(cwd, 'base.txt'), 'base\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'base');
+    const base = await run('rev-parse', 'HEAD');
+    await run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(cwd, 'feature.txt'), 'feature\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'feature');
+    await run('checkout', '--quiet', 'main');
+    await writeFile(join(cwd, 'main.txt'), 'main\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'main');
+    await run('checkout', '--quiet', '-b', 'rebase-target', base);
+    await writeFile(join(cwd, 'target.txt'), 'target\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'target');
+    await run('checkout', '--quiet', '-b', 'rebase-topic', base);
+    await writeFile(join(cwd, 'topic.txt'), 'topic\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'topic');
+    await run('checkout', '--quiet', 'main');
+
+    application = await electron.launch({
+      chromiumSandbox: true,
+      args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
+      env: environment(),
+    });
+    const page = await open(application, cwd);
+
+    await page.getByRole('treeitem', { name: 'feature', exact: true }).click({ button: 'right' });
+    const featureMenu = page.getByRole('menu', { name: 'feature', exact: true });
+    await featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }).click();
+    const dialog = page.getByTestId('reference-dialog');
+    await expect(dialog.getByRole('heading', { name: 'Merge Branch', exact: true })).toBeVisible();
+    await dialog.getByTestId('reference-dialog-submit').click();
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(async () => (await run('rev-list', '-1', '--parents', 'HEAD')).split(' ').length)
+      .toBe(3);
+    expect(await run('show', 'HEAD:feature.txt')).toBe('feature');
+
+    await run('checkout', '--quiet', 'rebase-topic');
+    await page.keyboard.press('F5');
+    await expect(page.getByRole('treeitem', { name: 'rebase-target', exact: true })).toBeVisible();
+    await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
+    const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
+    await rebaseMenu
+      .getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true })
+      .click();
+    await expect(dialog.getByRole('heading', { name: 'Rebase Branch', exact: true })).toBeVisible();
+    await dialog.getByTestId('reference-dialog-submit').click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => run('log', '-2', '--format=%s')).toBe('topic\ntarget');
+  } finally {
+    await application?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a checkout hook outlives the control deadline without overwriting another tab or dialog', async () => {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-review-slow-'));
   const first = join(root, 'first');

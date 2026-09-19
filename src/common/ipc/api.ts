@@ -21,6 +21,7 @@ import type {
   RepositoryNetworkRequestEnvelope,
   RepositoryOperation,
   RepositoryLocalChangesPreview,
+  RepositoryMergeRebaseRequest,
   RepositoryRecoveryState,
   RepositoryRecoveryRequest,
   RepositoryPatchExportRequest,
@@ -105,6 +106,7 @@ export interface DesktopApi {
       request: RepositoryReferenceContextRequest,
     ): Promise<IpcResult<RepositoryReferenceContext>>;
     applyReferenceAction(request: RepositoryReferenceActionRequest): Promise<IpcResult<RepositoryOperation>>;
+    startMergeRebase(request: RepositoryMergeRebaseRequest): Promise<IpcResult<RepositoryOperation>>;
     listRemotes(request: RepositorySession): Promise<IpcResult<RepositoryRemote[]>>;
     applyRemoteAction(
       request: RepositoryRemoteActionRequest,

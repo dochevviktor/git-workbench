@@ -26,6 +26,7 @@ import type {
   RepositoryOperation,
   RepositoryOperationSource,
   RepositoryLocalChangesPreview,
+  RepositoryMergeRebaseRequest,
   RepositoryPatchExportRequest,
   RepositoryPatchExportResult,
   RepositoryRecoveryRequest,
@@ -107,6 +108,7 @@ import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError
 import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
+import { MergeRebaseRequestError, runMergeRebase } from './merge-rebase-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -831,6 +833,52 @@ export class RepositoryService {
           result: { kind: 'reference', value },
         };
       },
+    );
+  }
+
+  startMergeRebase(ownerId: number, request: RepositoryMergeRebaseRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.action;
+    const source = action.sourceFullName.replace(/^refs\/(heads|remotes|tags)\//u, '');
+    const title =
+      action.kind === 'merge'
+        ? `Merge '${source}'`
+        : `Rebase '${cached.head.name ?? 'current branch'}' on '${source}'`;
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: action.kind,
+        title,
+        command: `git ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            return await runMergeRebase(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              gitDir: summary.gitDir,
+              worktreePath: summary.worktreePath,
+              head: summary.head,
+              action,
+              signal: handle.signal,
+              handle,
+            });
+          } catch (error) {
+            if (error instanceof StaleReferenceSnapshotError) {
+              throw new ExpectedBackendError(
+                'STALE_SNAPSHOT',
+                'The branch changed before the merge or rebase could start. Review it again.',
+              );
+            }
+            if (error instanceof MergeRebaseRequestError) {
+              throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+            }
+            throw this.mapGitFailure(error, 'Git could not start the merge or rebase.');
+          }
+        }),
     );
   }
 

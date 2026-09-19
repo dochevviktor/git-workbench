@@ -1000,6 +1000,14 @@ p {
   color: var(--text);
 }
 
+.tree-row.reference[draggable='true'] {
+  cursor: grab;
+}
+
+.tree-row.reference[draggable='true']:active {
+  cursor: grabbing;
+}
+
 .tree-row.unavailable,
 .tree-row.missing {
   color: var(--text-muted);
@@ -2902,6 +2910,12 @@ textarea.reference-message {
   gap: 7px;
   align-items: center;
   width: fit-content;
+}
+
+.dialog-inline-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .reference-dialog-actions {

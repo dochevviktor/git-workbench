@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import type {
   RepositoryBranch,
   RepositoryHistoryCommit,
   RepositoryHistoryReference,
   RepositoryLocation,
+  RepositoryMergeRebaseAction,
   RepositoryNetworkRequest,
   RepositoryReferenceAction,
   RepositoryRemoteAction,
@@ -20,6 +21,8 @@ import type { HistoryReferenceCommands } from '../components/HistoryView';
 import { CheckIcon, WarningIcon } from '../components/Icons';
 import { NetworkDialog } from '../components/NetworkDialogs';
 import type { NetworkDialogRequest } from '../components/NetworkDialogs';
+import { MergeRebaseDialog } from '../components/MergeRebaseDialog';
+import type { MergeRebaseDialogRequest } from '../components/MergeRebaseDialog';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { StashDialogs } from '../components/StashDialogs';
@@ -151,6 +154,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     error: operationError,
     start: startOperation,
     startStash: startStashOperation,
+    startMergeRebase: startMergeRebaseOperation,
     cancel: cancelOperation,
   } = useOperations();
   const referenceBusy = referenceRequestBusy || runningOperation(operations, active?.id) !== undefined;
@@ -455,6 +459,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
   const [networkFailure, setNetworkFailure] = useState<string>();
+  const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
+  const [mergeRebaseFailure, setMergeRebaseFailure] = useState<string>();
   const [activityOpen, setActivityOpen] = useState(false);
   const activeOperation = runningOperation(operations, active?.id);
 
@@ -496,6 +502,24 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setNetworkFailure(undefined);
   }, []);
 
+  const openMergeRebaseDialog = useCallback(
+    (request: MergeRebaseDialogRequest) => {
+      previewGeneration.current += 1;
+      setPreviewError(undefined);
+      setMergeRebaseFailure(undefined);
+      setDialogSnapshot(referenceContext?.snapshot);
+      loadLocalChangesPreview();
+      setMergeRebaseDialog(request);
+    },
+    [loadLocalChangesPreview, referenceContext?.snapshot],
+  );
+
+  const closeMergeRebaseDialog = useCallback(() => {
+    previewGeneration.current += 1;
+    setMergeRebaseDialog(undefined);
+    setMergeRebaseFailure(undefined);
+  }, []);
+
   /**
    * Starts one network operation. The request only has to be accepted: the outcome arrives as an
    * operation event, so a slow remote never blocks the window and no result is ever guessed.
@@ -518,6 +542,26 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         });
     },
     [active, startOperation],
+  );
+
+  const startMergeRebase = useCallback(
+    (action: RepositoryMergeRebaseAction) => {
+      if (!active) return;
+      setMergeRebaseFailure(undefined);
+      void startMergeRebaseOperation(active.id, action)
+        .then(() => {
+          if (activeRepositoryId.current !== active.id) return;
+          setMergeRebaseDialog(undefined);
+          setActivityOpen(true);
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== active.id) return;
+          setMergeRebaseFailure(
+            reason instanceof Error ? reason.message : 'The merge or rebase could not be started.',
+          );
+        });
+    },
+    [active, startMergeRebaseOperation],
   );
 
   const runRemoteAction = useCallback(
@@ -581,6 +625,39 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   const currentBranch = referenceContext?.branches.find((branch) => branch.isHead);
+
+  const referenceDragType = 'application/x-git-workbench-reference';
+  const onReferenceDragStart = useCallback(
+    (reference: RepositoryHistoryReference, event: ReactDragEvent<HTMLElement>) => {
+      if (reference.kind !== 'branch') return;
+      event.dataTransfer.setData(referenceDragType, reference.fullName);
+      event.dataTransfer.effectAllowed = 'move';
+    },
+    [],
+  );
+
+  const onReferenceDrop = useCallback(
+    (target: RepositoryHistoryReference, event: ReactDragEvent<HTMLElement>) => {
+      event.preventDefault();
+      if (target.kind !== 'branch') return;
+      const sourceFullName = event.dataTransfer.getData(referenceDragType);
+      const source = referenceContext?.branches.find((branch) => branch.fullName === sourceFullName);
+      const destination = referenceContext?.branches.find((branch) => branch.fullName === target.fullName);
+      if (!source || !destination || source.fullName === destination.fullName) return;
+      if (destination.isHead && !source.isHead) {
+        openMergeRebaseDialog({ kind: 'merge', source, current: destination });
+      } else if (source.isHead && !destination.isHead) {
+        openMergeRebaseDialog({ kind: 'rebase', source: destination, current: source });
+      } else {
+        setReferenceStatus({
+          message:
+            'Drop a branch onto the current branch to merge, or drag the current branch onto another to rebase.',
+          blocked: true,
+        });
+      }
+    },
+    [openMergeRebaseDialog, referenceContext?.branches],
+  );
 
   const newReferenceItems = (
     target: ReferenceTarget | undefined,
@@ -701,7 +778,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
-      if (aboutOpen || referenceDialog || networkDialog || stashDialog) return;
+      if (aboutOpen || referenceDialog || networkDialog || mergeRebaseDialog || stashDialog) return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
       else if (is('Mod+O')) {
@@ -749,6 +826,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     openReferenceDialog,
     platform,
     networkDialog,
+    mergeRebaseDialog,
     referenceDialog,
     referenceBusy,
     remotes.length,
@@ -1159,7 +1237,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   };
 
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
-    const current = references.find((candidate) => candidate.isHead && candidate.kind === 'branch');
+    const current = referenceContext?.branches.find((candidate) => candidate.isHead);
     const loaded = history.commits.some((commit) => commit.id === reference.target);
     const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
     const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
@@ -1258,13 +1336,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             !reference.isHead && {
               id: 'merge',
               label: `Merge '${reference.name}' into '${current.name}'…`,
-              ...planned('Merging', 'P06'),
+              disabled: !branch || referenceBusy,
+              disabledReason: branch ? undefined : referenceLoading,
+              run: () => {
+                if (branch) openMergeRebaseDialog({ kind: 'merge', source: branch, current });
+              },
             },
           current &&
             !reference.isHead && {
               id: 'rebase',
               label: `Rebase '${current.name}' on '${reference.name}'…`,
-              ...planned('Rebasing', 'P07'),
+              disabled: !branch || referenceBusy,
+              disabledReason: branch ? undefined : referenceLoading,
+              run: () => {
+                if (branch) openMergeRebaseDialog({ kind: 'rebase', source: branch, current });
+              },
             },
           menuSeparator,
           {
@@ -1590,6 +1676,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 if (history.commits.some((commit) => commit.id === reference.target))
                   revealCommit(reference.target);
               }}
+              onReferenceDragStart={onReferenceDragStart}
+              onReferenceDrop={onReferenceDrop}
               onReferenceContextMenu={openReferenceMenu}
               onSectionContextMenu={openSectionMenu}
               onRemoteContextMenu={openRemoteMenu}
@@ -1677,6 +1765,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onRemoteAction={runRemoteAction}
           onOpen={openNetworkDialog}
           onClose={closeNetworkDialog}
+        />
+      )}
+      {mergeRebaseDialog && (
+        <MergeRebaseDialog
+          request={mergeRebaseDialog}
+          referenceSnapshot={dialogSnapshot}
+          preview={localChangesPreview}
+          platform={platform}
+          busy={referenceBusy}
+          failure={mergeRebaseFailure ?? previewError}
+          onSubmit={startMergeRebase}
+          onClose={closeMergeRebaseDialog}
         />
       )}
       {referenceDialog && (

@@ -333,6 +333,15 @@ and reaches Git on standard input, never as an argument. A checkout gets the lon
 writes the working tree and can run filters and a post-checkout hook. Nothing is ever force-deleted,
 force-created, or discarded without the user choosing that specific action.
 
+The ordinary F16 merge/rebase service follows the same boundary: it resolves only a fully qualified
+branch, tag, or remote-tracking ref reported by a fresh backend reference read, converts that ref to a
+commit ID before constructing the Git argument array, and revalidates the reference snapshot inside the
+common-repository mutation queue. It refuses a detached or unborn current branch, an existing sequencer,
+and unreviewed local changes; the optional named Recovery stash is created before the operation and
+reapplied only after success. A conflict is a failed job with Git's sequencer left in place, so a fresh
+window can continue, skip a rebase commit, or abort through the Recovery capability. Branch menus and
+drag/drop are renderer entry points only; they never receive a command executor.
+
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
@@ -351,9 +360,10 @@ real maximize/minimize under a window manager, and screen-reader behavior of the
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
 merge collapse, commit and amend behavior, branch/tag creation, checkout, and deletion with their
-refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, and the
-Electron bridge; later Git correctness will continue to
-be checked against independent CLI assertions as each workflow is added. Diff merge presentation,
+refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, ordinary
+merge/rebase and sequencer recovery against disposable histories, and the Electron bridge; later Git
+correctness will continue to be checked against independent CLI assertions as each workflow is added.
+Diff merge presentation,
 general whole-file discard, signing, and the full conflict editor remain future work. The reviewed
 checkout/pull/fast-forward/push workflows, recovery controls, and PR browser handoff are verified within
 the narrower stabilization scope recorded in `docs/reviews/f01-f13-review.md`.

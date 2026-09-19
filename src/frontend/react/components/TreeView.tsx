@@ -1,4 +1,9 @@
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type {
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from 'react';
 import type { SelectionModifiers } from '../lib/list-selection';
 import { ChevronDownIcon, ChevronRightIcon } from './Icons';
 
@@ -27,6 +32,7 @@ export interface TreeItem {
   /** Section headings expand and collapse with a single click. */
   readonly toggleOnClick?: boolean | undefined;
   readonly testId?: string | undefined;
+  readonly draggable?: boolean | undefined;
 }
 
 interface TreeViewProps {
@@ -44,6 +50,8 @@ interface TreeViewProps {
   /** Single click or keyboard movement. */
   readonly onSelect?: ((item: TreeItem) => void) | undefined;
   readonly onContextMenu?: ((item: TreeItem, event: ReactMouseEvent<HTMLElement>) => void) | undefined;
+  readonly onDragStart?: ((item: TreeItem, event: ReactDragEvent<HTMLElement>) => void) | undefined;
+  readonly onDrop?: ((item: TreeItem, event: ReactDragEvent<HTMLElement>) => void) | undefined;
   readonly children?: ReactNode;
 }
 
@@ -63,6 +71,8 @@ export function TreeView({
   onActivate,
   onSelect,
   onContextMenu,
+  onDragStart,
+  onDrop,
   children,
 }: TreeViewProps) {
   const activeIndex = items.findIndex((item) => item.key === activeKey);
@@ -142,6 +152,7 @@ export function TreeView({
             aria-expanded={item.expandable ? item.expanded : undefined}
             aria-selected={selected}
             aria-disabled={item.unavailable ? true : undefined}
+            draggable={item.draggable}
             title={item.title}
             data-testid={item.testId}
             style={{ paddingLeft: 4 + (item.level - 1) * 16 }}
@@ -166,6 +177,11 @@ export function TreeView({
               event.preventDefault();
               onContextMenu(item, event);
             }}
+            onDragStart={(event) => onDragStart?.(item, event)}
+            onDragOver={(event) => {
+              if (onDrop && item.draggable) event.preventDefault();
+            }}
+            onDrop={(event) => onDrop?.(item, event)}
           >
             <span
               className="tree-disclosure"

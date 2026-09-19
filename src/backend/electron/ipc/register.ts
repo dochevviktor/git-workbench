@@ -287,6 +287,9 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.applyRepositoryReferenceAction, (window, request) =>
       repositoryService.startReferenceAction(window.webContents.id, request),
     );
+    register(requests.startRepositoryMergeRebase, (window, request) =>
+      repositoryService.startMergeRebase(window.webContents.id, request),
+    );
     register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
       repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),
     );

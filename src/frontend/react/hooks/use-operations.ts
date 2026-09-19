@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   RepositoryNetworkRequest,
+  RepositoryMergeRebaseAction,
   RepositoryOperation,
   RepositoryStashAction,
 } from '../../../common/ipc/contracts';
@@ -68,6 +69,17 @@ export function useOperations() {
     [],
   );
 
+  const startMergeRebase = useCallback(
+    async (repositoryId: string, action: RepositoryMergeRebaseAction): Promise<RepositoryOperation> => {
+      const api = window.desktop;
+      if (!api) throw new Error('Open this application in Electron to merge or rebase.');
+      const accepted = unwrapResult(await api.repository.startMergeRebase({ id: repositoryId, action }));
+      if (mounted.current) setOperations((current) => mergeOperation(current, accepted));
+      return accepted;
+    },
+    [],
+  );
+
   const cancel = useCallback((operationId: string) => {
     const api = window.desktop;
     if (!api) return;
@@ -86,7 +98,7 @@ export function useOperations() {
 
   const clearError = useCallback(() => setError(undefined), []);
 
-  return { operations, error, start, startStash, cancel, clearError };
+  return { operations, error, start, startStash, startMergeRebase, cancel, clearError };
 }
 
 export function runningOperation(

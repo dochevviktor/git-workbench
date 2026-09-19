@@ -99,6 +99,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       getAmendChanges: (request) => invoke(requests.getRepositoryAmendChanges, request),
       getReferenceContext: (request) => invoke(requests.getRepositoryReferenceContext, request),
       applyReferenceAction: (request) => invoke(requests.applyRepositoryReferenceAction, request),
+      startMergeRebase: (request) => invoke(requests.startRepositoryMergeRebase, request),
       listRemotes: (request) => invoke(requests.listRepositoryRemotes, request),
       applyRemoteAction: (request) => invoke(requests.applyRepositoryRemoteAction, request),
       startNetworkOperation: (request) => invoke(requests.startRepositoryNetworkOperation, request),

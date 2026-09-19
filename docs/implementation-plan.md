@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P06 — conflict helper and sequencer recovery.**
+**Next implementation request: Continue P06 — three-way conflict helper and conflict-state inspection.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -29,7 +29,7 @@ not completed feature families.
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization + F14 fetch/activity (2026-09-19)                                                   | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; F15 stash/patch slice plus merge/rebase pull and saved-change recovery brought forward (2026-09-19)       | P05        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; F15 stash/patch plus ordinary F16 merge/rebase and sequencer recovery slices (2026-09-19)                 | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P08        |
@@ -557,6 +557,18 @@ The Electron smoke suite remains green after the new preload capabilities. Hunk/
 patch import/apply, multi-commit patch bundles, and exact current Fork defaults remain unverified; the
 existing background-fetch test can report a cancellation race when its short test interval starts a
 fetch before opt-out, so that unrelated preexisting scheduler issue remains to be isolated.
+
+Started F16 ordinary merge/rebase slice (2026-09-19): add a typed, backend-owned merge/rebase operation
+that resolves only branch, tag, or remote-tracking references from a fresh reference snapshot; serializes
+against the common repository mutation queue; rejects detached/unborn heads, stale references, existing
+sequencers, and unreviewed local changes; and keeps merge/rebase conflicts as explicit unfinished Git
+states. The dialog offers named Recovery stash-and-reapply, branch context-menu actions, and drag/drop
+between branch rows: a source onto the current branch opens Merge, while the current branch onto another
+branch opens ordinary Rebase. Recovery now supports editor-safe continue, rebase skip, and abort after a
+fresh app launch. Disposable repositories verify divergent merge parents, rebased history, conflict
+continuation, rebase skip, and staged/unstaged/untracked restoration around a merge. Interactive rebase,
+three-way conflict editing, delete/modify/rename/binary/submodule conflict views, and drag/drop parity with
+Fork remain unverified or deferred to F17/P07.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 

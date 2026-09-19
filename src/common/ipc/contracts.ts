@@ -599,6 +599,22 @@ export const repositoryReferenceNameSchema = z
     'A reference name cannot contain control characters.',
   );
 
+/** A fully qualified reference issued by the backend for merge/rebase source selection. */
+export const repositoryMergeSourceSchema = z
+  .string()
+  .min(1)
+  .max(32_768)
+  .refine(
+    (value) =>
+      value.startsWith('refs/heads/') || value.startsWith('refs/tags/') || value.startsWith('refs/remotes/'),
+    'Choose a branch, tag, or remote-tracking branch from the repository.',
+  )
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F]/u.test(value),
+    'A reference cannot contain control characters.',
+  );
+
 export const repositoryBranchSchema = z.strictObject({
   name: z.string().min(1).max(4_096),
   fullName: z.string().min(1).max(32_768),
@@ -730,6 +746,33 @@ export const repositoryReferenceActionRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   action: repositoryReferenceActionSchema,
   snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryMergeRebaseActionSchema = z
+  .discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('merge'),
+      sourceFullName: repositoryMergeSourceSchema,
+      snapshot: repositoryDiffSnapshotSchema,
+      autostash: z.boolean(),
+      changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('rebase'),
+      sourceFullName: repositoryMergeSourceSchema,
+      snapshot: repositoryDiffSnapshotSchema,
+      autostash: z.boolean(),
+      changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+    }),
+  ])
+  .refine(
+    (action) => !action.autostash || action.changesSnapshot !== undefined,
+    'Stashing local changes requires a working-tree snapshot.',
+  );
+
+export const repositoryMergeRebaseRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryMergeRebaseActionSchema,
 });
 
 export const repositoryReferenceFailureReasonSchema = z.enum([
@@ -869,6 +912,8 @@ export const repositoryOperationKindSchema = z.enum([
   'commit',
   'reference',
   'fast-forward',
+  'merge',
+  'rebase',
   'recovery',
   'stash',
 ]);
@@ -886,6 +931,7 @@ export const repositoryOperationFailureReasonSchema = z.enum([
   'not-fast-forward',
   'not-found',
   'local-changes',
+  'conflict',
   'cancelled',
   'timeout',
   'other',
@@ -946,7 +992,7 @@ export const repositoryNetworkRequestSchema = z.discriminatedUnion('kind', [
     prune: z.boolean(),
     tags: z.boolean(),
   }),
-  /** Fast-forward only. Merge and rebase pulls wait for the recovery paths in P06 and P07. */
+  /** Pull can use Git's ordinary merge or rebase path; unfinished states surface through Recovery. */
   z.strictObject({
     kind: z.literal('pull'),
     prune: z.boolean(),
@@ -1010,7 +1056,7 @@ export const repositoryRecoveryStateSchema = z.strictObject({
 export const repositoryRecoveryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   snapshot: repositoryDiffSnapshotSchema,
-  action: z.enum(['continue', 'abort', 'apply', 'finish', 'drop']),
+  action: z.enum(['continue', 'skip', 'abort', 'apply', 'finish', 'drop']),
   copyId: z.uuid().optional(),
 });
 
@@ -1246,6 +1292,11 @@ export const requests = {
     repositoryReferenceActionRequestSchema,
     repositoryOperationSchema,
   ),
+  startRepositoryMergeRebase: request(
+    'repository:start-merge-rebase',
+    repositoryMergeRebaseRequestSchema,
+    repositoryOperationSchema,
+  ),
   listRepositoryRemotes: request(
     'repository:list-remotes',
     repositorySessionSchema,
@@ -1408,6 +1459,8 @@ export type RepositoryReferenceActionKind = z.infer<typeof repositoryReferenceAc
 export type RepositoryReferenceActionRequest = z.infer<typeof repositoryReferenceActionRequestSchema>;
 export type RepositoryReferenceFailureReason = z.infer<typeof repositoryReferenceFailureReasonSchema>;
 export type RepositoryReferenceActionResult = z.infer<typeof repositoryReferenceActionResultSchema>;
+export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
+export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
 export type RepositoryRemote = z.infer<typeof repositoryRemoteSchema>;
 export type RepositoryRemoteAction = z.infer<typeof repositoryRemoteActionSchema>;
 export type RepositoryRemoteActionRequest = z.infer<typeof repositoryRemoteActionRequestSchema>;

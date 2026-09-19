@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type {
   RepositoryBranch,
   RepositoryHistoryReference,
@@ -38,6 +38,14 @@ interface RepositorySidebarProps {
   readonly historyFiltered: boolean;
   readonly onRevealCommit: (commitId: string) => void;
   readonly onReferenceSelect: (reference: RepositoryHistoryReference) => void;
+  readonly onReferenceDragStart: (
+    reference: RepositoryHistoryReference,
+    event: ReactDragEvent<HTMLElement>,
+  ) => void;
+  readonly onReferenceDrop: (
+    reference: RepositoryHistoryReference,
+    event: ReactDragEvent<HTMLElement>,
+  ) => void;
   readonly onReferenceContextMenu: (
     reference: RepositoryHistoryReference,
     event: ReactMouseEvent<HTMLElement>,
@@ -93,6 +101,8 @@ export function RepositorySidebar({
   historyFiltered,
   onRevealCommit,
   onReferenceSelect,
+  onReferenceDragStart,
+  onReferenceDrop,
   onReferenceContextMenu,
   onSectionContextMenu,
   onRemoteContextMenu,
@@ -135,6 +145,7 @@ export function RepositorySidebar({
             parentKey,
             className: node.reference.isHead ? 'reference current' : 'reference',
             title: node.reference.fullName,
+            draggable: node.reference.kind === 'branch',
           });
           continue;
         }
@@ -318,6 +329,14 @@ export function RepositorySidebar({
               if (item.key.startsWith('remotes/') && item.level === 2) {
                 onRemoteContextMenu(item.key.slice('remotes/'.length), event);
               }
+            }}
+            onDragStart={(item, event) => {
+              const reference = referencesByKey.get(item.key);
+              if (reference) onReferenceDragStart(reference, event);
+            }}
+            onDrop={(item, event) => {
+              const reference = referencesByKey.get(item.key);
+              if (reference) onReferenceDrop(reference, event);
             }}
           >
             {referencesLoading && references.length === 0 && (

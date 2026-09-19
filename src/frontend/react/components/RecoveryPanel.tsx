@@ -90,6 +90,11 @@ export function RecoveryPanel({
             <button className="button button-small" disabled={disabled} onClick={() => void run('continue')}>
               Continue {state.pendingOperation}
             </button>
+            {state.pendingOperation === 'rebase' && (
+              <button className="button button-small" disabled={disabled} onClick={() => void run('skip')}>
+                Skip rebase commit
+              </button>
+            )}
             <button
               className="button button-small"
               disabled={disabled}

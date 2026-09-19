@@ -12,6 +12,7 @@ import { buildCollapsedHistory } from '../../src/common/history-collapse';
 import type {
   RepositoryNetworkRequest,
   RepositoryOperation,
+  RepositoryMergeRebaseAction,
   RepositoryReferenceAction,
   RepositoryRecoveryRequest,
 } from '../../src/common/ipc/contracts';
@@ -91,6 +92,21 @@ async function recoveryOperation(
   return terminal(
     service,
     service.startRecovery(1, { id, action, copyId, snapshot: (await service.getRecovery(1, id)).snapshot }),
+  );
+}
+
+async function mergeRebaseOperation(
+  f: Awaited<ReturnType<typeof fixture>>,
+  action: Omit<RepositoryMergeRebaseAction, 'snapshot'>,
+  snapshot?: string,
+) {
+  const context = await f.service.getReferenceContext(1, f.id);
+  return terminal(
+    f.service,
+    f.service.startMergeRebase(1, {
+      id: f.id,
+      action: { ...action, snapshot: snapshot ?? context.snapshot },
+    }),
   );
 }
 
@@ -563,6 +579,130 @@ describe('branch workflow recovery', () => {
         }),
       ),
     ).toMatchObject({ status: 'succeeded' });
+  });
+
+  it('merges a divergent branch through the operation registry and preserves both parents', async () => {
+    const f = await fixture();
+    await f.run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(f.cwd, 'feature.txt'), 'feature\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'feature');
+    await f.run('checkout', '--quiet', 'main');
+    await writeFile(join(f.cwd, 'main.txt'), 'main\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'main');
+
+    const result = await mergeRebaseOperation(f, {
+      kind: 'merge',
+      sourceFullName: 'refs/heads/feature',
+      autostash: false,
+    });
+    expect(result).toMatchObject({ status: 'succeeded', kind: 'merge' });
+    expect((await f.run('rev-list', '-1', '--parents', 'HEAD')).split(' ')).toHaveLength(3);
+    expect(await f.run('show', 'HEAD:feature.txt')).toBe('feature');
+    expect(await f.run('show', 'HEAD:main.txt')).toBe('main');
+  });
+
+  it('rebases the current branch onto a selected branch without invoking an editor', async () => {
+    const f = await fixture();
+    await f.run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(f.cwd, 'feature.txt'), 'feature\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'feature');
+    await f.run('checkout', '--quiet', 'main');
+    await writeFile(join(f.cwd, 'main.txt'), 'main\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'main');
+
+    const result = await mergeRebaseOperation(f, {
+      kind: 'rebase',
+      sourceFullName: 'refs/heads/feature',
+      autostash: false,
+    });
+    expect(result).toMatchObject({ status: 'succeeded', kind: 'rebase' });
+    expect(await f.run('log', '-2', '--format=%s')).toBe('main\nfeature');
+    expect(await f.run('show', 'HEAD:feature.txt')).toBe('feature');
+    expect(await f.run('show', 'HEAD:main.txt')).toBe('main');
+  });
+
+  it('leaves a merge conflict in Recovery and continues it after a fresh state read', async () => {
+    const f = await fixture();
+    await f.run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(f.cwd, 'base.txt'), 'feature\n');
+    await f.run('commit', '--quiet', '-am', 'feature');
+    await f.run('checkout', '--quiet', 'main');
+    await writeFile(join(f.cwd, 'base.txt'), 'main\n');
+    await f.run('commit', '--quiet', '-am', 'main');
+
+    const result = await mergeRebaseOperation(f, {
+      kind: 'merge',
+      sourceFullName: 'refs/heads/feature',
+      autostash: false,
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      kind: 'merge',
+      failureReason: 'conflict',
+      message: expect.stringContaining('Resolve and stage'),
+    });
+    expect((await f.service.getRecovery(1, f.id)).pendingOperation).toBe('merge');
+    expect(await f.run('ls-files', '--unmerged')).not.toBe('');
+    await writeFile(join(f.cwd, 'base.txt'), 'resolved\n');
+    await f.run('add', '--', 'base.txt');
+    expect(await recoveryOperation(f.service, f.id, 'continue')).toMatchObject({ status: 'succeeded' });
+    expect((await f.service.getRecovery(1, f.id)).pendingOperation).toBeNull();
+    expect(await f.run('show', 'HEAD:base.txt')).toBe('resolved');
+  });
+
+  it('allows a conflicted rebase commit to be skipped from Recovery', async () => {
+    const f = await fixture();
+    await f.run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(f.cwd, 'base.txt'), 'feature\n');
+    await f.run('commit', '--quiet', '-am', 'feature');
+    await f.run('checkout', '--quiet', 'main');
+    await writeFile(join(f.cwd, 'base.txt'), 'main\n');
+    await f.run('commit', '--quiet', '-am', 'main');
+
+    const result = await mergeRebaseOperation(f, {
+      kind: 'rebase',
+      sourceFullName: 'refs/heads/feature',
+      autostash: false,
+    });
+    expect(result).toMatchObject({ status: 'failed', failureReason: 'conflict' });
+    expect((await f.service.getRecovery(1, f.id)).pendingOperation).toBe('rebase');
+    expect(await recoveryOperation(f.service, f.id, 'skip')).toMatchObject({ status: 'succeeded' });
+    expect((await f.service.getRecovery(1, f.id)).pendingOperation).toBeNull();
+    expect(await f.run('log', '-1', '--format=%s')).toBe('feature');
+  });
+
+  it('stashes and reapplies local edits around a merge while keeping the staged index state', async () => {
+    const f = await fixture();
+    await f.run('checkout', '--quiet', '-b', 'feature');
+    await writeFile(join(f.cwd, 'feature.txt'), 'feature\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'feature');
+    await f.run('checkout', '--quiet', 'main');
+    await writeFile(join(f.cwd, 'base.txt'), 'staged\n');
+    await f.run('add', '--', 'base.txt');
+    await writeFile(join(f.cwd, 'base.txt'), 'staged and edited\n');
+    await writeFile(join(f.cwd, 'untracked.txt'), 'untracked\n');
+    const preview = await f.service.previewLocalChanges(1, f.id);
+    const context = await f.service.getReferenceContext(1, f.id);
+    const result = await mergeRebaseOperation(
+      f,
+      {
+        kind: 'merge',
+        sourceFullName: 'refs/heads/feature',
+        autostash: true,
+        changesSnapshot: preview.snapshot,
+      },
+      context.snapshot,
+    );
+    expect(result).toMatchObject({ status: 'succeeded' });
+    expect(await f.run('show', ':base.txt')).toBe('staged');
+    expect(await readFile(join(f.cwd, 'base.txt'), 'utf8')).toBe('staged and edited\n');
+    expect(await readFile(join(f.cwd, 'untracked.txt'), 'utf8')).toBe('untracked\n');
+    expect((await f.service.getRecovery(1, f.id)).copies[0]?.pending).toBe(false);
   });
 
   it('fast-forwards an inactive branch without touching the current worktree', async () => {

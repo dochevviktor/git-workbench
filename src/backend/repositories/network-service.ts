@@ -71,8 +71,8 @@ export function planNetworkOperation(input: NetworkOperationInput): NetworkPlan 
           'no-upstream',
         );
       }
-      // Fast-forward only: a pull that would need a merge or a rebase stops instead, because the
-      // recovery paths for those belong to P06 and P07.
+      // The caller chooses ordinary merge or rebase explicitly; an unfinished operation remains in
+      // Git and is surfaced through the shared Recovery controls.
       const args = [
         'pull',
         '--progress',
@@ -289,7 +289,7 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
   if (/not possible to fast-forward|diverging branches/iu.test(output)) {
     return plain(
       'not-fast-forward',
-      'The upstream branch has diverged, so a fast-forward pull is not possible. Merging and rebasing arrive in P06 and P07.',
+      'The upstream branch has diverged, so a fast-forward pull is not possible. Choose Merge or Rebase, then resolve any conflicts in Recovery.',
     );
   }
   if (

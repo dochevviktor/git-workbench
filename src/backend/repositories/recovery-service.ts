@@ -12,13 +12,16 @@ import type {
 } from '../../common/ipc/contracts';
 import { repositoryRecoveryCopySchema } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
-import type { GitRunOptions } from '../git/runner';
+import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { GitCancelledError, GitCommandError } from '../git/runner';
 import { detectPendingOperation } from './commit-service';
 import { displayOutput } from './network-service';
 import { readWorkingChanges } from './working-tree-service';
 import { createWorkingSnapshot } from './working-snapshot';
-import type { GitRunnerLike } from './repository-service';
+
+interface RecoveryRunner {
+  run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult>;
+}
 
 interface Context {
   readonly id: string;
@@ -33,7 +36,7 @@ const storeSchema = z.strictObject({
 const recoveryRef = (id: string) => `refs/git-workbench/recovery/${id}`;
 const options = (cwd: string): GitRunOptions => ({ cwd, timeoutMs: 120000, maxOutputBytes: 4 * 1024 * 1024 });
 
-async function load(runner: GitRunnerLike, context: Context): Promise<RepositoryRecoveryCopy[]> {
+async function load(runner: RecoveryRunner, context: Context): Promise<RepositoryRecoveryCopy[]> {
   let copies: RepositoryRecoveryCopy[];
   try {
     const path = join(context.gitDir, 'git-workbench-recovery.json');
@@ -69,7 +72,7 @@ async function save(context: Context, copies: readonly RepositoryRecoveryCopy[])
 }
 
 export async function readRecovery(
-  runner: GitRunnerLike,
+  runner: RecoveryRunner,
   context: Context,
 ): Promise<RepositoryRecoveryState> {
   const [copies, pendingOperation] = await Promise.all([
@@ -116,7 +119,7 @@ export async function readRecovery(
 }
 
 export async function previewLocalChanges(
-  runner: GitRunnerLike,
+  runner: RecoveryRunner,
   context: Context,
 ): Promise<RepositoryLocalChangesPreview> {
   const changes = await readWorkingChanges(runner, {
@@ -174,7 +177,7 @@ export async function previewLocalChanges(
 
 /** Runs inside the common-repository mutation queue. Saved data is retained even after a successful apply. */
 export async function withLocalChanges<T>(
-  runner: GitRunnerLike,
+  runner: RecoveryRunner,
   context: Context,
   policy: RepositoryLocalChangesPolicy,
   expected: string | undefined,
@@ -240,7 +243,11 @@ export async function withLocalChanges<T>(
   return result;
 }
 
-async function reapply(runner: GitRunnerLike, context: Context, copy: RepositoryRecoveryCopy): Promise<void> {
+async function reapply(
+  runner: RecoveryRunner,
+  context: Context,
+  copy: RepositoryRecoveryCopy,
+): Promise<void> {
   if (!copy.commitId)
     throw new ExpectedBackendError(
       'OPERATION_FAILED',
@@ -263,7 +270,7 @@ async function reapply(runner: GitRunnerLike, context: Context, copy: Repository
 }
 
 export async function recover(
-  runner: GitRunnerLike,
+  runner: RecoveryRunner,
   context: Context,
   request: RepositoryRecoveryRequest,
   signal: AbortSignal,
@@ -276,13 +283,18 @@ export async function recover(
       'The recovery state changed. Review it again before continuing.',
     );
   const copy = state.copies.find((item) => item.id === request.copyId);
-  if (request.action === 'continue' || request.action === 'abort') {
+  if (request.action === 'continue' || request.action === 'skip' || request.action === 'abort') {
     if (!state.pendingOperation)
       throw new ExpectedBackendError('OPERATION_FAILED', 'No Git operation is waiting for recovery.');
+    if (request.action === 'skip' && state.pendingOperation !== 'rebase')
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        `Git does not support skipping a ${state.pendingOperation} from Recovery.`,
+      );
     await runner.run([state.pendingOperation, `--${request.action}`], {
       ...options(context.cwd),
       signal,
-      env: { GIT_SEQUENCE_EDITOR: ':' },
+      env: { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':' },
     });
     if (!(await detectPendingOperation(context.gitDir))) {
       const pending = state.copies.find((item) => item.pending);
