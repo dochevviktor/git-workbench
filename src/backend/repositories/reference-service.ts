@@ -64,6 +64,7 @@ interface RawBranch {
   readonly name: string;
   readonly target: string;
   readonly upstreamShort: string | null;
+  readonly track: string | null;
   readonly isHead: boolean;
 }
 
@@ -103,7 +104,10 @@ export async function readReferenceContext(
       target: branch.target,
       isHead,
       upstream: branch.upstreamShort,
-      upstreamGone: branch.upstreamShort !== null && !remoteBranchNames.has(branch.upstreamShort),
+      upstreamGone:
+        branch.track === 'gone' ||
+        (branch.upstreamShort !== null && !remoteBranchNames.has(branch.upstreamShort)),
+      ...parseTracking(branch.track, branch.upstreamShort !== null),
       // This worktree's own branch is never another worktree's, even where the two recorded paths
       // differ, such as a worktree reached through a symbolic link.
       worktreePath: isHead ? null : otherWorktree(worktrees.get(branch.fullName), input.worktreePath),
@@ -588,9 +592,16 @@ async function isValidReferenceName(
   }
 }
 
-const branchFormat = ['%(refname)', '%(objectname)', '%(upstream)', '%(upstream:short)', '%(HEAD)'].join(
-  '%00',
-);
+// `upstream:track` makes Git count ahead and behind for every branch in the same pass, which is what
+// the sidebar shows beside each name.
+const branchFormat = [
+  '%(refname)',
+  '%(objectname)',
+  '%(upstream)',
+  '%(upstream:short)',
+  '%(upstream:track,nobracket)',
+  '%(HEAD)',
+].join('%00');
 
 async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBranch[]> {
   const result = await runner.run(
@@ -600,7 +611,7 @@ async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBr
   const branches: RawBranch[] = [];
   for (const line of result.stdout.split('\n')) {
     if (!line.trim()) continue;
-    const [fullName, target, , upstreamShort, headMarker] = line.split('\0');
+    const [fullName, target, , upstreamShort, track, headMarker] = line.split('\0');
     if (!fullName || !target || !objectIdPattern.test(target)) {
       throw new Error('Git returned an invalid branch record.');
     }
@@ -609,6 +620,7 @@ async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBr
       name: fullName.slice('refs/heads/'.length),
       target,
       upstreamShort: upstreamShort?.trim() || null,
+      track: track?.trim() || null,
       isHead: headMarker?.trim() === '*',
     });
   }
@@ -683,6 +695,22 @@ async function readWorktreeBranches(
     } else if (line.trim().length === 0) worktreePath = undefined;
   }
   return assignments;
+}
+
+/**
+ * Reads `%(upstream:track,nobracket)`, which Git writes as `ahead 1, behind 2`, `gone`, or nothing at
+ * all. A branch with an upstream and no divergence is exactly level, so it counts as zero and zero.
+ */
+export function parseTracking(
+  track: string | null,
+  hasUpstream: boolean,
+): { readonly ahead: number | null; readonly behind: number | null } {
+  if (!hasUpstream || track === 'gone') return { ahead: null, behind: null };
+  if (track === null) return { ahead: 0, behind: 0 };
+  const ahead = /\bahead (\d+)\b/u.exec(track);
+  const behind = /\bbehind (\d+)\b/u.exec(track);
+  if (!ahead && !behind) return { ahead: 0, behind: 0 };
+  return { ahead: ahead ? Number(ahead[1]) : 0, behind: behind ? Number(behind[1]) : 0 };
 }
 
 function otherWorktree(assigned: string | undefined, current: string): string | null {

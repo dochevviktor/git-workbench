@@ -2975,3 +2975,225 @@ textarea.reference-message {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Network operations and activity -------------------------------------------------------------- */
+
+.toolbar-repository {
+  position: relative;
+}
+
+.toolbar-activity.active {
+  background: var(--toolbar-hover);
+  color: var(--text);
+}
+
+.toolbar-repository-progress {
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+svg.spinning {
+  animation: toolbar-spin 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  svg.spinning {
+    animation: none;
+  }
+}
+
+@keyframes toolbar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.activity-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  width: min(720px, 90vw);
+  height: 280px;
+  overflow: hidden;
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  text-align: left;
+}
+
+.activity-list {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.activity-empty {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+
+.activity-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-row:hover {
+  background: var(--menu-hover);
+}
+
+.activity-row.selected {
+  background: var(--row-selected);
+  color: var(--row-selected-text);
+}
+
+.activity-row-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-title,
+.activity-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-title {
+  font-size: 12.5px;
+}
+
+.activity-status {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.activity-row.selected .activity-status {
+  color: color-mix(in srgb, var(--row-selected-text) 80%, transparent);
+}
+
+.activity-mark.succeeded {
+  color: var(--success);
+}
+
+.activity-mark.failed,
+.activity-mark.cancelled {
+  color: var(--danger);
+}
+
+.activity-detail {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
+  user-select: text;
+}
+
+.activity-detail-header {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+
+.activity-command,
+.activity-output {
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity-command {
+  color: var(--text-muted);
+}
+
+.activity-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.activity-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.push-branches {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+}
+
+.push-branch {
+  width: 100%;
+  padding: 3px 4px;
+  border-radius: 3px;
+}
+
+.push-branch:hover {
+  background: var(--row-hover);
+}
+
+.push-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.push-branch-meta {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.remote-list {
+  display: grid;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.remote-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--row-hover);
+}
+
+.remote-row-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-row-copy span {
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

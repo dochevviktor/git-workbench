@@ -21,6 +21,11 @@ import type {
   RepositoryManagerSnapshot,
   RepositoryManagerSourceDirectory,
   RepositoryManagerWarning,
+  RepositoryNetworkRequestEnvelope,
+  RepositoryOperation,
+  RepositoryRemote,
+  RepositoryRemoteActionRequest,
+  RepositoryRemoteActionResult,
   RepositoryReferenceActionRequest,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
@@ -68,6 +73,11 @@ import {
   StaleCommitSnapshotError,
 } from './commit-service';
 import { readRepositoryDiff } from './diff-service';
+import { OperationRegistry } from '../operations/operation-registry';
+import type { OperationListener } from '../operations/operation-registry';
+import { NetworkRequestError, planNetworkOperation, runNetworkOperation } from './network-service';
+import type { NetworkPlan } from './network-service';
+import { applyRemoteAction, readRemotes } from './remote-service';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 
@@ -108,6 +118,8 @@ export class RepositoryService {
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
   private readonly mutationQueues = new Map<string, Promise<void>>();
+  private readonly networkQueues = new Map<string, Promise<void>>();
+  private readonly operations: OperationRegistry;
   private gitInfoPromise: Promise<GitInfo> | undefined;
 
   constructor(options: RepositoryServiceOptions) {
@@ -127,6 +139,7 @@ export class RepositoryService {
     this.runner = options.runner ?? new GitRunner();
     this.clock = options.clock ?? (() => new Date());
     this.sourceScanOptions = options.sourceScanOptions ?? {};
+    this.operations = new OperationRegistry({ clock: this.clock });
   }
 
   async getGitInfo(): Promise<GitInfo> {
@@ -509,6 +522,112 @@ export class RepositoryService {
     });
   }
 
+  async listRemotes(ownerId: number, id: string): Promise<RepositoryRemote[]> {
+    const summary = await this.refreshOpenRepository(ownerId, id);
+    try {
+      return await readRemotes(this.runner, summary.worktreePath ?? summary.commonDir);
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the remotes of this repository.');
+    }
+  }
+
+  async applyRemoteAction(
+    ownerId: number,
+    request: RepositoryRemoteActionRequest,
+  ): Promise<RepositoryRemoteActionResult> {
+    const cached = await this.refreshOpenRepository(ownerId, request.id);
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.refreshOpenRepository(ownerId, request.id);
+      try {
+        return await applyRemoteAction(this.runner, {
+          repositoryId: request.id,
+          cwd: summary.worktreePath ?? summary.commonDir,
+          action: request.action,
+        });
+      } catch (error) {
+        throw this.mapGitFailure(error, 'Git could not change the remotes of this repository.');
+      }
+    });
+  }
+
+  listOperations(ownerId: number): RepositoryOperation[] {
+    return this.operations.list(ownerId);
+  }
+
+  cancelOperation(ownerId: number, operationId: string): RepositoryOperation | null {
+    return this.operations.cancel(ownerId, operationId);
+  }
+
+  subscribeOperations(listener: OperationListener): () => void {
+    return this.operations.subscribe(listener);
+  }
+
+  /**
+   * Accepts one network operation and reports it as running. The work continues in the background:
+   * the caller's request returns the accepted record, so an IPC deadline never decides the outcome of
+   * a fetch or a push, and the result arrives through operation events.
+   */
+  async startNetworkOperation(
+    ownerId: number,
+    request: RepositoryNetworkRequestEnvelope,
+  ): Promise<RepositoryOperation> {
+    const summary =
+      request.request.kind === 'pull'
+        ? await this.requireWorktree(ownerId, request.id)
+        : await this.refreshOpenRepository(ownerId, request.id);
+    const cwd = summary.worktreePath ?? summary.commonDir;
+    let plan: NetworkPlan;
+    try {
+      plan = planNetworkOperation({ cwd, head: summary.head, request: request.request });
+    } catch (error) {
+      if (error instanceof NetworkRequestError) {
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      }
+      throw this.mapGitFailure(error, 'Git could not start that operation.');
+    }
+    // Checked after every await, so two requests that arrive together cannot both be accepted.
+    if (this.operations.isBusy(ownerId, request.id)) {
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'A network operation is already running for this repository.',
+      );
+    }
+
+    return this.operations.start(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: plan.kind,
+        title: plan.title,
+        command: plan.command,
+      },
+      async (handle) => {
+        // A pull writes the index and working tree, so it waits for other repository mutations.
+        const run = () => runNetworkOperation(this.runner, plan, cwd, handle);
+        return plan.kind === 'pull'
+          ? this.withRepositoryMutation(summary.commonDir, run)
+          : this.withNetworkLane(summary.commonDir, run);
+      },
+    );
+  }
+
+  /** One network operation per repository at a time, so duplicate background work cannot pile up. */
+  private async withNetworkLane<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.networkQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.networkQueues.set(key, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.networkQueues.get(key) === current) this.networkQueues.delete(key);
+    }
+  }
+
   async getRevisionTree(
     ownerId: number,
     id: string,
@@ -664,6 +783,7 @@ export class RepositoryService {
     this.restorePromises.delete(ownerId);
     this.sessions.delete(ownerId);
     this.managerRepositoryPaths.delete(ownerId);
+    this.operations.disposeOwner(ownerId);
   }
 
   dispose(): void {
@@ -672,6 +792,8 @@ export class RepositoryService {
     this.sessions.clear();
     this.managerRepositoryPaths.clear();
     this.mutationQueues.clear();
+    this.networkQueues.clear();
+    this.operations.dispose();
   }
 
   private async withRepositoryMutation<T>(key: string, operation: () => Promise<T>): Promise<T> {

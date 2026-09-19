@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type {
+  RepositoryBranch,
   RepositoryHistoryCommit,
   RepositoryHistoryReference,
   RepositoryLocation,
+  RepositoryNetworkRequest,
   RepositoryReferenceAction,
+  RepositoryRemoteAction,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
 import type { HistoryReferenceCommands } from '../components/HistoryView';
 import { CheckIcon, WarningIcon } from '../components/Icons';
+import { NetworkDialog } from '../components/NetworkDialogs';
+import type { NetworkDialogRequest } from '../components/NetworkDialogs';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
@@ -28,6 +33,7 @@ import { compactMenu, contextMenuAnchor, menuSeparator, planned } from '../compo
 import type { MenuEntry } from '../components/menu/menu-model';
 import { useDesktop } from '../hooks/use-desktop';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
+import { runningOperation, useOperations } from '../hooks/use-operations';
 import { useReferences } from '../hooks/use-references';
 import { useRepositories } from '../hooks/use-repositories';
 import { useRepositoryHistory } from '../hooks/use-repository-history';
@@ -115,10 +121,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [refreshSignal, setRefreshSignal] = useState(0);
   const {
     context: referenceContext,
+    remotes,
     busy: referenceBusy,
     apply: applyReference,
+    applyRemote,
     reload: reloadReferences,
   } = useReferences(lastActive?.id, refreshSignal);
+  const {
+    operations,
+    error: operationError,
+    start: startOperation,
+    cancel: cancelOperation,
+  } = useOperations();
   const [referenceDialog, setReferenceDialog] = useState<ReferenceDialogRequest>();
   const [referenceFailure, setReferenceFailure] = useState<{
     readonly message: string;
@@ -337,6 +351,101 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [commitTarget, openReferenceDialog, referencesReady],
   );
 
+  const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
+  const [networkFailure, setNetworkFailure] = useState<string>();
+  const [activityOpen, setActivityOpen] = useState(false);
+  const activeOperation = runningOperation(operations, active?.id);
+
+  const openNetworkDialog = useCallback((request: NetworkDialogRequest) => {
+    setNetworkFailure(undefined);
+    setNetworkDialog(request);
+  }, []);
+
+  const closeNetworkDialog = useCallback(() => {
+    setNetworkDialog(undefined);
+    setNetworkFailure(undefined);
+  }, []);
+
+  /**
+   * Starts one network operation. The request only has to be accepted: the outcome arrives as an
+   * operation event, so a slow remote never blocks the window and no result is ever guessed.
+   */
+  const startNetwork = useCallback(
+    (request: RepositoryNetworkRequest) => {
+      if (!active) return;
+      setNetworkFailure(undefined);
+      void startOperation(active.id, request)
+        .then(() => {
+          setNetworkDialog(undefined);
+          setActivityOpen(true);
+        })
+        .catch((reason: unknown) => {
+          setNetworkFailure(
+            reason instanceof Error ? reason.message : 'That operation could not be started.',
+          );
+        });
+    },
+    [active, startOperation],
+  );
+
+  const runRemoteAction = useCallback(
+    (action: RepositoryRemoteAction) => {
+      setNetworkFailure(undefined);
+      void applyRemote(action)
+        .then((result) => {
+          if (result.status === 'blocked') {
+            setNetworkFailure(result.message);
+            return;
+          }
+          setReferenceStatus({ message: result.message, blocked: false });
+          // The remotes dialog stays open so several changes can be made in one visit.
+          setNetworkDialog({ kind: 'remotes' });
+          refresh();
+        })
+        .catch((reason: unknown) => {
+          setNetworkFailure(reason instanceof Error ? reason.message : 'That remote change failed.');
+        });
+    },
+    [applyRemote, refresh],
+  );
+
+  // A finished operation refreshes the views whose refs or working tree it changed, once.
+  const reportedOperation = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const completed = operations.find(
+      (operation) => operation.status !== 'running' && operation.repositoryId === active?.id,
+    );
+    if (!completed || reportedOperation.current === completed.id) return;
+    reportedOperation.current = completed.id;
+    setReferenceStatus({
+      message: `${completed.title}: ${completed.message}`,
+      blocked: completed.status !== 'succeeded',
+    });
+    refresh();
+  }, [active?.id, operations, refresh]);
+
+  const networkBusyReason = activeOperation
+    ? 'Another network operation is running for this repository.'
+    : undefined;
+  const networkDisabledReason =
+    remotes.length === 0
+      ? 'This repository has no remotes yet. Add one from the Repository menu.'
+      : undefined;
+  const pullDisabledReason = active?.bare
+    ? 'A bare repository has no working tree to pull into.'
+    : active && active.head.state !== 'branch'
+      ? 'Check out a branch before pulling.'
+      : undefined;
+
+  const pushBranch = useCallback(
+    (branch: RepositoryBranch | undefined, force = false) => {
+      openNetworkDialog({ kind: 'push', branch, force });
+    },
+    [openNetworkDialog],
+  );
+
+  const currentBranch = referenceContext?.branches.find((branch) => branch.isHead);
+
   const newReferenceItems = (
     target: ReferenceTarget | undefined,
     reason: string | undefined,
@@ -392,7 +501,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
-      if (aboutOpen || referenceDialog) return;
+      if (aboutOpen || referenceDialog || networkDialog) return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
       else if (is('Mod+O')) {
@@ -402,6 +511,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         if (!repositoryBusy) void reopenClosed();
       } else if (is('Mod+Shift+B')) {
         if (headTarget) openReferenceDialog({ kind: 'new-branch', target: headTarget });
+      } else if (is('Mod+Shift+F')) {
+        if (active && remotes.length > 0 && !activeOperation) openNetworkDialog({ kind: 'fetch' });
       } else if (is('Ctrl+Tab')) cycleTab(1);
       else if (is('Ctrl+Shift+Tab')) cycleTab(-1);
       else if (is('F5')) refresh();
@@ -425,6 +536,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     aboutOpen,
+    active,
+    activeOperation,
     closeActiveTab,
     cycleTab,
     development,
@@ -432,9 +545,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     nativeMenu,
     openExisting,
     openManagerTab,
+    openNetworkDialog,
     openReferenceDialog,
     platform,
+    networkDialog,
     referenceDialog,
+    remotes.length,
     refresh,
     reopenClosed,
     repositoryBusy,
@@ -617,9 +733,36 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             items: [
               { id: 'refresh', label: 'Refresh', shortcut: 'F5', run: refresh },
               menuSeparator,
-              { id: 'fetch', label: 'Fetch…', ...planned('Fetching', 'P05') },
-              { id: 'pull', label: 'Pull…', ...planned('Pulling', 'P05') },
-              { id: 'push', label: 'Push…', ...planned('Pushing', 'P05') },
+              {
+                id: 'fetch',
+                label: 'Fetch…',
+                shortcut: 'Mod+Shift+F',
+                disabled: networkDisabledReason !== undefined || activeOperation !== undefined,
+                disabledReason: networkDisabledReason ?? networkBusyReason,
+                run: () => openNetworkDialog({ kind: 'fetch' }),
+              },
+              {
+                id: 'pull',
+                label: 'Pull',
+                disabled:
+                  networkDisabledReason !== undefined ||
+                  pullDisabledReason !== undefined ||
+                  activeOperation !== undefined,
+                disabledReason: networkDisabledReason ?? pullDisabledReason ?? networkBusyReason,
+                run: () => startNetwork({ kind: 'pull', prune: true }),
+              },
+              {
+                id: 'push',
+                label: 'Push…',
+                disabled: networkDisabledReason !== undefined || activeOperation !== undefined,
+                disabledReason: networkDisabledReason ?? networkBusyReason,
+                run: () => pushBranch(currentBranch),
+              },
+              {
+                id: 'remotes',
+                label: 'Remotes…',
+                run: () => openNetworkDialog({ kind: 'remotes' }),
+              },
               { id: 'save-stash', label: 'Save Stash…', ...planned('Stashing', 'P06') },
               menuSeparator,
               ...newReferenceItems(headTarget, headTargetReason),
@@ -728,6 +871,65 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     });
   };
 
+  const openSectionMenu = (section: string, event: ReactMouseEvent<HTMLElement>) => {
+    if (section === 'branches') {
+      showContextMenu({
+        anchor: contextMenuAnchor(event, event.currentTarget),
+        label: 'Branches',
+        items: newReferenceItems(headTarget, headTargetReason),
+      });
+      return;
+    }
+    if (section !== 'remotes') return;
+    showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: 'Remotes',
+      items: compactMenu([
+        {
+          id: 'fetch-all',
+          label: 'Fetch All Remotes',
+          disabled: networkDisabledReason !== undefined || activeOperation !== undefined,
+          disabledReason: networkDisabledReason ?? networkBusyReason,
+          run: () => startNetwork({ kind: 'fetch', remote: null, prune: true, tags: true }),
+        },
+        menuSeparator,
+        { id: 'manage', label: 'Manage Remotes…', run: () => openNetworkDialog({ kind: 'remotes' }) },
+      ]),
+    });
+  };
+
+  const openRemoteMenu = (remoteName: string, event: ReactMouseEvent<HTMLElement>) => {
+    const remote = remotes.find((candidate) => candidate.name === remoteName);
+    showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: remoteName,
+      items: compactMenu([
+        {
+          id: 'fetch',
+          label: `Fetch '${remoteName}'`,
+          shortcut: 'Mod+Shift+F',
+          disabled: activeOperation !== undefined,
+          disabledReason: networkBusyReason,
+          run: () => startNetwork({ kind: 'fetch', remote: remoteName, prune: true, tags: true }),
+        },
+        menuSeparator,
+        remote && {
+          id: 'edit',
+          label: `Edit '${remoteName}'…`,
+          run: () => openNetworkDialog({ kind: 'edit-remote', remote }),
+        },
+        remote && {
+          id: 'delete',
+          label: `Delete '${remoteName}'…`,
+          danger: true,
+          run: () => openNetworkDialog({ kind: 'delete-remote', remote }),
+        },
+        menuSeparator,
+        { id: 'copy-name', label: 'Copy Remote Name', run: () => copyText(remoteName) },
+      ]),
+    });
+  };
+
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
     const current = references.find((candidate) => candidate.isHead && candidate.kind === 'branch');
     const loaded = history.commits.some((commit) => commit.id === reference.target);
@@ -792,6 +994,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             disabled: !referencesReady || referenceBusy,
             disabledReason: referencesReady ? undefined : referenceLoading,
             run: () => openReferenceDialog({ kind: 'new-tag', target }),
+          },
+          menuSeparator,
+          {
+            id: 'push-branch',
+            label: `Push '${reference.name}'…`,
+            disabled: !branch || networkDisabledReason !== undefined || activeOperation !== undefined,
+            disabledReason: networkDisabledReason ?? networkBusyReason ?? referenceLoading,
+            run: () => pushBranch(branch),
           },
           menuSeparator,
           {
@@ -878,7 +1088,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             id: 'delete',
             label: `Delete '${reference.name}'…`,
             danger: true,
-            ...planned('Deleting a branch on a remote', 'P05'),
+            disabled: activeOperation !== undefined,
+            disabledReason: networkBusyReason,
+            run: () => {
+              const separator = reference.name.indexOf('/');
+              if (separator <= 0) return;
+              openNetworkDialog({
+                kind: 'delete-remote-branch',
+                remote: reference.name.slice(0, separator),
+                remoteBranch: reference.name.slice(separator + 1),
+              });
+            },
           },
           menuSeparator,
           filterHistory,
@@ -952,7 +1172,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     showContextMenu({ anchor: contextMenuAnchor(event, event.currentTarget), label: reference.name, items });
   };
 
-  const error = desktop.error ?? repositoryError;
+  const error = desktop.error ?? repositoryError ?? operationError;
   const desktopStatus = desktop.error ? 'unavailable' : desktop.loading ? 'connecting' : 'connected';
   const tabStrip = (orientation: 'horizontal' | 'vertical') => (
     <RepositoryTabs
@@ -988,6 +1208,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         branchDisabledReason={active?.bare ? 'A bare repository has no working tree.' : undefined}
         openInItems={openInItems}
         appearanceItems={appearanceItems}
+        operations={operations}
+        runningOperation={activeOperation}
+        networkDisabledReason={networkDisabledReason}
+        pullDisabledReason={pullDisabledReason}
+        activityOpen={activityOpen}
+        onFetch={() => openNetworkDialog({ kind: 'fetch' })}
+        onPull={() => startNetwork({ kind: 'pull', prune: true })}
+        onPush={() => pushBranch(currentBranch)}
+        onToggleActivity={() => setActivityOpen((open) => !open)}
+        onCancelOperation={cancelOperation}
       />
       {tabOrientation === 'horizontal' && tabStrip('horizontal')}
       <div className="workbench">
@@ -1019,6 +1249,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               repository={active}
               view={view}
               references={references}
+              branches={referenceContext?.branches ?? []}
               referencesLoading={history.loading}
               onViewChange={setView}
               reveal={history.reveal}
@@ -1029,6 +1260,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   revealCommit(reference.target);
               }}
               onReferenceContextMenu={openReferenceMenu}
+              onSectionContextMenu={openSectionMenu}
+              onRemoteContextMenu={openRemoteMenu}
             />
             <Splitter
               orientation="vertical"
@@ -1084,6 +1317,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         </div>
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
+      {networkDialog && (
+        <NetworkDialog
+          request={networkDialog}
+          remotes={remotes}
+          branches={referenceContext?.branches ?? []}
+          platform={platform}
+          busy={referenceBusy}
+          failure={networkFailure}
+          onStart={startNetwork}
+          onRemoteAction={runRemoteAction}
+          onOpen={openNetworkDialog}
+          onClose={closeNetworkDialog}
+        />
+      )}
       {referenceDialog && (
         <ReferenceDialog
           request={referenceDialog}

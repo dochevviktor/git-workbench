@@ -220,6 +220,7 @@ describe('IPC sender and window lifecycle', () => {
     const service = {
       resolveLocation,
       disposeWindow: vi.fn(),
+      subscribeOperations: vi.fn(() => () => undefined),
     } as unknown as RepositoryService;
     const ipc = registerAppIpc(service);
     const window = new TestWindow(4);

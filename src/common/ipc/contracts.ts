@@ -606,6 +606,9 @@ export const repositoryBranchSchema = z.strictObject({
   upstream: z.string().max(32_768).nullable(),
   /** The configured upstream no longer exists locally, so the branch is stale. */
   upstreamGone: z.boolean(),
+  /** Commits this branch has that its upstream does not, and the other way round. */
+  ahead: z.number().int().nonnegative().max(1_000_000_000).nullable(),
+  behind: z.number().int().nonnegative().max(1_000_000_000).nullable(),
   /** The linked worktree that has this branch checked out, when it is not the one in this tab. */
   worktreePath: z.string().max(32_768).nullable(),
   /** The tip is reachable from HEAD, so deleting the branch loses no commits from it. */
@@ -751,6 +754,179 @@ export const repositoryReferenceActionResultSchema = z.discriminatedUnion('statu
   }),
 ]);
 
+/** A remote as Git has it configured. URLs are the user's own configuration, shown so they can edit it. */
+export const repositoryRemoteSchema = z.strictObject({
+  name: z.string().min(1).max(4_096),
+  fetchUrl: z.string().max(32_768),
+  /** `null` when pushes use the fetch URL. */
+  pushUrl: z.string().max(32_768).nullable(),
+  /** The remote-tracking branches this remote currently has locally. */
+  branchCount: z.number().int().nonnegative().max(100_000),
+});
+
+export const repositoryRemoteNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((value) => !value.startsWith('-'), 'A remote name cannot begin with a dash.')
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F\s]/u.test(value),
+    'A remote name cannot contain spaces or control characters.',
+  );
+
+export const repositoryRemoteUrlSchema = z
+  .string()
+  .min(1)
+  .max(32_768)
+  .refine((value) => !value.startsWith('-'), 'A remote URL cannot begin with a dash.')
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F]/u.test(value),
+    'A remote URL cannot contain control characters.',
+  );
+
+export const repositoryRemoteActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('add'),
+    name: repositoryRemoteNameSchema,
+    url: repositoryRemoteUrlSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('rename'),
+    name: repositoryRemoteNameSchema,
+    newName: repositoryRemoteNameSchema,
+  }),
+  z.strictObject({ kind: z.literal('remove'), name: repositoryRemoteNameSchema }),
+  z.strictObject({
+    kind: z.literal('set-url'),
+    name: repositoryRemoteNameSchema,
+    url: repositoryRemoteUrlSchema,
+    /** Sets the separate push URL instead of the fetch URL. */
+    push: z.boolean(),
+  }),
+]);
+
+export const repositoryRemoteActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryRemoteActionSchema,
+});
+
+export const repositoryRemoteFailureReasonSchema = z.enum([
+  'exists',
+  'invalid-name',
+  'invalid-url',
+  'not-found',
+  'other',
+]);
+
+export const repositoryRemoteActionResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('applied'),
+    repositoryId: repositoryIdSchema,
+    message: z.string().min(1).max(512),
+    remotes: z.array(repositoryRemoteSchema).max(1_000),
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    repositoryId: repositoryIdSchema,
+    reason: repositoryRemoteFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    remotes: z.array(repositoryRemoteSchema).max(1_000),
+  }),
+]);
+
+export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
+
+export const repositoryOperationKindSchema = z.enum(['fetch', 'pull', 'push', 'delete-remote-branch']);
+
+export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
+
+export const repositoryOperationFailureReasonSchema = z.enum([
+  'authentication',
+  'network',
+  'rejected',
+  'lease',
+  'no-upstream',
+  'not-fast-forward',
+  'not-found',
+  'local-changes',
+  'cancelled',
+  'timeout',
+  'other',
+]);
+
+export const repositoryOperationProgressSchema = z.strictObject({
+  /** Git's own phase name, such as `Receiving objects`. */
+  phase: z.string().min(1).max(128),
+  percent: z.number().int().min(0).max(100).nullable(),
+});
+
+/**
+ * One long-running Git operation. It outlives the request that started it: the renderer receives the
+ * accepted record immediately and follows the rest through `repository:operation-changed` events or a
+ * later list, so an IPC timeout never decides the outcome of a fetch or a push.
+ */
+export const repositoryOperationSchema = z.strictObject({
+  id: repositoryOperationIdSchema,
+  repositoryId: repositoryIdSchema,
+  kind: repositoryOperationKindSchema,
+  title: z.string().min(1).max(512),
+  status: repositoryOperationStatusSchema,
+  startedAt: z.string().datetime({ offset: true }),
+  finishedAt: z.string().datetime({ offset: true }).nullable(),
+  progress: repositoryOperationProgressSchema.nullable(),
+  /** The Git command as it was run, with any URL credentials removed. */
+  command: z.string().max(4_096),
+  /** Git's output, redacted and kept as bounded inert text. */
+  output: z.string().max(65_536),
+  message: z.string().max(512),
+  failureReason: repositoryOperationFailureReasonSchema.nullable(),
+  /** A rejected push that a lease-checked force would complete; never applied automatically. */
+  canForceWithLease: z.boolean(),
+});
+
+export const repositoryPushTargetSchema = z.strictObject({
+  fullName: z.string().min(1).max(32_768),
+  /** The branch name on the remote; the local name by default. */
+  remoteBranch: repositoryReferenceNameSchema,
+});
+
+export const repositoryNetworkRequestSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('fetch'),
+    /** `null` fetches every configured remote. */
+    remote: repositoryRemoteNameSchema.nullable(),
+    prune: z.boolean(),
+    tags: z.boolean(),
+  }),
+  /** Fast-forward only. Merge and rebase pulls wait for the recovery paths in P06 and P07. */
+  z.strictObject({ kind: z.literal('pull'), prune: z.boolean() }),
+  z.strictObject({
+    kind: z.literal('push'),
+    remote: repositoryRemoteNameSchema,
+    targets: z.array(repositoryPushTargetSchema).min(1).max(50),
+    setUpstream: z.boolean(),
+    /** `with-lease` is only ever chosen by an explicit confirmation naming the branches. */
+    force: z.enum(['none', 'with-lease']),
+    tags: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('delete-remote-branch'),
+    remote: repositoryRemoteNameSchema,
+    remoteBranch: repositoryReferenceNameSchema,
+  }),
+]);
+
+export const repositoryNetworkRequestEnvelopeSchema = z.strictObject({
+  id: repositoryIdSchema,
+  request: repositoryNetworkRequestSchema,
+});
+
+export const repositoryOperationSessionSchema = z.strictObject({
+  operationId: repositoryOperationIdSchema,
+});
+
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
@@ -892,6 +1068,31 @@ export const requests = {
     repositoryReferenceActionRequestSchema,
     repositoryReferenceActionResultSchema,
   ),
+  listRepositoryRemotes: request(
+    'repository:list-remotes',
+    repositorySessionSchema,
+    z.array(repositoryRemoteSchema).max(1_000),
+  ),
+  applyRepositoryRemoteAction: request(
+    'repository:apply-remote-action',
+    repositoryRemoteActionRequestSchema,
+    repositoryRemoteActionResultSchema,
+  ),
+  startRepositoryNetworkOperation: request(
+    'repository:start-network-operation',
+    repositoryNetworkRequestEnvelopeSchema,
+    repositoryOperationSchema,
+  ),
+  listRepositoryOperations: request(
+    'repository:list-operations',
+    z.undefined(),
+    z.array(repositoryOperationSchema).max(100),
+  ),
+  cancelRepositoryOperation: request(
+    'repository:cancel-operation',
+    repositoryOperationSessionSchema,
+    repositoryOperationSchema.nullable(),
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -907,6 +1108,10 @@ export const requests = {
 
 export const events = {
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
+  repositoryOperationChanged: {
+    channel: 'repository:operation-changed',
+    payload: repositoryOperationSchema,
+  },
 } as const;
 
 export type AppInfo = z.infer<typeof appInfoSchema>;
@@ -985,6 +1190,20 @@ export type RepositoryReferenceActionKind = z.infer<typeof repositoryReferenceAc
 export type RepositoryReferenceActionRequest = z.infer<typeof repositoryReferenceActionRequestSchema>;
 export type RepositoryReferenceFailureReason = z.infer<typeof repositoryReferenceFailureReasonSchema>;
 export type RepositoryReferenceActionResult = z.infer<typeof repositoryReferenceActionResultSchema>;
+export type RepositoryRemote = z.infer<typeof repositoryRemoteSchema>;
+export type RepositoryRemoteAction = z.infer<typeof repositoryRemoteActionSchema>;
+export type RepositoryRemoteActionRequest = z.infer<typeof repositoryRemoteActionRequestSchema>;
+export type RepositoryRemoteActionResult = z.infer<typeof repositoryRemoteActionResultSchema>;
+export type RepositoryRemoteFailureReason = z.infer<typeof repositoryRemoteFailureReasonSchema>;
+export type RepositoryOperation = z.infer<typeof repositoryOperationSchema>;
+export type RepositoryOperationKind = z.infer<typeof repositoryOperationKindSchema>;
+export type RepositoryOperationStatus = z.infer<typeof repositoryOperationStatusSchema>;
+export type RepositoryOperationProgress = z.infer<typeof repositoryOperationProgressSchema>;
+export type RepositoryOperationFailureReason = z.infer<typeof repositoryOperationFailureReasonSchema>;
+export type RepositoryOperationSession = z.infer<typeof repositoryOperationSessionSchema>;
+export type RepositoryNetworkRequest = z.infer<typeof repositoryNetworkRequestSchema>;
+export type RepositoryNetworkRequestEnvelope = z.infer<typeof repositoryNetworkRequestEnvelopeSchema>;
+export type RepositoryPushTarget = z.infer<typeof repositoryPushTargetSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
 export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;

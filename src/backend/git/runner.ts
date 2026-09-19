@@ -14,6 +14,11 @@ export interface GitRunOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Optional patch data supplied by a backend Git service, never by the renderer. */
   readonly stdin?: string | Buffer;
+  /**
+   * Receives standard error as it arrives, for the progress Git reports there. The chunk is raw Git
+   * output: a caller that shows it must redact and bound it first.
+   */
+  readonly onStderr?: (chunk: string) => void;
 }
 
 export interface GitCommandResult {
@@ -83,9 +88,13 @@ export class GitOutputLimitError extends Error {
   }
 }
 
-function redactArgument(value: string): string {
-  // Keep the command diagnostic useful while ensuring URL credentials cannot reach logs.
+/** Keeps a command diagnostic useful while ensuring URL credentials cannot reach logs or the UI. */
+export function redactUrlCredentials(value: string): string {
   return value.replace(/(\b[a-z][a-z\d+.-]*:\/\/)([^\s/@]+)@/giu, '$1<redacted>@');
+}
+
+function redactArgument(value: string): string {
+  return redactUrlCredentials(value);
 }
 
 function displayCommand(executable: string, args: readonly string[]): string {
@@ -115,6 +124,27 @@ function controlledEnvironment(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
   environment.GIT_EDITOR = ':';
   environment.LC_ALL = 'C';
   return environment;
+}
+
+/**
+ * Stops the child and, on POSIX, everything it started. `git fetch` runs a transport helper and may
+ * run ssh; killing only the direct child would leave those connected. Windows has no equivalent
+ * signal, so the direct child is terminated there and its children exit with the broken pipe.
+ */
+function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+  try {
+    if (process.platform !== 'win32' && typeof child.pid === 'number') {
+      process.kill(-child.pid, signal);
+      return;
+    }
+  } catch {
+    // The group may already be gone, or the child never became a group leader. Fall through.
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // The process may have exited between the event and kill(). The close event settles it.
+  }
 }
 
 function appendOutput(
@@ -176,6 +206,9 @@ export class GitRunner {
           env: controlledEnvironment(options.env),
           shell: false,
           windowsHide: true,
+          // A POSIX child leads its own process group, so cancelling a fetch also stops the transport
+          // helper and ssh it started. Windows has no process groups here; see terminateProcess.
+          detached: process.platform !== 'win32',
           stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         } satisfies SpawnOptions) as ChildProcessWithoutNullStreams;
       } catch {
@@ -192,19 +225,9 @@ export class GitRunner {
       const terminate = (reason: Error) => {
         if (termination) return;
         termination = reason;
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // The process may have exited between the event and kill(). The close event settles it.
-        }
+        terminateProcess(child, 'SIGTERM');
         forceKillTimer = setTimeout(() => {
-          if (!child.killed) {
-            try {
-              child.kill('SIGKILL');
-            } catch {
-              // The close event remains the source of truth for process lifetime.
-            }
-          }
+          if (!child.killed) terminateProcess(child, 'SIGKILL');
         }, 1_000);
       };
 
@@ -224,8 +247,10 @@ export class GitRunner {
       });
       child.stderr.on('data', (chunk: Buffer | string) => {
         if (termination) return;
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        options.onStderr?.(buffer.toString('utf8'));
         try {
-          stderr = appendOutput(stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk), limit);
+          stderr = appendOutput(stderr, buffer, limit);
         } catch {
           terminate(new GitOutputLimitError('stderr'));
         }

@@ -221,6 +221,21 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryAmendChanges, (window, { id }) =>
       repositoryService.getAmendChanges(window.webContents.id, id),
     );
+    register(requests.listRepositoryRemotes, (window, { id }) =>
+      repositoryService.listRemotes(window.webContents.id, id),
+    );
+    register(requests.applyRepositoryRemoteAction, (window, request) =>
+      repositoryService.applyRemoteAction(window.webContents.id, request),
+    );
+    register(requests.startRepositoryNetworkOperation, (window, request) =>
+      repositoryService.startNetworkOperation(window.webContents.id, request),
+    );
+    register(requests.listRepositoryOperations, (window) =>
+      repositoryService.listOperations(window.webContents.id),
+    );
+    register(requests.cancelRepositoryOperation, (window, { operationId }) =>
+      repositoryService.cancelOperation(window.webContents.id, operationId),
+    );
     register(requests.getRepositoryReferenceContext, (window, { id }) =>
       repositoryService.getReferenceContext(window.webContents.id, id),
     );
@@ -242,6 +257,14 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       return null;
     });
   }
+
+  // Operation progress is published to the window that started the work and to no other.
+  const releaseOperations = repositoryService?.subscribeOperations((ownerId, operation) => {
+    const entry = windows.get(ownerId);
+    if (!entry || entry.window.isDestroyed()) return;
+    if (!isTrustedDocument(entry.window.webContents.getURL(), entry.url)) return;
+    entry.window.webContents.send(events.repositoryOperationChanged.channel, operation);
+  });
 
   return {
     attachWindow(window: BrowserWindow, url: string) {
@@ -273,6 +296,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       window.once('closed', cleanup);
     },
     dispose() {
+      releaseOperations?.();
       for (const channel of channels) ipcMain.removeHandler(channel);
       for (const entry of windows.values()) entry.cleanup();
     },

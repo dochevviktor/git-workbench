@@ -341,6 +341,115 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it('validates and routes network operation requests', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'5'.repeat(64)}`;
+    const request = {
+      id: repositoryId,
+      request: {
+        kind: 'push' as const,
+        remote: 'origin',
+        targets: [{ fullName: 'refs/heads/main', remoteBranch: 'main' }],
+        setUpstream: true,
+        force: 'none' as const,
+        tags: false,
+      },
+    };
+    const operation = {
+      id: `op-${'a'.repeat(32)}`,
+      repositoryId,
+      kind: 'push',
+      title: "Push 'main' to 'origin'",
+      status: 'running',
+      startedAt: '2026-09-19T10:00:00.000Z',
+      finishedAt: null,
+      progress: null,
+      command: 'git push --progress --set-upstream -- origin refs/heads/main:refs/heads/main',
+      output: '',
+      message: 'Running…',
+      failureReason: null,
+      canForceWithLease: false,
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: operation });
+    await expect(api.repository.startNetworkOperation(request)).resolves.toEqual({
+      ok: true,
+      value: operation,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.startRepositoryNetworkOperation.channel, request);
+
+    // A remote name that Git would read as an option never crosses IPC.
+    const dashed = await api.repository.startNetworkOperation({
+      ...request,
+      request: { ...request.request, remote: '--upload-pack=sh' },
+    });
+    expect(dashed).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    const empty = await api.repository.startNetworkOperation({
+      ...request,
+      request: { ...request.request, targets: [] },
+    });
+    expect(empty).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    const unknownForce = await api.repository.startNetworkOperation({
+      ...request,
+      request: { ...request.request, force: 'always' },
+    } as never);
+    expect(unknownForce).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    const cancel = await api.repository.cancelOperation({ operationId: 'not-an-operation' } as never);
+    expect(cancel).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates remote changes and delivers operation events to the listener', async () => {
+    const { api, emitter, invoke } = fixture();
+    const repositoryId = `repo-${'6'.repeat(64)}`;
+    const request = {
+      id: repositoryId,
+      action: { kind: 'add' as const, name: 'origin', url: 'https://example.test/repo.git' },
+    };
+    const result = {
+      status: 'applied',
+      repositoryId,
+      message: "Added the remote 'origin'.",
+      remotes: [{ name: 'origin', fetchUrl: 'https://example.test/repo.git', pushUrl: null, branchCount: 0 }],
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: result });
+    await expect(api.repository.applyRemoteAction(request)).resolves.toEqual({ ok: true, value: result });
+
+    const spacedName = await api.repository.applyRemoteAction({
+      ...request,
+      action: { ...request.action, name: 'my remote' },
+    });
+    expect(spacedName).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    const received: string[] = [];
+    const unsubscribe = api.repository.onOperationChanged((operation) => received.push(operation.status));
+    const running = {
+      id: `op-${'b'.repeat(32)}`,
+      repositoryId,
+      kind: 'fetch',
+      title: "Fetch 'origin'",
+      status: 'running',
+      startedAt: '2026-09-19T10:00:00.000Z',
+      finishedAt: null,
+      progress: { phase: 'Receiving objects', percent: 12 },
+      command: 'git fetch --progress -- origin',
+      output: '',
+      message: 'Running…',
+      failureReason: null,
+      canForceWithLease: false,
+    };
+    emitter.emit(events.repositoryOperationChanged.channel, {}, running);
+    emitter.emit(events.repositoryOperationChanged.channel, {}, { ...running, status: 'succeeded' });
+    // A payload that does not match the contract is dropped rather than passed on.
+    emitter.emit(events.repositoryOperationChanged.channel, {}, { id: 'nonsense' });
+    unsubscribe();
+    emitter.emit(events.repositoryOperationChanged.channel, {}, running);
+    expect(received).toEqual(['running', 'succeeded']);
+  });
+
   it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
     const { api, invoke } = fixture();
     await api.edit.command({ action: 'copy' });

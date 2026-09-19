@@ -6,8 +6,9 @@ with Electron, shared TypeScript contracts, and React.
 
 The current milestone starts F01's local workflow, the first F02 repository-manager slice, the initial
 F03 tab slice, the first F04–F07 history, collapse, filtering, and revision-inspection slices, the
-F08–F11 working-changes, diff, staging, and commit slices, a first F12 branch and tag slice, and an
-initial F34 workspace-chrome slice. It includes a Fork-style workspace: a custom title bar
+F08–F11 working-changes, diff, staging, and commit slices, a first F12 branch and tag slice, an initial
+F13 remote and network slice with the F14 operation surface it needs, and an initial F34 workspace-chrome
+slice. It includes a Fork-style workspace: a custom title bar
 with menus and window controls (native traffic lights on macOS), a toolbar, equal-width repository tabs or
 a vertical tab column, a Repository Manager new tab, a repository sidebar with a reference tree and commit
 search, a commit table with a collapsible lane graph and colored labels, Commit/Changes/File Tree details,
@@ -15,9 +16,11 @@ a Local Changes view with unified or split diffs, and renderer-drawn context men
 discovery, opening existing repositories, local initialization, recent-repository persistence, persisted
 source directories, bounded folder-aware repository scanning, persisted tabs with dirty indicators,
 close/reopen shortcuts, paged commit history, file/hunk/line staging with snapshot validation, committing
-and amending, branch and tag creation, renaming, deletion, checkout and upstream selection, and
-System/Light/Dark appearance. Toolbar and menu entries for Git operations from later phases are shown
-disabled with the phase that will enable them. Clone, remotes and network operations, whole-file discard,
+and amending, branch and tag creation, renaming, deletion, checkout and upstream selection, remote
+management, fetch, fast-forward pull, push with optional lease-checked force, and System/Light/Dark
+appearance. Network work runs as a cancellable background operation with progress, command, and output in
+an activity panel. Toolbar and menu entries for Git operations from later phases are shown disabled with
+the phase that will enable them. Clone, background fetching, credential prompts, whole-file discard,
 merge and conflict resolution, custom manager folders, filesystem watchers, and the remaining Git
 operations are later work.
 
@@ -113,7 +116,8 @@ main-process window methods, because the bridge cannot change the window state.
 src/backend/electron/   Main process: windows, menus, validated IPC handlers
 src/backend/preload/    Sandboxed bridge: fixed capabilities and subscriptions
 src/backend/git/        Argument-array Git executable resolution and bounded process runner
-src/backend/repositories/ Repository topology, sessions, history, references, recent/tab persistence, status, and manager scanning
+src/backend/operations/   Long-running Git work: job records, progress events, cancellation
+src/backend/repositories/ Repository topology, sessions, history, references, remotes, recent/tab persistence, status, and manager scanning
 src/common/ipc/         Runtime schemas, DTOs, result envelopes, public API types
 src/frontend/react/     React desktop shell (no Electron or Node imports): components/, menu/, hooks/, lib/
 tests/unit/             IPC validation, sender checks, timeouts, subscription cleanup

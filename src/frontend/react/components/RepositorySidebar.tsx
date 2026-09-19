@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import type { RepositoryHistoryReference, RepositorySummary } from '../../../common/ipc/contracts';
+import type {
+  RepositoryBranch,
+  RepositoryHistoryReference,
+  RepositorySummary,
+} from '../../../common/ipc/contracts';
 import type { HistoryRevealRequest } from '../hooks/use-repository-history';
 import { referenceSections } from '../lib/references';
 import type { ReferenceTreeNode } from '../lib/references';
@@ -26,6 +30,8 @@ interface RepositorySidebarProps {
   readonly repository: RepositorySummary;
   readonly view: RepositoryView;
   readonly references: readonly RepositoryHistoryReference[];
+  /** Branch details from the reference read, which carry the tracking counts and worktree state. */
+  readonly branches: readonly RepositoryBranch[];
   readonly referencesLoading: boolean;
   readonly onViewChange: (view: RepositoryView) => void;
   readonly reveal: HistoryRevealRequest | undefined;
@@ -36,22 +42,30 @@ interface RepositorySidebarProps {
     reference: RepositoryHistoryReference,
     event: ReactMouseEvent<HTMLElement>,
   ) => void;
+  readonly onSectionContextMenu: (section: string, event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onRemoteContextMenu: (remote: string, event: ReactMouseEvent<HTMLElement>) => void;
 }
 
 const collapsedByDefault = new Set(['section:tags', 'section:stashes']);
 
-function trackingText(reference: RepositoryHistoryReference): ReactNode {
-  if (reference.upstreamGone) {
+function trackingText(
+  reference: RepositoryHistoryReference,
+  branch: RepositoryBranch | undefined,
+): ReactNode {
+  const upstream = branch?.upstream ?? reference.upstream;
+  if (branch?.upstreamGone ?? reference.upstreamGone) {
     return (
-      <span className="reference-gone" title={`The upstream branch ${reference.upstream} no longer exists.`}>
+      <span className="reference-gone" title={`The upstream branch ${upstream} no longer exists.`}>
         gone
       </span>
     );
   }
-  if (reference.ahead === null || reference.behind === null) return null;
+  const ahead = branch?.ahead ?? reference.ahead;
+  const behind = branch?.behind ?? reference.behind;
+  if (ahead === null || behind === null) return null;
   const parts = [];
-  if (reference.ahead > 0) parts.push(`${reference.ahead}↑`);
-  if (reference.behind > 0) parts.push(`${reference.behind}↓`);
+  if (ahead > 0) parts.push(`${ahead}↑`);
+  if (behind > 0) parts.push(`${behind}↓`);
   return parts.join(' ') || null;
 }
 
@@ -72,6 +86,7 @@ export function RepositorySidebar({
   repository,
   view,
   references,
+  branches,
   referencesLoading,
   onViewChange,
   reveal,
@@ -79,6 +94,8 @@ export function RepositorySidebar({
   onRevealCommit,
   onReferenceSelect,
   onReferenceContextMenu,
+  onSectionContextMenu,
+  onRemoteContextMenu,
 }: RepositorySidebarProps) {
   const [mode, setMode] = useState<'references' | 'search'>('references');
   const [filter, setFilter] = useState('');
@@ -87,6 +104,10 @@ export function RepositorySidebar({
   const [activeKey, setActiveKey] = useState<string>();
   const filtering = filter.trim().length > 0;
   const sections = useMemo(() => referenceSections(references, filter), [references, filter]);
+  const branchesByFullName = useMemo(
+    () => new Map(branches.map((branch) => [branch.fullName, branch])),
+    [branches],
+  );
 
   const { items, referencesByKey } = useMemo(() => {
     const result: TreeItem[] = [];
@@ -108,7 +129,7 @@ export function RepositorySidebar({
             level,
             label: node.name,
             icon: referenceIcon(node.reference),
-            meta: trackingText(node.reference),
+            meta: trackingText(node.reference, branchesByFullName.get(node.reference.fullName)),
             expandable: false,
             expanded: false,
             parentKey,
@@ -168,7 +189,7 @@ export function RepositorySidebar({
       );
     }
     return { items: result, referencesByKey: byKey };
-  }, [filtering, sections, toggled]);
+  }, [branchesByFullName, filtering, sections, toggled]);
 
   const toggle = (item: TreeItem, expand: boolean) => {
     if (filtering || expand === item.expanded) return;
@@ -285,7 +306,18 @@ export function RepositorySidebar({
             }}
             onContextMenu={(item, event) => {
               const reference = referencesByKey.get(item.key);
-              if (reference) onReferenceContextMenu(reference, event);
+              if (reference) {
+                onReferenceContextMenu(reference, event);
+                return;
+              }
+              if (item.key.startsWith('section:')) {
+                onSectionContextMenu(item.key.slice('section:'.length), event);
+                return;
+              }
+              // A folder directly under Remotes is the remote itself, not a branch folder.
+              if (item.key.startsWith('remotes/') && item.level === 2) {
+                onRemoteContextMenu(item.key.slice('remotes/'.length), event);
+              }
             }}
           >
             {referencesLoading && references.length === 0 && (

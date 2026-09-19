@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P05 — remote management, then fetch/push with progress and credentials.**
+**Next implementation request: Continue P05 — clone, background fetch scheduling, and credential prompts.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -16,11 +16,11 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | Phase | Deliverable                                                          | Status                                                                                                             | Depends on |
 | ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset used by F01 (2026-09-16)                                                                    | P00        |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset, operation registry, progress and cancellation (2026-09-19)                                 | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12 branch/tag/checkout slice (2026-09-19)                                                                | P04        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12 branch/tag/checkout and F13 remote/fetch/pull/push slices (2026-09-19)                                | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
@@ -469,6 +469,40 @@ deletion, branch folders and moving, pinning, sorting, hiding, "Select Stale Loc
 a worktree, branch-folder autocomplete, and Fork's F2 and ⌘B shortcuts are not implemented, so F12 and
 P05 remain partial.
 
+Started F13 remote and network slice, with the F14 operation surface it needs (2026-09-19): add a
+main-process operation registry and the validated `repository:start-network-operation`,
+`repository:list-operations`, and `repository:cancel-operation` capabilities, plus a
+`repository:operation-changed` event routed to the window that started the work. A network request is
+accepted and answered with a running record, so the preload's short deadline never decides the outcome of
+a fetch or a push; progress, output, and completion arrive as events, the record stays queryable after
+every listener has gone, and a closed window cancels its own work. One network operation runs per
+repository at a time, which is how duplicate background work is refused, and a pull additionally takes the
+per-repository mutation queue because it writes the index and working tree. The runner now streams
+standard error for progress and, on POSIX, gives each child its own process group so cancelling a fetch
+also stops its transport helper and ssh. Fetch (one remote or all, with prune and tags), fast-forward-only
+pull, push (several branches, optional upstream creation, annotated tags, and `--force-with-lease`), and
+deleting a branch on a remote are each one Git invocation with backend-built arguments; a push refspec can
+only name a local branch, and a rejected ordinary push never falls back to a force. Failures are
+classified into authentication, network, rejected, lease, no-upstream, not-fast-forward, local-changes,
+not-found, cancelled, and timeout, each with one actionable sentence, and every line of output is stripped
+of terminal escapes and of credentials embedded in a URL. `repository:list-remotes` and
+`repository:apply-remote-action` add, rename, retarget, and remove remotes with Git's own
+`check-ref-format` validation; an `ext::` URL, which would make Git run a local command, is declined
+because repository trust is a later phase. The reference read now also reports each branch's ahead and
+behind counts, which the sidebar shows beside its name. The renderer adds Fork-shaped Fetch, Push, and
+Remotes dialogs, an activity panel with each operation's command, progress, output, and a cancel control,
+toolbar Fetch/Pull/Push buttons with live progress, a Ctrl/⌘+Shift+F shortcut, and Remotes sidebar menus.
+Disposable Git tests use a local bare remote to cover push with upstream creation, fetch, prune, a
+fast-forward pull, a pull that is refused because the branches diverged, a rejected push that reports it
+could be retried with a lease, a lease refused as stale and then accepted after a fetch, deleting a branch
+on the remote, an unreachable remote, cancellation, the duplicate refusal, the tracking counts, and remote
+management including a declined `ext::` URL; parser tests cover progress, redaction, and every failure
+class; the registry, the preload contract, and an Electron flow that adds a remote, pushes, fetches, and
+pulls through the real UI are covered as well. Merge and rebase pulls, background-fetch scheduling,
+interactive credential and passphrase prompts, platform secret storage, clone, pushing a single tag,
+pushing to a differently named remote branch, and fast-forwarding several branches at once are not
+implemented, so F13, F14, and P05 remain partial.
+
 ## P06 — Merge, conflicts, stashes, and recovery
 
 Coverage: F13 completion, F15–F17, F19. Daily-use checkpoint after this phase.
@@ -635,7 +669,7 @@ Acceptance:
 
 ## Test data and evidence strategy
 
-Maintain a TypeScript fixture catalog, introduced in P01 and expanded by phase: 
+Maintain a TypeScript fixture catalog, introduced in P01 and expanded by phase:
 
 | Fixture family    | Essential cases                                                                                     |
 | ----------------- | --------------------------------------------------------------------------------------------------- |
@@ -653,8 +687,8 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue P05 from docs/implementation-plan.md. Add remote URL and name management with validation,
-> then credential-helper and SSH-agent integration and fetch/push with progress, cancellation, and clear
-> authentication errors. Keep the F12 reference token and its structured refusals intact. P04's
-> whole-file and multi-file discard with an exact preview, confirmation, and recoverable backups is
-> still open and can be taken first.
+> Continue P05 from docs/implementation-plan.md. Add the clone workflow, then background fetch
+> scheduling that cannot duplicate work, and controlled credential and passphrase prompting with
+> platform secret storage only where a secret must be retained. Keep the F13 operation registry, its
+> per-repository lane, and its structured failures intact. P04's whole-file and multi-file discard with
+> an exact preview, confirmation, and recoverable backups is still open and can be taken first.

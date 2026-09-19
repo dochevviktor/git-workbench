@@ -3,6 +3,9 @@ import type {
   RepositoryReferenceAction,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
+  RepositoryRemote,
+  RepositoryRemoteAction,
+  RepositoryRemoteActionResult,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 
@@ -20,6 +23,7 @@ function actionError(reason: unknown): string {
  */
 export function useReferences(repositoryId: string | undefined, refreshSignal = 0) {
   const [context, setContext] = useState<RepositoryReferenceContext>();
+  const [remotes, setRemotes] = useState<RepositoryRemote[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -39,18 +43,26 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
     return unwrapResult(await api.repository.getReferenceContext({ id }));
   }, []);
 
+  const readRemotes = useCallback(async (id: string): Promise<RepositoryRemote[]> => {
+    const api = window.desktop;
+    if (!api) return [];
+    return unwrapResult(await api.repository.listRemotes({ id }));
+  }, []);
+
   const reload = useCallback(() => {
     if (!repositoryId) {
       setContext(undefined);
+      setRemotes([]);
       return;
     }
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
     setLoading(true);
-    void read(repositoryId)
-      .then((next) => {
+    void Promise.all([read(repositoryId), readRemotes(repositoryId).catch(() => [])])
+      .then(([next, knownRemotes]) => {
         if (!mounted.current || generation.current !== requestGeneration) return;
         setContext(next);
+        setRemotes(knownRemotes);
         setError(undefined);
       })
       .catch((reason: unknown) => {
@@ -61,7 +73,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
       .finally(() => {
         if (mounted.current && generation.current === requestGeneration) setLoading(false);
       });
-  }, [read, repositoryId]);
+  }, [read, readRemotes, repositoryId]);
 
   useEffect(() => {
     generation.current += 1;
@@ -97,5 +109,24 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
     [read, repositoryId],
   );
 
-  return { context, loading, busy, error, reload, apply };
+  const applyRemote = useCallback(
+    async (action: RepositoryRemoteAction): Promise<RepositoryRemoteActionResult> => {
+      const api = window.desktop;
+      if (!repositoryId || !api) throw new Error('Open this application in Electron to change remotes.');
+      setBusy(true);
+      try {
+        const result = unwrapResult(await api.repository.applyRemoteAction({ id: repositoryId, action }));
+        if (mounted.current) setRemotes(result.remotes);
+        // A removed remote also removes its remote-tracking branches, so the references are reread.
+        const refreshed = await read(repositoryId).catch(() => undefined);
+        if (mounted.current && refreshed) setContext(refreshed);
+        return result;
+      } finally {
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [read, repositoryId],
+  );
+
+  return { context, remotes, loading, busy, error, reload, apply, applyRemote };
 }

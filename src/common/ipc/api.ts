@@ -19,11 +19,17 @@ import type {
   RepositoryHistoryRequest,
   RepositoryLocation,
   RepositoryManagerSnapshot,
+  RepositoryNetworkRequestEnvelope,
+  RepositoryOperation,
+  RepositoryOperationSession,
   RepositoryOpenRequest,
   RepositoryReferenceActionRequest,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
   RepositoryReferenceContextRequest,
+  RepositoryRemote,
+  RepositoryRemoteActionRequest,
+  RepositoryRemoteActionResult,
   RepositorySession,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
@@ -93,6 +99,14 @@ export interface DesktopApi {
     applyReferenceAction(
       request: RepositoryReferenceActionRequest,
     ): Promise<IpcResult<RepositoryReferenceActionResult>>;
+    listRemotes(request: RepositorySession): Promise<IpcResult<RepositoryRemote[]>>;
+    applyRemoteAction(
+      request: RepositoryRemoteActionRequest,
+    ): Promise<IpcResult<RepositoryRemoteActionResult>>;
+    startNetworkOperation(request: RepositoryNetworkRequestEnvelope): Promise<IpcResult<RepositoryOperation>>;
+    listOperations(): Promise<IpcResult<RepositoryOperation[]>>;
+    cancelOperation(request: RepositoryOperationSession): Promise<IpcResult<RepositoryOperation | null>>;
+    onOperationChanged(listener: (operation: RepositoryOperation) => void): Unsubscribe;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

@@ -33,6 +33,15 @@ function launchEnvironment(): Record<string, string> {
   return environment;
 }
 
+/** Reads Git state for an assertion; a command that cannot answer yet reports an empty string. */
+async function gitText(git: GitRunner, cwd: string, args: readonly string[]): Promise<string> {
+  try {
+    return (await git.run(args, { cwd })).stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
 async function waitForDesktop(page: Page) {
   await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
 }
@@ -51,6 +60,8 @@ test('production build loads its isolated preload and renderer', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'git-workbench-test-'));
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-repository-'));
   const secondRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-tab-'));
+  // The remote lives outside the scanned source directory, which must keep finding one repository.
+  const remoteRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-remote-'));
   const fixtureRepository = join(fixtureRoot, 'sample');
   const secondRepository = join(secondRoot, 'second');
   await mkdir(fixtureRepository);
@@ -652,6 +663,77 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
     await expect(page.getByTestId('reference-status')).toHaveCount(0);
 
+    // F13: remotes, push, fetch, and pull run as background operations with progress and output.
+    const remotePath = join(remoteRoot, 'origin.git');
+    // The bare remote starts on the same branch name, so a clone of it checks that branch out.
+    await fixtureGit.run(['init', '--quiet', '--bare', `--initial-branch=${mainBranch}`, remotePath], {
+      cwd: remoteRoot,
+    });
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Remotes…', exact: true }).click();
+    const networkDialog = page.getByTestId('reference-dialog');
+    await expect(networkDialog).toBeVisible();
+    await networkDialog.getByTestId('remote-name').fill('origin');
+    await networkDialog.getByTestId('remote-url').fill(remotePath);
+    await networkDialog.getByTestId('reference-dialog-submit').click();
+    await expect(networkDialog.getByTestId('remote-list')).toContainText('origin');
+    await networkDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(networkDialog).toHaveCount(0);
+    await expect.poll(() => gitText(fixtureGit, fixtureRepository, ['remote'])).toBe('origin');
+
+    // Push the current branch; the dialog sets the upstream because the branch has none yet.
+    await page.getByTestId('toolbar-push').click();
+    await expect(networkDialog).toBeVisible();
+    await expect(networkDialog.getByTestId('push-branches')).toContainText(mainBranch);
+    await networkDialog.getByTestId('reference-dialog-submit').click();
+    await expect(networkDialog).toHaveCount(0);
+    await expect
+      .poll(() => gitText(fixtureGit, remotePath, ['rev-parse', `refs/heads/${mainBranch}`]), {
+        timeout: 20_000,
+      })
+      .toBe(await gitText(fixtureGit, fixtureRepository, ['rev-parse', mainBranch]));
+    await expect
+      .poll(
+        () =>
+          gitText(fixtureGit, fixtureRepository, ['rev-parse', '--abbrev-ref', `${mainBranch}@{upstream}`]),
+        { timeout: 10_000 },
+      )
+      .toBe(`origin/${mainBranch}`);
+
+    // The activity panel records the command that ran and its output.
+    await expect(page.getByTestId('activity')).toBeVisible();
+    await expect(page.getByTestId('activity-row').first()).toContainText(/Push/u);
+    await expect(page.getByTestId('activity-output')).toContainText(/origin|main|master/u);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('activity')).toHaveCount(0);
+
+    // A commit made elsewhere is brought back by a fetch and then fast-forwarded by a pull.
+    const clonePath = join(remoteRoot, 'clone');
+    await fixtureGit.run(['clone', '--quiet', remotePath, clonePath], { cwd: remoteRoot });
+    await commitFile(fixtureGit, clonePath, 'remote.txt', 'Commit made on the remote');
+    await fixtureGit.run(['push', '--quiet', 'origin', mainBranch], { cwd: clonePath });
+
+    await page.getByTestId('toolbar-fetch').click();
+    await expect(networkDialog).toBeVisible();
+    await networkDialog.getByTestId('reference-dialog-submit').click();
+    await expect(networkDialog).toHaveCount(0);
+    await expect
+      .poll(
+        () => gitText(fixtureGit, fixtureRepository, ['rev-parse', `refs/remotes/origin/${mainBranch}`]),
+        { timeout: 20_000 },
+      )
+      .toBe(await gitText(fixtureGit, clonePath, ['rev-parse', mainBranch]));
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId('toolbar-pull')).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByTestId('toolbar-pull').click();
+    await expect
+      .poll(() => gitText(fixtureGit, fixtureRepository, ['log', '-1', '--format=%s']), { timeout: 20_000 })
+      .toBe('Commit made on the remote');
+    await expect(page.getByTestId('reference-status')).toContainText(/Pull/u);
+    await page.screenshot({ path: 'test-results/f13-network.png' });
+    await page.keyboard.press('Escape');
+
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');
       return window.desktop.repository.initialize({ path, bare: false });
@@ -714,6 +796,7 @@ test('production build loads its isolated preload and renderer', async () => {
       await rm(profile, { recursive: true, force: true });
       await rm(fixtureRoot, { recursive: true, force: true });
       await rm(secondRoot, { recursive: true, force: true });
+      await rm(remoteRoot, { recursive: true, force: true });
     }
   }
 });

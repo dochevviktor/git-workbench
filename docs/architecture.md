@@ -3,8 +3,8 @@
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
-initial F11 commit slice, the initial F12 branch/tag slice, and the initial F34 workspace-chrome slice
-implemented.
+initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
+with its F14 operation registry, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -102,7 +102,15 @@ arguments, a revision expression, or a force flag it was not offered. A start po
 window already received or the full name of a reference the same read reported. Expected refusals — a name
 in use, an unmerged branch, a branch checked out in another worktree, the current branch, local changes a
 checkout would overwrite, a running sequencer, a missing tagger identity — return a structured `blocked`
-result with the obstacle, the paths Git named, and whether an explicit force would succeed. The
+result with the obstacle, the paths Git named, and whether an explicit force would succeed.
+The initial F13 slice adds `listRemotes()`, `applyRemoteAction()`, `startNetworkOperation()`,
+`listOperations()`, `cancelOperation()`, and `onOperationChanged()`. A network request is accepted and
+answered with a running operation record rather than its result, because a fetch or a push outlives the
+preload's 15-second deadline; progress, output, and completion arrive as `repository:operation-changed`
+events routed to the window that started the work, and `listOperations()` still answers after every
+listener has gone. The renderer names a remote, branches, and options; it never sends a refspec, a
+transport flag, or a force flag it was not offered, and `--force-with-lease` reaches Git only from an
+explicit confirmation. The
 F34 workspace-chrome slice
 extends `desktop.window.command()` with full
 screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
@@ -263,7 +271,17 @@ per-repository mutation queue, refuses a stale token, and runs one `git commit -
 committing is an explicit user action; the call has its own longer timeout, its output is captured,
 stripped of terminal escapes, and bounded before display, and `--no-verify` is used only when the user
 explicitly chooses it after a failure. A commit that is interrupted reports an unknown outcome instead of
-being retried. The F12 reference service reads branches, tags, remotes, and worktree assignments with
+being retried. The F13 network service builds exactly one `fetch`, `pull --ff-only`, or `push`
+invocation per request, streams Git's carriage-return progress into percentage updates, keeps only
+completed phases in the log, and strips terminal escapes and URL credentials from everything it shows. It
+classifies transport and receive-pack messages into authentication, network, rejected, lease,
+no-upstream, not-fast-forward, local-changes, not-found, cancelled, and timeout, and never retries a write
+whose outcome is unknown. The operation registry owns the lifetime: one network operation per repository
+at a time, a pull additionally inside the per-repository mutation queue, cancellation through an
+`AbortSignal` that terminates the child's process group so the transport helper and ssh stop with it, and
+a closed window cancelling its own work. The remote service validates names with Git's own
+`check-ref-format` and declines an `ext::` URL, which would let a remote definition run a local command,
+until the repository trust model exists. The F12 reference service reads branches, tags, remotes, and worktree assignments with
 bounded `for-each-ref`, `remote`, and `worktree list --porcelain` calls, asks Git's own
 `check-ref-format` whether a name is acceptable, and runs exactly one `branch`, `checkout`, or `tag`
 invocation per action inside the same per-repository mutation queue. A tag message crosses IPC as text
@@ -278,15 +296,17 @@ manager slice, the initial persisted tab/status workflow, the first paged histor
 workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, the initial F08
 working-changes listing, the initial F09 text-diff viewer, the initial F10 staging slice, and the renderer-drawn window chrome, menus,
 and context menus are implemented.
-There is still no general job
-queue, operation activity surface, remote authentication, clone workflow, filesystem watcher, full-app
+There is still no
+remote authentication prompt, clone workflow, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
-discard, commit signing or commit-and-push, remote-branch deletion or tag pushing, multiple-reference
-selection, syntax/image/binary viewers, external integration, automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
+discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, clone, background
+fetch scheduling, interactive credential or passphrase prompting, platform secret storage, merge or
+rebase pulls, syntax/image/binary viewers, external integration, automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
 merge collapse, commit and amend behavior, branch/tag creation, checkout, and deletion with their
-refusals, and the Electron bridge; later Git correctness will continue to
+refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, and the
+Electron bridge; later Git correctness will continue to
 be checked against independent CLI assertions as each workflow is added. Diff merge presentation,
 whole-file discard, signing, and conflict resolution remain future work.
