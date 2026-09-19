@@ -267,6 +267,64 @@ describe('repository service', () => {
     });
   });
 
+  it('creates and checks out a branch through the repository service and rejects a stale token', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'repository');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(1, repositoryPath, false);
+    await runner.run(['config', 'user.name', 'Service Author'], { cwd: repositoryPath });
+    await runner.run(['config', 'user.email', 'service@example.test'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'file.txt'), 'one\n', 'utf8');
+    await runner.run(['add', '--', 'file.txt'], { cwd: repositoryPath });
+    await runner.run(['commit', '--quiet', '-m', 'first'], { cwd: repositoryPath });
+
+    const context = await service.getReferenceContext(1, repository.id);
+    expect(context.branches).toHaveLength(1);
+    expect(context.branches[0]).toMatchObject({ isHead: true, worktreePath: null, merged: true });
+
+    // Only a repository this window has open can be addressed.
+    await expect(service.getReferenceContext(1, `repo-${'8'.repeat(64)}`)).rejects.toMatchObject({
+      code: 'REPOSITORY_NOT_OPEN',
+    });
+
+    const applied = await service.applyReferenceAction(1, {
+      id: repository.id,
+      action: {
+        kind: 'create-branch',
+        name: 'topic',
+        startPoint: { kind: 'reference', fullName: context.branches[0]!.fullName },
+        checkout: true,
+        tracking: 'auto',
+      },
+      snapshot: context.snapshot,
+    });
+    expect(applied).toMatchObject({ status: 'applied', kind: 'create-branch' });
+    const head = await runner.run(['symbolic-ref', '--short', 'HEAD'], { cwd: repositoryPath });
+    expect(head.stdout.trim()).toBe('topic');
+
+    await expect(
+      service.applyReferenceAction(1, {
+        id: repository.id,
+        action: { kind: 'delete-branch', fullName: 'refs/heads/topic', force: true },
+        snapshot: context.snapshot,
+      }),
+    ).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+
+  it('refuses branch and tag workflows for a bare repository', async () => {
+    const directory = await fixtureDirectory();
+    const barePath = join(directory, 'bare-references');
+    await mkdir(barePath);
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const repository = await service.initialize(1, barePath, true);
+
+    await expect(service.getReferenceContext(1, repository.id)).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+    });
+  });
+
   it('discovers a repository whose Git directory is stored in a .git file', async () => {
     const directory = await fixtureDirectory();
     const worktree = join(directory, 'worktree');

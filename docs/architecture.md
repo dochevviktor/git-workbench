@@ -3,7 +3,8 @@
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
-initial F11 commit slice, and the initial F34 workspace-chrome slice implemented.
+initial F11 commit slice, the initial F12 branch/tag slice, and the initial F34 workspace-chrome slice
+implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -90,7 +91,18 @@ and the `amend` diff target report what an amended commit would contain, by comp
 HEAD's parent (the empty tree for a root commit). Amend mode is a read: it never moves a commit's changes
 into the index, so unticking it cannot lose staged work. Expected commit
 failures (a hook, a missing identity, an empty message, nothing staged, unmerged files) return a
-structured `failed` result with bounded inert output rather than an exception. The
+structured `failed` result with bounded inert output rather than an exception.
+The initial F12 slice adds `getReferenceContext()` and `applyReferenceAction()`. The context read returns
+the local branches with their upstream, stale-upstream flag, linked-worktree checkout, and merged state,
+the tags with their peeled commit and annotated flag, the remote and remote-tracking names, the
+working-tree and pending-sequencer state, and a compare-and-swap token over HEAD, the local branches, and
+the tags. Remote-tracking refs stay outside that token so a background fetch cannot invalidate an open
+dialog. `applyReferenceAction()` carries one named action and that token; the renderer never sends Git
+arguments, a revision expression, or a force flag it was not offered. A start point is a commit ID this
+window already received or the full name of a reference the same read reported. Expected refusals — a name
+in use, an unmerged branch, a branch checked out in another worktree, the current branch, local changes a
+checkout would overwrite, a running sequencer, a missing tagger identity — return a structured `blocked`
+result with the obstacle, the paths Git named, and whether an explicit force would succeed. The
 F34 workspace-chrome slice
 extends `desktop.window.command()` with full
 screen, zoom, quit, and development-only reload/developer-tools actions (rejected in packaged builds),
@@ -251,7 +263,13 @@ per-repository mutation queue, refuses a stale token, and runs one `git commit -
 committing is an explicit user action; the call has its own longer timeout, its output is captured,
 stripped of terminal escapes, and bounded before display, and `--no-verify` is used only when the user
 explicitly chooses it after a failure. A commit that is interrupted reports an unknown outcome instead of
-being retried.
+being retried. The F12 reference service reads branches, tags, remotes, and worktree assignments with
+bounded `for-each-ref`, `remote`, and `worktree list --porcelain` calls, asks Git's own
+`check-ref-format` whether a name is acceptable, and runs exactly one `branch`, `checkout`, or `tag`
+invocation per action inside the same per-repository mutation queue. A tag message crosses IPC as text
+and reaches Git on standard input, never as an argument. A checkout gets the longer timeout because it
+writes the working tree and can run filters and a post-checkout hook. Nothing is ever force-deleted,
+force-created, or discarded without the user choosing that specific action.
 
 ## Current limitations
 
@@ -263,11 +281,12 @@ and context menus are implemented.
 There is still no general job
 queue, operation activity surface, remote authentication, clone workflow, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
-discard, commit signing or commit-and-push, syntax/image/binary viewers, external integration, automatic
-updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
+discard, commit signing or commit-and-push, remote-branch deletion or tag pushing, multiple-reference
+selection, syntax/image/binary viewers, external integration, automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
-merge collapse, commit and amend behavior, and the Electron bridge; later Git correctness will continue to
+merge collapse, commit and amend behavior, branch/tag creation, checkout, and deletion with their
+refusals, and the Electron bridge; later Git correctness will continue to
 be checked against independent CLI assertions as each workflow is added. Diff merge presentation,
 whole-file discard, signing, and conflict resolution remain future work.

@@ -499,7 +499,10 @@ async function readPendingOperation(gitDir: string): Promise<{
   return { operation, message: operation ? message : null };
 }
 
-async function detectPendingOperation(gitDir: string): Promise<RepositoryCommitPendingOperation | null> {
+/** Shared with the reference workflows, which must not check out while a sequencer is running. */
+export async function detectPendingOperation(
+  gitDir: string,
+): Promise<RepositoryCommitPendingOperation | null> {
   if (await pathExists(join(gitDir, 'MERGE_HEAD'))) return 'merge';
   if (await pathExists(join(gitDir, 'CHERRY_PICK_HEAD'))) return 'cherry-pick';
   if (await pathExists(join(gitDir, 'REVERT_HEAD'))) return 'revert';

@@ -186,6 +186,37 @@ describe('repository history service', () => {
     expect(literalSearch.commits).toEqual([]);
   });
 
+  it('marks a branch whose upstream no longer exists as gone', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'stale');
+    const remotePath = join(directory, 'remote.git');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(14, repositoryPath, false);
+    await runner.run(['branch', '--quiet', '-M', 'main'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'file.txt'), 'one\n', 'utf8');
+    await commit(runner, repositoryPath, 'Only commit', '', 'Ada', 'ada@example.test', '2026-01-01');
+
+    // A local bare repository stands in for a remote; nothing leaves this machine.
+    await runner.run(['init', '--quiet', '--bare', remotePath], { cwd: directory });
+    await runner.run(['remote', 'add', 'origin', remotePath], { cwd: repositoryPath });
+    await runner.run(['push', '--quiet', '--set-upstream', 'origin', 'main'], { cwd: repositoryPath });
+
+    const tracked = await service.getHistory(14, repository.id, 0, 10);
+    expect(tracked.references.find((reference) => reference.fullName === 'refs/heads/main')).toMatchObject({
+      upstream: 'origin/main',
+      upstreamGone: false,
+    });
+
+    await runner.run(['update-ref', '-d', 'refs/remotes/origin/main'], { cwd: repositoryPath });
+    const stale = await service.getHistory(14, repository.id, 0, 10);
+    expect(stale.references.find((reference) => reference.fullName === 'refs/heads/main')).toMatchObject({
+      upstream: 'origin/main',
+      upstreamGone: true,
+    });
+  });
+
   it('returns a valid empty history for an unborn repository', async () => {
     const directory = await fixtureDirectory();
     const repositoryPath = join(directory, 'empty');

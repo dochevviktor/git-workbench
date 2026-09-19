@@ -23,8 +23,17 @@ import { useContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator, planned } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
+/** The branch and tag commands the commit menu offers, owned by the workspace that renders them. */
+export interface HistoryReferenceCommands {
+  readonly ready: boolean;
+  readonly newBranch: (commit: RepositoryHistoryCommit) => void;
+  readonly newTag: (commit: RepositoryHistoryCommit) => void;
+  readonly checkoutCommit: (commit: RepositoryHistoryCommit) => void;
+}
+
 interface HistoryViewProps {
   readonly history: RepositoryHistory;
+  readonly references: HistoryReferenceCommands;
 }
 
 interface CommitRowProps {
@@ -124,7 +133,7 @@ const CommitRow = memo(function CommitRow({
   );
 });
 
-export function HistoryView({ history }: HistoryViewProps) {
+export function HistoryView({ history, references: referenceCommands }: HistoryViewProps) {
   const showContextMenu = useContextMenu();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -285,11 +294,30 @@ export function HistoryView({ history }: HistoryViewProps) {
     [collapseAllBranches, collapsedMergeIds, expandAllBranches, mergeCommitIds, toggleBranch],
   );
 
+  const unavailable = useMemo(
+    () =>
+      referenceCommands.ready
+        ? undefined
+        : { disabled: true, disabledReason: 'The branches and tags of this repository are still loading.' },
+    [referenceCommands.ready],
+  );
+
   const commitMenu = useCallback(
     (commit: RepositoryHistoryCommit, row: HistoryGraphRow | undefined): MenuEntry[] =>
       compactMenu([
-        { id: 'create-branch', label: 'New Branch…', ...planned('Creating branches', 'P05') },
-        { id: 'create-tag', label: 'New Tag…', ...planned('Creating tags', 'P05') },
+        {
+          id: 'create-branch',
+          label: 'New Branch…',
+          shortcut: 'Mod+Shift+B',
+          ...unavailable,
+          run: () => referenceCommands.newBranch(commit),
+        },
+        {
+          id: 'create-tag',
+          label: 'New Tag…',
+          ...unavailable,
+          run: () => referenceCommands.newTag(commit),
+        },
         menuSeparator,
         {
           id: 'interactive-rebase',
@@ -304,7 +332,12 @@ export function HistoryView({ history }: HistoryViewProps) {
           ...planned('Resetting', 'P06'),
         },
         menuSeparator,
-        { id: 'checkout', label: 'Checkout Commit…', ...planned('Checking out commits', 'P05') },
+        {
+          id: 'checkout',
+          label: 'Checkout Commit…',
+          ...unavailable,
+          run: () => referenceCommands.checkoutCommit(commit),
+        },
         { id: 'cherry-pick', label: 'Cherry-pick Commit…', ...planned('Cherry-picking', 'P06') },
         { id: 'revert', label: 'Revert Commit…', ...planned('Reverting commits', 'P06') },
         { id: 'save-patch', label: 'Save as Patch…', ...planned('Patch export', 'P08') },
@@ -320,7 +353,7 @@ export function HistoryView({ history }: HistoryViewProps) {
         menuSeparator,
         ...graphMenu(commit, row),
       ]),
-    [currentBranch?.name, graphMenu],
+    [currentBranch?.name, graphMenu, referenceCommands, unavailable],
   );
 
   const openCommitMenu = useCallback(

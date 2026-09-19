@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
-import type { RepositoryHistoryReference, RepositoryLocation } from '../../../common/ipc/contracts';
+import type {
+  RepositoryHistoryCommit,
+  RepositoryHistoryReference,
+  RepositoryLocation,
+  RepositoryReferenceAction,
+} from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
+import type { HistoryReferenceCommands } from '../components/HistoryView';
+import { CheckIcon, WarningIcon } from '../components/Icons';
+import { ReferenceDialog } from '../components/ReferenceDialogs';
+import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
 import { RepositorySidebar } from '../components/RepositorySidebar';
 import type { RepositoryView } from '../components/RepositorySidebar';
@@ -19,9 +28,11 @@ import { compactMenu, contextMenuAnchor, menuSeparator, planned } from '../compo
 import type { MenuEntry } from '../components/menu/menu-model';
 import { useDesktop } from '../hooks/use-desktop';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
+import { useReferences } from '../hooks/use-references';
 import { useRepositories } from '../hooks/use-repositories';
 import { useRepositoryHistory } from '../hooks/use-repository-history';
 import { copyText } from '../lib/clipboard';
+import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
 import type { Platform } from '../lib/platform';
 
@@ -102,6 +113,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const {
+    context: referenceContext,
+    busy: referenceBusy,
+    apply: applyReference,
+    reload: reloadReferences,
+  } = useReferences(lastActive?.id, refreshSignal);
+  const [referenceDialog, setReferenceDialog] = useState<ReferenceDialogRequest>();
+  const [referenceFailure, setReferenceFailure] = useState<{
+    readonly message: string;
+    readonly canForce: boolean;
+  }>();
+  const [referenceStatus, setReferenceStatus] = useState<{
+    readonly message: string;
+    readonly blocked: boolean;
+  }>();
   const development = info?.mode === 'development';
   const nativeMenu = platform === 'darwin';
   const repositoryBusy = busy !== undefined;
@@ -208,9 +234,165 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [requestReveal, setView],
   );
 
+  const referencesReady = referenceContext !== undefined;
+  const referenceLoading = 'The branches and tags of this repository are still loading.';
+
+  const openReferenceDialog = useCallback((request: ReferenceDialogRequest) => {
+    setReferenceFailure(undefined);
+    setReferenceStatus(undefined);
+    setReferenceDialog(request);
+  }, []);
+
+  const closeReferenceDialog = useCallback(() => {
+    setReferenceDialog(undefined);
+    setReferenceFailure(undefined);
+  }, []);
+
+  /**
+   * Runs one branch or tag action. A refusal the backend foresaw is shown where the user is looking:
+   * in the open dialog when there is one, and always in the status strip, so nothing fails silently.
+   */
+  const runReferenceAction = useCallback(
+    (action: RepositoryReferenceAction) => {
+      void applyReference(action)
+        .then((result) => {
+          if (result.status === 'applied') {
+            setReferenceDialog(undefined);
+            setReferenceFailure(undefined);
+            setReferenceStatus({ message: result.message, blocked: false });
+            refresh();
+            return;
+          }
+          const detail = result.paths.length > 0 ? ` (${result.paths.slice(0, 3).join(', ')})` : '';
+          setReferenceFailure({ message: result.message, canForce: result.canForce });
+          setReferenceStatus({ message: `${result.message}${detail}`, blocked: true });
+        })
+        .catch((reason: unknown) => {
+          reportError(reason instanceof Error ? reason.message : 'That branch or tag action failed.');
+          reloadReferences();
+        });
+    },
+    [applyReference, refresh, reloadReferences, reportError],
+  );
+
+  const commitTarget = useCallback(
+    (commit: RepositoryHistoryCommit): ReferenceTarget => ({
+      startPoint: { kind: 'commit', commitId: commit.id },
+      icon: 'commit',
+      label: shortHash(commit.id),
+      detail: commit.subject || '(no subject)',
+    }),
+    [],
+  );
+
+  const referenceTarget = useCallback(
+    (reference: RepositoryHistoryReference): ReferenceTarget => ({
+      startPoint: { kind: 'reference', fullName: reference.fullName },
+      icon: reference.kind === 'remote' ? 'remote' : reference.kind === 'tag' ? 'tag' : 'branch',
+      label: reference.name,
+      detail: shortHash(reference.target),
+      // Only a remote-tracking branch offers to become the new branch's upstream.
+      trackable: reference.kind === 'remote' ? reference.name : undefined,
+    }),
+    [],
+  );
+
+  /** What "New Branch…" without a selected commit starts from: the current branch, or a detached HEAD. */
+  const headTarget = useMemo((): ReferenceTarget | undefined => {
+    if (!active || active.bare) return undefined;
+    const current = referenceContext?.branches.find((branch) => branch.isHead);
+    if (current) {
+      return {
+        startPoint: { kind: 'reference', fullName: current.fullName },
+        icon: 'branch',
+        label: current.name,
+        detail: shortHash(current.target),
+      };
+    }
+    if (active.head.commit) {
+      return {
+        startPoint: { kind: 'commit', commitId: active.head.commit },
+        icon: 'commit',
+        label: shortHash(active.head.commit),
+        detail: 'Detached HEAD',
+      };
+    }
+    return undefined;
+  }, [active, referenceContext]);
+
+  const headTargetReason = !referencesReady
+    ? referenceLoading
+    : headTarget
+      ? undefined
+      : 'This repository has no commit to start from yet.';
+
+  const historyReferences = useMemo<HistoryReferenceCommands>(
+    () => ({
+      ready: referencesReady,
+      newBranch: (commit) => openReferenceDialog({ kind: 'new-branch', target: commitTarget(commit) }),
+      newTag: (commit) => openReferenceDialog({ kind: 'new-tag', target: commitTarget(commit) }),
+      checkoutCommit: (commit) =>
+        openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
+    }),
+    [commitTarget, openReferenceDialog, referencesReady],
+  );
+
+  const newReferenceItems = (
+    target: ReferenceTarget | undefined,
+    reason: string | undefined,
+  ): MenuEntry[] => [
+    {
+      id: 'new-branch',
+      label: 'New Branch…',
+      shortcut: 'Mod+Shift+B',
+      disabled: reason !== undefined || referenceBusy,
+      disabledReason: reason,
+      run: () => {
+        if (target) openReferenceDialog({ kind: 'new-branch', target });
+      },
+    },
+    {
+      id: 'new-tag',
+      label: 'New Tag…',
+      disabled: reason !== undefined || referenceBusy,
+      disabledReason: reason,
+      run: () => {
+        if (target) openReferenceDialog({ kind: 'new-tag', target });
+      },
+    },
+  ];
+
+  const checkoutItems: MenuEntry[] = (referenceContext?.branches ?? []).slice(0, 30).map((branch) => ({
+    id: `checkout-${branch.fullName}`,
+    label: branch.name,
+    checkable: 'radio',
+    checked: branch.isHead,
+    disabled: branch.isHead || branch.worktreePath !== null || referenceBusy,
+    disabledReason: branch.worktreePath
+      ? `'${branch.name}' is checked out in the worktree at ${branch.worktreePath}.`
+      : branch.isHead
+        ? 'This branch is already checked out.'
+        : undefined,
+    run: () => runReferenceAction({ kind: 'checkout-branch', fullName: branch.fullName }),
+  }));
+
+  const branchMenuItems: MenuEntry[] = compactMenu([
+    ...newReferenceItems(headTarget, headTargetReason),
+    menuSeparator,
+    {
+      id: 'checkout-branch',
+      label: 'Checkout',
+      disabled: checkoutItems.length === 0,
+      disabledReason: referencesReady ? 'This repository has no branches yet.' : referenceLoading,
+      submenu: checkoutItems,
+    },
+  ]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      // A modal dialog owns the keyboard while it is open, including its own Escape handling.
+      if (aboutOpen || referenceDialog) return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
       else if (is('Mod+O')) {
@@ -218,6 +400,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       } else if (is('Mod+W')) closeActiveTab();
       else if (is('Mod+Shift+T')) {
         if (!repositoryBusy) void reopenClosed();
+      } else if (is('Mod+Shift+B')) {
+        if (headTarget) openReferenceDialog({ kind: 'new-branch', target: headTarget });
       } else if (is('Ctrl+Tab')) cycleTab(1);
       else if (is('Ctrl+Shift+Tab')) cycleTab(-1);
       else if (is('F5')) refresh();
@@ -240,13 +424,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
+    aboutOpen,
     closeActiveTab,
     cycleTab,
     development,
+    headTarget,
     nativeMenu,
     openExisting,
     openManagerTab,
+    openReferenceDialog,
     platform,
+    referenceDialog,
     refresh,
     reopenClosed,
     repositoryBusy,
@@ -434,8 +622,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               { id: 'push', label: 'Push…', ...planned('Pushing', 'P05') },
               { id: 'save-stash', label: 'Save Stash…', ...planned('Stashing', 'P06') },
               menuSeparator,
-              { id: 'create-branch', label: 'Create New Branch…', ...planned('Creating branches', 'P05') },
-              { id: 'create-tag', label: 'Create New Tag…', ...planned('Creating tags', 'P05') },
+              ...newReferenceItems(headTarget, headTargetReason),
               menuSeparator,
               {
                 id: 'open-in-file-manager',
@@ -544,6 +731,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
     const current = references.find((candidate) => candidate.isHead && candidate.kind === 'branch');
     const loaded = history.commits.some((commit) => commit.id === reference.target);
+    const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
+    const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
+    const target = referenceTarget(reference);
+    const worktreeReason = branch?.worktreePath
+      ? `'${reference.name}' is checked out in the worktree at ${branch.worktreePath}.`
+      : undefined;
+    const branchReason = branch ? worktreeReason : referencesReady ? undefined : referenceLoading;
     const filterHistory: MenuEntry = {
       id: 'filter-history',
       label: `Filter History to '${reference.name}'`,
@@ -566,9 +760,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           {
             id: 'checkout',
             label: `Checkout '${reference.name}'`,
-            ...(reference.isHead
-              ? { disabled: true, disabledReason: 'This branch is already checked out.' }
-              : planned('Checking out branches', 'P05')),
+            disabled: reference.isHead || branchReason !== undefined || referenceBusy,
+            disabledReason: reference.isHead ? 'This branch is already checked out.' : branchReason,
+            run: () => runReferenceAction({ kind: 'checkout-branch', fullName: reference.fullName }),
           },
           menuSeparator,
           current &&
@@ -587,14 +781,66 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           {
             id: 'new-branch',
             label: `New Branch from '${reference.name}'…`,
-            ...planned('Creating branches', 'P05'),
+            shortcut: 'Mod+Shift+B',
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'new-branch', target }),
           },
-          { id: 'rename', label: `Rename '${reference.name}'…`, ...planned('Renaming branches', 'P05') },
+          {
+            id: 'new-tag',
+            label: `New Tag at '${reference.name}'…`,
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'new-tag', target }),
+          },
+          menuSeparator,
+          {
+            id: 'tracking',
+            label: 'Tracking',
+            disabled: !branch || referenceBusy,
+            disabledReason: branch ? undefined : referenceLoading,
+            submenu: compactMenu([
+              {
+                id: 'set-upstream',
+                label: 'Set Upstream…',
+                run: () => {
+                  if (branch) openReferenceDialog({ kind: 'set-upstream', branch });
+                },
+              },
+              {
+                id: 'unset-upstream',
+                label: 'Stop Tracking',
+                disabled: !branch?.upstream,
+                disabledReason: 'This branch does not track another branch.',
+                run: () =>
+                  runReferenceAction({
+                    kind: 'set-upstream',
+                    fullName: reference.fullName,
+                    upstream: null,
+                  }),
+              },
+            ]),
+          },
+          {
+            id: 'rename',
+            label: `Rename '${reference.name}'…`,
+            disabled: !branch || branchReason !== undefined || referenceBusy,
+            disabledReason: branchReason ?? (branch ? undefined : referenceLoading),
+            run: () => {
+              if (branch) openReferenceDialog({ kind: 'rename-branch', branch });
+            },
+          },
           {
             id: 'delete',
             label: `Delete '${reference.name}'…`,
             danger: true,
-            ...planned('Deleting branches', 'P05'),
+            disabled: !branch || reference.isHead || branchReason !== undefined || referenceBusy,
+            disabledReason: reference.isHead
+              ? 'Check out another branch before deleting this one.'
+              : (branchReason ?? (branch ? undefined : referenceLoading)),
+            run: () => {
+              if (branch) openReferenceDialog({ kind: 'delete-branch', branch });
+            },
           },
           menuSeparator,
           filterHistory,
@@ -608,13 +854,31 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           {
             id: 'checkout',
             label: `Checkout '${reference.name}'…`,
-            ...planned('Checking out branches', 'P05'),
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'checkout-remote-branch', target }),
+          },
+          menuSeparator,
+          {
+            id: 'new-branch',
+            label: `New Branch from '${reference.name}'…`,
+            shortcut: 'Mod+Shift+B',
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'new-branch', target }),
+          },
+          {
+            id: 'new-tag',
+            label: `New Tag at '${reference.name}'…`,
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'new-tag', target }),
           },
           {
             id: 'delete',
             label: `Delete '${reference.name}'…`,
             danger: true,
-            ...planned('Deleting remote branches', 'P05'),
+            ...planned('Deleting a branch on a remote', 'P05'),
           },
           menuSeparator,
           filterHistory,
@@ -625,12 +889,40 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         break;
       case 'tag':
         items = [
-          { id: 'checkout', label: `Checkout '${reference.name}'…`, ...planned('Checking out tags', 'P05') },
+          {
+            id: 'checkout',
+            label: `Checkout '${reference.name}'…`,
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () =>
+              openReferenceDialog({
+                kind: 'checkout-detached',
+                target: {
+                  startPoint: { kind: 'commit', commitId: reference.target },
+                  icon: 'tag',
+                  label: reference.name,
+                  detail: shortHash(reference.target),
+                },
+              }),
+          },
+          menuSeparator,
+          {
+            id: 'new-branch',
+            label: `New Branch from '${reference.name}'…`,
+            shortcut: 'Mod+Shift+B',
+            disabled: !referencesReady || referenceBusy,
+            disabledReason: referencesReady ? undefined : referenceLoading,
+            run: () => openReferenceDialog({ kind: 'new-branch', target }),
+          },
           {
             id: 'delete',
             label: `Delete '${reference.name}'…`,
             danger: true,
-            ...planned('Deleting tags', 'P05'),
+            disabled: !tag || referenceBusy,
+            disabledReason: tag ? undefined : referenceLoading,
+            run: () => {
+              if (tag) openReferenceDialog({ kind: 'delete-tag', tag });
+            },
           },
           menuSeparator,
           filterHistory,
@@ -692,6 +984,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       <Toolbar
         repository={active}
         tracking={active ? history.tracking : undefined}
+        branchItems={branchMenuItems}
+        branchDisabledReason={active?.bare ? 'A bare repository has no working tree.' : undefined}
         openInItems={openInItems}
         appearanceItems={appearanceItems}
       />
@@ -753,12 +1047,27 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   onCommitted={refresh}
                 />
               ) : (
-                <HistoryView history={history} />
+                <HistoryView history={history} references={historyReferences} />
               )}
             </main>
           </div>
         )}
       </div>
+      {referenceStatus && (
+        <div
+          className={referenceStatus.blocked ? 'reference-status blocked' : 'reference-status'}
+          role="status"
+          data-testid="reference-status"
+        >
+          <span className="reference-status-message">
+            {referenceStatus.blocked ? <WarningIcon size={14} /> : <CheckIcon size={14} />}
+            <span>{referenceStatus.message}</span>
+          </span>
+          <button type="button" className="link-button" onClick={() => setReferenceStatus(undefined)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
@@ -775,6 +1084,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         </div>
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
+      {referenceDialog && (
+        <ReferenceDialog
+          request={referenceDialog}
+          context={referenceContext}
+          platform={platform}
+          busy={referenceBusy}
+          failure={referenceFailure}
+          onSubmit={runReferenceAction}
+          onClose={closeReferenceDialog}
+        />
+      )}
     </div>
   );
 }

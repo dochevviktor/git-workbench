@@ -194,3 +194,39 @@ export function referenceSections(
     counts,
   };
 }
+
+/**
+ * Mirrors the parts of Git's `check-ref-format` that a field can check while it is being typed, so
+ * the dialog can explain a name before the request is made. The main process still asks Git itself,
+ * which stays authoritative for platform rules this cannot see.
+ */
+export function referenceNameProblem(name: string, kind: 'branch' | 'tag'): string | null {
+  const subject = kind === 'branch' ? 'A branch name' : 'A tag name';
+  if (name.length === 0) return null;
+  if (name.startsWith('-')) return `${subject} cannot begin with a dash.`;
+  if (/[\s~^:?*[\\]/u.test(name)) {
+    return `${subject} cannot contain spaces or the characters ~ ^ : ? * [ \\.`;
+  }
+  // eslint-disable-next-line no-control-regex -- control characters are detected, not interpreted.
+  if (/[\u0000-\u001F\u007F]/u.test(name)) return `${subject} cannot contain control characters.`;
+  if (name.includes('..')) return `${subject} cannot contain two consecutive dots.`;
+  if (name.includes('@{')) return `${subject} cannot contain "@{".`;
+  if (name === '@') return `${subject} cannot be a single "@".`;
+  if (name.startsWith('/') || name.endsWith('/') || name.includes('//')) {
+    return `${subject} cannot begin or end with "/" or contain an empty segment.`;
+  }
+  if (name.endsWith('.')) return `${subject} cannot end with a dot.`;
+  if (name.split('/').some((segment) => segment.startsWith('.') || segment.endsWith('.lock'))) {
+    return `${subject} cannot have a part that begins with a dot or ends with ".lock".`;
+  }
+  return null;
+}
+
+/** Suggests the local branch name for a remote-tracking branch, as `origin/topic` becomes `topic`. */
+export function localBranchNameFor(remoteBranch: string, remotes: readonly string[]): string {
+  for (const remote of remotes) {
+    if (remoteBranch.startsWith(`${remote}/`)) return remoteBranch.slice(remote.length + 1);
+  }
+  const separator = remoteBranch.indexOf('/');
+  return separator > 0 ? remoteBranch.slice(separator + 1) : remoteBranch;
+}

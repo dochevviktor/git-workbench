@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P04 — whole-file discard with an exact preview, then conflict-aware staging.**
+**Next implementation request: Continue P05 — remote management, then fetch/push with progress and credentials.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -20,7 +20,7 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Planned                                                                                                            | P04        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12 branch/tag/checkout slice (2026-09-19)                                                                | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
@@ -432,6 +432,43 @@ Acceptance:
 - Progress and output are redacted. Force push requires an explicit user action and never silently
   falls back from a rejected ordinary push.
 
+Electron test hosting (2026-09-19): `npm run test:e2e` now launches Electron on Ozone's `headless`
+platform and removes `DISPLAY` and `WAYLAND_DISPLAY` from the child environment, so the suite needs no
+display server, no Xvfb, and never opens a window on the desktop running it. Setting
+`ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` still puts the same test on a real display for
+watching it. This changes only how the test is hosted, not what it checks.
+
+Started F12 branch/tag slice (2026-09-19): add validated `repository:get-reference-context` and
+`repository:apply-reference-action` capabilities. The context read returns the local branches with their
+upstream, a stale-upstream flag, the linked worktree that has each branch checked out, and whether each
+tip is merged into HEAD; the tags with their peeled commit and whether they are annotated; the remote
+names and remote-tracking branch names; the working-tree, conflict, and pending-sequencer state; and a
+compare-and-swap token over HEAD, the local branches, and the tags. Remote-tracking refs are deliberately
+outside that token, so a future background fetch cannot invalidate a dialog the user is still filling in.
+The action capability takes exactly one named action — create, rename, or delete a branch, set or unset an
+upstream, check out a branch, a remote branch, or a commit, and create or delete a tag — re-reads the
+context inside the per-repository mutation queue, refuses a stale token, and runs one Git invocation with
+backend-built arguments. A start point is either a commit this window already saw or a reference the same
+read reported, so revision syntax such as `HEAD@{1}` never reaches Git; names are bounded by the shared
+schema and then validated by Git's own `check-ref-format`. Refusals come back as structured results
+naming the exact obstacle — a name already in use, an unmerged branch, a branch another worktree has
+checked out, the current branch, local changes a checkout would overwrite with the paths Git listed, a
+running merge or rebase, or a missing tagger identity — and only an unmerged deletion offers an explicit
+force. The renderer adds Fork-style Create Branch, Create Tag, Rename, Tracking, Delete, remote-checkout,
+and detached-checkout dialogs with live name validation, a toolbar Branch menu with a checkout submenu,
+real branch/remote/tag/commit context-menu commands, a Ctrl/⌘+Shift+B shortcut, a status strip that
+reports what changed or why it did not, and a "gone" marker on branches whose upstream no longer exists.
+Disposable Git tests cover the context lists, a deleted upstream, a linked-worktree checkout, branch
+creation with and without checkout and tracking, rename, merged and unmerged deletion, current-branch and
+worktree refusals, upstream set/unset, branch/commit/remote checkout, a checkout Git refuses because of
+local changes, a checkout refused during a merge, lightweight and annotated tags, duplicate names,
+invalid names, an unknown start point, and a stale token; the preload contract, the repository service,
+and an Electron flow that creates, checks out, tags, and deletes through the real UI are covered as well.
+Deleting a branch on a remote, pushing a tag from the create dialog, multiple-reference selection and
+deletion, branch folders and moving, pinning, sorting, hiding, "Select Stale Local Branches", checkout as
+a worktree, branch-folder autocomplete, and Fork's F2 and ⌘B shortcuts are not implemented, so F12 and
+P05 remain partial.
+
 ## P06 — Merge, conflicts, stashes, and recovery
 
 Coverage: F13 completion, F15–F17, F19. Daily-use checkpoint after this phase.
@@ -598,7 +635,7 @@ Acceptance:
 
 ## Test data and evidence strategy
 
-Maintain a TypeScript fixture catalog, introduced in P01 and expanded by phase:
+Maintain a TypeScript fixture catalog, introduced in P01 and expanded by phase: 
 
 | Fixture family    | Essential cases                                                                                     |
 | ----------------- | --------------------------------------------------------------------------------------------------- |
@@ -616,6 +653,8 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue P04 from docs/implementation-plan.md. Add whole-file and multi-file discard with an exact
-> preview, confirmation, and recoverable backups, then decide the conflict-aware staging and commit
-> policy. Keep the commit composer's drafts and snapshot guard intact.
+> Continue P05 from docs/implementation-plan.md. Add remote URL and name management with validation,
+> then credential-helper and SSH-agent integration and fetch/push with progress, cancellation, and clear
+> authentication errors. Keep the F12 reference token and its structured refusals intact. P04's
+> whole-file and multi-file discard with an exact preview, confirmation, and recoverable backups is
+> still open and can be taken first.

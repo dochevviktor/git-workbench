@@ -10,7 +10,12 @@ import {
   selectKeys,
 } from '../../src/frontend/react/lib/list-selection';
 import { ariaShortcut, formatShortcut, matchesShortcut } from '../../src/frontend/react/lib/platform';
-import { referenceChips, referenceSections } from '../../src/frontend/react/lib/references';
+import {
+  localBranchNameFor,
+  referenceChips,
+  referenceNameProblem,
+  referenceSections,
+} from '../../src/frontend/react/lib/references';
 import type { ReferenceTreeNode } from '../../src/frontend/react/lib/references';
 
 const target = 'a'.repeat(40);
@@ -30,6 +35,7 @@ function reference(
     target,
     isHead: false,
     upstream: null,
+    upstreamGone: false,
     ahead: null,
     behind: null,
     ...extra,
@@ -325,5 +331,49 @@ describe('list selection', () => {
       activeKey: 'staged:two',
       anchorKey: 'staged:two',
     });
+  });
+});
+
+describe('reference name validation', () => {
+  it('accepts the names Git accepts', () => {
+    for (const name of ['topic', 'feature/login', 'release/v1.0-rc1', 'user.name/fix']) {
+      expect(referenceNameProblem(name, 'branch')).toBeNull();
+    }
+  });
+
+  it('explains the names Git rejects', () => {
+    const rejected = [
+      '-force',
+      'with space',
+      'two..dots',
+      'caret^',
+      'tilde~1',
+      'colon:name',
+      'question?',
+      'star*',
+      'bracket[',
+      'back\\slash',
+      'at@{one}',
+      '@',
+      '/leading',
+      'trailing/',
+      'double//slash',
+      'ends.',
+      '.hidden/name',
+      'name.lock',
+    ];
+    for (const name of rejected) {
+      expect(referenceNameProblem(name, 'branch'), name).not.toBeNull();
+    }
+    expect(referenceNameProblem('', 'branch')).toBeNull();
+    expect(referenceNameProblem('with space', 'tag')).toContain('A tag name');
+  });
+
+  it('suggests the local name for a remote-tracking branch', () => {
+    expect(localBranchNameFor('origin/topic', ['origin'])).toBe('topic');
+    expect(localBranchNameFor('origin/feature/login', ['origin'])).toBe('feature/login');
+    // A remote whose name contains a slash is matched before the first separator is used.
+    expect(localBranchNameFor('my/remote/topic', ['my/remote'])).toBe('topic');
+    expect(localBranchNameFor('unknown/topic', [])).toBe('topic');
   });
 });

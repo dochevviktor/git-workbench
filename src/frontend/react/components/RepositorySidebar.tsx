@@ -40,7 +40,14 @@ interface RepositorySidebarProps {
 
 const collapsedByDefault = new Set(['section:tags', 'section:stashes']);
 
-function trackingText(reference: RepositoryHistoryReference): string | null {
+function trackingText(reference: RepositoryHistoryReference): ReactNode {
+  if (reference.upstreamGone) {
+    return (
+      <span className="reference-gone" title={`The upstream branch ${reference.upstream} no longer exists.`}>
+        gone
+      </span>
+    );
+  }
   if (reference.ahead === null || reference.behind === null) return null;
   const parts = [];
   if (reference.ahead > 0) parts.push(`${reference.ahead}↑`);

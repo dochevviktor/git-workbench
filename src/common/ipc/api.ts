@@ -20,6 +20,10 @@ import type {
   RepositoryLocation,
   RepositoryManagerSnapshot,
   RepositoryOpenRequest,
+  RepositoryReferenceActionRequest,
+  RepositoryReferenceActionResult,
+  RepositoryReferenceContext,
+  RepositoryReferenceContextRequest,
   RepositorySession,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
@@ -83,6 +87,12 @@ export interface DesktopApi {
     getCommitContext(request: RepositoryCommitContextRequest): Promise<IpcResult<RepositoryCommitContext>>;
     commit(request: RepositoryCommitRequest): Promise<IpcResult<RepositoryCommitResult>>;
     getAmendChanges(request: RepositoryAmendChangesRequest): Promise<IpcResult<RepositoryAmendChanges>>;
+    getReferenceContext(
+      request: RepositoryReferenceContextRequest,
+    ): Promise<IpcResult<RepositoryReferenceContext>>;
+    applyReferenceAction(
+      request: RepositoryReferenceActionRequest,
+    ): Promise<IpcResult<RepositoryReferenceActionResult>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

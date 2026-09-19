@@ -179,6 +179,9 @@ function createReferences(
   peeledTargets: ReadonlyMap<string, string>,
   head: RepositoryHead,
 ): RepositoryHistoryReference[] {
+  // An upstream that no reference resolves to is gone, which marks the branch as stale. Asking
+  // `for-each-ref` for `%(upstream:track)` instead would walk history for every branch.
+  const existingRefNames = new Set(rawReferences.map((reference) => reference.fullName));
   const references = rawReferences.map(
     (reference) =>
       ({
@@ -190,6 +193,8 @@ function createReferences(
           reference.isHead ||
           (head.state === 'branch' && head.name !== null && reference.fullName === `refs/heads/${head.name}`),
         upstream: reference.upstream,
+        upstreamGone:
+          reference.upstreamFullName !== null && !existingRefNames.has(reference.upstreamFullName),
         ahead: null,
         behind: null,
       }) satisfies RepositoryHistoryReference,
@@ -207,6 +212,7 @@ function createReferences(
       target: head.commit,
       isHead: true,
       upstream: null,
+      upstreamGone: false,
       ahead: null,
       behind: null,
     });

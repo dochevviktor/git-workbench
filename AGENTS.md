@@ -30,11 +30,13 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
 
 - This host uses `wayland-bridge.service` to forward its display through waypipe with `--no-gpu --xwls`.
   `idea.service` inherits `WAYLAND_DISPLAY=wayland-piped` and forwarded PulseAudio, but not `DISPLAY`.
-- For local Electron tests, read the bridge's X11 display from `$XDG_RUNTIME_DIR/piped-display` for each
-  launch; do not hardcode a display number or execute the file as shell code. Use
-  `DISPLAY="$(< "$XDG_RUNTIME_DIR/piped-display")" ELECTRON_TEST_DISABLE_GPU=1 npm run test:e2e` in Bash.
-  If the shell reports `XDG_SESSION_TYPE=wayland`, also set `ELECTRON_TEST_OZONE_PLATFORM=x11`; otherwise
-  Electron starts on native Wayland, where Playwright startup times out.
+- `npm run test:e2e` is headless by default: it runs Electron on Ozone's `headless` platform, drops
+  `DISPLAY` and `WAYLAND_DISPLAY` from the child environment, and never opens a window on the user's
+  desktop. Use it as is; do not put the test on a real display for routine work.
+- To watch a run, set `ELECTRON_TEST_OZONE_PLATFORM=x11` and read the bridge's X11 display from
+  `$XDG_RUNTIME_DIR/piped-display` for each launch; do not hardcode a display number or execute the file
+  as shell code. Add `ELECTRON_TEST_DISABLE_GPU=1` there, because that display is software rendered.
+  Native Wayland Playwright startup times out on this host.
 - Reuse the bridge rather than starting another X server. Preserve the Wayland/audio environment and
   Electron sandbox; do not change or restart the user's bridge or IDE services for routine testing.
   See `README.md` for the interactive launch command and native Wayland automation caveat.

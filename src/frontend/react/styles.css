@@ -2779,3 +2779,199 @@ p {
   justify-content: flex-end;
   margin-top: 20px;
 }
+
+/* Reference dialogs ---------------------------------------------------------------------------- */
+
+.reference-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.reference-dialog .dialog-content {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 16px;
+}
+
+.reference-dialog-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.reference-dialog-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, var(--window));
+  color: var(--accent);
+}
+
+.reference-dialog-header h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.reference-dialog-header p {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.reference-dialog-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: baseline;
+  margin: 0;
+}
+
+.reference-dialog-fields dt {
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A label beside a multi-line field lines up with the field's first line, not its baseline. */
+.reference-dialog-fields dt.reference-label-top {
+  align-self: start;
+  padding-top: 6px;
+}
+
+.reference-dialog-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.reference-target {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 22px;
+  user-select: text;
+}
+
+.reference-target-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.reference-target-name {
+  font-weight: 600;
+}
+
+.reference-target-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.reference-input:focus-visible {
+  border-color: var(--accent);
+  outline-offset: -1px;
+}
+
+textarea.reference-message {
+  min-height: 72px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.reference-dialog-options {
+  display: grid;
+  gap: 6px;
+}
+
+.reference-checkbox {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  width: fit-content;
+}
+
+.reference-dialog-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reference-dialog-warning {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 20px;
+  margin: 0;
+  color: var(--warning);
+  font-size: 12.5px;
+  user-select: text;
+}
+
+.reference-dialog-warning svg {
+  flex: none;
+}
+
+.reference-dialog .dialog-actions {
+  gap: 8px;
+  margin-top: 0;
+}
+
+.button.primary.danger:not(:disabled, [aria-disabled='true']) {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.button.primary.danger:hover:not(:disabled, [aria-disabled='true']) {
+  background: color-mix(in srgb, var(--danger) 88%, #000000);
+}
+
+/* A branch whose upstream no longer exists is stale; the sidebar says so beside its name. */
+.tree-item .reference-gone {
+  color: var(--warning);
+}
+
+.reference-status {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 35%, var(--window));
+  background: color-mix(in srgb, var(--accent) 9%, var(--window));
+  font-size: 12.5px;
+  user-select: text;
+}
+
+.reference-status.blocked {
+  border-top-color: color-mix(in srgb, var(--danger) 45%, var(--window));
+  background: color-mix(in srgb, var(--danger) 10%, var(--window));
+}
+
+.reference-status-message {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.reference-status-message span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

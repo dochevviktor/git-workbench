@@ -297,6 +297,50 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledTimes(2);
   });
 
+  it('validates and routes reference requests', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'7'.repeat(64)}`;
+    const request = {
+      id: repositoryId,
+      action: {
+        kind: 'create-branch' as const,
+        name: 'topic',
+        startPoint: { kind: 'commit' as const, commitId: 'd'.repeat(40) },
+        checkout: true,
+        tracking: 'auto' as const,
+      },
+      snapshot: 'e'.repeat(64),
+    };
+    const result = {
+      status: 'applied',
+      repositoryId,
+      kind: 'create-branch',
+      message: "Created and checked out 'topic'.",
+      output: '',
+      head: { state: 'branch', name: 'topic', commit: 'd'.repeat(40) },
+    } as const;
+    invoke.mockResolvedValueOnce({ ok: true, value: result });
+    await expect(api.repository.applyReferenceAction(request)).resolves.toEqual({ ok: true, value: result });
+    expect(invoke).toHaveBeenLastCalledWith(requests.applyRepositoryReferenceAction.channel, request);
+
+    // A name that Git would read as an option never crosses IPC.
+    const dashed = await api.repository.applyReferenceAction({
+      ...request,
+      action: { ...request.action, name: '--force' },
+    });
+    expect(dashed).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    const unknownAction = await api.repository.applyReferenceAction({
+      ...request,
+      action: { kind: 'reset-branch', fullName: 'refs/heads/main' },
+    } as never);
+    expect(unknownAction).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+
+    const context = await api.repository.getReferenceContext({ id: 'not-a-repository' } as never);
+    expect(context).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it('uses fixed channels for editing, clipboard, and file-manager requests', async () => {
     const { api, invoke } = fixture();
     await api.edit.command({ action: 'copy' });

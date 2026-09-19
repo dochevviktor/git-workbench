@@ -158,6 +158,15 @@ export function RemoteIcon(props: IconProps) {
   );
 }
 
+export function CommitIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="3.25" />
+      <path d="M1.75 8h3M11.25 8h3" />
+    </Icon>
+  );
+}
+
 export function TagIcon(props: IconProps) {
   return (
     <Icon {...props}>

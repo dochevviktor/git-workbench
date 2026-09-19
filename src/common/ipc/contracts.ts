@@ -233,6 +233,8 @@ export const repositoryHistoryReferenceSchema = z.strictObject({
   target: gitObjectIdSchema,
   isHead: z.boolean(),
   upstream: z.string().max(32_768).nullable(),
+  /** A configured upstream that no longer exists locally, so the branch is stale. */
+  upstreamGone: z.boolean(),
   ahead: z.number().int().nonnegative().max(1_000_000_000).nullable(),
   behind: z.number().int().nonnegative().max(1_000_000_000).nullable(),
 });
@@ -581,6 +583,174 @@ export const repositoryCommitResultSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
+/**
+ * A branch or tag name as the renderer sends it. Git's own `check-ref-format` stays authoritative in
+ * the main process; this only bounds the transport and keeps a name from being read as an option.
+ */
+export const repositoryReferenceNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((value) => !value.startsWith('-'), 'A reference name cannot begin with a dash.')
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F]/u.test(value),
+    'A reference name cannot contain control characters.',
+  );
+
+export const repositoryBranchSchema = z.strictObject({
+  name: z.string().min(1).max(4_096),
+  fullName: z.string().min(1).max(32_768),
+  target: gitObjectIdSchema,
+  isHead: z.boolean(),
+  upstream: z.string().max(32_768).nullable(),
+  /** The configured upstream no longer exists locally, so the branch is stale. */
+  upstreamGone: z.boolean(),
+  /** The linked worktree that has this branch checked out, when it is not the one in this tab. */
+  worktreePath: z.string().max(32_768).nullable(),
+  /** The tip is reachable from HEAD, so deleting the branch loses no commits from it. */
+  merged: z.boolean(),
+});
+
+export const repositoryTagSchema = z.strictObject({
+  name: z.string().min(1).max(4_096),
+  fullName: z.string().min(1).max(32_768),
+  /** The commit the tag resolves to, after peeling an annotated tag object. */
+  target: gitObjectIdSchema,
+  annotated: z.boolean(),
+});
+
+export const repositoryReferenceContextRequestSchema = z.strictObject({ id: repositoryIdSchema });
+
+export const repositoryReferenceContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  head: repositoryHeadSchema,
+  branches: z.array(repositoryBranchSchema).max(10_000),
+  tags: z.array(repositoryTagSchema).max(10_000),
+  remotes: z.array(z.string().min(1).max(4_096)).max(1_000),
+  /** Short remote-tracking branch names, for choosing an upstream. */
+  remoteBranches: z.array(z.string().min(1).max(32_768)).max(5_000),
+  /** Tracked files differ from HEAD or the index, so a checkout may be refused. */
+  dirty: z.boolean(),
+  untrackedCount: z.number().int().nonnegative().max(100_000),
+  conflictedCount: z.number().int().nonnegative().max(100_000),
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  /** A reference list was longer than this read returns, so the lists above are incomplete. */
+  truncated: z.boolean(),
+  /** Compare-and-swap token over HEAD, the local branches, the tags, and the worktree checkouts. */
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+/**
+ * Where a new branch or tag starts. A reference is named rather than resolved in the renderer, so
+ * Git can set up tracking from a remote-tracking branch by itself; the backend accepts only a name
+ * the same read reported, never arbitrary revision syntax.
+ */
+export const repositoryReferenceStartPointSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({ kind: z.literal('reference'), fullName: z.string().min(1).max(32_768) }),
+]);
+
+export const repositoryReferenceTrackingSchema = z.enum(['auto', 'track', 'no-track']);
+
+export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('create-branch'),
+    name: repositoryReferenceNameSchema,
+    startPoint: repositoryReferenceStartPointSchema,
+    checkout: z.boolean(),
+    tracking: repositoryReferenceTrackingSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('rename-branch'),
+    fullName: z.string().min(1).max(32_768),
+    name: repositoryReferenceNameSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('delete-branch'),
+    fullName: z.string().min(1).max(32_768),
+    /** `git branch -D`: set only by a confirmation that names the branch and its unmerged state. */
+    force: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('set-upstream'),
+    fullName: z.string().min(1).max(32_768),
+    /** `null` unsets the upstream. */
+    upstream: z.string().min(1).max(32_768).nullable(),
+  }),
+  z.strictObject({ kind: z.literal('checkout-branch'), fullName: z.string().min(1).max(32_768) }),
+  z.strictObject({
+    kind: z.literal('checkout-remote-branch'),
+    fullName: z.string().min(1).max(32_768),
+    name: repositoryReferenceNameSchema,
+  }),
+  z.strictObject({ kind: z.literal('checkout-commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({
+    kind: z.literal('create-tag'),
+    name: repositoryReferenceNameSchema,
+    startPoint: repositoryReferenceStartPointSchema,
+    /** An empty message creates a lightweight tag; any message creates an annotated one. */
+    message: z.string().max(65_536),
+  }),
+  z.strictObject({ kind: z.literal('delete-tag'), fullName: z.string().min(1).max(32_768) }),
+]);
+
+export const repositoryReferenceActionKindSchema = z.enum([
+  'create-branch',
+  'rename-branch',
+  'delete-branch',
+  'set-upstream',
+  'checkout-branch',
+  'checkout-remote-branch',
+  'checkout-commit',
+  'create-tag',
+  'delete-tag',
+]);
+
+export const repositoryReferenceActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryReferenceActionSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryReferenceFailureReasonSchema = z.enum([
+  'exists',
+  'invalid-name',
+  'not-merged',
+  'local-changes',
+  'checked-out',
+  'not-found',
+  'current-branch',
+  'pending-operation',
+  'identity',
+  'other',
+]);
+
+export const repositoryReferenceActionResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('applied'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryReferenceActionKindSchema,
+    /** A short sentence naming exactly what changed, for the status line. */
+    message: z.string().min(1).max(512),
+    /** Git's own output, kept as bounded inert text. */
+    output: z.string().max(65_536),
+    head: repositoryHeadSchema,
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryReferenceActionKindSchema,
+    reason: repositoryReferenceFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    /** The same action would succeed with an explicit force, which the user must choose. */
+    canForce: z.boolean(),
+    /** Working-tree paths Git named as the obstacle, so the message can be exact. */
+    paths: z.array(z.string().min(1).max(32_768)).max(200),
+  }),
+]);
+
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
@@ -712,6 +882,16 @@ export const requests = {
     repositoryAmendChangesRequestSchema,
     repositoryAmendChangesSchema,
   ),
+  getRepositoryReferenceContext: request(
+    'repository:get-reference-context',
+    repositoryReferenceContextRequestSchema,
+    repositoryReferenceContextSchema,
+  ),
+  applyRepositoryReferenceAction: request(
+    'repository:apply-reference-action',
+    repositoryReferenceActionRequestSchema,
+    repositoryReferenceActionResultSchema,
+  ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
     repositoryRevisionTreeRequestSchema,
@@ -794,6 +974,17 @@ export type RepositoryAmendChanges = z.infer<typeof repositoryAmendChangesSchema
 export type RepositoryCommitRequest = z.infer<typeof repositoryCommitRequestSchema>;
 export type RepositoryCommitFailureReason = z.infer<typeof repositoryCommitFailureReasonSchema>;
 export type RepositoryCommitResult = z.infer<typeof repositoryCommitResultSchema>;
+export type RepositoryBranch = z.infer<typeof repositoryBranchSchema>;
+export type RepositoryTag = z.infer<typeof repositoryTagSchema>;
+export type RepositoryReferenceContextRequest = z.infer<typeof repositoryReferenceContextRequestSchema>;
+export type RepositoryReferenceContext = z.infer<typeof repositoryReferenceContextSchema>;
+export type RepositoryReferenceStartPoint = z.infer<typeof repositoryReferenceStartPointSchema>;
+export type RepositoryReferenceTracking = z.infer<typeof repositoryReferenceTrackingSchema>;
+export type RepositoryReferenceAction = z.infer<typeof repositoryReferenceActionSchema>;
+export type RepositoryReferenceActionKind = z.infer<typeof repositoryReferenceActionKindSchema>;
+export type RepositoryReferenceActionRequest = z.infer<typeof repositoryReferenceActionRequestSchema>;
+export type RepositoryReferenceFailureReason = z.infer<typeof repositoryReferenceFailureReasonSchema>;
+export type RepositoryReferenceActionResult = z.infer<typeof repositoryReferenceActionResultSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;
 export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeEntrySchema>;
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;

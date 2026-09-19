@@ -13,6 +13,26 @@ async function commitFile(git: GitRunner, repository: string, file: string, mess
   await git.run([...author, 'commit', '--quiet', '-m', message], { cwd: repository });
 }
 
+/**
+ * The Electron test runs on Ozone's headless platform by default: it needs no display server and never
+ * opens a window on the desktop running it. Set `ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` to
+ * watch it on a real display, and `ELECTRON_TEST_DISABLE_GPU=1` there when that display is software
+ * rendered.
+ */
+const ozonePlatform = process.env.ELECTRON_TEST_OZONE_PLATFORM || 'headless';
+const headless = ozonePlatform === 'headless';
+
+function launchEnvironment(): Record<string, string> {
+  // Without a display in the environment, no fallback can put a window on a real screen.
+  const withheld = headless ? ['DISPLAY', 'WAYLAND_DISPLAY'] : [];
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !withheld.includes(key)) environment[key] = value;
+  }
+  environment.ELECTRON_RENDERER_URL = '';
+  return environment;
+}
+
 async function waitForDesktop(page: Page) {
   await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
 }
@@ -44,12 +64,10 @@ test('production build loads its isolated preload and renderer', async () => {
       args: [
         ...(executablePath ? [] : ['.']),
         `--user-data-dir=${profile}`,
-        ...(process.env.ELECTRON_TEST_OZONE_PLATFORM
-          ? [`--ozone-platform=${process.env.ELECTRON_TEST_OZONE_PLATFORM}`]
-          : []),
-        ...(process.env.ELECTRON_TEST_DISABLE_GPU === '1' ? ['--disable-gpu'] : []),
+        `--ozone-platform=${ozonePlatform}`,
+        ...(headless || process.env.ELECTRON_TEST_DISABLE_GPU === '1' ? ['--disable-gpu'] : []),
       ],
-      env: { ...process.env, ELECTRON_RENDERER_URL: '' },
+      env: launchEnvironment(),
     });
 
     const page = await application.firstWindow();
@@ -246,7 +264,12 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByTestId('history-commit').first().click({ button: 'right' });
     const commitMenu = page.getByRole('menu', { name: /^Commit / });
     await expect(commitMenu).toBeVisible();
-    await expect(commitMenu.getByRole('menuitem', { name: 'Checkout Commit…' })).toHaveAttribute(
+    // F12 enables the branch, tag, and checkout entries; later phases stay disabled with their reason.
+    await expect(commitMenu.getByRole('menuitem', { name: 'Checkout Commit…' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await expect(commitMenu.getByRole('menuitem', { name: 'Cherry-pick Commit…' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -527,6 +550,107 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(composer.getByTestId('commit-subject')).toHaveValue('Blocked by the hook');
     await composer.getByTestId('commit-subject').fill('');
     await page.screenshot({ path: 'test-results/f11-commit.png' });
+
+    // F12: branches and tags are created, checked out, and deleted through the validated capability.
+    await page.getByRole('button', { name: 'All Commits' }).click();
+    await expect(page.getByTestId('history-commit').first()).toBeVisible();
+    const referenceTree = page.getByRole('tree', { name: 'References' });
+    const referenceDialog = page.getByTestId('reference-dialog');
+    const branchNames = async () =>
+      (
+        await fixtureGit.run(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], {
+          cwd: fixtureRepository,
+        })
+      ).stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const currentBranch = async () =>
+      (await fixtureGit.run(['symbolic-ref', '--short', 'HEAD'], { cwd: fixtureRepository })).stdout.trim();
+
+    await page.getByRole('button', { name: 'Branch', exact: true }).click();
+    await page.getByRole('menu', { name: 'Branch' }).getByRole('menuitem', { name: 'New Branch…' }).click();
+    await expect(referenceDialog).toBeVisible();
+    await referenceDialog.getByTestId('reference-name').fill('e2e-branch');
+    await referenceDialog.getByTestId('reference-dialog-submit').click();
+    await expect(referenceDialog).toHaveCount(0);
+    await expect.poll(currentBranch).toBe('e2e-branch');
+    await expect(page.getByTestId('reference-status')).toContainText("Created and checked out 'e2e-branch'.");
+
+    // A name already in use is explained in the dialog, and the create button stays unavailable.
+    await page.getByRole('button', { name: 'Branch', exact: true }).click();
+    await page.getByRole('menu', { name: 'Branch' }).getByRole('menuitem', { name: 'New Branch…' }).click();
+    await referenceDialog.getByTestId('reference-name').fill('e2e-branch');
+    await expect(page.getByTestId('reference-dialog-warning')).toContainText(
+      "Branch 'e2e-branch' already exists",
+    );
+    await expect(referenceDialog.getByTestId('reference-dialog-submit')).toBeDisabled();
+    await page.screenshot({ path: 'test-results/f12-new-branch-dialog.png' });
+    await referenceDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(referenceDialog).toHaveCount(0);
+    expect(await branchNames()).not.toContain('e2e-branch-duplicate');
+
+    // A tag comes from the commit menu; a message makes it an annotated tag object.
+    await page.getByTestId('history-commit').first().click({ button: 'right' });
+    await page
+      .getByRole('menu', { name: /^Commit / })
+      .getByRole('menuitem', { name: 'New Tag…' })
+      .click();
+    await expect(referenceDialog).toBeVisible();
+    await referenceDialog.getByTestId('reference-name').fill('v1.0-e2e');
+    await referenceDialog.getByTestId('reference-message').fill('Tagged by the end-to-end test');
+    await referenceDialog.getByTestId('reference-dialog-submit').click();
+    await expect(referenceDialog).toHaveCount(0);
+    await expect
+      .poll(async () => (await fixtureGit.run(['tag', '--list'], { cwd: fixtureRepository })).stdout.trim())
+      .toBe('v1.0-e2e');
+    expect(
+      (
+        await fixtureGit.run(['cat-file', '-t', 'refs/tags/v1.0-e2e'], { cwd: fixtureRepository })
+      ).stdout.trim(),
+    ).toBe('tag');
+    // Tags start collapsed, and the section only becomes expandable once the new tag has loaded, so
+    // retry the toggle instead of assuming one click lands after the refresh.
+    const tagItem = referenceTree.getByRole('treeitem', { name: 'v1.0-e2e', exact: true });
+    await expect(async () => {
+      if ((await tagItem.count()) === 0) {
+        await referenceTree.getByRole('treeitem', { name: 'Tags', exact: true }).click();
+      }
+      await expect(tagItem).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.screenshot({ path: 'test-results/f12-branches.png' });
+
+    // The sidebar checks the previous branch out again; the branch already on HEAD cannot be checked out.
+    await referenceTree.getByRole('treeitem', { name: 'e2e-branch', exact: true }).click({ button: 'right' });
+    await expect(
+      page.getByRole('menu', { name: 'e2e-branch' }).getByRole('menuitem', { name: /^Checkout /u }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    await referenceTree.getByRole('treeitem', { name: mainBranch, exact: true }).click({ button: 'right' });
+    await page
+      .getByRole('menu', { name: mainBranch })
+      .getByRole('menuitem', { name: `Checkout '${mainBranch}'`, exact: true })
+      .click();
+    await expect.poll(currentBranch).toBe(mainBranch);
+    // Wait for the sidebar to agree before opening the menu: its entries read the loaded references.
+    await expect(referenceTree.getByRole('treeitem', { name: mainBranch, exact: true })).toHaveClass(
+      /current/u,
+    );
+
+    // Deleting the merged branch removes only that reference.
+    await referenceTree.getByRole('treeitem', { name: 'e2e-branch', exact: true }).click({ button: 'right' });
+    await page
+      .getByRole('menu', { name: 'e2e-branch' })
+      .getByRole('menuitem', { name: "Delete 'e2e-branch'…", exact: true })
+      .click();
+    await expect(referenceDialog).toBeVisible();
+    await referenceDialog.getByTestId('reference-dialog-submit').click();
+    await expect(referenceDialog).toHaveCount(0);
+    await expect.poll(branchNames).not.toContain('e2e-branch');
+    expect(await branchNames()).toContain(mainBranch);
+    await expect(page.getByTestId('reference-status')).toContainText("Deleted branch 'e2e-branch'.");
+    await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await expect(page.getByTestId('reference-status')).toHaveCount(0);
 
     const secondInitialized = await page.evaluate(async (path) => {
       if (!window.desktop) throw new Error('Desktop API missing');

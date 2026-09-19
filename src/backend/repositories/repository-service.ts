@@ -21,6 +21,9 @@ import type {
   RepositoryManagerSnapshot,
   RepositoryManagerSourceDirectory,
   RepositoryManagerWarning,
+  RepositoryReferenceActionRequest,
+  RepositoryReferenceActionResult,
+  RepositoryReferenceContext,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
@@ -65,6 +68,7 @@ import {
   StaleCommitSnapshotError,
 } from './commit-service';
 import { readRepositoryDiff } from './diff-service';
+import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 
 const repositoryReadTimeoutMs = 10_000;
@@ -460,6 +464,47 @@ export class RepositoryService {
           throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
         }
         throw this.mapGitFailure(error, 'Git could not complete the commit.');
+      }
+    });
+  }
+
+  async getReferenceContext(ownerId: number, id: string): Promise<RepositoryReferenceContext> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readReferenceContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        worktreePath: summary.worktreePath,
+        head: summary.head,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the branches and tags.');
+    }
+  }
+
+  async applyReferenceAction(
+    ownerId: number,
+    request: RepositoryReferenceActionRequest,
+  ): Promise<RepositoryReferenceActionResult> {
+    const cached = await this.requireWorktree(ownerId, request.id);
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.requireWorktree(ownerId, request.id);
+      try {
+        return await applyReferenceAction(this.runner, {
+          repositoryId: request.id,
+          cwd: summary.worktreePath,
+          gitDir: summary.gitDir,
+          worktreePath: summary.worktreePath,
+          head: summary.head,
+          action: request.action,
+          snapshot: request.snapshot,
+        });
+      } catch (error) {
+        if (error instanceof StaleReferenceSnapshotError) {
+          throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+        }
+        throw this.mapGitFailure(error, 'Git could not update the repository references.');
       }
     });
   }

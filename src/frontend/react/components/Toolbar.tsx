@@ -20,6 +20,8 @@ import type { MenuEntry } from './menu/menu-model';
 interface ToolbarProps {
   readonly repository: RepositorySummary | undefined;
   readonly tracking: RepositoryHistoryTracking | undefined;
+  readonly branchItems: readonly MenuEntry[];
+  readonly branchDisabledReason: string | undefined;
   readonly openInItems: readonly MenuEntry[];
   readonly appearanceItems: readonly MenuEntry[];
 }
@@ -93,7 +95,14 @@ function headDescription(repository: RepositorySummary): string {
 
 const networkPhase = 'P05';
 
-export function Toolbar({ repository, tracking, openInItems, appearanceItems }: ToolbarProps) {
+export function Toolbar({
+  repository,
+  tracking,
+  branchItems,
+  branchDisabledReason,
+  openInItems,
+  appearanceItems,
+}: ToolbarProps) {
   const noRepository = repository ? undefined : 'Open a repository first.';
   const counts = trackingCounts(tracking);
 
@@ -161,10 +170,8 @@ export function Toolbar({ repository, tracking, openInItems, appearanceItems }: 
         <ToolbarButton
           icon={<NewBranchIcon size={18} />}
           label="Branch"
-          disabledReason={
-            noRepository ?? `Creating branches is not available yet (planned for ${networkPhase}).`
-          }
-          menuItems={[]}
+          disabledReason={noRepository ?? branchDisabledReason}
+          menuItems={branchItems}
         />
       </div>
 
