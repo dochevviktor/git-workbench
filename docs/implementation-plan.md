@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P05 — clone and credential prompts.**
+**Next implementation request: Continue P06 — conflict helper and sequencer recovery.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -29,7 +29,7 @@ not completed feature families.
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization + F14 fetch/activity (2026-09-19)                                                   | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; merge/rebase pull and saved-change recovery brought forward (2026-09-19)                                  | P05        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; F15 stash/patch slice plus merge/rebase pull and saved-change recovery brought forward (2026-09-19)       | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P08        |
@@ -540,9 +540,23 @@ bundles and passes three headless scenarios, including a real 16-second checkout
 Git tests use disposable repositories/remotes and compare index, worktree, refs, and sequencer state.
 Light/dark UI captures were compared with the restored Fork references. The synthetic graph projection
 improved from about 694 to 7 ms at 4,001 commits; this does not satisfy P03's real large-history baseline.
-The full conflict editor, general stash management, clone/authentication, the global automatic-fetch
-preference, full hosting accounts, cross-platform runtime behavior, and remaining phase criteria are still unimplemented
-or unverified. The review record documents the exact scope and recovery-copy retention policy.
+The full conflict editor, hunk-level stash selection and patch import, clone/authentication, the global
+automatic-fetch preference, full hosting accounts, cross-platform runtime behavior, and remaining phase
+criteria are still unimplemented or unverified. The review record documents the exact scope and
+recovery-copy retention policy.
+
+Started F15 stash and patch slice (2026-09-19): add stable, bounded stash entries to history and the
+sidebar, named save operations for all changes or selected whole-file paths with explicit untracked-file
+handling, inspect/apply/pop/delete actions, and `--index` staged-state restoration. Re-read the stash
+list inside the common-directory mutation queue, use commit IDs rather than renderer-supplied stash
+expressions, retain a stash when apply/pop fails, and protect Recovery copies from normal deletion.
+Commit, stash, and selected working-tree patch export use a main-process save dialog and bounded backend
+Git reads; working patch requests can carry a local-change snapshot. Disposable repositories verify
+partial selection, history inclusion, staged restoration, failed-pop retention, and patch contents.
+The Electron smoke suite remains green after the new preload capabilities. Hunk/line stash selection,
+patch import/apply, multi-commit patch bundles, and exact current Fork defaults remain unverified; the
+existing background-fetch test can report a cancellation race when its short test interval starts a
+fetch before opt-out, so that unrelated preexisting scheduler issue remains to be isolated.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 
@@ -583,7 +597,7 @@ Acceptance:
 
 ## P08 — Investigation, recovery, and patches
 
-Coverage: F06 expansion, F15 patch export, F20–F21, F26, F36.
+Coverage: F06 expansion, F15 patch import and advanced export, F20–F21, F26, F36.
 
 1. Add author/message/hash/path/content history search, rename-aware file/directory history, selected-code
    history, blame navigation, and historical file retrieval without overwriting the checkout.

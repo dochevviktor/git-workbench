@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type { ChangeStatus } from '../lib/change-status';
 import { buildPathTree, flattenPathTree, splitPath } from '../lib/file-tree';
 import type { SelectionModifiers } from '../lib/list-selection';
@@ -29,6 +29,7 @@ interface FileChangeListProps<Entry extends FileChangeEntry> {
   /** All selected entries when the list allows selecting several; omit for single selection. */
   readonly selectedKeys?: ReadonlySet<string> | undefined;
   readonly onSelect: (entry: Entry, modifiers: SelectionModifiers) => void;
+  readonly onContextMenu?: ((entry: Entry, event: ReactMouseEvent<HTMLElement>) => void) | undefined;
   readonly rowTestId?: string | undefined;
   readonly children?: ReactNode;
 }
@@ -55,6 +56,7 @@ export function FileChangeList<Entry extends FileChangeEntry>({
   selectedKey,
   selectedKeys,
   onSelect,
+  onContextMenu,
   rowTestId,
   children,
 }: FileChangeListProps<Entry>) {
@@ -150,6 +152,10 @@ export function FileChangeList<Entry extends FileChangeEntry>({
             else next.add(item.key);
             return next;
           });
+        }}
+        onContextMenu={(item, event) => {
+          const entry = byKey.get(item.key);
+          if (entry) onContextMenu?.(entry, event);
         }}
       >
         {children}

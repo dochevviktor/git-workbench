@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RepositoryNetworkRequest, RepositoryOperation } from '../../../common/ipc/contracts';
+import type {
+  RepositoryNetworkRequest,
+  RepositoryOperation,
+  RepositoryStashAction,
+} from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import { mergeOperation } from '../lib/operations';
 
@@ -53,6 +57,17 @@ export function useOperations() {
     [],
   );
 
+  const startStash = useCallback(
+    async (repositoryId: string, request: RepositoryStashAction): Promise<RepositoryOperation> => {
+      const api = window.desktop;
+      if (!api) throw new Error('Open this application in Electron to manage saved stashes.');
+      const accepted = unwrapResult(await api.repository.startStashOperation({ id: repositoryId, request }));
+      if (mounted.current) setOperations((current) => mergeOperation(current, accepted));
+      return accepted;
+    },
+    [],
+  );
+
   const cancel = useCallback((operationId: string) => {
     const api = window.desktop;
     if (!api) return;
@@ -71,7 +86,7 @@ export function useOperations() {
 
   const clearError = useCallback(() => setError(undefined), []);
 
-  return { operations, error, start, cancel, clearError };
+  return { operations, error, start, startStash, cancel, clearError };
 }
 
 export function runningOperation(

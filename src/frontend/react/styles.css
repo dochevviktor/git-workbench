@@ -2931,6 +2931,117 @@ textarea.reference-message {
   margin-top: 0;
 }
 
+/* Stash dialogs ------------------------------------------------------------------------------- */
+
+.stash-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.stash-dialog-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.stash-dialog-fields > label:first-child {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.stash-dialog-fields input[type='text'] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.stash-dialog-fields input[type='text']:focus-visible {
+  border-color: var(--accent);
+  outline-offset: -1px;
+}
+
+.stash-path-preview {
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--sidebar-bg);
+  font-size: 12px;
+}
+
+.stash-path-preview strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.stash-path-preview p {
+  margin: 0;
+}
+
+.stash-path-preview ul {
+  max-height: 130px;
+  margin: 0;
+  padding-left: 18px;
+  overflow: auto;
+}
+
+.stash-path-preview li {
+  overflow-wrap: anywhere;
+}
+
+.stash-action-copy {
+  display: grid;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.stash-action-copy p {
+  margin: 0;
+}
+
+.stash-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 0;
+}
+
+.stash-summary dt {
+  color: var(--text-muted);
+}
+
+.stash-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.stash-inspect-dialog {
+  width: min(880px, calc(100vw - 32px));
+}
+
+.stash-patch-preview {
+  max-height: min(60vh, 560px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--input-bg);
+  color: var(--text);
+  font:
+    12px/1.45 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre;
+}
+
 .button.primary.danger:not(:disabled, [aria-disabled='true']) {
   border-color: var(--danger);
   background: var(--danger);

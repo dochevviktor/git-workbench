@@ -27,6 +27,8 @@ interface ToolbarProps {
   readonly tracking: RepositoryHistoryTracking | undefined;
   readonly branchItems: readonly MenuEntry[];
   readonly branchDisabledReason: string | undefined;
+  readonly stashItems: readonly MenuEntry[];
+  readonly stashDisabledReason: string | undefined;
   readonly openInItems: readonly MenuEntry[];
   readonly appearanceItems: readonly MenuEntry[];
   readonly operations: readonly RepositoryOperation[];
@@ -132,6 +134,8 @@ export function Toolbar({
   tracking,
   branchItems,
   branchDisabledReason,
+  stashItems,
+  stashDisabledReason,
   openInItems,
   appearanceItems,
   operations,
@@ -185,8 +189,8 @@ export function Toolbar({
         <ToolbarButton
           icon={<StashIcon size={18} />}
           label="Stash"
-          disabledReason={noRepository ?? 'Stashing is not available yet (planned for P06).'}
-          menuItems={[]}
+          disabledReason={noRepository ?? stashDisabledReason}
+          menuItems={stashItems}
         />
       </div>
 

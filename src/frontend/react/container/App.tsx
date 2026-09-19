@@ -9,6 +9,9 @@ import type {
   RepositoryReferenceAction,
   RepositoryRemoteAction,
   RepositoryLocalChangesPreview,
+  RepositoryPatchTarget,
+  RepositoryStashAction,
+  RepositoryStashEntry,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { ChangesView } from '../components/ChangesView';
@@ -19,6 +22,8 @@ import { NetworkDialog } from '../components/NetworkDialogs';
 import type { NetworkDialogRequest } from '../components/NetworkDialogs';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { RecoveryPanel } from '../components/RecoveryPanel';
+import { StashDialogs } from '../components/StashDialogs';
+import type { StashDialogRequest } from '../components/StashDialogs';
 import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
 import { RepositorySidebar } from '../components/RepositorySidebar';
@@ -39,6 +44,7 @@ import { runningOperation, useOperations } from '../hooks/use-operations';
 import { useReferences } from '../hooks/use-references';
 import { useRepositories } from '../hooks/use-repositories';
 import { useRepositoryHistory } from '../hooks/use-repository-history';
+import { useRepositoryStashes } from '../hooks/use-repository-stashes';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
@@ -121,6 +127,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const stashes = useRepositoryStashes(lastActive?.id, refreshSignal);
   const activeRepositoryId = useRef(active?.id);
   activeRepositoryId.current = active?.id;
   const repositoryRevision = `${lastActive?.head.name ?? ''}:${lastActive?.head.commit ?? ''}:${lastActive?.referenceVersion ?? ''}`;
@@ -143,6 +150,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     operations,
     error: operationError,
     start: startOperation,
+    startStash: startStashOperation,
     cancel: cancelOperation,
   } = useOperations();
   const referenceBusy = referenceRequestBusy || runningOperation(operations, active?.id) !== undefined;
@@ -159,6 +167,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     readonly message: string;
     readonly blocked: boolean;
   }>();
+  const [stashDialog, setStashDialog] = useState<StashDialogRequest>();
   const development = info?.mode === 'development';
   const nativeMenu = platform === 'darwin';
   const repositoryBusy = busy !== undefined;
@@ -300,6 +309,57 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setReferenceFailure(undefined);
   }, []);
 
+  const openStashSave = useCallback(
+    (paths: readonly string[] = []) => {
+      if (!active || active.bare) return;
+      const repositoryId = active.id;
+      setStashDialog({ kind: 'save', paths: [...paths] });
+      void window.desktop?.repository.previewLocalChanges({ id: repositoryId }).then((result) => {
+        if (activeRepositoryId.current !== repositoryId || !result.ok) return;
+        setStashDialog((current) =>
+          current?.kind === 'save' ? { ...current, snapshot: result.value.snapshot } : current,
+        );
+      });
+    },
+    [active],
+  );
+
+  const openStashAction = useCallback(
+    (action: 'apply' | 'pop' | 'drop', entry: RepositoryStashEntry) => {
+      if (!active) return;
+      const repositoryId = active.id;
+      setStashDialog({ kind: 'action', action, entry });
+      if (action === 'drop') return;
+      void window.desktop?.repository.previewLocalChanges({ id: repositoryId }).then((result) => {
+        if (activeRepositoryId.current !== repositoryId || !result.ok) return;
+        setStashDialog((current) =>
+          current?.kind === 'action' && current.entry.commitId === entry.commitId
+            ? { ...current, snapshot: result.value.snapshot }
+            : current,
+        );
+      });
+    },
+    [active],
+  );
+
+  const savePatch = useCallback(
+    (target: RepositoryPatchTarget) => {
+      const repositoryId = active?.id;
+      if (!repositoryId) return;
+      void window.desktop?.repository.savePatch({ id: repositoryId, target }).then((result) => {
+        if (activeRepositoryId.current !== repositoryId) return;
+        if (!result.ok) {
+          reportError(result.error.message);
+          return;
+        }
+        if (result.value.status === 'saved') {
+          setReferenceStatus({ message: result.value.message, blocked: false });
+        }
+      });
+    },
+    [active?.id, reportError],
+  );
+
   /**
    * Runs one branch or tag action. A refusal the backend foresaw is shown where the user is looking:
    * in the open dialog when there is one, and always in the status strip, so nothing fails silently.
@@ -388,14 +448,35 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       newTag: (commit) => openReferenceDialog({ kind: 'new-tag', target: commitTarget(commit) }),
       checkoutCommit: (commit) =>
         openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
+      savePatch: (commit) => savePatch({ kind: 'commit', commitId: commit.id }),
     }),
-    [commitTarget, openReferenceDialog, referenceBusy, referencesReady],
+    [commitTarget, openReferenceDialog, referenceBusy, referencesReady, savePatch],
   );
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
   const [networkFailure, setNetworkFailure] = useState<string>();
   const [activityOpen, setActivityOpen] = useState(false);
   const activeOperation = runningOperation(operations, active?.id);
+
+  const startStash = useCallback(
+    (action: RepositoryStashAction) => {
+      if (!active) return;
+      void startStashOperation(active.id, action)
+        .then(() => {
+          if (activeRepositoryId.current !== active.id) return;
+          setStashDialog(undefined);
+          setActivityOpen(true);
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== active.id) return;
+          setReferenceStatus({
+            message: reason instanceof Error ? reason.message : 'The stash operation could not be started.',
+            blocked: true,
+          });
+        });
+    },
+    [active, startStashOperation],
+  );
 
   const openNetworkDialog = useCallback(
     (request: NetworkDialogRequest) => {
@@ -552,11 +633,75 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     },
   ]);
 
+  const stashItems: MenuEntry[] = compactMenu([
+    {
+      id: 'save-stash',
+      label: 'Save Stash…',
+      disabled: !active || active.bare || referenceBusy,
+      disabledReason: active?.bare
+        ? 'A bare repository has no working tree.'
+        : referenceBusy
+          ? 'Another repository operation is running.'
+          : undefined,
+      run: () => openStashSave(),
+    },
+    menuSeparator,
+    {
+      id: 'saved-stashes',
+      label: 'Saved Stashes',
+      disabled: stashes.value.length === 0,
+      disabledReason: stashes.loading
+        ? 'Saved stashes are still loading.'
+        : 'This repository has no saved stashes.',
+      submenu: stashes.value.slice(0, 30).map((entry) => ({
+        id: `stash-${entry.commitId}`,
+        label: `${entry.selector}: ${entry.message || '(no message)'}`,
+        submenu: [
+          {
+            id: `inspect-${entry.commitId}`,
+            label: 'Inspect…',
+            run: () => setStashDialog({ kind: 'inspect', entry }),
+          },
+          {
+            id: `apply-${entry.commitId}`,
+            label: 'Apply…',
+            disabled: referenceBusy,
+            run: () => openStashAction('apply', entry),
+          },
+          {
+            id: `pop-${entry.commitId}`,
+            label: 'Pop…',
+            disabled: referenceBusy,
+            run: () => openStashAction('pop', entry),
+          },
+          {
+            id: `drop-${entry.commitId}`,
+            label: 'Delete…',
+            danger: true,
+            disabled: referenceBusy,
+            run: () => openStashAction('drop', entry),
+          },
+          menuSeparator,
+          {
+            id: `patch-${entry.commitId}`,
+            label: 'Save as Patch…',
+            run: () => savePatch({ kind: 'stash', stashId: entry.commitId }),
+          },
+        ],
+      })),
+    },
+  ]);
+  const stashDisabledReason = active?.bare
+    ? 'A bare repository has no working tree.'
+    : referenceBusy
+      ? 'Another repository operation is running.'
+      : undefined;
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
-      if (aboutOpen || referenceDialog || networkDialog) return;
+      if (aboutOpen || referenceDialog || networkDialog || stashDialog) return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
       else if (is('Mod+O')) {
@@ -611,6 +756,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     reopenClosed,
     repositoryBusy,
     selectTab,
+    stashDialog,
     tabs,
     windowCommand,
   ]);
@@ -821,7 +967,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 label: 'Remotes…',
                 run: () => openNetworkDialog({ kind: 'remotes' }),
               },
-              { id: 'save-stash', label: 'Save Stash…', ...planned('Stashing', 'P06') },
+              {
+                id: 'save-stash',
+                label: 'Save Stash…',
+                disabled: active.bare || referenceBusy,
+                disabledReason: active.bare
+                  ? 'A bare repository has no working tree.'
+                  : referenceBusy
+                    ? 'Another repository operation is running.'
+                    : undefined,
+                run: () => openStashSave(),
+              },
               menuSeparator,
               ...newReferenceItems(headTarget, headTargetReason),
               menuSeparator,
@@ -1007,6 +1163,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const loaded = history.commits.some((commit) => commit.id === reference.target);
     const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
     const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
+    const stash = stashes.value.find((candidate) => candidate.commitId === reference.target);
     const target = referenceTarget(reference);
     const worktreeReason = branch?.worktreePath
       ? `'${reference.name}' is checked out in the worktree at ${branch.worktreePath}.`
@@ -1275,8 +1432,56 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         break;
       case 'stash':
         items = [
-          { id: 'apply', label: 'Apply Stash…', ...planned('Applying stashes', 'P06') },
-          { id: 'delete', label: 'Delete Stash…', danger: true, ...planned('Deleting stashes', 'P06') },
+          {
+            id: 'inspect',
+            label: 'Inspect Stash…',
+            run: () => {
+              if (stash) setStashDialog({ kind: 'inspect', entry: stash });
+            },
+          },
+          {
+            id: 'apply',
+            label: 'Apply Stash…',
+            disabled: !stash || referenceBusy,
+            disabledReason: stash
+              ? 'Another repository operation is running.'
+              : 'Refresh the stash list first.',
+            run: () => {
+              if (stash) openStashAction('apply', stash);
+            },
+          },
+          {
+            id: 'pop',
+            label: 'Pop Stash…',
+            disabled: !stash || referenceBusy,
+            disabledReason: stash
+              ? 'Another repository operation is running.'
+              : 'Refresh the stash list first.',
+            run: () => {
+              if (stash) openStashAction('pop', stash);
+            },
+          },
+          {
+            id: 'delete',
+            label: 'Delete Stash…',
+            danger: true,
+            disabled: !stash || referenceBusy,
+            disabledReason: stash
+              ? 'Another repository operation is running.'
+              : 'Refresh the stash list first.',
+            run: () => {
+              if (stash) openStashAction('drop', stash);
+            },
+          },
+          {
+            id: 'save-patch',
+            label: 'Save as Patch…',
+            disabled: !stash,
+            disabledReason: stash ? undefined : 'Refresh the stash list first.',
+            run: () => {
+              if (stash) savePatch({ kind: 'stash', stashId: stash.commitId });
+            },
+          },
           menuSeparator,
           filterHistory,
           menuSeparator,
@@ -1328,6 +1533,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         tracking={active ? history.tracking : undefined}
         branchItems={branchMenuItems}
         branchDisabledReason={active?.bare ? 'A bare repository has no working tree.' : undefined}
+        stashItems={stashItems}
+        stashDisabledReason={stashDisabledReason}
         openInItems={openInItems}
         appearanceItems={appearanceItems}
         operations={operations}
@@ -1403,6 +1610,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   refreshSignal={refreshSignal}
                   onCommitted={refresh}
                   operationBusy={Boolean(activeOperation)}
+                  onStashPaths={openStashSave}
+                  onSavePatch={(paths) =>
+                    savePatch({ kind: 'working', paths: [...paths], includeUntracked: true })
+                  }
                 />
               ) : (
                 <HistoryView history={history} references={historyReferences} />
@@ -1480,6 +1691,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           }
           onSubmit={runReferenceAction}
           onClose={closeReferenceDialog}
+        />
+      )}
+      {stashDialog && active && (
+        <StashDialogs
+          key={
+            stashDialog.kind === 'action'
+              ? `${stashDialog.kind}:${stashDialog.action}:${stashDialog.entry.commitId}`
+              : stashDialog.kind
+          }
+          repositoryId={active.id}
+          request={stashDialog}
+          platform={platform}
+          busy={Boolean(activeOperation)}
+          onSubmit={startStash}
+          onClose={() => setStashDialog(undefined)}
         />
       )}
     </div>

@@ -4,7 +4,7 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, a branch
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, a branch
 PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
@@ -140,6 +140,15 @@ under `refs/git-workbench/recovery/`, and persist a versioned atomic journal in 
 Applying with `--index` restores the staged/unstaged distinction. Failed or interrupted work leaves the
 copy pending. Recovery actions compare a snapshot of saved entries and Git sequencer anchors before
 applying, finishing, or continuing/aborting. Dismissing an entry does not drop Git stash entries.
+The F15 stash surface adds `listStashes()`, `getStashDetails()`, and `startStashOperation()`. Stash
+selectors never cross IPC: the renderer supplies a full commit ID it received from the list, and the
+backend re-reads the reflog list inside the common-directory queue before mapping it to the current
+`stash@{n}` selector. Save validates a working-change snapshot and selected paths, supports whole-file
+partial stashes and explicit untracked inclusion, and uses Git's stash commit to preserve the index.
+Apply and pop use `--index`; pop drops only after apply succeeds, so a conflict or refusal retains the
+stash. Recovery-copy commits cannot be deleted through ordinary stash actions. `savePatch()` is a named
+capability whose main handler owns the native save dialog; backend Git services generate bounded commit,
+stash, or selected working-tree patches, while the renderer never supplies a destination path to Git.
 `openPullRequest()` accepts only an open repository, local branch, and configured remote; main derives a
 known HTTPS hosting form URL and opens it in the system browser. No generic URL opener is exposed.
 
@@ -336,7 +345,7 @@ remote authentication prompt, clone workflow, global automatic-fetch preference,
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
 discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, interactive credential
 or passphrase prompting, platform secret storage, a full conflict
-editor, general stash management, syntax/image/binary viewers, full hosting integration, automatic updater,
+editor, hunk-level stash selection and patch import, syntax/image/binary viewers, full hosting integration, automatic updater,
 or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager

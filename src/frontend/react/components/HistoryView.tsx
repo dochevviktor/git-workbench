@@ -29,6 +29,7 @@ export interface HistoryReferenceCommands {
   readonly newBranch: (commit: RepositoryHistoryCommit) => void;
   readonly newTag: (commit: RepositoryHistoryCommit) => void;
   readonly checkoutCommit: (commit: RepositoryHistoryCommit) => void;
+  readonly savePatch: (commit: RepositoryHistoryCommit) => void;
 }
 
 interface HistoryViewProps {
@@ -340,7 +341,13 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
         },
         { id: 'cherry-pick', label: 'Cherry-pick Commit…', ...planned('Cherry-picking', 'P06') },
         { id: 'revert', label: 'Revert Commit…', ...planned('Reverting commits', 'P06') },
-        { id: 'save-patch', label: 'Save as Patch…', ...planned('Patch export', 'P08') },
+        {
+          id: 'save-patch',
+          label: 'Save as Patch…',
+          disabled: !referenceCommands.ready,
+          disabledReason: referenceCommands.ready ? undefined : 'Repository history is still loading.',
+          run: () => referenceCommands.savePatch(commit),
+        },
         menuSeparator,
         { id: 'copy-sha', label: 'Copy Commit SHA', run: () => copyText(commit.id) },
         { id: 'copy-short-sha', label: 'Copy Short SHA', run: () => copyText(shortHash(commit.id)) },

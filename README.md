@@ -21,9 +21,11 @@ management, automatic background fetch, fetch, explicit-source merge/rebase pull
 optional lease-checked force, a PR browser handoff, and System/Light/Dark appearance. Network work,
 commits, and reference actions run as queryable background operations in the activity panel. Checkout
 offers preserve, stash/reapply, or discard, with recovery copies of changed tracked and untracked files.
-Clone, credential prompts, a global automatic-fetch preference, general whole-file discard and stash management,
-the full conflict editor, custom manager folders, filesystem watchers, and remaining Git operations
-are later work.
+F15 adds stash history, named all-file or selected whole-file stashes, staged-state-preserving
+inspect/apply/pop/delete actions, and bounded commit/stash/working-tree patch export. Clone, credential
+prompts, a global automatic-fetch preference, hunk/line stash selection and patch import, general
+whole-file discard, the full conflict editor, custom manager folders, filesystem watchers, and remaining
+Git operations are later work.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.

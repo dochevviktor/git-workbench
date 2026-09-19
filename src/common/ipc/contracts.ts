@@ -870,6 +870,7 @@ export const repositoryOperationKindSchema = z.enum([
   'reference',
   'fast-forward',
   'recovery',
+  'stash',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1011,6 +1012,92 @@ export const repositoryRecoveryRequestSchema = z.strictObject({
   snapshot: repositoryDiffSnapshotSchema,
   action: z.enum(['continue', 'abort', 'apply', 'finish', 'drop']),
   copyId: z.uuid().optional(),
+});
+
+export const repositoryStashSelectorSchema = z.string().regex(/^stash@\{\d+\}$/u);
+export const repositoryStashPathSchema = repositoryRevisionPathSchema.refine(
+  (value) => value.length > 0,
+  'A stash path is required.',
+);
+export const repositoryStashEntrySchema = z.strictObject({
+  /** A display selector only; mutations use the stable commit ID after re-reading the list. */
+  selector: repositoryStashSelectorSchema,
+  commitId: gitObjectIdSchema,
+  message: z.string().max(16_384),
+  branch: z.string().max(4_096).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  includesUntracked: z.boolean(),
+});
+export const repositoryStashDetailsRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  stashId: gitObjectIdSchema,
+});
+export const repositoryStashDetailsSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  stashId: gitObjectIdSchema,
+  entry: repositoryStashEntrySchema,
+  state: z.enum(['text', 'too-large']),
+  content: z.string().max(8 * 1024 * 1024),
+  byteLength: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(8 * 1024 * 1024)
+    .nullable(),
+  message: z.string().max(512).nullable(),
+});
+export const repositoryStashActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('save'),
+    message: z.string().max(512),
+    includeUntracked: z.boolean(),
+    /** Empty means all supported local changes; otherwise these are validated changed paths. */
+    paths: z.array(repositoryStashPathSchema).max(1_000),
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('apply'),
+    stashId: gitObjectIdSchema,
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('pop'),
+    stashId: gitObjectIdSchema,
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('drop'),
+    stashId: gitObjectIdSchema,
+  }),
+]);
+export const repositoryStashActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  request: repositoryStashActionSchema,
+});
+
+export const repositoryPatchTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({ kind: z.literal('stash'), stashId: gitObjectIdSchema }),
+  z.strictObject({
+    kind: z.literal('working'),
+    paths: z.array(repositoryStashPathSchema).min(1).max(1_000),
+    includeUntracked: z.boolean(),
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  }),
+]);
+export const repositoryPatchExportRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  target: repositoryPatchTargetSchema,
+});
+export const repositoryPatchExportResultSchema = z.strictObject({
+  status: z.enum(['saved', 'cancelled']),
+  path: repositoryPathSchema.nullable(),
+  byteLength: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(8 * 1024 * 1024),
+  message: z.string().max(512),
 });
 export const repositoryPullRequestHandoffSchema = z.strictObject({
   id: repositoryIdSchema,
@@ -1194,6 +1281,26 @@ export const requests = {
     repositorySessionSchema,
     repositoryRecoveryStateSchema,
   ),
+  listRepositoryStashes: request(
+    'repository:list-stashes',
+    repositorySessionSchema,
+    z.array(repositoryStashEntrySchema).max(100),
+  ),
+  getRepositoryStashDetails: request(
+    'repository:get-stash-details',
+    repositoryStashDetailsRequestSchema,
+    repositoryStashDetailsSchema,
+  ),
+  startRepositoryStashOperation: request(
+    'repository:start-stash-operation',
+    repositoryStashActionRequestSchema,
+    repositoryOperationSchema,
+  ),
+  saveRepositoryPatch: request(
+    'repository:save-patch',
+    repositoryPatchExportRequestSchema,
+    repositoryPatchExportResultSchema,
+  ),
   recoverRepository: request(
     'repository:recover',
     repositoryRecoveryRequestSchema,
@@ -1319,6 +1426,15 @@ export type RepositoryLocalChangesPreview = z.infer<typeof repositoryLocalChange
 export type RepositoryRecoveryCopy = z.infer<typeof repositoryRecoveryCopySchema>;
 export type RepositoryRecoveryState = z.infer<typeof repositoryRecoveryStateSchema>;
 export type RepositoryRecoveryRequest = z.infer<typeof repositoryRecoveryRequestSchema>;
+export type RepositoryStashSelector = z.infer<typeof repositoryStashSelectorSchema>;
+export type RepositoryStashEntry = z.infer<typeof repositoryStashEntrySchema>;
+export type RepositoryStashDetailsRequest = z.infer<typeof repositoryStashDetailsRequestSchema>;
+export type RepositoryStashDetails = z.infer<typeof repositoryStashDetailsSchema>;
+export type RepositoryStashAction = z.infer<typeof repositoryStashActionSchema>;
+export type RepositoryStashActionRequest = z.infer<typeof repositoryStashActionRequestSchema>;
+export type RepositoryPatchTarget = z.infer<typeof repositoryPatchTargetSchema>;
+export type RepositoryPatchExportRequest = z.infer<typeof repositoryPatchExportRequestSchema>;
+export type RepositoryPatchExportResult = z.infer<typeof repositoryPatchExportResultSchema>;
 export type RepositoryPullRequestHandoff = z.infer<typeof repositoryPullRequestHandoffSchema>;
 export type RepositoryNetworkRequestEnvelope = z.infer<typeof repositoryNetworkRequestEnvelopeSchema>;
 export type RepositoryPushTarget = z.infer<typeof repositoryPushTargetSchema>;

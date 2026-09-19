@@ -220,6 +220,54 @@ test('review branch workflows preserve intent, refresh diffs and fit the support
   }
 });
 
+test('F15 saves a selected working file as a named stash from its context menu', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'git-workbench-stash-ui-'));
+  const cwd = join(root, 'work');
+  const git = new GitRunner();
+  const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
+  let application: ElectronApplication | undefined;
+  try {
+    await mkdir(cwd);
+    await run('init', '--quiet', '--initial-branch=main');
+    await run('config', 'user.name', 'Stash UI');
+    await run('config', 'user.email', 'stash-ui@example.test');
+    await run('config', 'commit.gpgsign', 'false');
+    await writeFile(join(cwd, 'selected.txt'), 'base selected\n');
+    await writeFile(join(cwd, 'other.txt'), 'base other\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'base');
+    await writeFile(join(cwd, 'selected.txt'), 'selected change\n');
+    await writeFile(join(cwd, 'other.txt'), 'other change\n');
+
+    application = await electron.launch({
+      chromiumSandbox: true,
+      args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
+      env: environment(),
+    });
+    const page = await open(application, cwd);
+    await page.getByRole('button', { name: /Local Changes/u }).click();
+    const selected = page.getByTestId('working-changes-unstaged').getByTestId('working-change').filter({
+      hasText: 'selected.txt',
+    });
+    await selected.click({ button: 'right' });
+    const menu = page.getByRole('menu').last();
+    await menu.getByRole('menuitem', { name: 'Stash File…', exact: true }).click();
+    const dialog = page.getByTestId('stash-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox', { name: 'Message', exact: true }).fill('selected from UI');
+    await dialog.getByRole('button', { name: 'Stash', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => readFile(join(cwd, 'selected.txt'), 'utf8')).toBe('base selected\n');
+    expect(await readFile(join(cwd, 'other.txt'), 'utf8')).toBe('other change\n');
+    await page.getByRole('treeitem', { name: 'Stashes', exact: true }).click();
+    await expect(page.getByRole('treeitem', { name: /stash@\{0\}: selected from UI/u })).toBeVisible();
+    await expect(page.getByTestId('reference-status')).toContainText('stash');
+  } finally {
+    await application?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a checkout hook outlives the control deadline without overwriting another tab or dialog', async () => {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-review-slow-'));
   const first = join(root, 'first');

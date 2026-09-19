@@ -23,6 +23,8 @@ import type {
   RepositoryLocalChangesPreview,
   RepositoryRecoveryState,
   RepositoryRecoveryRequest,
+  RepositoryPatchExportRequest,
+  RepositoryPatchExportResult,
   RepositoryPullRequestHandoff,
   RepositoryOperationSession,
   RepositoryOpenRequest,
@@ -33,6 +35,10 @@ import type {
   RepositoryRemoteActionRequest,
   RepositoryRemoteActionResult,
   RepositorySession,
+  RepositoryStashActionRequest,
+  RepositoryStashDetails,
+  RepositoryStashDetailsRequest,
+  RepositoryStashEntry,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
@@ -110,6 +116,10 @@ export interface DesktopApi {
     previewLocalChanges(request: RepositorySession): Promise<IpcResult<RepositoryLocalChangesPreview>>;
     getRecovery(request: RepositorySession): Promise<IpcResult<RepositoryRecoveryState>>;
     recover(request: RepositoryRecoveryRequest): Promise<IpcResult<RepositoryOperation>>;
+    listStashes(request: RepositorySession): Promise<IpcResult<RepositoryStashEntry[]>>;
+    getStashDetails(request: RepositoryStashDetailsRequest): Promise<IpcResult<RepositoryStashDetails>>;
+    startStashOperation(request: RepositoryStashActionRequest): Promise<IpcResult<RepositoryOperation>>;
+    savePatch(request: RepositoryPatchExportRequest): Promise<IpcResult<RepositoryPatchExportResult>>;
     openPullRequest(request: RepositoryPullRequestHandoff): Promise<IpcResult<null>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;

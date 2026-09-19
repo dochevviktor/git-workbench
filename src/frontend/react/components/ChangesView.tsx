@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type {
   RepositoryCommitChange,
   RepositoryDiffTarget,
@@ -28,8 +28,10 @@ import { Splitter } from './Splitter';
 import { StatusBadge } from './StatusBadge';
 import { CommitComposer } from './CommitComposer';
 import { MenuButton } from './menu/MenuButton';
-import { menuSeparator } from './menu/menu-model';
+import { useContextMenu } from './menu/context-menu';
+import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
+import { copyText } from '../lib/clipboard';
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;
@@ -108,6 +110,7 @@ interface ChangesPaneProps {
   readonly selectedKeys: ReadonlySet<string>;
   readonly emptyText: string;
   readonly onSelect: (entry: PaneEntry, modifiers: SelectionModifiers) => void;
+  readonly onContextMenu: (entry: PaneEntry, event: ReactMouseEvent<HTMLElement>) => void;
   readonly onAction: () => void;
   readonly actionDisabled: boolean;
   readonly actionDisabledReason: string | undefined;
@@ -124,6 +127,7 @@ function ChangesPane({
   selectedKeys,
   emptyText,
   onSelect,
+  onContextMenu,
   onAction,
   actionDisabled,
   actionDisabledReason,
@@ -168,6 +172,7 @@ function ChangesPane({
             selectedKey={activeKey}
             selectedKeys={selectedKeys}
             onSelect={onSelect}
+            onContextMenu={onContextMenu}
             rowTestId="working-change"
           />
         )}
@@ -263,6 +268,10 @@ interface ChangesViewProps {
   readonly refreshSignal: number;
   /** Lets a completed commit refresh the history, tabs, and repository summary. */
   readonly onCommitted: () => void;
+  /** Opens the F15 stash dialog for the selected file paths. */
+  readonly onStashPaths?: (paths: readonly string[]) => void;
+  /** Saves the selected file paths as a bounded patch. */
+  readonly onSavePatch?: (paths: readonly string[]) => void;
 }
 
 export function ChangesView({
@@ -270,7 +279,10 @@ export function ChangesView({
   refreshSignal,
   onCommitted,
   operationBusy = false,
+  onStashPaths,
+  onSavePatch,
 }: ChangesViewProps) {
+  const showContextMenu = useContextMenu();
   const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
     'tree',
@@ -406,6 +418,45 @@ export function ChangesView({
 
   const selectedKeys = useMemo(() => new Set(selection.keys), [selection.keys]);
   const selected = [...unstaged, ...stagedEntries].find((entry) => entry.key === selection.activeKey);
+  const openChangeMenu = useCallback(
+    (entry: PaneEntry, event: ReactMouseEvent<HTMLElement>) => {
+      const allEntries = [...unstaged, ...stagedEntries];
+      const selectedEntries = selectedKeys.has(entry.key)
+        ? allEntries.filter((candidate) => selectedKeys.has(candidate.key))
+        : [entry];
+      const paths = [
+        ...new Set(
+          selectedEntries
+            .filter((candidate): candidate is WorkingEntry => candidate.kind === 'working')
+            .filter((candidate) => candidate.change.area !== 'ignored')
+            .map((candidate) => candidate.path),
+        ),
+      ];
+      showContextMenu({
+        anchor: contextMenuAnchor(event, event.currentTarget),
+        label: paths.length === 1 ? paths[0]! : `${paths.length} changed files`,
+        items: compactMenu([
+          {
+            id: 'stash-selected',
+            label: paths.length > 1 ? `Stash ${paths.length} Files…` : 'Stash File…',
+            disabled: paths.length === 0 || onStashPaths === undefined,
+            disabledReason: paths.length === 0 ? 'This row is not a stashable working-tree file.' : undefined,
+            run: () => onStashPaths?.(paths),
+          },
+          {
+            id: 'save-selected-patch',
+            label: 'Save as Patch…',
+            disabled: paths.length === 0 || onSavePatch === undefined,
+            disabledReason: paths.length === 0 ? 'This row is not a patchable working-tree file.' : undefined,
+            run: () => onSavePatch?.(paths),
+          },
+          menuSeparator,
+          { id: 'copy-path', label: 'Copy Path', run: () => copyText(entry.path) },
+        ]),
+      });
+    },
+    [onSavePatch, onStashPaths, selectedKeys, showContextMenu, stagedEntries, unstaged],
+  );
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(() => {
     if (!selected) return undefined;
     return selected.kind === 'amend'
@@ -641,6 +692,7 @@ export function ChangesView({
           selectedKeys={selectedKeys}
           emptyText={status ?? (filtering ? 'No unstaged files match the filter.' : 'No unstaged changes.')}
           onSelect={(entry, modifiers) => selectEntry(unstaged, entry, modifiers)}
+          onContextMenu={openChangeMenu}
           onAction={() => {
             const chosen = selectedIn(stageEntries);
             void applyFileEntries('stage', chosen.length > 0 ? chosen : stageEntries);
@@ -680,6 +732,7 @@ export function ChangesView({
               : (status ?? (filtering ? 'No staged files match the filter.' : 'No staged changes.'))
           }
           onSelect={(entry, modifiers) => selectEntry(stagedEntries, entry, modifiers)}
+          onContextMenu={openChangeMenu}
           onAction={() => {
             const chosen = selectedIn(unstageEntries);
             void applyFileEntries('unstage', chosen.length > 0 ? chosen : unstageEntries);

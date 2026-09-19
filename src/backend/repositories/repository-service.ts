@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { ReadCoordinator } from '../git/read-coordinator';
 import type {
@@ -26,6 +26,8 @@ import type {
   RepositoryOperation,
   RepositoryOperationSource,
   RepositoryLocalChangesPreview,
+  RepositoryPatchExportRequest,
+  RepositoryPatchExportResult,
   RepositoryRecoveryRequest,
   RepositoryRecoveryState,
   RepositoryPullRequestHandoff,
@@ -40,6 +42,9 @@ import type {
   RepositoryRevisionBlob,
   RepositoryRevisionTree,
   RepositorySummary,
+  RepositoryStashActionRequest,
+  RepositoryStashDetails,
+  RepositoryStashEntry,
   RepositoryWorkingChanges,
   RepositoryWorkingChangeActionRequest,
   RepositoryWorkingChangeActionResult,
@@ -88,7 +93,12 @@ import type {
   OperationOutcome,
 } from '../operations/operation-registry';
 import { BackgroundFetchScheduler } from '../operations/background-fetch-scheduler';
-import { NetworkRequestError, planNetworkOperation, runNetworkOperation } from './network-service';
+import {
+  displayOutput,
+  NetworkRequestError,
+  planNetworkOperation,
+  runNetworkOperation,
+} from './network-service';
 import type { NetworkPlan } from './network-service';
 import { applyRemoteAction, isAllowedRemoteUrl, readRemotes } from './remote-service';
 import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
@@ -96,6 +106,7 @@ import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
 import { pullRequestUrl } from './hosting-service';
+import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -1100,6 +1111,320 @@ export class RepositoryService {
       gitDir: summary.gitDir,
       head: summary.head,
     });
+  }
+
+  async listStashes(ownerId: number, id: string): Promise<RepositoryStashEntry[]> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readStashes(this.runner, summary.worktreePath);
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the saved stashes.');
+    }
+  }
+
+  async getStashDetails(ownerId: number, id: string, stashId: string): Promise<RepositoryStashDetails> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readStashDetails(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        stashId,
+      });
+    } catch (error) {
+      if (error instanceof StashNotFoundError)
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      throw this.mapGitFailure(error, 'Git could not inspect the selected stash.');
+    }
+  }
+
+  startStashOperation(ownerId: number, request: RepositoryStashActionRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.request;
+    const title =
+      action.kind === 'save'
+        ? action.paths.length > 0
+          ? 'Save selected changes as stash'
+          : 'Save changes as stash'
+        : `${action.kind[0]!.toUpperCase()}${action.kind.slice(1)} stash`;
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'stash',
+        title,
+        command: `git stash ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            return await this.runStashAction(request, summary, handle);
+          } catch (error) {
+            if (error instanceof ExpectedBackendError) throw error;
+            throw this.mapGitFailure(error, 'Git could not update the saved stashes.');
+          }
+        }),
+    );
+  }
+
+  async savePatch(
+    ownerId: number,
+    request: RepositoryPatchExportRequest,
+    destination: string,
+  ): Promise<RepositoryPatchExportResult> {
+    const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+    if (request.target.kind === 'working' && !summary.worktreePath)
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree to export.');
+    const cwd = summary.worktreePath ?? summary.commonDir;
+    if (!isAbsolute(destination) || destination.includes('\0') || destination.length > 32_768)
+      throw new ExpectedBackendError('INVALID_REQUEST', 'Choose a valid absolute patch destination.');
+    try {
+      if ((await stat(destination).catch(() => undefined))?.isDirectory())
+        throw new ExpectedBackendError('OPERATION_FAILED', 'The selected patch destination is a directory.');
+      if (request.target.kind === 'working' && request.target.changesSnapshot) {
+        const preview = await previewLocalChanges(this.runner, {
+          id: request.id,
+          cwd,
+          gitDir: summary.gitDir,
+          head: summary.head,
+        });
+        if (preview.snapshot !== request.target.changesSnapshot)
+          throw new ExpectedBackendError(
+            'STALE_SNAPSHOT',
+            'Working-tree changes changed before the patch could be saved. Review them again.',
+          );
+      }
+      const content = await readPatch(this.runner, {
+        repositoryId: request.id,
+        cwd,
+        target: request.target,
+      });
+      const byteLength = Buffer.byteLength(content, 'utf8');
+      await writeFile(destination, content, { encoding: 'utf8', mode: 0o600 });
+      return {
+        status: 'saved',
+        path: destination,
+        byteLength,
+        message: `Saved ${byteLength.toLocaleString()} bytes as a patch.`,
+      };
+    } catch (error) {
+      if (error instanceof ExpectedBackendError) throw error;
+      if (error instanceof StashNotFoundError)
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      if (error instanceof GitCommandError)
+        throw this.mapGitFailure(error, 'Git could not create the selected patch.');
+      if (error instanceof Error) throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      throw this.mapGitFailure(error, 'Git could not save the selected patch.');
+    }
+  }
+
+  private async runStashAction(
+    request: RepositoryStashActionRequest,
+    summary: RepositorySummary,
+    handle: OperationHandle,
+  ): Promise<OperationOutcome> {
+    const action = request.request;
+    const context = {
+      id: request.id,
+      cwd: summary.worktreePath!,
+      gitDir: summary.gitDir,
+      head: summary.head,
+    };
+    if (action.kind === 'save') {
+      const preview = await previewLocalChanges(this.runner, context);
+      if (action.changesSnapshot && action.changesSnapshot !== preview.snapshot)
+        throw new ExpectedBackendError(
+          'STALE_SNAPSHOT',
+          'Working-tree changes changed before the stash could be saved. Review them again.',
+        );
+      if (preview.pendingOperation)
+        return {
+          status: 'failed',
+          failureReason: 'other',
+          message: `Finish or abort the ${preview.pendingOperation} before saving a stash.`,
+          output: '',
+        };
+      const working = await readWorkingChanges(this.runner, {
+        repositoryId: request.id,
+        cwd: context.cwd,
+        includeUntracked: true,
+        includeIgnored: false,
+      });
+      const currentTrackedPaths = [...working.staged, ...working.unstaged].map((change) => change.path);
+      const currentUntrackedPaths = working.untracked.map((change) => change.path);
+      const selectedPaths =
+        action.paths.length > 0
+          ? [...new Set(action.paths)]
+          : [
+              ...new Set(
+                action.includeUntracked
+                  ? [...currentTrackedPaths, ...currentUntrackedPaths]
+                  : currentTrackedPaths,
+              ),
+            ];
+      if (selectedPaths.length === 0)
+        return {
+          status: 'failed',
+          failureReason: 'other',
+          message: 'There are no local changes to stash.',
+          output: '',
+        };
+      const untracked = new Set(currentUntrackedPaths);
+      const allPaths = new Set([...currentTrackedPaths, ...currentUntrackedPaths]);
+      if (selectedPaths.some((path) => !allPaths.has(path)))
+        throw new ExpectedBackendError(
+          'STALE_SNAPSHOT',
+          'A selected path is no longer changed. Review the files again.',
+        );
+      if (!action.includeUntracked && selectedPaths.some((path) => untracked.has(path)))
+        throw new ExpectedBackendError(
+          'INVALID_REQUEST',
+          'Enable untracked files before stashing the selected untracked path.',
+        );
+      const args = ['stash', 'push', `--message=${action.message.trim() || 'Git Workbench stash'}`];
+      if (action.includeUntracked) args.push('--include-untracked');
+      args.push('--', ...selectedPaths);
+      handle.setCommand?.(['git', 'stash', 'push'].join(' '));
+      try {
+        await this.runner.run(args, {
+          cwd: context.cwd,
+          signal: handle.signal,
+          timeoutMs: 120_000,
+          maxOutputBytes: 4 * 1024 * 1024,
+        });
+      } catch (error) {
+        return this.stashCommandFailure(error, 'Git could not save those changes as a stash.');
+      }
+      const commitId = (
+        await this.runner.run(['rev-parse', '--verify', 'refs/stash'], { cwd: context.cwd })
+      ).stdout.trim();
+      const created = (await readStashes(this.runner, context.cwd)).find(
+        (stash) => stash.commitId === commitId,
+      );
+      return {
+        status: 'succeeded',
+        message: created
+          ? `Saved stash '${created.message || created.selector}'.`
+          : 'Saved the local changes as a stash.',
+        output: '',
+      };
+    }
+
+    const entries = await readStashes(this.runner, context.cwd);
+    const entry =
+      'stashId' in action ? entries.find((candidate) => candidate.commitId === action.stashId) : undefined;
+    if (!entry)
+      return {
+        status: 'failed',
+        failureReason: 'not-found',
+        message: 'That stash no longer exists. Refresh the stash list.',
+        output: '',
+      };
+    const recovery = await readRecovery(this.runner, context);
+    const isRecoveryCopy = recovery.copies.some((copy) => copy.commitId === entry.commitId);
+    if (isRecoveryCopy && (action.kind === 'drop' || action.kind === 'pop'))
+      return {
+        status: 'failed',
+        failureReason: 'other',
+        message: 'That stash is a Recovery copy. Use the Recovery panel so it remains recoverable.',
+        output: '',
+      };
+    if (action.kind === 'drop') {
+      handle.setCommand?.(['git', 'stash', 'drop', JSON.stringify(entry.selector)].join(' '));
+      try {
+        await this.runner.run(['stash', 'drop', entry.selector], {
+          cwd: context.cwd,
+          signal: handle.signal,
+          timeoutMs: 120_000,
+          maxOutputBytes: 64 * 1024,
+        });
+      } catch (error) {
+        return this.stashCommandFailure(error, 'Git could not delete that stash.');
+      }
+      return { status: 'succeeded', message: `Deleted ${entry.selector}.`, output: '' };
+    }
+
+    const preview = await previewLocalChanges(this.runner, context);
+    if ('changesSnapshot' in action && action.changesSnapshot && action.changesSnapshot !== preview.snapshot)
+      throw new ExpectedBackendError(
+        'STALE_SNAPSHOT',
+        'Working-tree changes changed before the stash could be applied. Review them again.',
+      );
+    if (preview.pendingOperation)
+      return {
+        status: 'failed',
+        failureReason: 'other',
+        message: `Finish or abort the ${preview.pendingOperation} before applying a stash.`,
+        output: '',
+      };
+    if (preview.paths.length + preview.untrackedPaths.length > 0)
+      return {
+        status: 'failed',
+        failureReason: 'local-changes',
+        message: 'The working tree is not clean. Save or commit current changes before applying a stash.',
+        output: '',
+      };
+    handle.setCommand?.(['git', 'stash', 'apply', '--index', JSON.stringify(entry.selector)].join(' '));
+    try {
+      await this.runner.run(['stash', 'apply', '--index', entry.selector], {
+        cwd: context.cwd,
+        signal: handle.signal,
+        timeoutMs: 120_000,
+        maxOutputBytes: 4 * 1024 * 1024,
+      });
+    } catch (error) {
+      return this.stashCommandFailure(
+        error,
+        action.kind === 'pop'
+          ? 'The stash could not be applied, so it was retained.'
+          : 'The stash could not be applied. It was retained.',
+      );
+    }
+    if (action.kind === 'pop') {
+      try {
+        await this.runner.run(['stash', 'drop', entry.selector], {
+          cwd: context.cwd,
+          signal: handle.signal,
+          timeoutMs: 120_000,
+          maxOutputBytes: 64 * 1024,
+        });
+      } catch (error) {
+        const failure = this.stashCommandFailure(
+          error,
+          'The stash was applied but could not be deleted; it was retained.',
+        );
+        return { ...failure, message: `${failure.message} The saved stash remains available.` };
+      }
+      return { status: 'succeeded', message: `Applied and deleted ${entry.selector}.`, output: '' };
+    }
+    return { status: 'succeeded', message: `Applied ${entry.selector}; the stash was retained.`, output: '' };
+  }
+
+  private stashCommandFailure(error: unknown, fallback: string): OperationOutcome {
+    if (error instanceof GitCommandError) {
+      const output = displayOutput(error.stdout, error.stderr).slice(0, 65_536);
+      return {
+        status: 'failed',
+        failureReason: 'other',
+        message: output ? `${fallback} ${output.slice(0, 400)}` : fallback,
+        output,
+      };
+    }
+    if (error instanceof GitCancelledError)
+      return {
+        status: 'failed',
+        failureReason: 'cancelled',
+        message: 'The stash operation was cancelled.',
+        output: '',
+      };
+    if (error instanceof GitTimeoutError)
+      return {
+        status: 'failed',
+        failureReason: 'timeout',
+        message: 'Git took too long to update the stash.',
+        output: '',
+      };
+    return { status: 'failed', failureReason: 'other', message: fallback, output: '' };
   }
 
   startRecovery(ownerId: number, request: RepositoryRecoveryRequest): RepositoryOperation {

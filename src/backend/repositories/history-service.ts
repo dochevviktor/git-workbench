@@ -6,10 +6,12 @@ import type {
   RepositoryHistoryPage,
   RepositoryHistoryReference,
   RepositoryHistoryTracking,
+  RepositoryStashEntry,
 } from '../../common/ipc/contracts';
 import { repositoryHistoryPageSchema } from '../../common/ipc/contracts';
 import { GitCommandError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
+import { readStashes } from './stash-service';
 
 const historyReadTimeoutMs = 15_000;
 const historyReadOutputLimit = 8 * 1024 * 1024;
@@ -48,8 +50,9 @@ export async function readRepositoryHistory(
   input: ReadHistoryInput,
 ): Promise<RepositoryHistoryPage> {
   const filter = input.filter ?? { kind: 'all' as const };
+  const stashes = await readStashes(runner, input.cwd);
   const rawHistory = await runner.run(
-    historyArguments(input, filter),
+    historyArguments(input, filter, stashes),
     readOptions(input.cwd, historyReadOutputLimit),
   );
   const parsedCommits = parseCommits(rawHistory.stdout);
@@ -63,8 +66,10 @@ export async function readRepositoryHistory(
     ),
     readPeeledTargets(runner, input.cwd),
   ]);
-  const parsedReferences = parseReferences(rawReferences.stdout);
-  const references = createReferences(parsedReferences, peeledTargets, input.head);
+  const parsedReferences = parseReferences(rawReferences.stdout).filter(
+    (reference) => reference.fullName !== 'refs/stash',
+  );
+  const references = createReferences(parsedReferences, peeledTargets, input.head, stashes);
   const tracking = await readTracking(runner, input.cwd, input.head, references, parsedReferences);
   const referencesWithTracking = references.map((reference) =>
     reference.isHead && reference.kind === 'branch'
@@ -86,7 +91,11 @@ export async function readRepositoryHistory(
   });
 }
 
-function historyArguments(input: ReadHistoryInput, filter: RepositoryHistoryFilter): readonly string[] {
+function historyArguments(
+  input: ReadHistoryInput,
+  filter: RepositoryHistoryFilter,
+  stashes: readonly RepositoryStashEntry[],
+): readonly string[] {
   const argumentsList = ['log'];
   if (filter.kind !== 'reference') argumentsList.push('--all');
   argumentsList.push('--topo-order', '--no-decorate', '--no-color');
@@ -102,6 +111,7 @@ function historyArguments(input: ReadHistoryInput, filter: RepositoryHistoryFilt
   );
   const startingCommit = filter.kind === 'reference' ? filter.target : input.head.commit;
   if (startingCommit) argumentsList.push(startingCommit);
+  if (filter.kind === 'all') argumentsList.push(...stashes.map((stash) => stash.commitId));
   argumentsList.push('--');
   return argumentsList;
 }
@@ -178,6 +188,7 @@ function createReferences(
   rawReferences: readonly RawReference[],
   peeledTargets: ReadonlyMap<string, string>,
   head: RepositoryHead,
+  stashes: readonly RepositoryStashEntry[],
 ): RepositoryHistoryReference[] {
   // An upstream that no reference resolves to is gone, which marks the branch as stale. Asking
   // `for-each-ref` for `%(upstream:track)` instead would walk history for every branch.
@@ -218,7 +229,21 @@ function createReferences(
     });
   }
 
-  return references.sort(compareReferences);
+  const stashReferences = stashes.map(
+    (stash) =>
+      ({
+        name: `${stash.selector}: ${stash.message}`,
+        fullName: `refs/git-workbench/stash/${stash.commitId}`,
+        kind: 'stash',
+        target: stash.commitId,
+        isHead: false,
+        upstream: null,
+        upstreamGone: false,
+        ahead: null,
+        behind: null,
+      }) satisfies RepositoryHistoryReference,
+  );
+  return [...references, ...stashReferences].sort(compareReferences);
 }
 
 async function readPeeledTargets(runner: HistoryRunner, cwd: string): Promise<ReadonlyMap<string, string>> {

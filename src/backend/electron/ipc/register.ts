@@ -239,6 +239,37 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryRecovery, (window, { id }) =>
       repositoryService.getRecovery(window.webContents.id, id),
     );
+    register(requests.listRepositoryStashes, (window, { id }) =>
+      repositoryService.listStashes(window.webContents.id, id),
+    );
+    register(requests.getRepositoryStashDetails, (window, { id, stashId }) =>
+      repositoryService.getStashDetails(window.webContents.id, id, stashId),
+    );
+    register(requests.startRepositoryStashOperation, (window, request) =>
+      repositoryService.startStashOperation(window.webContents.id, request),
+    );
+    register(requests.saveRepositoryPatch, async (window, request) => {
+      const defaultName =
+        request.target.kind === 'commit'
+          ? `${request.target.commitId.slice(0, 12)}.patch`
+          : request.target.kind === 'stash'
+            ? `${request.target.stashId.slice(0, 12)}-stash.patch`
+            : 'working-changes.patch';
+      const chosen = await dialog.showSaveDialog(window, {
+        title: 'Save Patch',
+        defaultPath: defaultName,
+        filters: [{ name: 'Git patches', extensions: ['patch', 'diff'] }],
+      });
+      if (chosen.canceled || !chosen.filePath) {
+        return {
+          status: 'cancelled' as const,
+          path: null,
+          byteLength: 0,
+          message: 'Patch export cancelled.',
+        };
+      }
+      return repositoryService.savePatch(window.webContents.id, request, chosen.filePath);
+    });
     register(requests.recoverRepository, (window, request) =>
       repositoryService.startRecovery(window.webContents.id, request),
     );
