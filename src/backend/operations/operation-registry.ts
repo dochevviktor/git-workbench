@@ -4,6 +4,7 @@ import type {
   RepositoryOperationFailureReason,
   RepositoryOperationKind,
   RepositoryOperationProgress,
+  RepositoryOperationSource,
 } from '../../common/ipc/contracts';
 import { repositoryOperationSchema } from '../../common/ipc/contracts';
 import { redactUrlCredentials } from '../git/runner';
@@ -16,6 +17,7 @@ export interface OperationDescriptor {
   readonly ownerId: number;
   readonly repositoryId: string;
   readonly kind: RepositoryOperationKind;
+  readonly source?: RepositoryOperationSource | undefined;
   readonly title: string;
   /** The Git command as it will be run, already redacted for display. */
   readonly command: string;
@@ -39,6 +41,13 @@ export interface OperationHandle {
 }
 
 export type OperationListener = (ownerId: number, operation: RepositoryOperation) => void;
+
+export class OperationBusyError extends Error {
+  constructor() {
+    super('An operation is already running for this repository.');
+    this.name = 'OperationBusyError';
+  }
+}
 
 interface OperationEntry {
   readonly ownerId: number;
@@ -94,6 +103,13 @@ export class OperationRegistry {
     );
   }
 
+  /** True while any window has unfinished work for the repository. */
+  isBusyForRepository(repositoryId: string): boolean {
+    return [...this.entries.values()].some(
+      (entry) => entry.operation.repositoryId === repositoryId && entry.operation.status === 'running',
+    );
+  }
+
   /**
    * Accepts the operation, publishes it as running, and starts `work` without awaiting it. The
    * returned record is the accepted state; everything after it reaches listeners as an event.
@@ -102,6 +118,10 @@ export class OperationRegistry {
     descriptor: OperationDescriptor,
     work: (handle: OperationHandle) => Promise<OperationOutcome>,
   ): RepositoryOperation {
+    // The check lives inside the synchronous acceptance boundary as well as in the service's
+    // user-facing validation. This closes the race between a manual request and a scheduler tick
+    // that both finish their asynchronous planning at the same time.
+    if (this.isBusyForRepository(descriptor.repositoryId)) throw new OperationBusyError();
     const id = `op-${randomBytes(16).toString('hex')}`;
     const controller = new AbortController();
     const entry: OperationEntry = {
@@ -112,6 +132,7 @@ export class OperationRegistry {
         id,
         repositoryId: descriptor.repositoryId,
         kind: descriptor.kind,
+        source: descriptor.source ?? 'user',
         title: descriptor.title.slice(0, 512),
         status: 'running',
         revision: 0,

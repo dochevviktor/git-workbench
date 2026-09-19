@@ -4,7 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P05 — clone, background fetch scheduling, and credential prompts.**
+**Next implementation request: Continue P05 — clone and credential prompts.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -24,11 +24,11 @@ not completed feature families.
 | Phase | Deliverable                                                          | Status                                                                                                             | Depends on |
 | ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; network/commit/reference jobs, cancellation, literal paths, coordinated reads/writes (2026-09-19)         | P00        |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; jobs, cancellation, literal paths, coordinated reads/writes, F14 scheduler (2026-09-19)                   | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization, checkout/pull dialogs, inactive fast-forward, mapped push (2026-09-19)             | P04        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization + F14 fetch/activity (2026-09-19)                                                   | P04        |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; merge/rebase pull and saved-change recovery brought forward (2026-09-19)                                  | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
@@ -507,10 +507,22 @@ could be retried with a lease, a lease refused as stale and then accepted after 
 on the remote, an unreachable remote, cancellation, the duplicate refusal, the tracking counts, and remote
 management including a declined `ext::` URL; parser tests cover progress, redaction, and every failure
 class; the registry, the preload contract, and an Electron flow that adds a remote, pushes, fetches, and
-pulls through the real UI are covered as well. Merge and rebase pulls, background-fetch scheduling,
-interactive credential and passphrase prompts, platform secret storage, clone, pushing a single tag,
+pulls through the real UI are covered as well. Merge and rebase pulls, interactive credential and
+passphrase prompts, platform secret storage, clone, pushing a single tag,
 pushing to a differently named remote branch, and fast-forwarding several branches at once are not
 implemented, so F13, F14, and P05 remain partial.
+
+Started F14 background-fetch and activity completion slice (2026-09-19): automatic fetch is enabled for
+configured remotes in open tabs on a 20-minute scheduler, with a durable per-repository remote opt-out
+shown in the remote context menu. One repository has one scheduler slot, several enabled remotes are
+visited in turn, and the repository-global operation acceptance guard prevents duplicate work across
+windows. Background operations carry their source through the validated DTO, remain cancellable from
+the activity panel, and are separated into All, User, and Background views with redacted command/output
+details. Closing a tab or window removes its schedule and cancels a late-starting background operation.
+Unit tests cover timer deduplication, cross-window acceptance, preference recovery/rename, and malformed
+preference quarantine; disposable Git integration covers a remote opt-out followed by a real scheduled
+fetch and independent ref assertions. The global automatic-fetch preference documented by Fork is not
+yet exposed, and credential/passphrase prompting, clone, and platform secret storage remain P05 work.
 
 Verified F01–F13 stabilization (2026-09-19): R1–R12 in the review are fixed and covered by permanent
 regressions. Checkout offers preserve, stash/reapply, and discard with a precise path preview and retained
@@ -523,13 +535,13 @@ responses. Recovery persists saved changes and exposes apply, resolve, and conti
 validation. Literal file handling, full ref identity, credential redaction, external refresh, activity
 geometry/keyboard access, graph projection, and query overhead are corrected.
 
-`npm run check` passes 239 tests, type checks, lint and formatting; `npm run test:e2e` builds production
+`npm run check` passes 248 tests, type checks, lint and formatting; `npm run test:e2e` builds production
 bundles and passes three headless scenarios, including a real 16-second checkout hook and a tab switch.
 Git tests use disposable repositories/remotes and compare index, worktree, refs, and sequencer state.
 Light/dark UI captures were compared with the restored Fork references. The synthetic graph projection
 improved from about 694 to 7 ms at 4,001 commits; this does not satisfy P03's real large-history baseline.
-The full conflict editor, general stash management, clone/authentication, background scheduling, full
-hosting accounts, cross-platform runtime behavior, and remaining phase criteria are still unimplemented
+The full conflict editor, general stash management, clone/authentication, the global automatic-fetch
+preference, full hosting accounts, cross-platform runtime behavior, and remaining phase criteria are still unimplemented
 or unverified. The review record documents the exact scope and recovery-copy retention policy.
 
 ## P06 — Merge, conflicts, stashes, and recovery
@@ -716,8 +728,8 @@ Keep live provider tests opt-in; routine tests remain local and deterministic.
 
 ## Suggested next request
 
-> Continue P05 from docs/implementation-plan.md. Add the clone workflow, then background fetch
-> scheduling that cannot duplicate work, and controlled credential and passphrase prompting with
+> Continue P05 from docs/implementation-plan.md. Add the clone workflow, then controlled credential
+> and passphrase prompting with
 > platform secret storage only where a secret must be retained. Keep the F13 operation registry, its
 > per-repository lane, and its structured failures intact. P04's whole-file and multi-file discard with
 > an exact preview, confirmation, and recoverable backups is still open and can be taken first.

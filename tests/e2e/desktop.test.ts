@@ -708,8 +708,13 @@ test('production build loads its isolated preload and renderer', async () => {
 
     // The activity panel records the command that ran and its output.
     await expect(page.getByTestId('activity')).toBeVisible();
+    await expect(page.getByTestId('activity-tab-all')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('activity-row').first()).toContainText(/Push/u);
     await expect(page.getByTestId('activity-output')).toContainText(/origin|main|master/u);
+    await page.getByTestId('activity-tab-user').click();
+    await expect(page.getByTestId('activity-row').first()).toContainText(/Push/u);
+    await page.getByTestId('activity-tab-background').click();
+    await expect(page.getByText('No automatic fetches have run yet.')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('activity')).toHaveCount(0);
 

@@ -24,6 +24,7 @@ import type {
   RepositoryManagerWarning,
   RepositoryNetworkRequestEnvelope,
   RepositoryOperation,
+  RepositoryOperationSource,
   RepositoryLocalChangesPreview,
   RepositoryRecoveryRequest,
   RepositoryRecoveryState,
@@ -79,14 +80,21 @@ import {
 } from './commit-service';
 import { readRepositoryDiff } from './diff-service';
 import { OperationRegistry } from '../operations/operation-registry';
-import type { OperationListener } from '../operations/operation-registry';
+import { OperationBusyError } from '../operations/operation-registry';
+import type {
+  OperationDescriptor,
+  OperationHandle,
+  OperationListener,
+  OperationOutcome,
+} from '../operations/operation-registry';
+import { BackgroundFetchScheduler } from '../operations/background-fetch-scheduler';
 import { NetworkRequestError, planNetworkOperation, runNetworkOperation } from './network-service';
 import type { NetworkPlan } from './network-service';
-import { applyRemoteAction, readRemotes } from './remote-service';
+import { applyRemoteAction, isAllowedRemoteUrl, readRemotes } from './remote-service';
+import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
 import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
-import type { OperationHandle } from '../operations/operation-registry';
 import { pullRequestUrl } from './hosting-service';
 
 const repositoryReadTimeoutMs = 10_000;
@@ -104,6 +112,8 @@ export interface RepositoryServiceOptions {
   readonly storagePath: string;
   readonly managerStoragePath?: string;
   readonly workspaceStoragePath?: string;
+  readonly backgroundFetchStoragePath?: string;
+  readonly backgroundFetchIntervalMs?: number;
   readonly runner?: GitRunnerLike;
   readonly clock?: () => Date;
   readonly maxRecentEntries?: number;
@@ -127,6 +137,9 @@ export class RepositoryService {
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
   private readonly mutationQueues = new Map<string, Promise<void>>();
   private readonly operations: OperationRegistry;
+  private readonly backgroundFetch: BackgroundFetchScheduler;
+  private readonly remoteFetchPreferences: RemoteFetchPreferenceStore;
+  private readonly releaseOperationSubscription: () => void;
   private gitInfoPromise: Promise<GitInfo> | undefined;
   private readonly topologyKeys = new Map<string, string>();
 
@@ -148,6 +161,27 @@ export class RepositoryService {
     this.clock = options.clock ?? (() => new Date());
     this.sourceScanOptions = options.sourceScanOptions ?? {};
     this.operations = new OperationRegistry({ clock: this.clock });
+    this.remoteFetchPreferences = new RemoteFetchPreferenceStore(
+      options.backgroundFetchStoragePath ?? `${options.storagePath}.background-fetch`,
+    );
+    this.backgroundFetch = new BackgroundFetchScheduler({
+      intervalMs: options.backgroundFetchIntervalMs,
+      start: (target) =>
+        this.startNetworkOperation(
+          target.ownerId,
+          {
+            id: target.repositoryId,
+            request: { kind: 'fetch', remote: target.remote, prune: true, tags: true },
+          },
+          'background',
+        ),
+      cancel: (target, operationId) => {
+        this.operations.cancel(target.ownerId, operationId);
+      },
+    });
+    this.releaseOperationSubscription = this.operations.subscribe((ownerId, operation) => {
+      this.backgroundFetch.operationChanged(ownerId, operation);
+    });
   }
 
   async getGitInfo(): Promise<GitInfo> {
@@ -173,6 +207,7 @@ export class RepositoryService {
     await this.tabStore.addTab({ id: summary.id, path: summary.path });
     await this.tabStore.setActiveRepositoryId(summary.id);
     this.addSession(ownerId, summary);
+    void this.refreshBackgroundFetch(ownerId, summary);
     return summary;
   }
 
@@ -203,6 +238,7 @@ export class RepositoryService {
     await this.tabStore.addTab({ id: summary.id, path: summary.path });
     await this.tabStore.setActiveRepositoryId(summary.id);
     this.addSession(ownerId, summary);
+    void this.refreshBackgroundFetch(ownerId, summary);
     return summary;
   }
 
@@ -247,6 +283,8 @@ export class RepositoryService {
       const nextActiveId = [...ownerSessions.keys()].find((candidate) => candidate !== id) ?? null;
       await this.tabStore.setActiveRepositoryId(nextActiveId);
     }
+    for (const operationId of this.backgroundFetch.remove(ownerId, id))
+      this.operations.cancel(ownerId, operationId);
     ownerSessions.delete(id);
   }
 
@@ -581,7 +619,9 @@ export class RepositoryService {
   async listRemotes(ownerId: number, id: string): Promise<RepositoryRemote[]> {
     const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
-      return await readRemotes(this.runner, summary.worktreePath ?? summary.commonDir);
+      const remotes = await this.readConfiguredRemotes(id, summary.worktreePath ?? summary.commonDir);
+      this.configureBackgroundFetch(ownerId, id, remotes);
+      return remotes;
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the remotes of this repository.');
     }
@@ -618,15 +658,88 @@ export class RepositoryService {
     return this.withRepositoryMutation(cached.commonDir, async () => {
       const summary = await this.refreshOpenRepository(ownerId, request.id);
       try {
-        return await applyRemoteAction(this.runner, {
+        const cwd = summary.worktreePath ?? summary.commonDir;
+        const action = request.action;
+        if (action.kind === 'set-automatic-fetch') {
+          const existing = await readRemotes(this.runner, cwd);
+          const remote = existing.find((candidate) => candidate.name === action.name);
+          const remotes = await this.readConfiguredRemotes(request.id, cwd);
+          if (!remote) {
+            this.configureBackgroundFetch(ownerId, request.id, remotes);
+            return {
+              status: 'blocked',
+              repositoryId: request.id,
+              reason: 'not-found',
+              message: `This repository has no remote named '${action.name}'.`,
+              remotes,
+            } satisfies RepositoryRemoteActionResult;
+          }
+          await this.remoteFetchPreferences.setEnabled(request.id, action.name, action.enabled);
+          const updated = await this.readConfiguredRemotes(request.id, cwd);
+          this.configureBackgroundFetch(ownerId, request.id, updated);
+          return {
+            status: 'applied',
+            repositoryId: request.id,
+            message: `${action.enabled ? 'Enabled' : 'Disabled'} automatic fetching for '${action.name}'.`,
+            remotes: updated,
+          } satisfies RepositoryRemoteActionResult;
+        }
+
+        const result = await applyRemoteAction(this.runner, {
           repositoryId: request.id,
-          cwd: summary.worktreePath ?? summary.commonDir,
-          action: request.action,
+          cwd,
+          action,
         });
+        if (result.status === 'applied') {
+          if (action.kind === 'rename')
+            await this.remoteFetchPreferences.rename(request.id, action.name, action.newName);
+          if (action.kind === 'remove') await this.remoteFetchPreferences.remove(request.id, action.name);
+        }
+        const remotes = await this.readConfiguredRemotes(request.id, cwd);
+        this.configureBackgroundFetch(ownerId, request.id, remotes);
+        return { ...result, remotes };
       } catch (error) {
         throw this.mapGitFailure(error, 'Git could not change the remotes of this repository.');
       }
     });
+  }
+
+  private async readConfiguredRemotes(repositoryId: string, cwd: string): Promise<RepositoryRemote[]> {
+    const [remotes, disabled] = await Promise.all([
+      readRemotes(this.runner, cwd),
+      this.remoteFetchPreferences.disabledRemotes(repositoryId),
+    ]);
+    const disabledRemotes = new Set(disabled);
+    return remotes.map((remote) => ({
+      ...remote,
+      fetchAutomatically: !disabledRemotes.has(remote.name),
+    }));
+  }
+
+  private configureBackgroundFetch(
+    ownerId: number,
+    repositoryId: string,
+    remotes: readonly RepositoryRemote[],
+  ): void {
+    const cancelled = this.backgroundFetch.configure(
+      ownerId,
+      repositoryId,
+      remotes.filter((remote) => remote.fetchAutomatically).map((remote) => remote.name),
+    );
+    for (const operationId of cancelled) this.operations.cancel(ownerId, operationId);
+  }
+
+  private async refreshBackgroundFetch(ownerId: number, summary: RepositorySummary): Promise<void> {
+    try {
+      const remotes = await this.readConfiguredRemotes(summary.id, summary.worktreePath ?? summary.commonDir);
+      if (this.sessions.get(ownerId)?.get(summary.id)?.path !== summary.path) return;
+      this.configureBackgroundFetch(ownerId, summary.id, remotes);
+    } catch {
+      // A missing repository, unreadable remote, or invalid existing transport disables automatic
+      // scheduling for this session until the next explicit remote read succeeds.
+      for (const operationId of this.backgroundFetch.remove(ownerId, summary.id))
+        this.operations.cancel(ownerId, operationId);
+    }
   }
 
   listOperations(ownerId: number): RepositoryOperation[] {
@@ -637,7 +750,7 @@ export class RepositoryService {
     const summary = this.sessions.get(ownerId)?.get(id);
     if (!summary)
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'That repository is not open in this window.');
-    if (this.operations.isBusy(ownerId, id))
+    if (this.operations.isBusyForRepository(id))
       throw new ExpectedBackendError(
         'OPERATION_FAILED',
         'An operation is already running for this repository.',
@@ -645,9 +758,25 @@ export class RepositoryService {
     return summary;
   }
 
+  private startOperation(
+    descriptor: OperationDescriptor,
+    work: (handle: OperationHandle) => Promise<OperationOutcome>,
+  ): RepositoryOperation {
+    try {
+      return this.operations.start(descriptor, work);
+    } catch (error) {
+      if (error instanceof OperationBusyError)
+        throw new ExpectedBackendError(
+          'OPERATION_FAILED',
+          'An operation is already running for this repository.',
+        );
+      throw error;
+    }
+  }
+
   startCommit(ownerId: number, request: RepositoryCommitRequest): RepositoryOperation {
     this.operationRepository(ownerId, request.id);
-    return this.operations.start(
+    return this.startOperation(
       {
         ownerId,
         repositoryId: request.id,
@@ -672,7 +801,7 @@ export class RepositoryService {
 
   startReferenceAction(ownerId: number, request: RepositoryReferenceActionRequest): RepositoryOperation {
     this.operationRepository(ownerId, request.id);
-    return this.operations.start(
+    return this.startOperation(
       {
         ownerId,
         repositoryId: request.id,
@@ -710,6 +839,7 @@ export class RepositoryService {
   async startNetworkOperation(
     ownerId: number,
     request: RepositoryNetworkRequestEnvelope,
+    source: RepositoryOperationSource = 'user',
   ): Promise<RepositoryOperation> {
     let summary = this.operationRepository(ownerId, request.id);
     if (request.request.kind === 'pull' && !request.request.expectedHead) {
@@ -726,18 +856,19 @@ export class RepositoryService {
       throw this.mapGitFailure(error, 'Git could not start that operation.');
     }
     // Checked after every await, so two requests that arrive together cannot both be accepted.
-    if (this.operations.isBusy(ownerId, request.id)) {
+    if (this.operations.isBusyForRepository(request.id)) {
       throw new ExpectedBackendError(
         'OPERATION_FAILED',
         'A network operation is already running for this repository.',
       );
     }
 
-    return this.operations.start(
+    return this.startOperation(
       {
         ownerId,
         repositoryId: request.id,
         kind: plan.kind,
+        source,
         title: plan.title,
         command: plan.command,
       },
@@ -759,6 +890,22 @@ export class RepositoryService {
               message: 'Choose a configured remote of this repository.',
               output: '',
             };
+          }
+          const transportRemotes =
+            action.kind === 'fetch' && action.remote === null
+              ? remotes.map((remote) => remote.name)
+              : 'remote' in action && action.remote
+                ? [action.remote]
+                : [];
+          for (const remote of transportRemotes) {
+            if (!(await this.remoteTransportAllowed(cwd, remote))) {
+              return {
+                status: 'failed' as const,
+                failureReason: 'other' as const,
+                message: `Git Workbench will not run the configured transport for '${remote}'. Replace its URL first.`,
+                output: '',
+              };
+            }
           }
           if (action.kind === 'push') {
             const context = await this.getReferenceContext(ownerId, request.id);
@@ -800,6 +947,14 @@ export class RepositoryService {
               );
             if (action.branch)
               await this.runner.run(['check-ref-format', `refs/heads/${action.branch}`], { cwd });
+            const pullRemote = action.remote ?? destination?.upstreamRemote;
+            if (pullRemote && !(await this.remoteTransportAllowed(cwd, pullRemote)))
+              return {
+                status: 'failed' as const,
+                failureReason: 'other' as const,
+                message: `Git Workbench will not run the configured transport for '${pullRemote}'. Replace its URL first.`,
+                output: '',
+              };
             const recovery = await this.getRecovery(ownerId, request.id);
             if (recovery.pendingOperation || recovery.copies.some((copy) => copy.pending))
               throw new ExpectedBackendError(
@@ -875,6 +1030,13 @@ export class RepositoryService {
     if (context.pendingOperation)
       throw new ExpectedBackendError('OPERATION_FAILED', 'Finish the pending Git operation first.');
     const cwd = summary.worktreePath;
+    if (!(await this.remoteTransportAllowed(cwd, branch.upstreamRemote)))
+      return {
+        status: 'failed' as const,
+        failureReason: 'other' as const,
+        message: `Git Workbench will not run the configured transport for '${branch.upstreamRemote}'. Replace its URL first.`,
+        output: '',
+      };
     const fetch = await runNetworkOperation(
       this.runner,
       {
@@ -942,7 +1104,7 @@ export class RepositoryService {
 
   startRecovery(ownerId: number, request: RepositoryRecoveryRequest): RepositoryOperation {
     const cached = this.operationRepository(ownerId, request.id);
-    return this.operations.start(
+    return this.startOperation(
       {
         ownerId,
         repositoryId: request.id,
@@ -1123,6 +1285,7 @@ export class RepositoryService {
     this.restorePromises.delete(ownerId);
     this.sessions.delete(ownerId);
     this.managerRepositoryPaths.delete(ownerId);
+    this.backgroundFetch.removeOwner(ownerId);
     this.operations.disposeOwner(ownerId);
   }
 
@@ -1133,6 +1296,8 @@ export class RepositoryService {
     this.managerRepositoryPaths.clear();
     this.mutationQueues.clear();
     this.topologyKeys.clear();
+    this.backgroundFetch.dispose();
+    this.releaseOperationSubscription();
     this.operations.dispose();
   }
 
@@ -1271,6 +1436,20 @@ export class RepositoryService {
       timeoutMs: repositoryReadTimeoutMs,
       maxOutputBytes: repositoryReadOutputLimit,
     });
+  }
+
+  private async remoteTransportAllowed(cwd: string, remote: string): Promise<boolean> {
+    try {
+      const result = await this.runner.run(['remote', 'get-url', '--', remote], {
+        cwd,
+        timeoutMs: repositoryReadTimeoutMs,
+        maxOutputBytes: repositoryReadOutputLimit,
+      });
+      return isAllowedRemoteUrl(result.stdout.trim());
+    } catch (error) {
+      if (error instanceof GitCommandError) return false;
+      throw error;
+    }
   }
 
   private async requireWorktree(
@@ -1518,7 +1697,10 @@ export class RepositoryService {
         // Keep the tab record persisted so the path remains recoverable through Recent Repositories.
       }
     }
-    if (this.ownerGenerations.get(ownerId) === generation) this.sessions.set(ownerId, restored);
+    if (this.ownerGenerations.get(ownerId) === generation) {
+      this.sessions.set(ownerId, restored);
+      for (const summary of restored.values()) void this.refreshBackgroundFetch(ownerId, summary);
+    }
   }
 
   private repositoryId(worktreePath: string | null, commonDir: string): string {

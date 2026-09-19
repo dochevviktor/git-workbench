@@ -283,6 +283,7 @@ describe('preload capability API', () => {
     const accepted = {
       id: `op-${'a'.repeat(32)}`,
       repositoryId,
+      source: 'user',
       kind: 'commit',
       title: 'Commit',
       status: 'running',
@@ -355,6 +356,7 @@ describe('preload capability API', () => {
     const accepted = {
       id: `op-${'b'.repeat(32)}`,
       repositoryId,
+      source: 'user',
       kind: 'reference',
       title: 'Create branch',
       status: 'running',
@@ -427,6 +429,7 @@ describe('preload capability API', () => {
     const operation = {
       id: `op-${'a'.repeat(32)}`,
       repositoryId,
+      source: 'user',
       kind: 'push',
       title: "Push 'main' to 'origin'",
       status: 'running',
@@ -481,7 +484,15 @@ describe('preload capability API', () => {
       status: 'applied',
       repositoryId,
       message: "Added the remote 'origin'.",
-      remotes: [{ name: 'origin', fetchUrl: 'https://example.test/repo.git', pushUrl: null, branchCount: 0 }],
+      remotes: [
+        {
+          name: 'origin',
+          fetchUrl: 'https://example.test/repo.git',
+          pushUrl: null,
+          branchCount: 0,
+          fetchAutomatically: true,
+        },
+      ],
     } as const;
     invoke.mockResolvedValueOnce({ ok: true, value: result });
     await expect(api.repository.applyRemoteAction(request)).resolves.toEqual({ ok: true, value: result });
@@ -498,6 +509,7 @@ describe('preload capability API', () => {
     const running = {
       id: `op-${'b'.repeat(32)}`,
       repositoryId,
+      source: 'user',
       kind: 'fetch',
       title: "Fetch 'origin'",
       status: 'running',

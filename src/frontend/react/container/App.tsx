@@ -970,6 +970,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabledReason: networkBusyReason,
           run: () => startNetwork({ kind: 'fetch', remote: remoteName, prune: true, tags: true }),
         },
+        {
+          id: 'automatic-fetch',
+          label: `Fetch '${remoteName}' Automatically`,
+          checkable: 'checkbox',
+          checked: remote?.fetchAutomatically ?? false,
+          disabled: remote === undefined || referenceRequestBusy,
+          disabledReason: remote ? undefined : 'The remote list is still loading.',
+          run: () =>
+            void runRemoteAction({
+              kind: 'set-automatic-fetch',
+              name: remoteName,
+              enabled: !(remote?.fetchAutomatically ?? false),
+            }),
+        },
         menuSeparator,
         remote && {
           id: 'edit',

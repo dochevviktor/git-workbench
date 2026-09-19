@@ -778,6 +778,8 @@ export const repositoryRemoteSchema = z.strictObject({
   pushUrl: z.string().max(32_768).nullable(),
   /** The remote-tracking branches this remote currently has locally. */
   branchCount: z.number().int().nonnegative().max(100_000),
+  /** A Git Workbench preference; it does not alter the remote's Git configuration. */
+  fetchAutomatically: z.boolean().default(true),
 });
 
 export const repositoryRemoteNameSchema = z
@@ -820,6 +822,11 @@ export const repositoryRemoteActionSchema = z.discriminatedUnion('kind', [
     url: repositoryRemoteUrlSchema,
     /** Sets the separate push URL instead of the fetch URL. */
     push: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('set-automatic-fetch'),
+    name: repositoryRemoteNameSchema,
+    enabled: z.boolean(),
   }),
 ]);
 
@@ -867,6 +874,8 @@ export const repositoryOperationKindSchema = z.enum([
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
 
+export const repositoryOperationSourceSchema = z.enum(['user', 'background']).default('user');
+
 export const repositoryOperationFailureReasonSchema = z.enum([
   'authentication',
   'network',
@@ -896,6 +905,8 @@ export const repositoryOperationSchema = z.strictObject({
   id: repositoryOperationIdSchema,
   repositoryId: repositoryIdSchema,
   kind: repositoryOperationKindSchema,
+  /** Whether the operation was explicitly started by the user or by automatic scheduling. */
+  source: repositoryOperationSourceSchema,
   title: z.string().min(1).max(512),
   status: repositoryOperationStatusSchema,
   /** Monotonically increasing; late IPC replies cannot overwrite newer events. */
@@ -1298,6 +1309,7 @@ export type RepositoryRemoteFailureReason = z.infer<typeof repositoryRemoteFailu
 export type RepositoryOperation = z.infer<typeof repositoryOperationSchema>;
 export type RepositoryOperationKind = z.infer<typeof repositoryOperationKindSchema>;
 export type RepositoryOperationStatus = z.infer<typeof repositoryOperationStatusSchema>;
+export type RepositoryOperationSource = z.infer<typeof repositoryOperationSourceSchema>;
 export type RepositoryOperationProgress = z.infer<typeof repositoryOperationProgressSchema>;
 export type RepositoryOperationFailureReason = z.infer<typeof repositoryOperationFailureReasonSchema>;
 export type RepositoryOperationSession = z.infer<typeof repositoryOperationSessionSchema>;

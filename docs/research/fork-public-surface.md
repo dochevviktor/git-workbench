@@ -40,7 +40,7 @@ The matrix covers documented feature families. Hidden preferences, all shortcut 
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
 F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, the
 initial F07 slice, the F08–F11 local-change slices, the initial F12 branch/tag slice, the initial F13
-remote/network slice, and the initial F34 workspace chrome slice are **partial** in this project.
+remote/network slice, the F14 background-fetch/activity slice, and the initial F34 workspace chrome slice are **partial** in this project.
 The stabilization also starts the F15/F16 recovery subset and the F29 PR browser handoff; their full
 feature families and all other F-items remain incomplete or planned.
 
@@ -423,9 +423,37 @@ falls back to a force. Git's carriage-return progress becomes percentage updates
 phases are kept in the log; every line is stripped of terminal escapes and of credentials embedded in a
 URL. Remote management adds, renames, retargets, and removes remotes with Git's own `check-ref-format`
 validation, and declines an `ext::` URL, which would make Git run a local command, because repository
-trust is a later phase. Merge and rebase pulls, background-fetch scheduling, interactive credential and
+trust is a later phase. Merge and rebase pulls, interactive credential and
 passphrase prompts, platform secret storage, clone, pushing a single tag, pushing to a differently named
 remote branch, and fast-forwarding several branches at once are not implemented.
+
+### F14 source refresh
+
+Accessed **2026-09-19** from the official [Fork 1.0.67 article][activity], the official [Fork for
+Windows 1.48 article][operations], and the local activity screenshots listed in
+fork-references.json. The Mac article is **D**, dated **2018-05-28**, and says that Fork automatically
+fetches all remotes in open tabs every 20 minutes, with per-remote contextual-menu and global preference
+controls. It also documents cancellation of fetch, pull, push, and clone, and an activity manager that
+keeps past/current activities with their results. The Windows article is **D**, dated **2020-05-05**,
+and documents cancellation plus Git command output in the activity manager. These sources establish
+advertised Mac and Windows outcomes, not Linux support, credential-prompt behavior, current defaults, or
+the internal scheduling policy.
+
+The current local reference library provides **O** evidence for an activity surface with All, User, and
+Background tabs, operation rows, cancellation affordances, command text, output, and terminal status.
+The Windows screenshot shows a Pull and Fetch row; the newer macOS screenshot shows command output from
+a commit. Neither screenshot proves the scheduler's timing or the meaning of every tab.
+
+This project's F14 slice is an **I** choice: automatic fetching is enabled by default for configured
+remotes in open tabs, uses a 20-minute main-process timer, allows a durable per-remote opt-out from the
+remote context menu, rotates several remotes through one repository slot, and applies a repository-global
+acceptance guard across windows. Operations carry a validated user/background source, remain queryable
+after listener removal, stream bounded redacted progress/output, and can be cancelled through the same
+process-group policy as explicit network work. Disposable Git tests cover opt-out/re-enable scheduling,
+preference recovery and rename, duplicate prevention, and independent remote-ref assertions; the
+Electron flow covers the activity scope controls. The global automatic-fetch preference documented by
+the Mac article, credential/passphrase prompts, clone cancellation, and cross-platform runtime behavior
+remain **U** or deferred to P05.
 
 ### F01–F13 workflow audit and reference correction
 
@@ -678,7 +706,7 @@ the full feature families below remain partial. Reference evidence alone is not 
 | F11 | Commit, amend, recent messages, templates, hooks                                                            | D: [Mac releases][mac], [Windows releases][win]; O: [changes screenshot][changes-image], [length image][length-image]; I: snapshot-validated commit/amend slice (partial)                                          | P04           |
 | F12 | Branch/tag creation and deletion; checkout a branch or revision                                             | D: [product][home], [Mac releases][mac], [Windows releases][win]; O: [branch menu][tracker-mac], [Create Tag dialog][tracker-win]; I: snapshot-validated branch/tag slice (partial)                                | P05           |
 | F13 | Remotes; fetch/pull/push; upstream indicators; multiple-branch push                                         | D: [product][home], [Windows 1.48][operations], [Mac releases][mac], [Windows releases][win]; O: [Fetch dialog][tracker-win], [activity window][tracker-win]; I: operation registry with fetch/pull/push (partial) | P05, P06      |
-| F14 | Background fetch; cancellable network work; activity and command output                                     | D: [Mac 1.0.67][activity], [Windows 1.48][operations]; O: [activity window][tracker-win]; I: job registry, progress events, cancellation, activity panel (partial)                                                 | P01, P05      |
+| F14 | Background fetch; cancellable network work; activity and command output                                     | D: [Mac 1.0.67][activity], [Windows 1.48][operations]; O: [activity window][tracker-win]; I: 20-minute scheduler, opt-out, deduplication, progress/cancellation, and All/User/Background views (partial)           | P01, P05      |
 | F15 | Stashes in history, partial stashes, patch export                                                           | D: [product][home], [Windows 1.48][operations], [Windows releases][win]                                                                                                                                            | P06, P08      |
 | F16 | Merge/rebase; drag branches to initiate either operation                                                    | D: [product][home], [Windows 1.48][operations]                                                                                                                                                                     | P06, P07      |
 | F17 | Built-in conflict helper and editable merge result                                                          | D: [product][home], [Mac 1.0.73][merge]                                                                                                                                                                            | P06           |

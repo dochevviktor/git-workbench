@@ -3073,7 +3073,46 @@ svg.spinning {
 
 .activity-list {
   overflow-y: auto;
+}
+
+.activity-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
   border-right: 1px solid var(--border);
+}
+
+.activity-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.activity-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.activity-tab:hover,
+.activity-tab:focus-visible {
+  background: var(--toolbar-hover);
+  color: var(--text);
+}
+
+.activity-tab.active {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .activity-empty {

@@ -17,11 +17,11 @@ discovery, opening existing repositories, local initialization, recent-repositor
 source directories, bounded folder-aware repository scanning, persisted tabs with dirty indicators,
 close/reopen shortcuts, paged commit history, file/hunk/line staging with snapshot validation, committing
 and amending, branch and tag creation, renaming, deletion, checkout and upstream selection, remote
-management, fetch, explicit-source merge/rebase pull, inactive-branch fast-forward, mapped push with
+management, automatic background fetch, fetch, explicit-source merge/rebase pull, inactive-branch fast-forward, mapped push with
 optional lease-checked force, a PR browser handoff, and System/Light/Dark appearance. Network work,
 commits, and reference actions run as queryable background operations in the activity panel. Checkout
 offers preserve, stash/reapply, or discard, with recovery copies of changed tracked and untracked files.
-Clone, background fetching, credential prompts, general whole-file discard and stash management,
+Clone, credential prompts, a global automatic-fetch preference, general whole-file discard and stash management,
 the full conflict editor, custom manager folders, filesystem watchers, and remaining Git operations
 are later work.
 

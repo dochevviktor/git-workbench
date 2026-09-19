@@ -30,7 +30,7 @@ interface Fixture {
   readonly repositoryId: string;
 }
 
-async function fixture(): Promise<Fixture> {
+async function fixture(backgroundFetchIntervalMs = 20 * 60 * 1_000): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-network-'));
   temporaryDirectories.push(root);
   const worktree = join(root, 'repository');
@@ -46,7 +46,11 @@ async function fixture(): Promise<Fixture> {
   await git.run(['add', '--all'], { cwd: worktree });
   await git.run(['commit', '--quiet', '-m', 'first'], { cwd: worktree });
 
-  const service = new RepositoryService({ storagePath: join(root, 'recent.json'), runner: git });
+  const service = new RepositoryService({
+    storagePath: join(root, 'recent.json'),
+    runner: git,
+    backgroundFetchIntervalMs,
+  });
   const summary = await service.open(1, worktree);
   return { root, worktree, remote, git, service, repositoryId: summary.id };
 }
@@ -560,7 +564,13 @@ describe('remote management', () => {
   it('adds, renames, retargets, and removes a remote', async () => {
     const context = await fixture();
     expect(await context.service.listRemotes(1, context.repositoryId)).toEqual([
-      { name: 'origin', fetchUrl: context.remote, pushUrl: null, branchCount: 0 },
+      {
+        name: 'origin',
+        fetchUrl: context.remote,
+        pushUrl: null,
+        branchCount: 0,
+        fetchAutomatically: true,
+      },
     ]);
 
     const added = await context.service.applyRemoteAction(1, {
@@ -616,6 +626,21 @@ describe('remote management', () => {
     expect(missing).toMatchObject({ status: 'blocked', reason: 'not-found' });
   });
 
+  it('refuses an existing local-command transport before running network work', async () => {
+    const context = await fixture();
+    await context.git.run(['config', 'remote.danger.url', 'ext::sh -c echo-danger'], {
+      cwd: context.worktree,
+    });
+    const refused = await runOperation(context, {
+      kind: 'fetch',
+      remote: 'danger',
+      prune: false,
+      tags: false,
+    });
+    expect(refused).toMatchObject({ status: 'failed', failureReason: 'other' });
+    expect(refused.message).toContain('will not run');
+  });
+
   it('counts the remote-tracking branches a remote has', async () => {
     const context = await fixture();
     await runOperation(context, {
@@ -631,7 +656,70 @@ describe('remote management', () => {
     });
     await runOperation(context, { kind: 'fetch', remote: 'origin', prune: false, tags: false });
     expect(await context.service.listRemotes(1, context.repositoryId)).toEqual([
-      { name: 'origin', fetchUrl: context.remote, pushUrl: null, branchCount: 2 },
+      {
+        name: 'origin',
+        fetchUrl: context.remote,
+        pushUrl: null,
+        branchCount: 2,
+        fetchAutomatically: true,
+      },
     ]);
+  });
+
+  it('runs an automatic fetch after a remote opt-out is re-enabled', async () => {
+    const context = await fixture(25);
+    await runOperation(context, {
+      kind: 'push',
+      remote: 'origin',
+      targets: [{ fullName: 'refs/heads/main', remoteBranch: 'main' }],
+      setUpstream: true,
+      force: 'none',
+      tags: false,
+    });
+
+    const other = join(context.root, 'background-fetch-source');
+    await context.git.run(['clone', '--quiet', context.remote, other], { cwd: context.root });
+    await context.git.run(['config', 'user.name', 'Background Author'], { cwd: other });
+    await context.git.run(['config', 'user.email', 'background@example.test'], { cwd: other });
+    await writeFile(join(other, 'background.txt'), 'background\n', 'utf8');
+    await context.git.run(['add', '--all'], { cwd: other });
+    await context.git.run(['commit', '--quiet', '-m', 'background commit'], { cwd: other });
+    await context.git.run(['push', '--quiet', 'origin', 'main'], { cwd: other });
+
+    const finished = new Promise<RepositoryOperation>((resolve) => {
+      const release = context.service.subscribeOperations((_ownerId, operation) => {
+        if (operation.source === 'background' && operation.status !== 'running') {
+          release();
+          resolve(operation);
+        }
+      });
+    });
+    const disabled = await context.service.applyRemoteAction(1, {
+      id: context.repositoryId,
+      action: { kind: 'set-automatic-fetch', name: 'origin', enabled: false },
+    });
+    expect(disabled).toMatchObject({
+      status: 'applied',
+      remotes: [{ name: 'origin', fetchAutomatically: false }],
+    });
+    const enabled = await context.service.applyRemoteAction(1, {
+      id: context.repositoryId,
+      action: { kind: 'set-automatic-fetch', name: 'origin', enabled: true },
+    });
+    expect(enabled).toMatchObject({
+      status: 'applied',
+      remotes: [{ name: 'origin', fetchAutomatically: true }],
+    });
+
+    const background = await finished;
+    expect(background).toMatchObject({
+      source: 'background',
+      kind: 'fetch',
+      status: 'succeeded',
+    });
+    expect(await output(context, ['rev-parse', 'refs/remotes/origin/main'])).toBe(
+      await output(context, ['rev-parse', 'main'], other),
+    );
+    context.service.dispose();
   });
 });

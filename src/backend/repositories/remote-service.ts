@@ -41,6 +41,7 @@ export async function readRemotes(runner: RemoteRunner, cwd: string): Promise<Re
       fetchUrl: redactUrlCredentials(fetchUrl ?? ''),
       pushUrl: pushUrl === null ? null : redactUrlCredentials(pushUrl),
       branchCount: refNames.filter((refName) => refName.startsWith(prefix)).length,
+      fetchAutomatically: true,
     });
   }
   return remotes;
@@ -136,6 +137,8 @@ function remoteArguments(action: RepositoryRemoteAction): readonly string[] {
       return ['remote', 'remove', action.name];
     case 'set-url':
       return ['remote', 'set-url', ...(action.push ? ['--push'] : []), action.name, action.url];
+    case 'set-automatic-fetch':
+      throw new Error('Automatic fetch preferences are not Git remote actions.');
   }
 }
 
@@ -151,6 +154,8 @@ function remoteMessage(action: RepositoryRemoteAction): string {
       return action.push
         ? `Changed the push URL of '${action.name}'.`
         : `Changed the URL of '${action.name}'.`;
+    case 'set-automatic-fetch':
+      return `${action.enabled ? 'Enabled' : 'Disabled'} automatic fetching for '${action.name}'.`;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OperationRegistry } from '../../src/backend/operations/operation-registry';
+import { OperationBusyError, OperationRegistry } from '../../src/backend/operations/operation-registry';
 import type { OperationHandle, OperationOutcome } from '../../src/backend/operations/operation-registry';
 import type { RepositoryOperation } from '../../src/common/ipc/contracts';
 
@@ -112,6 +112,28 @@ describe('operation registry', () => {
     expect(registry.list(7)).toEqual([]);
     deferred.finish({ status: 'failed', message: 'stopped', output: '' });
     await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it('atomically refuses a second operation for the same repository', () => {
+    const registry = new OperationRegistry();
+    const first = deferredWork();
+    registry.start(descriptor(), first.work);
+    expect(() =>
+      registry.start(descriptor(), () =>
+        Promise.resolve({ status: 'succeeded', message: 'second', output: '' }),
+      ),
+    ).toThrow(OperationBusyError);
+    first.finish({ status: 'succeeded', message: 'first', output: '' });
+    registry.dispose();
+  });
+
+  it('treats the repository as busy even when another window owns the operation', () => {
+    const registry = new OperationRegistry();
+    const first = deferredWork();
+    registry.start(descriptor(7), first.work);
+    expect(registry.isBusyForRepository(repositoryId)).toBe(true);
+    expect(() => registry.start(descriptor(8), first.work)).toThrow(OperationBusyError);
+    registry.dispose();
   });
 
   it('records a thrown failure instead of leaving the operation running', async () => {

@@ -4,7 +4,7 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, the F01–F13 stabilization, minimal saved-change/pull recovery, a branch
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, a branch
 PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
@@ -109,7 +109,10 @@ The initial F13 slice adds `listRemotes()`, `applyRemoteAction()`, `startNetwork
 answered with a running operation record rather than its result, because a fetch or a push outlives the
 preload's 15-second deadline; progress, output, and completion arrive as `repository:operation-changed`
 events routed to the window that started the work, and `listOperations()` still answers after every
-listener has gone. The renderer names a remote, branches, and options; it never sends a refspec, a
+listener has gone. Operations carry a user/background source. A backend scheduler enables all configured
+remotes in open tabs by default, runs every twenty minutes, persists per-remote opt-outs, rotates several
+remotes through one repository slot, and uses the repository-global acceptance guard to avoid duplicate
+work across windows. The renderer names a remote, branches, and options; it never sends a refspec, a
 transport flag, or a force flag it was not offered, and `--force-with-lease` reaches Git only from an
 explicit confirmation. The
 F34 workspace-chrome slice
@@ -278,8 +281,9 @@ of invalid data. The initial F03 slice uses a separate versioned tab store for c
 active selection, and orientation; its status probe uses bounded NUL-delimited porcelain output and
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
-directory symlinks, or descend into a found repository. Remote clone, operation jobs, watcher
-invalidation, and the trust policy for commands that can run repository programs are still future work.
+directory symlinks, or descend into a found repository. Remote clone, watcher invalidation, and the trust
+policy for commands that can run repository programs are still future work. Background fetches use the
+runner’s non-interactive terminal policy; credential and passphrase prompting remains a later explicit workflow.
 The initial F04 history service uses bounded `git log`, `for-each-ref`, and `show-ref --dereference` reads;
 the F06 slice adds only validated reference-target and literal commit-message filters to that same
 backend-owned argument builder. The initial F07 revision service uses bounded `diff-tree`, `ls-tree`, and
@@ -328,10 +332,10 @@ workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slic
 working-changes listing, the initial F09 text-diff viewer, the initial F10 staging slice, and the renderer-drawn window chrome, menus,
 and context menus are implemented.
 There is still no
-remote authentication prompt, clone workflow, filesystem watcher, full-app
+remote authentication prompt, clone workflow, global automatic-fetch preference, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
-discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, clone, background
-fetch scheduling, interactive credential or passphrase prompting, platform secret storage, a full conflict
+discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, interactive credential
+or passphrase prompting, platform secret storage, a full conflict
 editor, general stash management, syntax/image/binary viewers, full hosting integration, automatic updater,
 or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have

@@ -9,6 +9,14 @@ interface ActivityPanelProps {
   readonly onClose: () => void;
 }
 
+type ActivityScope = 'all' | 'user' | 'background';
+
+const activityScopes: readonly { readonly id: ActivityScope; readonly label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'user', label: 'User' },
+  { id: 'background', label: 'Background' },
+];
+
 function statusLabel(operation: RepositoryOperation): string {
   switch (operation.status) {
     case 'running':
@@ -27,8 +35,10 @@ function statusLabel(operation: RepositoryOperation): string {
 /** Fork's activity list: what ran, how it ended, and the command and output behind it. */
 export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelProps) {
   const [selectedId, setSelectedId] = useState<string>();
+  const [scope, setScope] = useState<ActivityScope>('all');
   const panelRef = useRef<HTMLDivElement>(null);
-  const selected = operations.find((operation) => operation.id === selectedId) ?? operations[0];
+  const visibleOperations = operations.filter((operation) => scope === 'all' || operation.source === scope);
+  const selected = visibleOperations.find((operation) => operation.id === selectedId) ?? visibleOperations[0];
 
   useLayoutEffect(() => {
     const place = () => {
@@ -77,56 +87,77 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
 
   return (
     <div className="activity-panel" ref={panelRef} role="dialog" aria-label="Activity" data-testid="activity">
-      <div className="activity-list" role="listbox" aria-label="Operations">
-        {operations.length === 0 && <p className="activity-empty muted">Nothing has run yet.</p>}
-        {operations.map((operation) => (
-          <div
-            key={operation.id}
-            role="option"
-            aria-selected={operation.id === selected?.id}
-            tabIndex={operation.id === selected?.id ? 0 : -1}
-            onFocus={() => setSelectedId(operation.id)}
-            onKeyDown={(event) => {
-              const index = operations.indexOf(operation);
-              const next =
-                event.key === 'Home'
-                  ? 0
-                  : event.key === 'End'
-                    ? operations.length - 1
-                    : event.key === 'ArrowDown'
-                      ? Math.min(index + 1, operations.length - 1)
-                      : event.key === 'ArrowUp'
-                        ? Math.max(0, index - 1)
-                        : -1;
-              if (next < 0) return;
-              event.preventDefault();
-              panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[next]?.focus();
-            }}
-            className={`activity-row ${operation.status}${operation.id === selected?.id ? ' selected' : ''}`}
-            data-testid="activity-row"
-            onMouseDown={() => setSelectedId(operation.id)}
-          >
-            <div className="activity-row-copy">
-              <span className="activity-title">{operation.title}</span>
-              <span className="activity-status">{statusLabel(operation)}</span>
+      <div className="activity-sidebar">
+        <div className="activity-tabs" role="tablist" aria-label="Activity scope">
+          {activityScopes.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={scope === item.id}
+              className={scope === item.id ? 'activity-tab active' : 'activity-tab'}
+              data-testid={`activity-tab-${item.id}`}
+              onClick={() => setScope(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="activity-list" role="listbox" aria-label={`${scope} operations`}>
+          {visibleOperations.length === 0 && (
+            <p className="activity-empty muted">
+              {scope === 'background' ? 'No automatic fetches have run yet.' : 'Nothing has run yet.'}
+            </p>
+          )}
+          {visibleOperations.map((operation) => (
+            <div
+              key={operation.id}
+              role="option"
+              aria-selected={operation.id === selected?.id}
+              tabIndex={operation.id === selected?.id ? 0 : -1}
+              onFocus={() => setSelectedId(operation.id)}
+              onKeyDown={(event) => {
+                const index = visibleOperations.indexOf(operation);
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? visibleOperations.length - 1
+                      : event.key === 'ArrowDown'
+                        ? Math.min(index + 1, visibleOperations.length - 1)
+                        : event.key === 'ArrowUp'
+                          ? Math.max(0, index - 1)
+                          : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[next]?.focus();
+              }}
+              className={`activity-row ${operation.status}${operation.id === selected?.id ? ' selected' : ''}`}
+              data-testid="activity-row"
+              onMouseDown={() => setSelectedId(operation.id)}
+            >
+              <div className="activity-row-copy">
+                <span className="activity-title">{operation.title}</span>
+                <span className="activity-status">{statusLabel(operation)}</span>
+              </div>
+              {operation.status === 'running' ? (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Cancel ${operation.title}`}
+                  title="Cancel"
+                  onClick={() => onCancel(operation.id)}
+                >
+                  <CloseIcon size={12} />
+                </button>
+              ) : (
+                <span className={`activity-mark ${operation.status}`} aria-hidden="true">
+                  {operation.status === 'succeeded' ? <CheckIcon size={13} /> : <WarningIcon size={13} />}
+                </span>
+              )}
             </div>
-            {operation.status === 'running' ? (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Cancel ${operation.title}`}
-                title="Cancel"
-                onClick={() => onCancel(operation.id)}
-              >
-                <CloseIcon size={12} />
-              </button>
-            ) : (
-              <span className={`activity-mark ${operation.status}`} aria-hidden="true">
-                {operation.status === 'succeeded' ? <CheckIcon size={13} /> : <WarningIcon size={13} />}
-              </span>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
       <div className="activity-detail">
         {selected ? (
