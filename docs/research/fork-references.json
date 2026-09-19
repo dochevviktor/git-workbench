@@ -1,8 +1,32 @@
 {
   "$comment": "Public Fork screenshots for design reference. Run `npm run research:references` to download them into the git-ignored folder. Do not commit the images or copy them into the application.",
-  "accessed": "2026-09-17",
+  "accessed": "2026-09-19",
   "directory": "docs/research/fork-references",
   "images": [
+    {
+      "file": "win-2023-04-29-qiita-checkout-dark.png",
+      "url": "https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/221845/e41c9c0a-9e7c-5f1b-e6f1-6a6a539052b7.png",
+      "source": "https://qiita.com/segur/items/8ce6914af5578c5f4ce2",
+      "date": "2023-04-29",
+      "platform": "windows",
+      "version": null,
+      "theme": "dark",
+      "topics": ["dialogs", "checkout", "local-changes"],
+      "shows": "Checkout Branch dialog: target branch, Local changes radio group (Stash and reapply, Don't change, Discard), Checkout and Cancel. Don't change is selected in this captured state.",
+      "note": "Public hands-on article by segur, posted 2023-04-29 and updated 2023-05-14; accessed 2026-09-19. Windows identified from the captured chrome. Version and image capture date are unstated; the selected radio does not establish the default. Visual evidence only, not a specification of Git semantics or current Fork behavior."
+    },
+    {
+      "file": "win-2023-04-29-qiita-push-dark.png",
+      "url": "https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/221845/ee5e3e51-3e47-8f01-5598-42938c730400.png",
+      "source": "https://qiita.com/segur/items/8ce6914af5578c5f4ce2",
+      "date": "2023-04-29",
+      "platform": "windows",
+      "version": null,
+      "theme": "dark",
+      "topics": ["dialogs", "push"],
+      "shows": "Complete Push dialog with source Branch and destination To selectors, tag and force options, Push and Cancel. The destination shows a remote/branch pair.",
+      "note": "Public hands-on article by segur, posted 2023-04-29 and updated 2023-05-14; accessed 2026-09-19. Windows identified from the captured chrome. Version and image capture date are unstated; this image does not establish lease semantics or current Fork behavior."
+    },
     {
       "file": "site-mainwin.jpg",
       "url": "https://fork.dev/images/carousel/carousel_mainWin.jpg",
@@ -851,8 +875,8 @@
       "platform": "windows",
       "version": null,
       "theme": "light",
-      "topics": ["dialogs"],
-      "shows": "Fork for Windows 1.23 post image: fast forward pull.",
+      "topics": ["menus", "branch-menu", "fast-forward", "pull"],
+      "shows": "Local-branch context menu with checkout, fast-forward pull without checking out, push, merge and rebase.",
       "note": null
     },
     {
@@ -2253,8 +2277,8 @@
       "platform": "windows",
       "version": "2.18.0.0",
       "theme": "dark",
-      "topics": ["menus", "sidebar"],
-      "shows": "Branch context menu.",
+      "topics": ["menus", "sidebar", "branch-menu", "fast-forward", "push", "pull-request"],
+      "shows": "Cropped local-branch menu with Fast-Forward to upstream/master, Push, Create Pull Request, Merge and Rebase. It does not establish the complete menu or checkout availability.",
       "note": "User screenshot attached to \"New worktree interface behaves erratically for primary repo/worktree\"; annotations and redactions are the reporter's."
     },
     {
@@ -2433,8 +2457,8 @@
       "platform": "windows",
       "version": null,
       "theme": "dark",
-      "topics": ["dialogs"],
-      "shows": "Pull dialog.",
+      "topics": ["dialogs", "pull", "local-changes"],
+      "shows": "Complete Pull dialog: Remote and Branch selectors, read-only Into branch, Rebase instead of merge and Stash and reapply local changes checkboxes, Pull and Cancel.",
       "note": "User screenshot attached to \"Use effective setting for rebase for a repository as the default 'Rebase instead of merge' setting in Pull UI\"; annotations and redactions are the reporter's."
     },
     {

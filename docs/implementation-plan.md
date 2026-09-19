@@ -4,12 +4,20 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Next implementation request: Continue P05 — clone, background fetch scheduling, and credential prompts.**
+**Recommended next implementation request: address the [F01–F13 review](reviews/f01-f13-review.md)
+before continuing P05 clone, background fetch scheduling, and credential prompts.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
 checkpoint; it is not full Fork parity. Later phases cover the remaining documented families.
 Unknown behavior is recorded in research and must not be invented and labeled equivalent.
+
+Review checkpoint (2026-09-19): the audit reproduced mutation-target, operation-lifetime, refresh,
+credential-display, and layout defects, and identified missing checkout/pull/fast-forward workflows.
+The research correction adds public checkout evidence and records that the complete Pull screenshot
+was already available. The audit's stabilization sequence and proposed dialog acceptance criteria are
+pending implementation; the phase statuses below are unchanged. F01–F13 denote partial slices, not
+completed feature families.
 
 ## Progress ledger
 

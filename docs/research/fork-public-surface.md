@@ -1,12 +1,13 @@
 # Fork: public feature and layout baseline
 
 Research date: **2026-09-16**; F05/F08 source refresh, design reference refresh, and F09–F11 source
-refresh: **2026-09-17**; F12 and F13 source refresh: **2026-09-19**.
+refresh: **2026-09-17**; F12 and F13 source refresh and workflow audit: **2026-09-19**.
 Scope: independently implementing publicly described workflows, with Linux as the primary target. This
 document is a requirements inventory, not a claim of verified equivalence.
 
-Only the public website, official release notes, official blog posts, and published screenshots were
-consulted. No Fork installation, application execution, binary download, decompilation, or proprietary
+Only the public website, official release notes, official blog posts, and published screenshots
+(including public issue attachments and independently published hands-on articles) were consulted.
+No Fork installation, application execution, binary download, decompilation, or proprietary
 source inspection was used. Screenshots were viewed as references and are linked below; they are not
 application assets and are not committed to this repository. Code, branding, icons, wording, and styling
 for this project must be independently authored.
@@ -399,9 +400,10 @@ timestamp, and shows the command (`$ git pull --rebase=false origin --prune`) ab
 branches with "Push 3 branches to 'origin'…". A macOS sidebar (`mac-2026-04-23-tracker2610-1`, stated
 2.66.6) shows a branch row with `7↓27↑` beside its name.
 
-Unresolved (**U**): Fork's Push and Pull dialogs are only partly visible in public images, so their exact
-fields, the wording of its force-push confirmation, its credential prompts, its background-fetch schedule,
-and its activity tab definitions are inference here.
+Correction from the workflow audit below: a complete Windows Pull dialog was already in the reference
+library, and a complete historical Windows Push dialog has now been added. Their visible fields are
+**O**, not unresolved. Current defaults, force-push confirmation semantics, credential prompts,
+background-fetch scheduling, and activity tab definitions remain **U**.
 
 This project's initial F13 slice is an **I** choice. Long-running Git work is owned by a main-process
 operation registry: `repository:start-network-operation` validates one named request, accepts it, and
@@ -423,6 +425,55 @@ validation, and declines an `ext::` URL, which would make Git run a local comman
 trust is a later phase. Merge and rebase pulls, background-fetch scheduling, interactive credential and
 passphrase prompts, platform secret storage, clone, pushing a single tag, pushing to a differently named
 remote branch, and fast-forwarding several branches at once are not implemented.
+
+### F01–F13 workflow audit and reference correction
+
+Accessed and visually inspected **2026-09-19**. The [audit report](../reviews/f01-f13-review.md)
+records application defects, missing workflows, reproduction evidence, and proposed acceptance criteria.
+This review changes no implementation status: F01–F13 remain partial slices.
+
+- **O, high confidence for the captured Windows UI:** the existing
+  `win-2025-11-25-trackerwin2658-1-dialogs-dark.png` from
+  [TrackerWin issue 2658](https://github.com/fork-dev/TrackerWin/issues/2658), posted **2025-11-25**,
+  shows the entire Pull dialog. It contains Remote and Branch selectors, a non-editable Into branch,
+  rebase and stash/reapply checkboxes, and Pull/Cancel actions. The earlier claim that these fields
+  could not be established was incorrect. The version is unstated; neither current defaults nor
+  macOS behavior follow from this image.
+- **O, high confidence for the visible controls; historical Windows evidence:** newly indexed
+  `win-2023-04-29-qiita-checkout-dark.png` from
+  [segur's public hands-on article](https://qiita.com/segur/items/8ce6914af5578c5f4ce2), published
+  **2023-04-29**, updated **2023-05-14**, shows the target branch, three local-change radio choices
+  (stash/reapply, preserve changes, discard), and Checkout/Cancel. It corroborates the user's
+  2026-09-19 report. Windows is identified from the captured chrome; the Fork version and image
+  capture date are unstated. The selected choice is an observed state, not proof of a default.
+  The article's explanations are not used to define Git semantics or recovery guarantees.
+- **O, historical Windows evidence:** `win-2023-04-29-qiita-push-dark.png`, from the same article,
+  shows separate source-branch and destination selectors, with a remote/branch pair in the latter.
+  It also shows tag and force options. It does not establish whether the force option uses a lease.
+- **D, high-confidence historical Windows workflow:** the official
+  [Windows 1.23 article](https://fork.dev/blog/posts/forkwin-1.23/), published **2018-11-10**, describes
+  updating an inactive branch from its remote without checking it out. Its already indexed image
+  `blog-2018-11-10-forkwin-1.23-fast-forward-pull.png` is a branch menu, previously categorized only
+  as a dialog. It is now indexed under branch menus, fast-forward, and pull. This is a separate
+  workflow from running `git pull --ff-only` on the current branch.
+- **O, Windows:** the existing cropped menu
+  `win-2026-03-24-trackerwin2746-4-menus-dark.png` from
+  [TrackerWin issue 2746](https://github.com/fork-dev/TrackerWin/issues/2746), posted **2026-03-24**,
+  stated **2.18.0.0**, shows upstream fast-forward, push, and pull-request creation entries above
+  merge/rebase. Its crop does not establish the complete menu or checkout availability. The full
+  current menu supplied by the user remains user-reported evidence, not an independently observed
+  current Fork session.
+- **D, historical Windows workflow:** the official
+  [Windows 1.48 article](https://fork.dev/blog/posts/forkwin-1.48/), published **2020-05-05**, places
+  pull-request creation in the branch context menu. The plan groups hosting integration in P11;
+  the audit recommends separating an earlier browser handoff from later account/list/notification
+  integration. That scope split is our **I** recommendation, not a claim about Fork's implementation.
+
+Linux continues to follow the Windows visual target. These captures do not establish current macOS
+equivalence, defaults, clean-versus-dirty checkout triggering, untracked-file discard scope, preservation
+of staged state during stash/reapply, or conflict recovery. Those need explicit product rules and Git
+fixture tests. Collecting an image is not acceptance of a workflow: each relevant control must be mapped
+to a contract, implementation, failure/recovery path, and test before coverage is described as complete.
 
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
@@ -578,6 +629,10 @@ indicators; current dark and light palettes; and all Linux behavior.
 ## Feature coverage
 
 Phase IDs refer to [the implementation plan](../implementation-plan.md).
+The [2026-09-19 workflow audit](../reviews/f01-f13-review.md) adds explicit missing acceptance coverage
+for F12 checkout local-change choices and F13 selected-source pull, inactive-branch fast-forward, and
+visible push destinations. It also recommends bringing the branch-menu PR browser handoff forward
+from the P11 hosting group. These remain gaps; the new reference evidence does not mark them implemented.
 
 | ID  | Public capability                                                                                           | Evidence                                                                                                                                                                                                           | Planned phase |
 | --- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
