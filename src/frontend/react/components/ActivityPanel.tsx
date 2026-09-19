@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RepositoryOperation } from '../../../common/ipc/contracts';
 import { formatListDate } from '../lib/format';
 import { CheckIcon, CloseIcon, WarningIcon } from './Icons';
@@ -29,6 +29,28 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
   const [selectedId, setSelectedId] = useState<string>();
   const panelRef = useRef<HTMLDivElement>(null);
   const selected = operations.find((operation) => operation.id === selectedId) ?? operations[0];
+
+  useLayoutEffect(() => {
+    const place = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const anchor = panel.parentElement?.getBoundingClientRect();
+      const width = Math.min(720, window.innerWidth - 16);
+      panel.style.left = `${Math.max(8, Math.min(anchor?.left ?? 8, window.innerWidth - width - 8))}px`;
+      panel.style.top = `${Math.max(8, Math.min((anchor?.bottom ?? 70) + 6, window.innerHeight - panel.offsetHeight - 8))}px`;
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, []);
+
+  useEffect(() => {
+    const previous = document.activeElement;
+    panelRef.current?.querySelector<HTMLElement>('[role="option"]')?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -62,6 +84,24 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
             key={operation.id}
             role="option"
             aria-selected={operation.id === selected?.id}
+            tabIndex={operation.id === selected?.id ? 0 : -1}
+            onFocus={() => setSelectedId(operation.id)}
+            onKeyDown={(event) => {
+              const index = operations.indexOf(operation);
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? operations.length - 1
+                    : event.key === 'ArrowDown'
+                      ? Math.min(index + 1, operations.length - 1)
+                      : event.key === 'ArrowUp'
+                        ? Math.max(0, index - 1)
+                        : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[next]?.focus();
+            }}
             className={`activity-row ${operation.status}${operation.id === selected?.id ? ' selected' : ''}`}
             data-testid="activity-row"
             onMouseDown={() => setSelectedId(operation.id)}
@@ -99,7 +139,9 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
                   : `${selected.status} ${selected.finishedAt ? formatListDate(selected.finishedAt) : ''}`}
               </span>
             </div>
-            <pre className="activity-command">{`$ ${selected.command}`}</pre>
+            <pre className="activity-command">
+              {selected.command ? `$ ${selected.command}` : 'Preparing operation…'}
+            </pre>
             {selected.progress && (
               <div
                 className="activity-progress"

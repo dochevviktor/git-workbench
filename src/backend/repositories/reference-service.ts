@@ -14,7 +14,7 @@ import {
   repositoryReferenceActionResultSchema,
   repositoryReferenceContextSchema,
 } from '../../common/ipc/contracts';
-import { GitCommandError, GitTimeoutError } from '../git/runner';
+import { GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { detectPendingOperation } from './commit-service';
 import { readWorkingChanges } from './working-tree-service';
@@ -48,6 +48,8 @@ export interface ReferenceContextInput {
 }
 
 export interface ReferenceActionInput extends ReferenceContextInput {
+  readonly onCommand?: ((args: readonly string[]) => void) | undefined;
+  readonly signal?: AbortSignal | undefined;
   readonly action: RepositoryReferenceAction;
   readonly snapshot: string;
 }
@@ -64,6 +66,9 @@ interface RawBranch {
   readonly name: string;
   readonly target: string;
   readonly upstreamShort: string | null;
+  readonly upstreamFullName: string | null;
+  readonly upstreamRemote: string | null;
+  readonly upstreamBranch: string | null;
   readonly track: string | null;
   readonly isHead: boolean;
 }
@@ -93,7 +98,6 @@ export async function readReferenceContext(
       }),
     ]);
 
-  const remoteBranchNames = new Set(rawRemoteBranches);
   const branches = rawBranches.slice(0, branchLimit).map((branch): RepositoryBranch => {
     const isHead =
       branch.isHead ||
@@ -104,9 +108,10 @@ export async function readReferenceContext(
       target: branch.target,
       isHead,
       upstream: branch.upstreamShort,
-      upstreamGone:
-        branch.track === 'gone' ||
-        (branch.upstreamShort !== null && !remoteBranchNames.has(branch.upstreamShort)),
+      upstreamFullName: branch.upstreamFullName,
+      upstreamRemote: branch.upstreamRemote,
+      upstreamBranch: branch.upstreamBranch,
+      upstreamGone: branch.track === 'gone',
       ...parseTracking(branch.track, branch.upstreamShort !== null),
       // This worktree's own branch is never another worktree's, even where the two recorded paths
       // differ, such as a worktree reached through a symbolic link.
@@ -159,11 +164,13 @@ export async function applyReferenceAction(
   }
 
   let result: GitCommandResult;
+  input.onCommand?.(plan.args);
   try {
     result = await runner.run(plan.args, {
       cwd: input.cwd,
       timeoutMs: plan.write ? referenceWriteTimeoutMs : referenceReadTimeoutMs,
       maxOutputBytes: referenceWriteOutputLimit,
+      signal: input.signal,
       ...(plan.stdin === undefined ? {} : { stdin: plan.stdin }),
     });
   } catch (error) {
@@ -266,12 +273,14 @@ function planAction(
           write: false,
         };
       }
-      const known =
-        context.remoteBranches.includes(action.upstream) ||
-        context.branches.some((candidate) => candidate.name === action.upstream);
-      if (!known) return notFound('That upstream branch is no longer in this repository.');
+      const candidates = [
+        ...context.remoteBranches.map((name) => ({ name, fullName: `refs/remotes/${name}` })),
+        ...context.branches,
+      ].filter((candidate) => candidate.fullName === action.upstream || candidate.name === action.upstream);
+      if (candidates.length !== 1)
+        return notFound('Choose an unambiguous upstream reference from the refreshed list.');
       return {
-        args: ['branch', `--set-upstream-to=${action.upstream}`, branch.name],
+        args: ['branch', `--set-upstream-to=${candidates[0]!.fullName}`, branch.name],
         message: `'${branch.name}' now tracks '${action.upstream}'.`,
         write: false,
       };
@@ -280,7 +289,7 @@ function planAction(
       const branch = context.branches.find((candidate) => candidate.fullName === action.fullName);
       if (!branch) return notFound('That branch is no longer in this repository.');
       return {
-        args: ['checkout', branch.name, '--'],
+        args: ['checkout', '--no-guess', branch.name, '--'],
         message: `Checked out '${branch.name}'.`,
         write: true,
       };
@@ -290,7 +299,7 @@ function planAction(
         return notFound('That remote branch is no longer in this repository.');
       }
       return {
-        args: ['checkout', '-b', action.name, '--track', shortRemoteName(action.fullName), '--'],
+        args: ['checkout', '-b', action.name, '--track', action.fullName, '--'],
         message: `Checked out '${action.name}' tracking '${shortRemoteName(action.fullName)}'.`,
         write: true,
       };
@@ -407,14 +416,15 @@ async function refuseAction(
     };
   }
 
-  if (isCheckout(action.kind) && context.pendingOperation) {
+  const checksOut = isCheckout(action.kind) || (action.kind === 'create-branch' && action.checkout);
+  if (checksOut && context.pendingOperation) {
     return {
       reason: 'pending-operation',
       message: `Finish or abort the ${context.pendingOperation} in progress before checking out.`,
       canForce: false,
     };
   }
-  if (isCheckout(action.kind) && context.conflictedCount > 0) {
+  if (checksOut && context.conflictedCount > 0) {
     return {
       reason: 'local-changes',
       message: 'Resolve the unmerged files before checking out.',
@@ -446,12 +456,12 @@ function resolveStartPoint(
 ): { readonly revision: string } | undefined {
   if (startPoint.kind === 'commit') return { revision: startPoint.commitId };
   const branch = context.branches.find((candidate) => candidate.fullName === startPoint.fullName);
-  if (branch) return { revision: branch.name };
+  if (branch) return { revision: branch.fullName };
   const tag = context.tags.find((candidate) => candidate.fullName === startPoint.fullName);
   if (tag) return { revision: startPoint.fullName };
   const remote = shortRemoteName(startPoint.fullName);
   if (startPoint.fullName.startsWith('refs/remotes/') && context.remoteBranches.includes(remote)) {
-    return { revision: remote };
+    return { revision: startPoint.fullName };
   }
   return undefined;
 }
@@ -601,6 +611,8 @@ const branchFormat = [
   '%(upstream:short)',
   '%(upstream:track,nobracket)',
   '%(HEAD)',
+  '%(upstream:remotename)',
+  '%(upstream:remoteref)',
 ].join('%00');
 
 async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBranch[]> {
@@ -611,7 +623,16 @@ async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBr
   const branches: RawBranch[] = [];
   for (const line of result.stdout.split('\n')) {
     if (!line.trim()) continue;
-    const [fullName, target, , upstreamShort, track, headMarker] = line.split('\0');
+    const [
+      fullName,
+      target,
+      upstreamFullName,
+      upstreamShort,
+      track,
+      headMarker,
+      upstreamRemote,
+      upstreamRef,
+    ] = line.split('\0');
     if (!fullName || !target || !objectIdPattern.test(target)) {
       throw new Error('Git returned an invalid branch record.');
     }
@@ -620,6 +641,9 @@ async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBr
       name: fullName.slice('refs/heads/'.length),
       target,
       upstreamShort: upstreamShort?.trim() || null,
+      upstreamFullName: upstreamFullName || null,
+      upstreamRemote: upstreamRemote || null,
+      upstreamBranch: upstreamRef?.startsWith('refs/heads/') ? upstreamRef.slice('refs/heads/'.length) : null,
       track: track?.trim() || null,
       isHead: headMarker?.trim() === '*',
     });
@@ -651,7 +675,7 @@ async function readTags(runner: ReferenceRunner, cwd: string): Promise<Repositor
 
 async function readRemoteBranchNames(runner: ReferenceRunner, cwd: string): Promise<string[]> {
   const result = await runner.run(
-    ['for-each-ref', '--format=%(refname:short)%00%(symref)', 'refs/remotes'],
+    ['for-each-ref', '--format=%(refname)%00%(symref)', 'refs/remotes'],
     readOptions(cwd),
   );
   const names: string[] = [];
@@ -660,7 +684,7 @@ async function readRemoteBranchNames(runner: ReferenceRunner, cwd: string): Prom
     const [name, symbolicTarget] = line.split('\0');
     // `origin/HEAD` is a symbolic pointer, not a branch a user picks as an upstream.
     if (!name || symbolicTarget?.trim()) continue;
-    names.push(name);
+    names.push(name.slice('refs/remotes/'.length));
   }
   return names;
 }
@@ -742,7 +766,8 @@ async function readMergedBranches(
 }
 
 async function readHead(runner: ReferenceRunner, cwd: string): Promise<RepositoryHead> {
-  const branch = await optionalOutput(runner, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  const fullName = await optionalOutput(runner, cwd, ['symbolic-ref', '--quiet', 'HEAD']);
+  const branch = fullName?.startsWith('refs/heads/') ? fullName.slice('refs/heads/'.length) : fullName;
   const commit = await optionalOutput(runner, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
   if (branch && commit && objectIdPattern.test(commit)) return { state: 'branch', name: branch, commit };
   if (branch) return { state: 'unborn', name: branch, commit: null };
@@ -784,7 +809,9 @@ function referenceSnapshot(
       .map((branch) => ({
         fullName: branch.fullName,
         target: branch.target,
-        upstream: branch.upstream,
+        upstream: branch.upstreamFullName ?? branch.upstream,
+        remote: branch.upstreamRemote,
+        remoteBranch: branch.upstreamBranch,
         worktreePath: branch.worktreePath,
       }))
       .sort((left, right) => left.fullName.localeCompare(right.fullName)),
@@ -801,12 +828,12 @@ function displayOutput(stdout: string, stderr: string): string {
     .map((part) => part.trim())
     .filter(Boolean)
     .join('\n');
-  const plain = combined
+  const plain = redactUrlCredentials(combined)
     // eslint-disable-next-line no-control-regex -- terminal escapes are stripped, not interpreted.
     .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/gu, '')
     // eslint-disable-next-line no-control-regex -- keep newlines and tabs, drop other control bytes.
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '');
   return plain.length > outputDisplayLimit
-    ? `${plain.slice(0, outputDisplayLimit)}\n… output truncated.`
+    ? `${plain.slice(0, outputDisplayLimit - '\n… output truncated.'.length)}\n… output truncated.`
     : plain;
 }

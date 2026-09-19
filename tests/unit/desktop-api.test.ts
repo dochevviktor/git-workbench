@@ -262,7 +262,7 @@ describe('preload capability API', () => {
   });
 
   it('validates and routes commit requests', async () => {
-    const { api, invoke } = fixture();
+    const { api, invoke, emitter } = fixture();
     const repositoryId = `repo-${'9'.repeat(64)}`;
     const request = {
       id: repositoryId,
@@ -280,9 +280,42 @@ describe('preload capability API', () => {
       subject: 'Add a file',
       output: '',
     } as const;
-    invoke.mockResolvedValueOnce({ ok: true, value: result });
-    await expect(api.repository.commit(request)).resolves.toEqual({ ok: true, value: result });
+    const accepted = {
+      id: `op-${'a'.repeat(32)}`,
+      repositoryId,
+      kind: 'commit',
+      title: 'Commit',
+      status: 'running',
+      revision: 0,
+      startedAt: '2026-09-19T12:00:00.000Z',
+      finishedAt: null,
+      progress: null,
+      command: 'git commit',
+      output: '',
+      message: 'Running…',
+      failureReason: null,
+      canForceWithLease: false,
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value: accepted });
+    await expect(api.repository.commit(request)).resolves.toEqual({ ok: true, value: accepted });
     expect(invoke).toHaveBeenLastCalledWith(requests.commitRepositoryChanges.channel, request);
+    const completed = vi.fn();
+    const unsubscribe = api.repository.onOperationChanged(completed);
+    emitter.emit(
+      events.repositoryOperationChanged.channel,
+      {},
+      {
+        ...accepted,
+        revision: 1,
+        status: 'succeeded',
+        finishedAt: accepted.startedAt,
+        result: { kind: 'commit', value: result },
+      },
+    );
+    expect(completed).toHaveBeenCalledWith(
+      expect.objectContaining({ result: { kind: 'commit', value: result } }),
+    );
+    unsubscribe();
 
     const invalid = await api.repository.commit({ ...request, snapshot: 'short' });
     expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
@@ -298,7 +331,7 @@ describe('preload capability API', () => {
   });
 
   it('validates and routes reference requests', async () => {
-    const { api, invoke } = fixture();
+    const { api, invoke, emitter } = fixture();
     const repositoryId = `repo-${'7'.repeat(64)}`;
     const request = {
       id: repositoryId,
@@ -319,9 +352,45 @@ describe('preload capability API', () => {
       output: '',
       head: { state: 'branch', name: 'topic', commit: 'd'.repeat(40) },
     } as const;
-    invoke.mockResolvedValueOnce({ ok: true, value: result });
-    await expect(api.repository.applyReferenceAction(request)).resolves.toEqual({ ok: true, value: result });
+    const accepted = {
+      id: `op-${'b'.repeat(32)}`,
+      repositoryId,
+      kind: 'reference',
+      title: 'Create branch',
+      status: 'running',
+      revision: 0,
+      startedAt: '2026-09-19T12:00:00.000Z',
+      finishedAt: null,
+      progress: null,
+      command: 'git checkout',
+      output: '',
+      message: 'Running…',
+      failureReason: null,
+      canForceWithLease: false,
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value: accepted });
+    await expect(api.repository.applyReferenceAction(request)).resolves.toEqual({
+      ok: true,
+      value: accepted,
+    });
     expect(invoke).toHaveBeenLastCalledWith(requests.applyRepositoryReferenceAction.channel, request);
+    const completed = vi.fn();
+    const unsubscribe = api.repository.onOperationChanged(completed);
+    emitter.emit(
+      events.repositoryOperationChanged.channel,
+      {},
+      {
+        ...accepted,
+        revision: 1,
+        status: 'succeeded',
+        finishedAt: accepted.startedAt,
+        result: { kind: 'reference', value: result },
+      },
+    );
+    expect(completed).toHaveBeenCalledWith(
+      expect.objectContaining({ result: { kind: 'reference', value: result } }),
+    );
+    unsubscribe();
 
     // A name that Git would read as an option never crosses IPC.
     const dashed = await api.repository.applyReferenceAction({

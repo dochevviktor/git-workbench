@@ -6,11 +6,14 @@ import type {
   RepositoryReferenceContext,
   RepositoryReferenceStartPoint,
   RepositoryTag,
+  RepositoryLocalChangesPolicy,
+  RepositoryLocalChangesPreview,
 } from '../../../common/ipc/contracts';
 import { localBranchNameFor, referenceNameProblem } from '../lib/references';
 import type { Platform } from '../lib/platform';
 import { BranchIcon, CommitIcon, RemoteIcon, TagIcon } from './Icons';
 import { DialogShell } from './DialogShell';
+import { LocalChangesOptions } from './LocalChangesOptions';
 
 /** What a new branch or tag starts from, with the label the dialog shows for it. */
 export interface ReferenceTarget {
@@ -23,6 +26,7 @@ export interface ReferenceTarget {
 }
 
 export type ReferenceDialogRequest =
+  | { readonly kind: 'checkout-branch'; readonly branch: RepositoryBranch }
   | { readonly kind: 'new-branch'; readonly target: ReferenceTarget }
   | { readonly kind: 'new-tag'; readonly target: ReferenceTarget }
   | { readonly kind: 'rename-branch'; readonly branch: RepositoryBranch }
@@ -33,6 +37,7 @@ export type ReferenceDialogRequest =
   | { readonly kind: 'checkout-detached'; readonly target: ReferenceTarget };
 
 interface ReferenceDialogProps {
+  readonly preview?: RepositoryLocalChangesPreview | undefined;
   readonly request: ReferenceDialogRequest;
   readonly context: RepositoryReferenceContext | undefined;
   readonly platform: Platform;
@@ -73,6 +78,8 @@ function TargetRow({ label, target }: { readonly label: string; readonly target:
 
 export function ReferenceDialog(props: ReferenceDialogProps) {
   switch (props.request.kind) {
+    case 'checkout-branch':
+      return <CheckoutBranchDialog {...props} branch={props.request.branch} />;
     case 'new-branch':
       return <NewBranchDialog {...props} target={props.request.target} />;
     case 'new-tag':
@@ -94,6 +101,37 @@ export function ReferenceDialog(props: ReferenceDialogProps) {
 
 type DialogPropsWithTarget = ReferenceDialogProps & { readonly target: ReferenceTarget };
 type DialogPropsWithBranch = ReferenceDialogProps & { readonly branch: RepositoryBranch };
+
+function CheckoutBranchDialog({ branch, preview, failure, onSubmit, ...rest }: DialogPropsWithBranch) {
+  const [policy, setPolicy] = useState<RepositoryLocalChangesPolicy>('keep');
+  return (
+    <DialogShell
+      {...rest}
+      title="Checkout Branch"
+      subtitle="Switch to another branch"
+      icon={<BranchIcon size={26} />}
+      warning={failure?.message ?? null}
+      submitLabel="Checkout"
+      submitDisabled={!preview && policy !== 'keep'}
+      danger={policy === 'discard'}
+      onSubmit={() =>
+        onSubmit({
+          kind: 'checkout-branch',
+          fullName: branch.fullName,
+          localChanges: policy,
+          changesSnapshot: preview?.snapshot,
+        })
+      }
+    >
+      <dt>Switch to:</dt>
+      <dd className="reference-target">
+        <BranchIcon size={13} />
+        {branch.name}
+      </dd>
+      <LocalChangesOptions value={policy} preview={preview} onChange={setPolicy} />
+    </DialogShell>
+  );
+}
 
 function NameField({
   label,
@@ -155,9 +193,10 @@ function tagNames(context: RepositoryReferenceContext | undefined): ReadonlySet<
   return new Set((context?.tags ?? []).map((tag) => tag.name));
 }
 
-function NewBranchDialog({ target, context, failure, ...rest }: DialogPropsWithTarget) {
+function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogPropsWithTarget) {
   const [name, setName] = useState('');
   const [checkout, setCheckout] = useState(true);
+  const [policy, setPolicy] = useState<RepositoryLocalChangesPolicy>('keep');
   const [track, setTrack] = useState(true);
   const taken = useMemo(() => branchNames(context), [context]);
   const warning = useNameWarning(name, 'branch', taken, failure);
@@ -184,11 +223,14 @@ function NewBranchDialog({ target, context, failure, ...rest }: DialogPropsWithT
           name: trimmed,
           startPoint: target.startPoint,
           checkout,
+          localChanges: checkout ? policy : 'keep',
+          changesSnapshot: preview?.snapshot,
           tracking: target.trackable ? (track ? 'track' : 'no-track') : 'auto',
         })
       }
     >
       <TargetRow label="Create at:" target={target} />
+      {checkout && <LocalChangesOptions value={policy} preview={preview} onChange={setPolicy} />}
       <NameField label="Branch Name:" value={name} placeholder="Enter branch name" onChange={setName} />
       <dt />
       <dd className="reference-dialog-options">
@@ -279,7 +321,8 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
   );
 }
 
-function CheckoutRemoteDialog({ target, context, failure, ...rest }: DialogPropsWithTarget) {
+function CheckoutRemoteDialog({ target, context, failure, preview, ...rest }: DialogPropsWithTarget) {
+  const [policy, setPolicy] = useState<RepositoryLocalChangesPolicy>('keep');
   const remotes = context?.remotes ?? [];
   const [name, setName] = useState(() => localBranchNameFor(target.label, remotes));
   const taken = useMemo(() => branchNames(context), [context]);
@@ -302,12 +345,15 @@ function CheckoutRemoteDialog({ target, context, failure, ...rest }: DialogProps
       onSubmit={() =>
         rest.onSubmit({
           kind: 'checkout-remote-branch',
+          localChanges: policy,
+          changesSnapshot: preview?.snapshot,
           fullName: target.startPoint.kind === 'reference' ? target.startPoint.fullName : '',
           name: trimmed,
         })
       }
     >
       <TargetRow label="Remote branch:" target={target} />
+      <LocalChangesOptions value={policy} preview={preview} onChange={setPolicy} />
       <NameField label="Local Name:" value={name} placeholder="Enter branch name" onChange={setName} />
     </DialogShell>
   );
@@ -355,8 +401,14 @@ function RenameBranchDialog({ branch, context, failure, ...rest }: DialogPropsWi
 }
 
 function UpstreamDialog({ branch, context, failure, ...rest }: DialogPropsWithBranch) {
-  const choices = context?.remoteBranches ?? [];
-  const [upstream, setUpstream] = useState(branch.upstream ?? '');
+  const choices = [
+    ...(context?.remoteBranches ?? []).map((name) => ({ value: `refs/remotes/${name}`, label: name })),
+    ...(context?.branches ?? [])
+      .filter((candidate) => candidate.fullName !== branch.fullName)
+      .map((candidate) => ({ value: candidate.fullName, label: `${candidate.name} (local)` })),
+  ];
+  const initial = branch.upstreamFullName ?? branch.upstream ?? '';
+  const [upstream, setUpstream] = useState(initial);
   const fieldId = useId();
 
   return (
@@ -368,10 +420,10 @@ function UpstreamDialog({ branch, context, failure, ...rest }: DialogPropsWithBr
       platform={rest.platform}
       warning={
         failure?.message ??
-        (choices.length === 0 ? 'This repository has no remote-tracking branches yet.' : null)
+        (choices.length === 0 ? 'This repository has no other branches to track yet.' : null)
       }
       submitLabel="Set Upstream"
-      submitDisabled={upstream === (branch.upstream ?? '')}
+      submitDisabled={upstream === initial}
       onClose={rest.onClose}
       onSubmit={() =>
         rest.onSubmit({
@@ -401,12 +453,12 @@ function UpstreamDialog({ branch, context, failure, ...rest }: DialogPropsWithBr
           onChange={(event) => setUpstream(event.target.value)}
         >
           <option value="">No upstream branch</option>
-          {branch.upstream && !choices.includes(branch.upstream) && (
-            <option value={branch.upstream}>{`${branch.upstream} (missing)`}</option>
+          {initial && !choices.some((choice) => choice.value === initial) && (
+            <option value={initial}>{`${branch.upstream} (missing)`}</option>
           )}
           {choices.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
             </option>
           ))}
         </select>
@@ -504,7 +556,8 @@ function DeleteTagDialog({ tag, failure, ...rest }: ReferenceDialogProps & { rea
   );
 }
 
-function CheckoutDetachedDialog({ target, failure, ...rest }: DialogPropsWithTarget) {
+function CheckoutDetachedDialog({ target, failure, preview, ...rest }: DialogPropsWithTarget) {
+  const [policy, setPolicy] = useState<RepositoryLocalChangesPolicy>('keep');
   const commitId = target.startPoint.kind === 'commit' ? target.startPoint.commitId : '';
 
   return (
@@ -521,9 +574,17 @@ function CheckoutDetachedDialog({ target, failure, ...rest }: DialogPropsWithTar
       submitLabel="Checkout"
       submitDisabled={commitId.length === 0}
       onClose={rest.onClose}
-      onSubmit={() => rest.onSubmit({ kind: 'checkout-commit', commitId })}
+      onSubmit={() =>
+        rest.onSubmit({
+          kind: 'checkout-commit',
+          commitId,
+          localChanges: policy,
+          changesSnapshot: preview?.snapshot,
+        })
+      }
     >
       <TargetRow label="Checkout:" target={target} />
+      <LocalChangesOptions value={policy} preview={preview} onChange={setPolicy} />
     </DialogShell>
   );
 }

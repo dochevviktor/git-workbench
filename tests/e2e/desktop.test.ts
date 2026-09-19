@@ -642,6 +642,12 @@ test('production build loads its isolated preload and renderer', async () => {
       .getByRole('menu', { name: mainBranch })
       .getByRole('menuitem', { name: `Checkout '${mainBranch}'`, exact: true })
       .click();
+    await expect(referenceDialog.getByRole('radio', { name: "Don't change", exact: true })).toBeChecked();
+    await expect(
+      referenceDialog.getByRole('radio', { name: 'Stash and reapply', exact: true }),
+    ).toBeVisible();
+    await expect(referenceDialog.getByRole('radio', { name: 'Discard', exact: true })).toBeVisible();
+    await referenceDialog.getByTestId('reference-dialog-submit').click();
     await expect.poll(currentBranch).toBe(mainBranch);
     // Wait for the sidebar to agree before opening the menu: its entries read the loaded references.
     await expect(referenceTree.getByRole('treeitem', { name: mainBranch, exact: true })).toHaveClass(
@@ -727,6 +733,12 @@ test('production build loads its isolated preload and renderer', async () => {
 
     await expect(page.getByTestId('toolbar-pull')).not.toHaveAttribute('aria-disabled', 'true');
     await page.getByTestId('toolbar-pull').click();
+    await expect(networkDialog.getByTestId('pull-into')).toHaveText(mainBranch);
+    await expect(networkDialog.getByRole('checkbox', { name: 'Rebase instead of merge' })).toBeVisible();
+    await expect(
+      networkDialog.getByRole('checkbox', { name: 'Stash and reapply local changes' }),
+    ).toBeVisible();
+    await networkDialog.getByTestId('reference-dialog-submit').click();
     await expect
       .poll(() => gitText(fixtureGit, fixtureRepository, ['log', '-1', '--format=%s']), { timeout: 20_000 })
       .toBe('Commit made on the remote');

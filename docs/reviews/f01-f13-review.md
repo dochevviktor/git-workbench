@@ -1,13 +1,70 @@
 # Review of the implementation through F13
 
 Reviewed **2026-09-19**, baseline commit **475de44**, Fedora Linux x64, Node **24.13.0**,
-Git **2.55.0**. The worktree was clean at the start. This is a review and research correction;
-application code and phase completion claims have not been changed.
+Git **2.55.0**. The worktree was clean at the start. The original review made no application changes.
+The requested remediation was implemented and verified on **2026-09-19**, as recorded below.
+Original finding descriptions and line numbers refer to the baseline, not the corrected implementation.
 
 The missing checkout/pull dialogs are real workflow gaps. The Pull screenshot was already available
 and was overlooked; a public checkout screenshot has now been located and indexed. The review also
-reproduced ten behavioral defects and measured two sources of unnecessary work. Stabilization should
-precede further feature expansion.
+reproduced ten behavioral defects and measured two sources of unnecessary work.
+
+## Remediation verified — 2026-09-19
+
+All twelve findings are addressed, with permanent regression coverage in
+[review-regressions.test.ts](../../tests/unit/review-regressions.test.ts) and
+[review-workflows.test.ts](../../tests/e2e/review-workflows.test.ts), alongside the existing suites.
+
+| Finding | Resolution                                                                                                                                                                                                                                                             |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1      | Literal filename policy on file-oriented Git commands; inherited pathspec modes removed. Wildcards, brackets, and leading-colon filenames affect only the selected file. The policy deliberately does not alter Git's internal stash pathspecs.                        |
+| R2      | Pull validates its reviewed destination, tip, and reference snapshot inside the common-repository write queue. Network and local writes share that queue.                                                                                                              |
+| R3      | Git supplies the exact upstream remote and branch. Push shows editable destination branches and sets upstreams per selected branch, preserving existing tracking in mixed selections.                                                                                  |
+| R4      | Full reference namespaces are retained for branch/tag creation and tracking. Remote names and HEAD labels are derived from full refs; branch/tag and local/remote name collisions have regression fixtures.                                                            |
+| R5      | Commit and reference channels return accepted jobs; structured terminal results remain queryable. Events have monotonic revisions, and late replies cannot replace terminal state. A real checkout hook exceeding the old 15-second deadline passes the Electron test. |
+| R6      | F5 refreshes the selected diff; live working/amend diffs poll with an in-flight guard. Changed snapshots invalidate line selection.                                                                                                                                    |
+| R7      | Tab polling reads current HEAD and hashes reference state, invalidating dependent views when external operations change them.                                                                                                                                          |
+| R8      | Remote DTOs redact URL credentials. Unchanged display URLs preserve their backend values; edited redaction placeholders are rejected.                                                                                                                                  |
+| R9      | Git's full upstream reference and tracking state determine whether it is gone, including local upstreams.                                                                                                                                                              |
+| R10     | Activity is constrained to the viewport, including the minimum window and zoom. Its rows support keyboard selection and focus restoration.                                                                                                                             |
+| R11     | A no-collapse fast path avoids ancestry scans; active collapse bounds ancestry traversal using topological position.                                                                                                                                                   |
+| R12     | Stable topology uses filesystem identity checks; identical in-flight reads are coalesced with bounded concurrency. Writes invalidate read-sharing epochs so mutation-time revalidation cannot reuse a pre-write read.                                                  |
+
+The missing branch workflows are also implemented: local-change checkout choices, explicit-source Pull
+with merge/rebase and stash/reapply, inactive-branch fast-forward, mapped Push, and a PR browser handoff.
+Pull on an inactive branch explicitly states that it will check that branch out first. Fast-Forward
+updates an inactive branch without changing the current worktree. Both refuse branches checked out in
+another worktree.
+
+Stash/reapply and checkout Discard retain named recovery copies of staged, unstaged, and untracked work.
+A versioned per-worktree journal and pinned Git refs survive restart; Recovery exposes apply, resolution
+acknowledgement, and merge/rebase continue/abort. Recovery actions validate the reviewed state again,
+including the state captured when Abort confirmation opened. Dismissing a recovery entry leaves Git's
+stash list untouched. Nested-repository/submodule changes and oversized previews are refused explicitly.
+Conflict files can be edited externally, staged in Local Changes, and continued from Recovery; a full
+three-way conflict editor remains P06 work.
+
+Verification on this Fedora host:
+
+- `npm run check`: **239 tests in 19 files**, type checks, lint, and formatting pass.
+- `npm run test:e2e`: the production build and **three headless Electron scenarios** pass with sandboxing
+  enabled. Coverage includes dialog fields and cancellation, explicit inactive Pull intent, differently
+  named upstreams, mixed push selections, live diff refresh, tracking selection, keyboard activity access,
+  minimum-window/zoom geometry, a captured PR browser handoff, and tab switching during a real slow hook.
+- Disposable-repository tests verify merge and rebase success, conflict continue/abort, staged-state
+  preservation, retained recovery copies after restart, stale preview rejection, and linked-worktree
+  fast-forward refusal using independent Git assertions.
+- The same synthetic 4,001-commit projection measured approximately **7 ms**, down from **694 ms**.
+  Routine Git process counts changed from **8/14/9/16** to **1/9/2/11** for working changes, reference
+  context, remotes, and commit context respectively. These measurements are not a large-repository
+  performance certification.
+- Light/dark dialog captures and activity output were compared with the local Fork library before and
+  after UI work. All **226** public references remain git-ignored and outside application assets.
+
+The PR action opens the hosting site's form for GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps;
+it does not submit a PR or add account integration. The live provider forms, other operating systems,
+screen readers, native window-manager interactions, full history virtualization, and the planned
+100,000-commit performance baseline were not verified here. Phase statuses remain partial.
 
 ## Priority findings
 
@@ -199,7 +256,7 @@ tab status poll. Remotes add two processes per configured remote. Counts are mea
 repository impact is unmeasured. Cache stable topology, coalesce compatible reads, bound concurrent
 refreshes, and invalidate mutable data by generation. Keep mutation-time revalidation.
 
-## Missing workflows and design drift
+## Baseline missing workflows and design drift
 
 The current plan consistently labels F01–F13 as **partial**, but its slice narrative allowed command
 availability to stand in for completion of the user workflow. That is the central planning problem.
@@ -273,10 +330,10 @@ For the two requested dialogs, acceptance should explicitly include:
 - Menu availability and fields are exercised in Electron for current/inactive/local-only/tracking
   branches, with Keyboard/Cancel paths, light/dark comparison, and the supported minimum window.
 
-These are proposed implementation criteria. This review has not completed them or moved any phase
-to complete.
+These were the proposed implementation criteria at review time. The remediation record above now
+supersedes the baseline for this stabilization slice; wider phase acceptance remains open.
 
-## Verification and limits
+## Original review verification and limits
 
 - `npm run check`: passed type checks, lint, formatting, and **214 tests in 18 files** at baseline.
 - `npm run test:e2e`: passed the existing **one headless Electron scenario** and its production build;
@@ -303,7 +360,7 @@ merge/conflict/recovery, binary/image handling, and real large-repository perfor
 Windows/macOS runtime behavior, real remote authentication, network failures at scale, native Wayland
 window interactions, and screen-reader behavior were not verified in this review.
 
-Further focused checks should force out-of-order operation replies and tab changes during mutations:
-`use-operations.ts` merges replies without a version guard, and mutation completions in
-`use-references.ts` lack the generation checks used by its ordinary reads. These are code-inspection
-risks; their scheduling failures were not reproduced here and are not counted among R1–R12.
+The original review also identified out-of-order operation replies and tab changes during mutations as
+code-inspection risks. The follow-up adds monotonic operation revisions and generation/ownership guards,
+with the slow-hook Electron scenario checking that completion in one tab preserves another tab's open
+dialog and history. They are covered by the remediation, in addition to R1–R12.

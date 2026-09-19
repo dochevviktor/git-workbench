@@ -5,7 +5,7 @@ import type {
   RepositoryRemoteFailureReason,
 } from '../../common/ipc/contracts';
 import { repositoryRemoteActionResultSchema } from '../../common/ipc/contracts';
-import { GitCommandError } from '../git/runner';
+import { GitCommandError, redactUrlCredentials } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 
 const remoteReadTimeoutMs = 10_000;
@@ -38,8 +38,8 @@ export async function readRemotes(runner: RemoteRunner, cwd: string): Promise<Re
     const prefix = `refs/remotes/${name}/`;
     remotes.push({
       name,
-      fetchUrl: fetchUrl ?? '',
-      pushUrl,
+      fetchUrl: redactUrlCredentials(fetchUrl ?? ''),
+      pushUrl: pushUrl === null ? null : redactUrlCredentials(pushUrl),
       branchCount: refNames.filter((refName) => refName.startsWith(prefix)).length,
     });
   }
@@ -78,10 +78,25 @@ export async function applyRemoteAction(
   if (action.kind !== 'add' && !names.has(action.name)) {
     return blocked('not-found', `This repository has no remote named '${action.name}'.`);
   }
+  if (action.kind === 'set-url') {
+    const previous = existing.find((remote) => remote.name === action.name);
+    // A display-only redaction must never replace the privileged URL. An unchanged field is a no-op.
+    if (action.url === (action.push ? previous?.pushUrl : previous?.fetchUrl)) {
+      return {
+        status: 'applied',
+        repositoryId: input.repositoryId,
+        message: 'The URL is unchanged.',
+        remotes: existing,
+      };
+    }
+  }
+  if ((action.kind === 'add' || action.kind === 'set-url') && action.url.includes('<redacted>')) {
+    return blocked('invalid-url', 'Enter a complete replacement URL without embedded credentials.');
+  }
   if ((action.kind === 'add' || action.kind === 'set-url') && !isAllowedRemoteUrl(action.url)) {
     return blocked(
       'invalid-url',
-      'A remote URL that runs a local command is not accepted here, because this application has no repository trust model yet.',
+      'Use a remote URL without embedded passwords or tokens, or local command transports. Credentials belong in a Git credential helper or SSH agent.',
     );
   }
 
@@ -144,7 +159,14 @@ function remoteMessage(action: RepositoryRemoteAction): string {
  * is a later phase, so this slice declines to configure one rather than quietly gaining that power.
  */
 export function isAllowedRemoteUrl(url: string): boolean {
-  return !/^\s*ext::/iu.test(url) && !url.startsWith('-');
+  if (/^\s*ext::/iu.test(url) || url.startsWith('-')) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'ssh:' && !parsed.password && !parsed.search) return true;
+  } catch {
+    /* SCP and local paths have no URL authority. */
+  }
+  return redactUrlCredentials(url) === url;
 }
 
 async function isValidRemoteName(runner: RemoteRunner, cwd: string, name: string): Promise<boolean> {

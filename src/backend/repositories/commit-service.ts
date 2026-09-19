@@ -18,7 +18,7 @@ import {
   repositoryCommitContextSchema,
   repositoryCommitResultSchema,
 } from '../../common/ipc/contracts';
-import { GitCommandError, GitTimeoutError } from '../git/runner';
+import { GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { parseRawChanges, resolveAmendBase } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
@@ -50,6 +50,8 @@ export interface CommitContextInput {
 }
 
 export interface CommitChangesInput extends CommitContextInput {
+  readonly onCommand?: ((args: readonly string[]) => void) | undefined;
+  readonly signal?: AbortSignal | undefined;
   readonly subject: string;
   readonly body: string;
   readonly amend: boolean;
@@ -180,6 +182,7 @@ export async function commitChanges(
   const args = ['commit', '--cleanup=whitespace', '--file=-'];
   if (input.amend) args.push('--amend');
   if (input.skipHooks) args.push('--no-verify');
+  input.onCommand?.(args);
 
   let result: GitCommandResult;
   try {
@@ -188,6 +191,7 @@ export async function commitChanges(
       timeoutMs: commitRunTimeoutMs,
       maxOutputBytes: commitReadOutputLimit,
       stdin: message,
+      signal: input.signal,
     });
   } catch (error) {
     if (error instanceof GitTimeoutError) {
@@ -605,12 +609,12 @@ function displayOutput(stdout: string, stderr: string): string {
     .map((part) => part.trim())
     .filter(Boolean)
     .join('\n');
-  const plain = combined
+  const plain = redactUrlCredentials(combined)
     // eslint-disable-next-line no-control-regex -- terminal escapes are stripped, not interpreted.
     .replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/gu, '')
     // eslint-disable-next-line no-control-regex -- keep newlines and tabs, drop other control bytes.
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '');
   return plain.length > outputDisplayLimit
-    ? `${plain.slice(0, outputDisplayLimit)}\n… output truncated.`
+    ? `${plain.slice(0, outputDisplayLimit - '\n… output truncated.'.length)}\n… output truncated.`
     : plain;
 }

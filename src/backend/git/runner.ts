@@ -10,7 +10,7 @@ export interface GitRunOptions {
   readonly cwd: string;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   readonly env?: NodeJS.ProcessEnv;
   /** Optional patch data supplied by a backend Git service, never by the renderer. */
   readonly stdin?: string | Buffer;
@@ -90,7 +90,9 @@ export class GitOutputLimitError extends Error {
 
 /** Keeps a command diagnostic useful while ensuring URL credentials cannot reach logs or the UI. */
 export function redactUrlCredentials(value: string): string {
-  return value.replace(/(\b[a-z][a-z\d+.-]*:\/\/)([^\s/@]+)@/giu, '$1<redacted>@');
+  return value
+    .replace(/(\b[a-z][a-z\d+.-]*:\/\/)([^\s/]+)@/giu, '$1<redacted>@')
+    .replace(/([?&](?:access_token|private_token|token|password|api_key)=)[^&#\s]+/giu, '$1<redacted>');
 }
 
 function redactArgument(value: string): string {
@@ -120,6 +122,11 @@ function controlledEnvironment(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
     delete environment[key];
   }
   environment.GIT_TERMINAL_PROMPT = '0';
+  // Every file capability names literal repository paths, never user-supplied pathspecs.
+  delete environment.GIT_GLOB_PATHSPECS;
+  delete environment.GIT_NOGLOB_PATHSPECS;
+  delete environment.GIT_ICASE_PATHSPECS;
+  delete environment.GIT_LITERAL_PATHSPECS;
   environment.GIT_PAGER = 'cat';
   environment.GIT_EDITOR = ':';
   environment.LC_ALL = 'C';
@@ -196,12 +203,20 @@ export class GitRunner {
     if (!executable) throw new GitExecutableError(this.configuredExecutable);
     const limit = options.maxOutputBytes ?? this.maxOutputBytes;
     const timeoutMs = options.timeoutMs ?? this.defaultTimeoutMs;
-    this.logger?.({ command: displayCommand(executable, args), cwd: redactArgument(options.cwd) });
+    let commandIndex = 0;
+    while (args[commandIndex]?.startsWith('-')) commandIndex += args[commandIndex] === '-c' ? 2 : 1;
+    // Apply the policy only to file-oriented commands. Exporting it to `stash` changes the
+    // interpretation of pathspecs Git constructs internally when cleaning saved untracked files.
+    const literal = ['add', 'reset', 'rm', 'diff', 'diff-tree', 'diff-index', 'ls-tree'].includes(
+      args[commandIndex] ?? '',
+    );
+    const commandArgs = literal ? ['--literal-pathspecs', ...args] : [...args];
+    this.logger?.({ command: displayCommand(executable, commandArgs), cwd: redactArgument(options.cwd) });
 
     return new Promise<GitCommandResult>((resolve, reject) => {
       let child: ChildProcessWithoutNullStreams;
       try {
-        child = spawn(executable, [...args], {
+        child = spawn(executable, commandArgs, {
           cwd: options.cwd,
           env: controlledEnvironment(options.env),
           shell: false,

@@ -6,6 +6,7 @@ import type {
   RepositoryOperationProgress,
 } from '../../common/ipc/contracts';
 import { repositoryOperationSchema } from '../../common/ipc/contracts';
+import { redactUrlCredentials } from '../git/runner';
 
 /** Operations kept per window after they finish, so a reopened activity list still shows them. */
 const historyLimit = 50;
@@ -26,11 +27,13 @@ export interface OperationOutcome {
   readonly output: string;
   readonly failureReason?: RepositoryOperationFailureReason | undefined;
   readonly canForceWithLease?: boolean | undefined;
+  readonly result?: RepositoryOperation['result'];
 }
 
 /** What a running operation may report back while it works. */
 export interface OperationHandle {
   readonly signal: AbortSignal;
+  setCommand?(command: string): void;
   setProgress(progress: RepositoryOperationProgress | null): void;
   appendOutput(text: string): void;
 }
@@ -109,12 +112,13 @@ export class OperationRegistry {
         id,
         repositoryId: descriptor.repositoryId,
         kind: descriptor.kind,
-        title: descriptor.title,
+        title: descriptor.title.slice(0, 512),
         status: 'running',
+        revision: 0,
         startedAt: this.clock().toISOString(),
         finishedAt: null,
         progress: null,
-        command: descriptor.command,
+        command: redactUrlCredentials(descriptor.command).slice(0, 4096),
         output: '',
         message: 'Running…',
         failureReason: null,
@@ -126,6 +130,7 @@ export class OperationRegistry {
 
     const handle: OperationHandle = {
       signal: controller.signal,
+      setCommand: (command) => this.update(entry, { command: redactUrlCredentials(command).slice(0, 4096) }),
       setProgress: (progress) => {
         if (entry.operation.status !== 'running') return;
         this.update(entry, { progress });
@@ -143,7 +148,9 @@ export class OperationRegistry {
       .catch((error: unknown) => {
         this.finish(entry, {
           status: 'failed',
-          message: error instanceof Error ? error.message : 'The operation failed.',
+          message: redactUrlCredentials(
+            error instanceof Error ? error.message : 'The operation failed.',
+          ).slice(0, 512),
           output: entry.operation.output,
           failureReason: 'other',
         });
@@ -193,15 +200,20 @@ export class OperationRegistry {
       status: entry.cancelled ? 'cancelled' : outcome.status,
       finishedAt: this.clock().toISOString(),
       progress: null,
-      message: outcome.message,
+      message: outcome.message.slice(0, 512),
       output: boundedOutput(outcome.output),
       failureReason: entry.cancelled ? 'cancelled' : (outcome.failureReason ?? null),
       canForceWithLease: !entry.cancelled && (outcome.canForceWithLease ?? false),
+      result: outcome.result,
     });
   }
 
   private update(entry: OperationEntry, patch: Partial<RepositoryOperation>): void {
-    entry.operation = repositoryOperationSchema.parse({ ...entry.operation, ...patch });
+    entry.operation = repositoryOperationSchema.parse({
+      ...entry.operation,
+      ...patch,
+      revision: (entry.operation.revision ?? 0) + 1,
+    });
     this.publish(entry);
   }
 

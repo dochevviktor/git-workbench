@@ -111,6 +111,7 @@ export const repositorySummarySchema = z.strictObject({
   bare: z.boolean(),
   head: repositoryHeadSchema,
   workingTree: repositoryWorkingTreeSchema,
+  referenceVersion: z.string().max(64).optional(),
 });
 
 export const recentRepositorySchema = z.strictObject({
@@ -604,6 +605,10 @@ export const repositoryBranchSchema = z.strictObject({
   target: gitObjectIdSchema,
   isHead: z.boolean(),
   upstream: z.string().max(32_768).nullable(),
+  /** Exact configured refs; display-name prefix matching is ambiguous. */
+  upstreamFullName: z.string().max(32_768).nullable().optional(),
+  upstreamRemote: z.string().max(4_096).nullable().optional(),
+  upstreamBranch: z.string().max(32_768).nullable().optional(),
   /** The configured upstream no longer exists locally, so the branch is stale. */
   upstreamGone: z.boolean(),
   /** Commits this branch has that its upstream does not, and the other way round. */
@@ -655,10 +660,16 @@ export const repositoryReferenceStartPointSchema = z.discriminatedUnion('kind', 
 ]);
 
 export const repositoryReferenceTrackingSchema = z.enum(['auto', 'track', 'no-track']);
+export const repositoryLocalChangesPolicySchema = z.enum(['keep', 'stash', 'discard']);
+const localChangesOptions = {
+  localChanges: repositoryLocalChangesPolicySchema.optional(),
+  changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+};
 
 export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('create-branch'),
+    ...localChangesOptions,
     name: repositoryReferenceNameSchema,
     startPoint: repositoryReferenceStartPointSchema,
     checkout: z.boolean(),
@@ -681,13 +692,18 @@ export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
     /** `null` unsets the upstream. */
     upstream: z.string().min(1).max(32_768).nullable(),
   }),
-  z.strictObject({ kind: z.literal('checkout-branch'), fullName: z.string().min(1).max(32_768) }),
+  z.strictObject({
+    kind: z.literal('checkout-branch'),
+    fullName: z.string().min(1).max(32_768),
+    ...localChangesOptions,
+  }),
   z.strictObject({
     kind: z.literal('checkout-remote-branch'),
+    ...localChangesOptions,
     fullName: z.string().min(1).max(32_768),
     name: repositoryReferenceNameSchema,
   }),
-  z.strictObject({ kind: z.literal('checkout-commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({ kind: z.literal('checkout-commit'), commitId: gitObjectIdSchema, ...localChangesOptions }),
   z.strictObject({
     kind: z.literal('create-tag'),
     name: repositoryReferenceNameSchema,
@@ -838,7 +854,16 @@ export const repositoryRemoteActionResultSchema = z.discriminatedUnion('status',
 
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
-export const repositoryOperationKindSchema = z.enum(['fetch', 'pull', 'push', 'delete-remote-branch']);
+export const repositoryOperationKindSchema = z.enum([
+  'fetch',
+  'pull',
+  'push',
+  'delete-remote-branch',
+  'commit',
+  'reference',
+  'fast-forward',
+  'recovery',
+]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
 
@@ -873,6 +898,14 @@ export const repositoryOperationSchema = z.strictObject({
   kind: repositoryOperationKindSchema,
   title: z.string().min(1).max(512),
   status: repositoryOperationStatusSchema,
+  /** Monotonically increasing; late IPC replies cannot overwrite newer events. */
+  revision: z.number().int().nonnegative().optional(),
+  result: z
+    .discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('commit'), value: repositoryCommitResultSchema }),
+      z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
+    ])
+    .optional(),
   startedAt: z.string().datetime({ offset: true }),
   finishedAt: z.string().datetime({ offset: true }).nullable(),
   progress: repositoryOperationProgressSchema.nullable(),
@@ -890,6 +923,7 @@ export const repositoryPushTargetSchema = z.strictObject({
   fullName: z.string().min(1).max(32_768),
   /** The branch name on the remote; the local name by default. */
   remoteBranch: repositoryReferenceNameSchema,
+  setUpstream: z.boolean().optional(),
 });
 
 export const repositoryNetworkRequestSchema = z.discriminatedUnion('kind', [
@@ -901,7 +935,23 @@ export const repositoryNetworkRequestSchema = z.discriminatedUnion('kind', [
     tags: z.boolean(),
   }),
   /** Fast-forward only. Merge and rebase pulls wait for the recovery paths in P06 and P07. */
-  z.strictObject({ kind: z.literal('pull'), prune: z.boolean() }),
+  z.strictObject({
+    kind: z.literal('pull'),
+    prune: z.boolean(),
+    remote: repositoryRemoteNameSchema.optional(),
+    branch: repositoryReferenceNameSchema.optional(),
+    into: z.string().startsWith('refs/heads/').max(32_768).optional(),
+    expectedHead: gitObjectIdSchema.optional(),
+    snapshot: repositoryDiffSnapshotSchema.optional(),
+    rebase: z.boolean().optional(),
+    autostash: z.boolean().optional(),
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('fast-forward'),
+    fullName: z.string().startsWith('refs/heads/').max(32_768),
+    snapshot: repositoryDiffSnapshotSchema,
+  }),
   z.strictObject({
     kind: z.literal('push'),
     remote: repositoryRemoteNameSchema,
@@ -925,6 +975,36 @@ export const repositoryNetworkRequestEnvelopeSchema = z.strictObject({
 
 export const repositoryOperationSessionSchema = z.strictObject({
   operationId: repositoryOperationIdSchema,
+});
+
+export const repositoryLocalChangesPreviewSchema = z.strictObject({
+  snapshot: repositoryDiffSnapshotSchema,
+  paths: z.array(z.string().max(32_768)).max(10_000),
+  untrackedPaths: z.array(z.string().max(32_768)).max(10_000),
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+});
+export const repositoryRecoveryCopySchema = z.strictObject({
+  id: z.uuid(),
+  commitId: gitObjectIdSchema.nullable(),
+  title: z.string().max(512),
+  createdAt: z.string().datetime(),
+  pending: z.boolean(),
+});
+export const repositoryRecoveryStateSchema = z.strictObject({
+  snapshot: repositoryDiffSnapshotSchema,
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  copies: z.array(repositoryRecoveryCopySchema).max(100),
+});
+export const repositoryRecoveryRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+  action: z.enum(['continue', 'abort', 'apply', 'finish', 'drop']),
+  copyId: z.uuid().optional(),
+});
+export const repositoryPullRequestHandoffSchema = z.strictObject({
+  id: repositoryIdSchema,
+  fullName: z.string().startsWith('refs/heads/').max(32_768),
+  remote: repositoryRemoteNameSchema,
 });
 
 export const repositoryRevisionTreeRequestSchema = z.strictObject({
@@ -1051,7 +1131,7 @@ export const requests = {
   commitRepositoryChanges: request(
     'repository:commit',
     repositoryCommitRequestSchema,
-    repositoryCommitResultSchema,
+    repositoryOperationSchema,
   ),
   getRepositoryAmendChanges: request(
     'repository:get-amend-changes',
@@ -1066,7 +1146,7 @@ export const requests = {
   applyRepositoryReferenceAction: request(
     'repository:apply-reference-action',
     repositoryReferenceActionRequestSchema,
-    repositoryReferenceActionResultSchema,
+    repositoryOperationSchema,
   ),
   listRepositoryRemotes: request(
     'repository:list-remotes',
@@ -1092,6 +1172,26 @@ export const requests = {
     'repository:cancel-operation',
     repositoryOperationSessionSchema,
     repositoryOperationSchema.nullable(),
+  ),
+  previewRepositoryLocalChanges: request(
+    'repository:preview-local-changes',
+    repositorySessionSchema,
+    repositoryLocalChangesPreviewSchema,
+  ),
+  getRepositoryRecovery: request(
+    'repository:get-recovery',
+    repositorySessionSchema,
+    repositoryRecoveryStateSchema,
+  ),
+  recoverRepository: request(
+    'repository:recover',
+    repositoryRecoveryRequestSchema,
+    repositoryOperationSchema,
+  ),
+  openRepositoryPullRequest: request(
+    'repository:open-pull-request',
+    repositoryPullRequestHandoffSchema,
+    z.null(),
   ),
   getRepositoryRevisionTree: request(
     'repository:get-revision-tree',
@@ -1202,6 +1302,12 @@ export type RepositoryOperationProgress = z.infer<typeof repositoryOperationProg
 export type RepositoryOperationFailureReason = z.infer<typeof repositoryOperationFailureReasonSchema>;
 export type RepositoryOperationSession = z.infer<typeof repositoryOperationSessionSchema>;
 export type RepositoryNetworkRequest = z.infer<typeof repositoryNetworkRequestSchema>;
+export type RepositoryLocalChangesPolicy = z.infer<typeof repositoryLocalChangesPolicySchema>;
+export type RepositoryLocalChangesPreview = z.infer<typeof repositoryLocalChangesPreviewSchema>;
+export type RepositoryRecoveryCopy = z.infer<typeof repositoryRecoveryCopySchema>;
+export type RepositoryRecoveryState = z.infer<typeof repositoryRecoveryStateSchema>;
+export type RepositoryRecoveryRequest = z.infer<typeof repositoryRecoveryRequestSchema>;
+export type RepositoryPullRequestHandoff = z.infer<typeof repositoryPullRequestHandoffSchema>;
 export type RepositoryNetworkRequestEnvelope = z.infer<typeof repositoryNetworkRequestEnvelopeSchema>;
 export type RepositoryPushTarget = z.infer<typeof repositoryPushTargetSchema>;
 export type RepositoryRevisionTreeRequest = z.infer<typeof repositoryRevisionTreeRequestSchema>;

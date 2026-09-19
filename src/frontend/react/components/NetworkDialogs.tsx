@@ -4,12 +4,14 @@ import type {
   RepositoryNetworkRequest,
   RepositoryRemote,
   RepositoryRemoteAction,
+  RepositoryLocalChangesPreview,
 } from '../../../common/ipc/contracts';
 import type { Platform } from '../lib/platform';
 import { DialogShell } from './DialogShell';
-import { BranchIcon, FetchIcon, PushIcon, RemoteIcon } from './Icons';
+import { BranchIcon, FetchIcon, PullIcon, PushIcon, RemoteIcon } from './Icons';
 
 export type NetworkDialogRequest =
+  | { readonly kind: 'pull'; readonly branch: RepositoryBranch }
   | { readonly kind: 'fetch' }
   | { readonly kind: 'push'; readonly branch: RepositoryBranch | undefined; readonly force?: boolean }
   | { readonly kind: 'remotes' }
@@ -22,6 +24,9 @@ export type NetworkDialogRequest =
     };
 
 interface NetworkDialogProps {
+  readonly referenceSnapshot?: string | undefined;
+  readonly preview?: RepositoryLocalChangesPreview | undefined;
+  readonly remoteBranches?: readonly string[] | undefined;
   readonly request: NetworkDialogRequest;
   readonly remotes: readonly RepositoryRemote[];
   readonly branches: readonly RepositoryBranch[];
@@ -36,6 +41,8 @@ interface NetworkDialogProps {
 
 export function NetworkDialog(props: NetworkDialogProps) {
   switch (props.request.kind) {
+    case 'pull':
+      return <PullDialog {...props} branch={props.request.branch} />;
     case 'fetch':
       return <FetchDialog {...props} />;
     case 'push':
@@ -55,6 +62,99 @@ export function NetworkDialog(props: NetworkDialogProps) {
         />
       );
   }
+}
+
+function PullDialog({
+  branch,
+  remotes,
+  remoteBranches = [],
+  preview,
+  referenceSnapshot,
+  failure,
+  onStart,
+  ...rest
+}: NetworkDialogProps & { readonly branch: RepositoryBranch }) {
+  const [remote, setRemote] = useState(
+    branch.upstreamRemote && remotes.some((item) => item.name === branch.upstreamRemote)
+      ? branch.upstreamRemote
+      : (remotes[0]?.name ?? ''),
+  );
+  const [source, setSource] = useState(branch.upstreamBranch ?? branch.name);
+  const [rebase, setRebase] = useState(false);
+  const [autostash, setAutostash] = useState(false);
+  const listId = useId();
+  return (
+    <DialogShell
+      {...rest}
+      title="Pull"
+      subtitle={
+        branch.isHead
+          ? 'Pull remote changes into your local branch'
+          : `Check out '${branch.name}', then pull remote changes into it`
+      }
+      icon={<PullIcon size={26} />}
+      warning={failure ?? null}
+      submitLabel="Pull"
+      submitDisabled={!remote || !source.trim() || (autostash && !preview)}
+      onSubmit={() =>
+        onStart({
+          kind: 'pull',
+          remote,
+          branch: source.trim(),
+          into: branch.fullName,
+          expectedHead: branch.target,
+          snapshot: referenceSnapshot,
+          rebase,
+          autostash,
+          changesSnapshot: preview?.snapshot,
+          prune: true,
+        })
+      }
+    >
+      <RemoteSelect remotes={remotes} value={remote} onChange={setRemote} />
+      <dt>
+        <label htmlFor={`${listId}-branch`}>Branch:</label>
+      </dt>
+      <dd>
+        <input
+          id={`${listId}-branch`}
+          className="reference-input"
+          value={source}
+          list={listId}
+          onChange={(event) => setSource(event.target.value)}
+          data-testid="pull-branch"
+        />
+        <datalist id={listId}>
+          {remoteBranches
+            .filter((name) => name.startsWith(`${remote}/`))
+            .map((name) => (
+              <option key={name} value={name.slice(remote.length + 1)} />
+            ))}
+        </datalist>
+      </dd>
+      <dt>Into:</dt>
+      <dd className="reference-target" data-testid="pull-into">
+        <BranchIcon size={13} />
+        {branch.name}
+      </dd>
+      <dt />
+      <dd className="reference-dialog-options">
+        <label className="reference-checkbox">
+          <input type="checkbox" checked={rebase} onChange={(event) => setRebase(event.target.checked)} />
+          Rebase instead of merge
+        </label>
+        <label className="reference-checkbox">
+          <input
+            type="checkbox"
+            checked={autostash}
+            disabled={!preview}
+            onChange={(event) => setAutostash(event.target.checked)}
+          />
+          Stash and reapply local changes
+        </label>
+      </dd>
+    </DialogShell>
+  );
 }
 
 function RemoteSelect({
@@ -147,16 +247,19 @@ function PushDialog({
 }: NetworkDialogProps & { readonly branch: RepositoryBranch | undefined; readonly force: boolean }) {
   const current = branch ?? branches.find((candidate) => candidate.isHead);
   const defaultRemote = useMemo(() => {
-    const upstream = current?.upstream;
-    const matching = upstream ? remotes.find((remote) => upstream.startsWith(`${remote.name}/`)) : undefined;
+    const matching = remotes.find((remote) => remote.name === current?.upstreamRemote);
     return matching?.name ?? remotes[0]?.name ?? '';
-  }, [current?.upstream, remotes]);
+  }, [current?.upstreamRemote, remotes]);
   const [remote, setRemote] = useState(defaultRemote);
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     () => new Set(current ? [current.fullName] : []),
   );
   const [withLease, setWithLease] = useState(force);
   const [tags, setTags] = useState(false);
+  const [destinations, setDestinations] = useState<Readonly<Record<string, string>>>({});
+  const destination = (candidate: RepositoryBranch) =>
+    destinations[`${remote}:${candidate.fullName}`] ??
+    (candidate.upstreamRemote === remote ? (candidate.upstreamBranch ?? candidate.name) : candidate.name);
   const chosen = branches.filter((candidate) => selected.has(candidate.fullName));
   const missingUpstream = chosen.some((candidate) => candidate.upstream === null);
 
@@ -188,7 +291,11 @@ function PushDialog({
             : null)
       }
       submitLabel={withLease ? 'Force Push with Lease' : 'Push'}
-      submitDisabled={chosen.length === 0 || remote.length === 0}
+      submitDisabled={
+        chosen.length === 0 ||
+        remote.length === 0 ||
+        chosen.some((candidate) => !destination(candidate).trim())
+      }
       danger={withLease}
       onSubmit={() =>
         onStart({
@@ -196,9 +303,10 @@ function PushDialog({
           remote,
           targets: chosen.map((candidate) => ({
             fullName: candidate.fullName,
-            remoteBranch: candidate.name,
+            remoteBranch: destination(candidate).trim(),
+            setUpstream: candidate.upstream === null,
           })),
-          setUpstream: missingUpstream,
+          setUpstream: false,
           force: withLease ? 'with-lease' : 'none',
           tags,
         })
@@ -209,14 +317,28 @@ function PushDialog({
       <dd>
         <div className="push-branches" role="group" aria-label="Branches to push" data-testid="push-branches">
           {branches.map((candidate) => (
-            <label key={candidate.fullName} className="reference-checkbox push-branch">
+            <div key={candidate.fullName} className="reference-checkbox push-branch">
               <input
                 type="checkbox"
                 checked={selected.has(candidate.fullName)}
+                aria-label={`Push ${candidate.name}`}
                 onChange={() => toggle(candidate.fullName)}
               />
               <BranchIcon size={13} />
               <span className="push-branch-name">{candidate.name}</span>
+              {selected.has(candidate.fullName) && (
+                <input
+                  className="reference-input push-destination"
+                  aria-label={`Destination branch for ${candidate.name}`}
+                  value={destination(candidate)}
+                  onChange={(event) =>
+                    setDestinations((current) => ({
+                      ...current,
+                      [`${remote}:${candidate.fullName}`]: event.target.value,
+                    }))
+                  }
+                />
+              )}
               <span className="push-branch-meta muted">
                 {candidate.upstream === null
                   ? 'new branch'
@@ -224,7 +346,7 @@ function PushDialog({
                     ? 'upstream gone'
                     : trackingSummary(candidate)}
               </span>
-            </label>
+            </div>
           ))}
         </div>
       </dd>

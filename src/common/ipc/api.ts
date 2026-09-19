@@ -11,7 +11,6 @@ import type {
   RepositoryCommitContext,
   RepositoryCommitContextRequest,
   RepositoryCommitRequest,
-  RepositoryCommitResult,
   RepositoryDiff,
   RepositoryDiffRequest,
   RepositoryInitializeRequest,
@@ -21,10 +20,13 @@ import type {
   RepositoryManagerSnapshot,
   RepositoryNetworkRequestEnvelope,
   RepositoryOperation,
+  RepositoryLocalChangesPreview,
+  RepositoryRecoveryState,
+  RepositoryRecoveryRequest,
+  RepositoryPullRequestHandoff,
   RepositoryOperationSession,
   RepositoryOpenRequest,
   RepositoryReferenceActionRequest,
-  RepositoryReferenceActionResult,
   RepositoryReferenceContext,
   RepositoryReferenceContextRequest,
   RepositoryRemote,
@@ -91,14 +93,12 @@ export interface DesktopApi {
       request: RepositoryWorkingChangeActionRequest,
     ): Promise<IpcResult<RepositoryWorkingChangeActionResult>>;
     getCommitContext(request: RepositoryCommitContextRequest): Promise<IpcResult<RepositoryCommitContext>>;
-    commit(request: RepositoryCommitRequest): Promise<IpcResult<RepositoryCommitResult>>;
+    commit(request: RepositoryCommitRequest): Promise<IpcResult<RepositoryOperation>>;
     getAmendChanges(request: RepositoryAmendChangesRequest): Promise<IpcResult<RepositoryAmendChanges>>;
     getReferenceContext(
       request: RepositoryReferenceContextRequest,
     ): Promise<IpcResult<RepositoryReferenceContext>>;
-    applyReferenceAction(
-      request: RepositoryReferenceActionRequest,
-    ): Promise<IpcResult<RepositoryReferenceActionResult>>;
+    applyReferenceAction(request: RepositoryReferenceActionRequest): Promise<IpcResult<RepositoryOperation>>;
     listRemotes(request: RepositorySession): Promise<IpcResult<RepositoryRemote[]>>;
     applyRemoteAction(
       request: RepositoryRemoteActionRequest,
@@ -107,6 +107,10 @@ export interface DesktopApi {
     listOperations(): Promise<IpcResult<RepositoryOperation[]>>;
     cancelOperation(request: RepositoryOperationSession): Promise<IpcResult<RepositoryOperation | null>>;
     onOperationChanged(listener: (operation: RepositoryOperation) => void): Unsubscribe;
+    previewLocalChanges(request: RepositorySession): Promise<IpcResult<RepositoryLocalChangesPreview>>;
+    getRecovery(request: RepositorySession): Promise<IpcResult<RepositoryRecoveryState>>;
+    recover(request: RepositoryRecoveryRequest): Promise<IpcResult<RepositoryOperation>>;
+    openPullRequest(request: RepositoryPullRequestHandoff): Promise<IpcResult<null>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;

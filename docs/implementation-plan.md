@@ -4,8 +4,7 @@ Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop 
 Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
 define the target; [architecture](architecture.md) defines the boundaries.
 
-**Recommended next implementation request: address the [F01–F13 review](reviews/f01-f13-review.md)
-before continuing P05 clone, background fetch scheduling, and credential prompts.**
+**Next implementation request: Continue P05 — clone, background fetch scheduling, and credential prompts.**
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -15,26 +14,27 @@ Unknown behavior is recorded in research and must not be invented and labeled eq
 Review checkpoint (2026-09-19): the audit reproduced mutation-target, operation-lifetime, refresh,
 credential-display, and layout defects, and identified missing checkout/pull/fast-forward workflows.
 The research correction adds public checkout evidence and records that the complete Pull screenshot
-was already available. The audit's stabilization sequence and proposed dialog acceptance criteria are
-pending implementation; the phase statuses below are unchanged. F01–F13 denote partial slices, not
-completed feature families.
+was already available. The [remediation record](reviews/f01-f13-review.md#remediation-verified--2026-09-19)
+now closes R1–R12 and verifies the requested branch workflows, including the minimum pull/stash recovery
+support and a PR browser handoff brought forward from later phases. F01–F13 still denote partial slices,
+not completed feature families.
 
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                             | Depends on |
 | ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; runner subset, operation registry, progress and cancellation (2026-09-19)                                 | P00        |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; network/commit/reference jobs, cancellation, literal paths, coordinated reads/writes (2026-09-19)         | P00        |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
 | P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12 branch/tag/checkout and F13 remote/fetch/pull/push slices (2026-09-19)                                | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Planned                                                                                                            | P05        |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization, checkout/pull dialogs, inactive fast-forward, mapped push (2026-09-19)             | P04        |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; merge/rebase pull and saved-change recovery brought forward (2026-09-19)                                  | P05        |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P08        |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                            | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Planned                                                                                                            | P10        |
+| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                         | P10        |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16); Fork design refresh (2026-09-17)                 | P11        |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                            | P12        |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                            | P13        |
@@ -429,8 +429,9 @@ Coverage: F01 remote clone, F12–F14.
    controlled prompt/askpass handling, and platform secret storage only where secrets must be retained.
 3. Add clone/fetch/push with progress, cancellation, background fetch scheduling, tracking counts,
    branch/tag selection, and clear authentication/network errors. Avoid duplicate background operations.
-4. Add fast-forward-only pull first. Merge/rebase pull options are enabled only when P06/P07 recovery
-   paths are ready. Support lease-based force push only with explicit preview and confirmation.
+4. Add fast-forward-only pull first. The stabilization slice below brings forward the recovery subset
+   needed for merge/rebase pull options. Interactive rebase remains P07. Support lease-based force push
+   only with explicit preview and confirmation.
 
 Acceptance:
 
@@ -510,6 +511,26 @@ pulls through the real UI are covered as well. Merge and rebase pulls, backgroun
 interactive credential and passphrase prompts, platform secret storage, clone, pushing a single tag,
 pushing to a differently named remote branch, and fast-forwarding several branches at once are not
 implemented, so F13, F14, and P05 remain partial.
+
+Verified F01–F13 stabilization (2026-09-19): R1–R12 in the review are fixed and covered by permanent
+regressions. Checkout offers preserve, stash/reapply, and discard with a precise path preview and retained
+recovery copy. Pull shows remote, source, and destination with merge/rebase and stash/reapply controls;
+an inactive destination is explicitly checked out first, while Fast-Forward can update it without touching
+the current worktree. Push shows each destination and honors configured upstream mappings. Branch menus
+include these operations and a validated hosting-site PR form handoff. Commits/checkouts now return jobs
+through the stable IPC channels, and operation revisions and repository ownership guards protect late
+responses. Recovery persists saved changes and exposes apply, resolve, and continue/abort with state
+validation. Literal file handling, full ref identity, credential redaction, external refresh, activity
+geometry/keyboard access, graph projection, and query overhead are corrected.
+
+`npm run check` passes 239 tests, type checks, lint and formatting; `npm run test:e2e` builds production
+bundles and passes three headless scenarios, including a real 16-second checkout hook and a tab switch.
+Git tests use disposable repositories/remotes and compare index, worktree, refs, and sequencer state.
+Light/dark UI captures were compared with the restored Fork references. The synthetic graph projection
+improved from about 694 to 7 ms at 4,001 commits; this does not satisfy P03's real large-history baseline.
+The full conflict editor, general stash management, clone/authentication, background scheduling, full
+hosting accounts, cross-platform runtime behavior, and remaining phase criteria are still unimplemented
+or unverified. The review record documents the exact scope and recovery-copy retention policy.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 

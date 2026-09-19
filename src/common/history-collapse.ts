@@ -49,13 +49,30 @@ export function buildCollapsedHistory<Commit extends CollapsibleHistoryCommit>(
   const records = new Map(commits.map((commit): [string, HistoryRecord] => [commit.id, commit]));
   const mergeIds = new Set(getMergeCommitIds(commits));
   const collapsedMergeIds = new Set([...requestedCollapsedMergeIds].filter((id) => mergeIds.has(id)));
+  if (collapsedMergeIds.size === 0) {
+    return {
+      commits,
+      graphCommits: commits.map((commit) => ({
+        id: commit.id,
+        parents: uniqueParents(commit),
+        merge: mergeIds.has(commit.id),
+        collapsed: false,
+        collapsedParentCount: 0,
+      })),
+      hiddenCommitIds: new Set(),
+      hiddenByMerge: new Map(),
+      collapsedMergeIds,
+      hiddenCounts: new Map(),
+    };
+  }
   const expandedBranchCommits = new Set<string>();
   const hiddenOwners = new Map<string, Set<string>>();
+  const positions = new Map(commits.map((commit, index) => [commit.id, index]));
 
   for (const merge of commits) {
     const parents = uniqueParents(merge);
     if (parents.length < 2) continue;
-    const branchCommits = secondaryBranchCommits(parents, records);
+    const branchCommits = secondaryBranchCommits(parents, records, positions);
     if (collapsedMergeIds.has(merge.id)) {
       for (const commitId of branchCommits) {
         let owners = hiddenOwners.get(commitId);
@@ -137,31 +154,38 @@ function uniqueParents(commit: Pick<CollapsibleHistoryCommit, 'parents'>): strin
 function secondaryBranchCommits(
   parents: readonly string[],
   records: ReadonlyMap<string, HistoryRecord>,
+  positions: ReadonlyMap<string, number>,
 ): ReadonlySet<string> {
-  const firstParentAncestors = collectAncestors(parents[0], records);
   const secondary = new Set<string>();
-  for (const parent of parents.slice(1)) {
-    for (const commitId of collectAncestors(parent, records)) secondary.add(commitId);
+  const pending = parents.slice(1);
+  while (pending.length > 0) {
+    const commitId = pending.pop();
+    if (!commitId || secondary.has(commitId) || reachableBefore(parents[0], commitId, records, positions))
+      continue;
+    secondary.add(commitId);
+    pending.push(...(records.get(commitId)?.parents ?? []));
   }
-  for (const commitId of firstParentAncestors) secondary.delete(commitId);
   return secondary;
 }
 
-function collectAncestors(
+/** A topological stream lets an ancestry query stop before scanning history older than its target. */
+function reachableBefore(
   start: string | undefined,
+  target: string,
   records: ReadonlyMap<string, HistoryRecord>,
-): ReadonlySet<string> {
-  const ancestors = new Set<string>();
-  if (!start) return ancestors;
-  const pending = [start];
-  while (pending.length > 0) {
-    const commitId = pending.pop();
-    if (!commitId || ancestors.has(commitId)) continue;
-    ancestors.add(commitId);
-    const record = records.get(commitId);
-    if (record) pending.push(...record.parents);
+  positions: ReadonlyMap<string, number>,
+): boolean {
+  const limit = positions.get(target) ?? Infinity;
+  const pending = start ? [start] : [];
+  const visited = new Set<string>();
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (id === target) return true;
+    if (visited.has(id) || (positions.get(id) ?? Infinity) > limit) continue;
+    visited.add(id);
+    pending.push(...(records.get(id)?.parents ?? []));
   }
-  return ancestors;
+  return false;
 }
 
 function nearestVisibleAncestors(

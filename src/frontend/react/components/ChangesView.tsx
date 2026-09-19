@@ -257,6 +257,7 @@ function ChangePreview({
 }
 
 interface ChangesViewProps {
+  readonly operationBusy?: boolean;
   readonly repository: RepositorySummary;
   /** Increments when the user asks the application to refresh. */
   readonly refreshSignal: number;
@@ -264,7 +265,12 @@ interface ChangesViewProps {
   readonly onCommitted: () => void;
 }
 
-export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesViewProps) {
+export function ChangesView({
+  repository,
+  refreshSignal,
+  onCommitted,
+  operationBusy = false,
+}: ChangesViewProps) {
   const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
     'tree',
@@ -411,7 +417,7 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
           previousPath: selected.change.previousPath,
         };
   }, [selected]);
-  const diff = useRepositoryDiff(repository.id, diffTarget, diffWhitespace);
+  const diff = useRepositoryDiff(repository.id, diffTarget, diffWhitespace, refreshSignal);
   const refreshDiff = diff.refresh;
   const filtering = filter.trim().length > 0;
 
@@ -739,7 +745,7 @@ export function ChangesView({ repository, refreshSignal, onCommitted }: ChangesV
           conflictedCount={value?.counts.conflicted ?? 0}
           amend={amend}
           onAmendChange={setAmend}
-          busy={actionBusy}
+          busy={actionBusy || operationBusy}
           onCommitted={onCommitted}
         />
       </div>

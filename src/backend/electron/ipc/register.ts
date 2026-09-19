@@ -216,7 +216,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       repositoryService.getCommitContext(window.webContents.id, id),
     );
     register(requests.commitRepositoryChanges, (window, request) =>
-      repositoryService.commit(window.webContents.id, request),
+      repositoryService.startCommit(window.webContents.id, request),
     );
     register(requests.getRepositoryAmendChanges, (window, { id }) =>
       repositoryService.getAmendChanges(window.webContents.id, id),
@@ -233,6 +233,20 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.listRepositoryOperations, (window) =>
       repositoryService.listOperations(window.webContents.id),
     );
+    register(requests.previewRepositoryLocalChanges, (window, { id }) =>
+      repositoryService.previewLocalChanges(window.webContents.id, id),
+    );
+    register(requests.getRepositoryRecovery, (window, { id }) =>
+      repositoryService.getRecovery(window.webContents.id, id),
+    );
+    register(requests.recoverRepository, (window, request) =>
+      repositoryService.startRecovery(window.webContents.id, request),
+    );
+    register(requests.openRepositoryPullRequest, async (window, request) => {
+      const url = await repositoryService.getPullRequestUrl(window.webContents.id, request);
+      await shell.openExternal(url);
+      return null;
+    });
     register(requests.cancelRepositoryOperation, (window, { operationId }) =>
       repositoryService.cancelOperation(window.webContents.id, operationId),
     );
@@ -240,7 +254,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       repositoryService.getReferenceContext(window.webContents.id, id),
     );
     register(requests.applyRepositoryReferenceAction, (window, request) =>
-      repositoryService.applyReferenceAction(window.webContents.id, request),
+      repositoryService.startReferenceAction(window.webContents.id, request),
     );
     register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
       repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),

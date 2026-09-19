@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
-import { basename, isAbsolute, resolve } from 'node:path';
+import { lstat, readFile, realpath, stat } from 'node:fs/promises';
+import { basename, isAbsolute, join, resolve } from 'node:path';
+import { ReadCoordinator } from '../git/read-coordinator';
 import type {
   GitInfo,
   RecentRepository,
@@ -23,6 +24,10 @@ import type {
   RepositoryManagerWarning,
   RepositoryNetworkRequestEnvelope,
   RepositoryOperation,
+  RepositoryLocalChangesPreview,
+  RepositoryRecoveryRequest,
+  RepositoryRecoveryState,
+  RepositoryPullRequestHandoff,
   RepositoryRemote,
   RepositoryRemoteActionRequest,
   RepositoryRemoteActionResult,
@@ -80,6 +85,9 @@ import type { NetworkPlan } from './network-service';
 import { applyRemoteAction, readRemotes } from './remote-service';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
+import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
+import type { OperationHandle } from '../operations/operation-registry';
+import { pullRequestUrl } from './hosting-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -118,9 +126,9 @@ export class RepositoryService {
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
   private readonly mutationQueues = new Map<string, Promise<void>>();
-  private readonly networkQueues = new Map<string, Promise<void>>();
   private readonly operations: OperationRegistry;
   private gitInfoPromise: Promise<GitInfo> | undefined;
+  private readonly topologyKeys = new Map<string, string>();
 
   constructor(options: RepositoryServiceOptions) {
     this.store = new RecentRepositoryStore({
@@ -136,7 +144,7 @@ export class RepositoryService {
       filePath: options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
       maxTabs: this.maxOpenTabs,
     });
-    this.runner = options.runner ?? new GitRunner();
+    this.runner = new ReadCoordinator(options.runner ?? new GitRunner());
     this.clock = options.clock ?? (() => new Date());
     this.sourceScanOptions = options.sourceScanOptions ?? {};
     this.operations = new OperationRegistry({ clock: this.clock });
@@ -290,7 +298,7 @@ export class RepositoryService {
 
     let summary: RepositorySummary;
     try {
-      summary = await this.discover(cached.path);
+      summary = await this.refreshOpenRepository(ownerId, id);
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
     }
@@ -317,7 +325,7 @@ export class RepositoryService {
   }
 
   async getCommitChanges(ownerId: number, id: string, commitId: string): Promise<RepositoryCommitChanges> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
       return await readCommitChanges(this.runner, {
         repositoryId: id,
@@ -335,7 +343,7 @@ export class RepositoryService {
     target: RepositoryDiffTarget,
     whitespace: RepositoryDiffWhitespace,
   ): Promise<RepositoryDiff> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
       return await readRepositoryDiff(this.runner, {
         repositoryId: id,
@@ -354,7 +362,7 @@ export class RepositoryService {
     includeUntracked: boolean,
     includeIgnored: boolean,
   ): Promise<RepositoryWorkingChanges> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     if (!summary.worktreePath) {
       throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
     }
@@ -456,12 +464,20 @@ export class RepositoryService {
     }
   }
 
-  async commit(ownerId: number, request: RepositoryCommitRequest): Promise<RepositoryCommitResult> {
+  async commit(
+    ownerId: number,
+    request: RepositoryCommitRequest,
+    signal?: AbortSignal,
+    onCommand?: (args: readonly string[]) => void,
+  ): Promise<RepositoryCommitResult> {
     const cached = await this.requireWorktree(ownerId, request.id);
     return this.withRepositoryMutation(cached.commonDir, async () => {
       const summary = await this.requireWorktree(ownerId, request.id);
       try {
+        if (signal?.aborted) throw new GitCancelledError();
         return await commitChanges(this.runner, {
+          signal,
+          onCommand,
           repositoryId: request.id,
           cwd: summary.worktreePath,
           gitDir: summary.gitDir,
@@ -499,20 +515,60 @@ export class RepositoryService {
   async applyReferenceAction(
     ownerId: number,
     request: RepositoryReferenceActionRequest,
+    signal?: AbortSignal,
+    onCommand?: (args: readonly string[]) => void,
   ): Promise<RepositoryReferenceActionResult> {
     const cached = await this.requireWorktree(ownerId, request.id);
     return this.withRepositoryMutation(cached.commonDir, async () => {
       const summary = await this.requireWorktree(ownerId, request.id);
       try {
-        return await applyReferenceAction(this.runner, {
-          repositoryId: request.id,
-          cwd: summary.worktreePath,
-          gitDir: summary.gitDir,
-          worktreePath: summary.worktreePath,
-          head: summary.head,
-          action: request.action,
-          snapshot: request.snapshot,
-        });
+        if (signal?.aborted) throw new GitCancelledError();
+        const action = request.action;
+        const policy = 'localChanges' in action ? (action.localChanges ?? 'keep') : 'keep';
+        if (action.kind === 'create-branch' && !action.checkout && policy !== 'keep')
+          throw new ExpectedBackendError(
+            'INVALID_REQUEST',
+            'Local changes can only be handled when checking out the new branch.',
+          );
+        const changesSnapshot = 'changesSnapshot' in action ? action.changesSnapshot : undefined;
+        // Validate the original reference snapshot before saving any local changes.
+        if (policy !== 'keep') {
+          const context = await readReferenceContext(this.runner, {
+            repositoryId: request.id,
+            cwd: summary.worktreePath,
+            gitDir: summary.gitDir,
+            worktreePath: summary.worktreePath,
+            head: summary.head,
+          });
+          if (context.snapshot !== request.snapshot) throw new StaleReferenceSnapshotError();
+        }
+        return await withLocalChanges(
+          this.runner,
+          { id: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir, head: summary.head },
+          policy,
+          changesSnapshot,
+          request.action.kind,
+          async () => {
+            const result = await applyReferenceAction(this.runner, {
+              signal,
+              onCommand,
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              gitDir: summary.gitDir,
+              worktreePath: summary.worktreePath,
+              head: summary.head,
+              action: request.action,
+              snapshot: request.snapshot,
+            });
+            if (policy !== 'keep' && result.status === 'blocked')
+              throw new ExpectedBackendError(
+                'OPERATION_FAILED',
+                `${result.message} Saved changes are available in Recovery.`,
+              );
+            return result;
+          },
+          signal,
+        );
       } catch (error) {
         if (error instanceof StaleReferenceSnapshotError) {
           throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
@@ -523,12 +579,35 @@ export class RepositoryService {
   }
 
   async listRemotes(ownerId: number, id: string): Promise<RepositoryRemote[]> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
       return await readRemotes(this.runner, summary.worktreePath ?? summary.commonDir);
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the remotes of this repository.');
     }
+  }
+
+  async getPullRequestUrl(ownerId: number, request: RepositoryPullRequestHandoff): Promise<string> {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    const context = await this.getReferenceContext(ownerId, request.id);
+    const branch = context.branches.find((candidate) => candidate.fullName === request.fullName);
+    if (!branch || !context.remotes.includes(request.remote))
+      throw new ExpectedBackendError(
+        'INVALID_REQUEST',
+        'Choose a local branch and a configured hosting remote.',
+      );
+    const raw = await this.runner.run(['remote', 'get-url', '--push', '--', request.remote], {
+      cwd: summary.worktreePath,
+    });
+    const sourceBranch =
+      branch.upstreamRemote === request.remote ? (branch.upstreamBranch ?? branch.name) : branch.name;
+    const url = pullRequestUrl(raw.stdout.trim(), sourceBranch);
+    if (!url)
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        'Browser pull requests are supported for github.com, gitlab.com, bitbucket.org, and dev.azure.com remotes.',
+      );
+    return url;
   }
 
   async applyRemoteAction(
@@ -554,6 +633,67 @@ export class RepositoryService {
     return this.operations.list(ownerId);
   }
 
+  private operationRepository(ownerId: number, id: string): RepositorySummary {
+    const summary = this.sessions.get(ownerId)?.get(id);
+    if (!summary)
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'That repository is not open in this window.');
+    if (this.operations.isBusy(ownerId, id))
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'An operation is already running for this repository.',
+      );
+    return summary;
+  }
+
+  startCommit(ownerId: number, request: RepositoryCommitRequest): RepositoryOperation {
+    this.operationRepository(ownerId, request.id);
+    return this.operations.start(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'commit',
+        title: request.amend ? 'Amend commit' : 'Commit',
+        command: `git commit${request.amend ? ' --amend' : ''}`,
+      },
+      async (handle) => {
+        const value = await this.commit(ownerId, request, handle.signal, (args) =>
+          handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+        );
+        return {
+          status: value.status === 'committed' ? 'succeeded' : 'failed',
+          message:
+            value.status === 'committed' ? `Created commit ${value.commitId.slice(0, 7)}.` : value.message,
+          output: value.output,
+          result: { kind: 'commit', value },
+        };
+      },
+    );
+  }
+
+  startReferenceAction(ownerId: number, request: RepositoryReferenceActionRequest): RepositoryOperation {
+    this.operationRepository(ownerId, request.id);
+    return this.operations.start(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'reference',
+        title: `${request.action.kind.replaceAll('-', ' ')} '${'fullName' in request.action ? request.action.fullName.replace(/^refs\/(heads|remotes|tags)\//u, '') : 'name' in request.action ? request.action.name : request.action.commitId.slice(0, 7)}'`,
+        command: '',
+      },
+      async (handle) => {
+        const value = await this.applyReferenceAction(ownerId, request, handle.signal, (args) =>
+          handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+        );
+        return {
+          status: value.status === 'applied' ? 'succeeded' : 'failed',
+          message: value.message,
+          output: value.output,
+          result: { kind: 'reference', value },
+        };
+      },
+    );
+  }
+
   cancelOperation(ownerId: number, operationId: string): RepositoryOperation | null {
     return this.operations.cancel(ownerId, operationId);
   }
@@ -571,10 +711,10 @@ export class RepositoryService {
     ownerId: number,
     request: RepositoryNetworkRequestEnvelope,
   ): Promise<RepositoryOperation> {
-    const summary =
-      request.request.kind === 'pull'
-        ? await this.requireWorktree(ownerId, request.id)
-        : await this.refreshOpenRepository(ownerId, request.id);
+    let summary = this.operationRepository(ownerId, request.id);
+    if (request.request.kind === 'pull' && !request.request.expectedHead) {
+      summary = { ...summary, head: await this.discoverHead(summary.path) };
+    }
     const cwd = summary.worktreePath ?? summary.commonDir;
     let plan: NetworkPlan;
     try {
@@ -602,30 +742,230 @@ export class RepositoryService {
         command: plan.command,
       },
       async (handle) => {
-        // A pull writes the index and working tree, so it waits for other repository mutations.
-        const run = () => runNetworkOperation(this.runner, plan, cwd, handle);
-        return plan.kind === 'pull'
-          ? this.withRepositoryMutation(summary.commonDir, run)
-          : this.withNetworkLane(summary.commonDir, run);
+        return this.withRepositoryMutation(summary.commonDir, async () => {
+          if (handle.signal.aborted) throw new GitCancelledError();
+          const current = await this.refreshOpenRepository(ownerId, request.id);
+          const action = request.request;
+          if (action.kind === 'fast-forward') return this.fastForward(ownerId, request.id, action, handle);
+          const remotes = await readRemotes(this.runner, cwd);
+          if (
+            'remote' in action &&
+            action.remote &&
+            !remotes.some((remote) => remote.name === action.remote)
+          ) {
+            return {
+              status: 'failed' as const,
+              failureReason: 'not-found' as const,
+              message: 'Choose a configured remote of this repository.',
+              output: '',
+            };
+          }
+          if (action.kind === 'push') {
+            const context = await this.getReferenceContext(ownerId, request.id);
+            for (const target of action.targets) {
+              if (!context.branches.some((branch) => branch.fullName === target.fullName))
+                throw new ExpectedBackendError(
+                  'INVALID_REQUEST',
+                  'The selected local branch no longer exists.',
+                );
+              await this.runner.run(['check-ref-format', `refs/heads/${target.remoteBranch}`], { cwd });
+            }
+          }
+          if (action.kind === 'delete-remote-branch')
+            await this.runner.run(['check-ref-format', `refs/heads/${action.remoteBranch}`], { cwd });
+          if (action.kind === 'pull') {
+            const context = await this.getReferenceContext(ownerId, request.id);
+            const destination = context.branches.find(
+              (branch) => branch.fullName === (action.into ?? `refs/heads/${summary.head.name}`),
+            );
+            if (
+              !current.worktreePath ||
+              !destination ||
+              destination.target !== (action.expectedHead ?? summary.head.commit) ||
+              (action.snapshot
+                ? context.snapshot !== action.snapshot
+                : current.head.state !== 'branch' ||
+                  current.head.name !== summary.head.name ||
+                  !destination.isHead)
+            ) {
+              throw new ExpectedBackendError(
+                'STALE_SNAPSHOT',
+                'The destination branch changed before Pull could start. Review the pull again.',
+              );
+            }
+            if (destination.worktreePath)
+              throw new ExpectedBackendError(
+                'OPERATION_FAILED',
+                'The destination is checked out in another worktree.',
+              );
+            if (action.branch)
+              await this.runner.run(['check-ref-format', `refs/heads/${action.branch}`], { cwd });
+            const recovery = await this.getRecovery(ownerId, request.id);
+            if (recovery.pendingOperation || recovery.copies.some((copy) => copy.pending))
+              throw new ExpectedBackendError(
+                'OPERATION_FAILED',
+                'Finish the pending operation or saved changes in Recovery first.',
+              );
+            return withLocalChanges(
+              this.runner,
+              { id: request.id, cwd, gitDir: current.gitDir, head: current.head },
+              action.autostash ? 'stash' : 'keep',
+              action.changesSnapshot,
+              plan.title,
+              async () => {
+                if (!destination.isHead) {
+                  const checkout = await applyReferenceAction(this.runner, {
+                    repositoryId: request.id,
+                    cwd,
+                    gitDir: current.gitDir,
+                    worktreePath: current.worktreePath!,
+                    head: current.head,
+                    snapshot: context.snapshot,
+                    action: { kind: 'checkout-branch', fullName: destination.fullName },
+                    signal: handle.signal,
+                    onCommand: (args) =>
+                      handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+                  });
+                  if (checkout.status !== 'applied')
+                    throw new ExpectedBackendError('OPERATION_FAILED', checkout.message);
+                }
+                handle.setCommand?.(plan.command);
+                const result = await runNetworkOperation(this.runner, plan, cwd, handle);
+                if (action.autostash && result.status !== 'succeeded')
+                  throw new ExpectedBackendError(
+                    'OPERATION_FAILED',
+                    `${result.message} Saved changes are available in Recovery.`,
+                  );
+                return result;
+              },
+              handle.signal,
+            );
+          }
+          const outcome = await runNetworkOperation(this.runner, plan, cwd, handle);
+          if (outcome.status === 'succeeded' && action.kind === 'push' && !action.setUpstream) {
+            for (const target of action.targets.filter((target) => target.setUpstream)) {
+              const name = target.fullName.slice('refs/heads/'.length);
+              await this.runner.run(['config', `branch.${name}.remote`, action.remote], { cwd });
+              await this.runner.run(['config', `branch.${name}.merge`, `refs/heads/${target.remoteBranch}`], {
+                cwd,
+              });
+            }
+          }
+          return outcome;
+        });
       },
     );
   }
 
-  /** One network operation per repository at a time, so duplicate background work cannot pile up. */
-  private async withNetworkLane<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.networkQueues.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.networkQueues.set(key, current);
-    await previous;
+  private async fastForward(
+    ownerId: number,
+    id: string,
+    action: Extract<RepositoryNetworkRequestEnvelope['request'], { kind: 'fast-forward' }>,
+    handle: OperationHandle,
+  ) {
+    const summary = await this.requireWorktree(ownerId, id);
+    const context = await this.getReferenceContext(ownerId, id);
+    if (context.snapshot !== action.snapshot)
+      throw new ExpectedBackendError('STALE_SNAPSHOT', 'The branch changed. Review the fast-forward again.');
+    const branch = context.branches.find((candidate) => candidate.fullName === action.fullName);
+    if (!branch || !branch.upstreamRemote || !branch.upstreamBranch)
+      throw new ExpectedBackendError('OPERATION_FAILED', 'This branch has no upstream to fast-forward from.');
+    if (branch.worktreePath)
+      throw new ExpectedBackendError('OPERATION_FAILED', 'This branch is checked out in another worktree.');
+    if (context.pendingOperation)
+      throw new ExpectedBackendError('OPERATION_FAILED', 'Finish the pending Git operation first.');
+    const cwd = summary.worktreePath;
+    const fetch = await runNetworkOperation(
+      this.runner,
+      {
+        kind: 'fetch',
+        args: [
+          'fetch',
+          '--progress',
+          '--no-auto-gc',
+          '--',
+          branch.upstreamRemote,
+          `refs/heads/${branch.upstreamBranch}`,
+        ],
+        title: 'Fetch upstream',
+        command: 'git fetch',
+      },
+      cwd,
+      handle,
+    );
+    if (fetch.status !== 'succeeded') return fetch;
+    const target = (
+      await this.runner.run(['rev-parse', '--verify', 'FETCH_HEAD^{commit}'], { cwd })
+    ).stdout.trim();
     try {
-      return await operation();
-    } finally {
-      release();
-      if (this.networkQueues.get(key) === current) this.networkQueues.delete(key);
+      await this.runner.run(['merge-base', '--is-ancestor', branch.target, target], { cwd });
+    } catch (error) {
+      if (!(error instanceof GitCommandError)) throw error;
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'The branch diverged; check it out and merge or rebase instead.',
+      );
     }
+    const args = branch.isHead
+      ? ['merge', '--ff-only', '--no-autostash', target]
+      : ['update-ref', '-m', 'Git Workbench fast-forward', branch.fullName, target, branch.target];
+    handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' '));
+    await this.runner.run(args, { cwd, signal: handle.signal, timeoutMs: 120000 });
+    return {
+      status: 'succeeded' as const,
+      message: `Fast-forwarded '${branch.name}' to '${branch.upstream}'.`,
+      output: fetch.output,
+    };
+  }
+
+  async previewLocalChanges(ownerId: number, id: string): Promise<RepositoryLocalChangesPreview> {
+    const summary = await this.requireWorktree(ownerId, id);
+    return previewLocalChanges(this.runner, {
+      id,
+      cwd: summary.worktreePath,
+      gitDir: summary.gitDir,
+      head: summary.head,
+    });
+  }
+
+  async getRecovery(ownerId: number, id: string): Promise<RepositoryRecoveryState> {
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    if (!summary.worktreePath)
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+    return readRecovery(this.runner, {
+      id,
+      cwd: summary.worktreePath,
+      gitDir: summary.gitDir,
+      head: summary.head,
+    });
+  }
+
+  startRecovery(ownerId: number, request: RepositoryRecoveryRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.operations.start(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'recovery',
+        title: 'Recover repository',
+        command: `Git recovery: ${request.action}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          await recover(
+            this.runner,
+            { id: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir, head: summary.head },
+            request,
+            handle.signal,
+          );
+          return {
+            status: 'succeeded',
+            message: 'Recovery action completed. Saved Git stashes are retained.',
+            output: '',
+          };
+        }),
+    );
   }
 
   async getRevisionTree(
@@ -634,7 +974,7 @@ export class RepositoryService {
     commitId: string,
     path: string,
   ): Promise<RepositoryRevisionTree> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
       return await readRevisionTree(this.runner, {
         repositoryId: id,
@@ -653,7 +993,7 @@ export class RepositoryService {
     commitId: string,
     path: string,
   ): Promise<RepositoryRevisionBlob> {
-    const summary = await this.refreshOpenRepository(ownerId, id);
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
       return await readRevisionBlob(this.runner, {
         repositoryId: id,
@@ -792,7 +1132,7 @@ export class RepositoryService {
     this.sessions.clear();
     this.managerRepositoryPaths.clear();
     this.mutationQueues.clear();
-    this.networkQueues.clear();
+    this.topologyKeys.clear();
     this.operations.dispose();
   }
 
@@ -873,7 +1213,7 @@ export class RepositoryService {
     const displayPath = worktreePath ?? commonDir;
     const id = this.repositoryId(worktreePath, commonDir);
 
-    return {
+    const summary: RepositorySummary = {
       id,
       name: basename(displayPath) || displayPath,
       path: displayPath,
@@ -884,10 +1224,13 @@ export class RepositoryService {
       head,
       workingTree,
     };
+    this.topologyKeys.set(id, await this.topologyKey(summary));
+    return summary;
   }
 
   private async discoverHead(directory: string): Promise<RepositoryHead> {
-    const branch = await this.optionalOutput(directory, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const fullName = await this.optionalOutput(directory, ['symbolic-ref', '--quiet', 'HEAD']);
+    const branch = fullName?.startsWith('refs/heads/') ? fullName.slice('refs/heads/'.length) : fullName;
     const commit = await this.optionalOutput(directory, ['rev-parse', '--verify', '--quiet', 'HEAD']);
     if (branch && commit) return { state: 'branch', name: branch, commit };
     if (branch) return { state: 'unborn', name: branch, commit: null };
@@ -941,7 +1284,11 @@ export class RepositoryService {
     return { ...summary, worktreePath: summary.worktreePath };
   }
 
-  private async refreshOpenRepository(ownerId: number, id: string): Promise<RepositorySummary> {
+  private async refreshOpenRepository(
+    ownerId: number,
+    id: string,
+    refreshHead = true,
+  ): Promise<RepositorySummary> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
@@ -955,7 +1302,11 @@ export class RepositoryService {
 
     let summary: RepositorySummary;
     try {
-      summary = await this.discover(cached.path);
+      const key = await this.topologyKey(cached);
+      summary =
+        key === this.topologyKeys.get(id)
+          ? { ...cached, head: refreshHead ? await this.discoverHead(cached.path) : cached.head }
+          : await this.discover(cached.path);
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
     }
@@ -970,10 +1321,72 @@ export class RepositoryService {
   }
 
   private async refreshSummary(summary: RepositorySummary): Promise<RepositorySummary> {
-    return {
-      ...summary,
-      workingTree: await this.inspectWorkingTree(summary.worktreePath),
-    };
+    if (summary.bare) return { ...summary, head: await this.discoverHead(summary.path) };
+    try {
+      const [status, refs] = await Promise.all([
+        this.runRead(
+          [
+            '-c',
+            'core.fsmonitor=false',
+            '-c',
+            'core.untrackedCache=false',
+            '--no-optional-locks',
+            'status',
+            '--porcelain=v2',
+            '--branch',
+            '--untracked-files=normal',
+            '-z',
+            '--',
+          ],
+          summary.path,
+        ),
+        this.runner.run(['for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream)'], {
+          cwd: summary.path,
+          maxOutputBytes: 4 * 1024 * 1024,
+          timeoutMs: repositoryReadTimeoutMs,
+        }),
+      ]);
+      const fields = status.stdout.split('\0');
+      const name = fields.find((field) => field.startsWith('# branch.head '))?.slice(14);
+      const oid = fields.find((field) => field.startsWith('# branch.oid '))?.slice(13);
+      const commit = oid && /^[a-f0-9]{40,64}$/u.test(oid) ? oid : null;
+      const head: RepositoryHead = !name
+        ? await this.discoverHead(summary.path)
+        : name === '(detached)'
+          ? { state: 'detached', name: null, commit }
+          : { state: commit ? 'branch' : 'unborn', name, commit };
+      const changedFileCount = statusEntryCount(status.stdout);
+      return {
+        ...summary,
+        head,
+        workingTree: { state: changedFileCount ? 'dirty' : 'clean', changedFileCount },
+        referenceVersion: createHash('sha256').update(JSON.stringify(head)).update(refs.stdout).digest('hex'),
+      };
+    } catch {
+      return {
+        ...summary,
+        head: { state: 'unknown', name: null, commit: null },
+        workingTree: { state: 'unknown', changedFileCount: null },
+      };
+    }
+  }
+
+  private async topologyKey(summary: RepositorySummary): Promise<string> {
+    const paths = [summary.path, summary.gitDir, summary.commonDir];
+    const identities = await Promise.all(
+      paths.map(async (path) => {
+        const info = await stat(path);
+        return [await realpath(path), info.dev, info.ino];
+      }),
+    );
+    if (summary.worktreePath) {
+      const marker = join(summary.worktreePath, '.git');
+      const info = await lstat(marker);
+      if (info.isFile() && info.size > 32768) throw new Error('Invalid Git directory marker.');
+      identities.push([await realpath(marker), info.dev, info.ino]);
+      if (info.isFile()) return JSON.stringify([identities, await readFile(marker, 'utf8')]);
+    }
+    return JSON.stringify(identities);
   }
 
   private async inspectWorkingTree(worktreePath: string | null): Promise<RepositoryWorkingTree> {
@@ -986,6 +1399,7 @@ export class RepositoryService {
           'core.fsmonitor=false',
           '-c',
           'core.untrackedCache=false',
+          '--no-optional-locks',
           'status',
           '--porcelain=v2',
           '--untracked-files=normal',
@@ -1016,6 +1430,7 @@ export class RepositoryService {
   }
 
   private mapGitFailure(error: unknown, fallback: string): ExpectedBackendError {
+    if (error instanceof ExpectedBackendError) return error;
     if (error instanceof GitExecutableError) {
       return new ExpectedBackendError('GIT_UNAVAILABLE', 'Git is not available on this computer.');
     }
@@ -1272,6 +1687,7 @@ function statusEntryCount(output: string): number {
   const records = output.split('\0').filter((record) => record.length > 0);
   let count = 0;
   for (let index = 0; index < records.length; index += 1) {
+    if (records[index]?.startsWith('# ')) continue;
     count += 1;
     // Porcelain v2 rename/copy records carry the original path as a second NUL-delimited field.
     if (records[index]?.startsWith('2 ')) index += 1;

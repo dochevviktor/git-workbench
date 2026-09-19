@@ -40,8 +40,9 @@ The matrix covers documented feature families. Hidden preferences, all shortcut 
 dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
 F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, the
 initial F07 slice, the F08–F11 local-change slices, the initial F12 branch/tag slice, the initial F13
-remote/network slice, and the initial F34 workspace chrome slice are **partial** in this project; all
-other F-items remain **planned**.
+remote/network slice, and the initial F34 workspace chrome slice are **partial** in this project.
+The stabilization also starts the F15/F16 recovery subset and the F29 PR browser handoff; their full
+feature families and all other F-items remain incomplete or planned.
 
 ### F01 source refresh
 
@@ -430,7 +431,8 @@ remote branch, and fast-forwarding several branches at once are not implemented.
 
 Accessed and visually inspected **2026-09-19**. The [audit report](../reviews/f01-f13-review.md)
 records application defects, missing workflows, reproduction evidence, and proposed acceptance criteria.
-This review changes no implementation status: F01–F13 remain partial slices.
+The original review changed no implementation status. Its subsequently verified remediation is recorded
+below; F01–F13 remain partial feature families.
 
 - **O, high confidence for the captured Windows UI:** the existing
   `win-2025-11-25-trackerwin2658-1-dialogs-dark.png` from
@@ -474,6 +476,33 @@ equivalence, defaults, clean-versus-dirty checkout triggering, untracked-file di
 of staged state during stash/reapply, or conflict recovery. Those need explicit product rules and Git
 fixture tests. Collecting an image is not acceptance of a workflow: each relevant control must be mapped
 to a contract, implementation, failure/recovery path, and test before coverage is described as complete.
+
+### Stabilization implementation verification
+
+Verified **2026-09-19** on Fedora Linux with Git **2.55.0** and Node **24.13.0**. These are **I** product
+decisions and independently tested Git behavior, not observations of Fork internals. The preceding
+initial-slice limitations are historical where superseded by this record.
+
+- F12 now includes checkout local-change radio choices and full-reference tracking/creation. Preserve
+  uses Git's ordinary refusal/carry behavior. Stash/reapply restores index state; Discard previews tracked
+  and untracked paths and keeps a recovery copy. Linux follows Windows affirmative-button order.
+- F13 now has a Pull dialog with explicit source/destination, merge/rebase and stash/reapply options;
+  separate inactive-branch fast-forward; and visible editable Push destinations derived from exact
+  upstream configuration. Pull to an inactive branch states that it will check it out first. Fast-Forward
+  leaves the active worktree alone. Other-worktree checkouts and stale snapshots are refused.
+- The F15/F16 subset keeps saved changes in named stashes and pinned recovery refs, persists a per-worktree
+  journal, and offers apply, resolution acknowledgement, and merge/rebase continue/abort after restart.
+  This is not general stash management or the full three-way conflict editor.
+- The F29 subset opens a validated GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps PR form in the
+  system browser. Accounts, PR submission, listing, and notifications remain outside this slice.
+- R1–R12 and late-result ownership risks are addressed. `npm run check` passes **239 tests** plus type,
+  lint, and format checks. Production build and **three headless Electron scenarios** pass. The test
+  browser handoff is intercepted; live hosting forms and authentication were not exercised.
+
+UI captures were compared with the restored local checkout, Pull, Push, branch-menu, and activity
+references. All 226 public images remain ignored and unbundled. Screenshot evidence establishes the
+visible controls, not exact current palettes/defaults or cross-platform equivalence. The performance
+improvements and remaining verification limits are detailed in the [remediation record](../reviews/f01-f13-review.md#remediation-verified--2026-09-19).
 
 ### F34 workspace chrome, graph drawing, and context-menu refresh
 
@@ -629,10 +658,10 @@ indicators; current dark and light palettes; and all Linux behavior.
 ## Feature coverage
 
 Phase IDs refer to [the implementation plan](../implementation-plan.md).
-The [2026-09-19 workflow audit](../reviews/f01-f13-review.md) adds explicit missing acceptance coverage
-for F12 checkout local-change choices and F13 selected-source pull, inactive-branch fast-forward, and
-visible push destinations. It also recommends bringing the branch-menu PR browser handoff forward
-from the P11 hosting group. These remain gaps; the new reference evidence does not mark them implemented.
+The [2026-09-19 remediation](../reviews/f01-f13-review.md#remediation-verified--2026-09-19) verifies F12
+checkout local-change choices, F13 selected-source pull, inactive-branch fast-forward, visible push
+destinations, and the early F29 PR browser handoff. The F15/F16 recovery subset supports these workflows;
+the full feature families below remain partial. Reference evidence alone is not implementation evidence.
 
 | ID  | Public capability                                                                                           | Evidence                                                                                                                                                                                                           | Planned phase |
 | --- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |

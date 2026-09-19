@@ -8,6 +8,7 @@ import type {
   RepositoryRemoteActionResult,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { waitForOperation } from '../lib/operations';
 
 export type RepositoryReferences = ReturnType<typeof useReferences>;
 
@@ -17,9 +18,8 @@ function actionError(reason: unknown): string {
 
 /**
  * Reads the branches, tags, and remotes of the active repository, and runs one reference action at a
- * time. Every action takes its compare-and-swap token from a read issued immediately before it, so
- * the window between reading and writing is as short as the two requests; the main process still
- * re-reads and refuses a token that no longer matches.
+ * time. Actions retain the snapshot the user reviewed. Mutation completions have the same generation
+ * guards as reads, so a late result cannot replace another repository's state.
  */
 export function useReferences(repositoryId: string | undefined, refreshSignal = 0) {
   const [context, setContext] = useState<RepositoryReferenceContext>();
@@ -77,36 +77,44 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
 
   useEffect(() => {
     generation.current += 1;
+    setBusy(false);
     setContext(undefined);
     setError(undefined);
     reload();
   }, [refreshSignal, reload]);
 
   const apply = useCallback(
-    async (action: RepositoryReferenceAction): Promise<RepositoryReferenceActionResult> => {
+    async (
+      action: RepositoryReferenceAction,
+      snapshot?: string,
+    ): Promise<RepositoryReferenceActionResult> => {
       const api = window.desktop;
       if (!repositoryId || !api) {
         throw new Error('Open this application in Electron to change branches and tags.');
       }
       setBusy(true);
+      const requestGeneration = generation.current;
       try {
-        const current = await read(repositoryId);
+        const current = context;
         if (!current) throw new Error('The branches and tags could not be read.');
-        const result = unwrapResult(
+        const accepted = unwrapResult(
           await api.repository.applyReferenceAction({
             id: repositoryId,
             action,
-            snapshot: current.snapshot,
+            snapshot: snapshot ?? current.snapshot,
           }),
         );
+        const operation = await waitForOperation(api, accepted);
+        if (operation.result?.kind !== 'reference') throw new Error(operation.message);
+        const result = operation.result.value;
         const refreshed = await read(repositoryId).catch(() => undefined);
-        if (mounted.current && refreshed) setContext(refreshed);
+        if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
         return result;
       } finally {
-        if (mounted.current) setBusy(false);
+        if (mounted.current && generation.current === requestGeneration) setBusy(false);
       }
     },
-    [read, repositoryId],
+    [context, read, repositoryId],
   );
 
   const applyRemote = useCallback(
@@ -114,15 +122,16 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
       const api = window.desktop;
       if (!repositoryId || !api) throw new Error('Open this application in Electron to change remotes.');
       setBusy(true);
+      const requestGeneration = generation.current;
       try {
         const result = unwrapResult(await api.repository.applyRemoteAction({ id: repositoryId, action }));
-        if (mounted.current) setRemotes(result.remotes);
+        if (mounted.current && generation.current === requestGeneration) setRemotes(result.remotes);
         // A removed remote also removes its remote-tracking branches, so the references are reread.
         const refreshed = await read(repositoryId).catch(() => undefined);
-        if (mounted.current && refreshed) setContext(refreshed);
+        if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
         return result;
       } finally {
-        if (mounted.current) setBusy(false);
+        if (mounted.current && generation.current === requestGeneration) setBusy(false);
       }
     },
     [read, repositoryId],

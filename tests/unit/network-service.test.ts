@@ -108,7 +108,7 @@ describe('network command planning', () => {
       head: branchHead,
       request: { kind: 'pull', prune: false },
     });
-    expect(pull.args).toEqual(['pull', '--progress', '--ff-only', '--no-autostash']);
+    expect(pull.args).toEqual(['pull', '--progress', '--ff-only', '--no-rebase', '--no-autostash']);
     expect(pull.title).toBe("Pull 'main'");
 
     const push = planNetworkOperation({

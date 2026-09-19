@@ -17,12 +17,24 @@ discovery, opening existing repositories, local initialization, recent-repositor
 source directories, bounded folder-aware repository scanning, persisted tabs with dirty indicators,
 close/reopen shortcuts, paged commit history, file/hunk/line staging with snapshot validation, committing
 and amending, branch and tag creation, renaming, deletion, checkout and upstream selection, remote
-management, fetch, fast-forward pull, push with optional lease-checked force, and System/Light/Dark
-appearance. Network work runs as a cancellable background operation with progress, command, and output in
-an activity panel. Toolbar and menu entries for Git operations from later phases are shown disabled with
-the phase that will enable them. Clone, background fetching, credential prompts, whole-file discard,
-merge and conflict resolution, custom manager folders, filesystem watchers, and the remaining Git
-operations are later work.
+management, fetch, explicit-source merge/rebase pull, inactive-branch fast-forward, mapped push with
+optional lease-checked force, a PR browser handoff, and System/Light/Dark appearance. Network work,
+commits, and reference actions run as queryable background operations in the activity panel. Checkout
+offers preserve, stash/reapply, or discard, with recovery copies of changed tracked and untracked files.
+Clone, background fetching, credential prompts, general whole-file discard and stash management,
+the full conflict editor, custom manager folders, filesystem watchers, and remaining Git operations
+are later work.
+
+Pull shows its remote, source branch, and destination before starting. For an inactive destination it
+explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.
+Recovery provides merge/rebase continue/abort and saved-change restoration, including after restart.
+Resolve conflicted files externally, stage them in Local Changes, then continue or mark saved changes
+resolved. Recovery entries can be dismissed without changing Git's stash list. Before an action starts,
+Cancel leaves the repository unchanged; after it starts, Close dismisses the dialog and Activity provides
+the operation's cancellation control. Cancellation does not promise rollback.
+
+Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
+browser. It does not submit the form or require storing hosting credentials in this application.
 
 ## Start
 

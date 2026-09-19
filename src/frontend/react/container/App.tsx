@@ -8,6 +8,7 @@ import type {
   RepositoryNetworkRequest,
   RepositoryReferenceAction,
   RepositoryRemoteAction,
+  RepositoryLocalChangesPreview,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { ChangesView } from '../components/ChangesView';
@@ -17,6 +18,7 @@ import { CheckIcon, WarningIcon } from '../components/Icons';
 import { NetworkDialog } from '../components/NetworkDialogs';
 import type { NetworkDialogRequest } from '../components/NetworkDialogs';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
+import { RecoveryPanel } from '../components/RecoveryPanel';
 import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
 import { RepositorySidebar } from '../components/RepositorySidebar';
@@ -119,10 +121,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const activeRepositoryId = useRef(active?.id);
+  activeRepositoryId.current = active?.id;
+  const repositoryRevision = `${lastActive?.head.name ?? ''}:${lastActive?.head.commit ?? ''}:${lastActive?.referenceVersion ?? ''}`;
+  const lastRevision = useRef(repositoryRevision);
+  useEffect(() => {
+    if (lastRevision.current === repositoryRevision) return;
+    lastRevision.current = repositoryRevision;
+    refreshHistory();
+    setRefreshSignal((value) => value + 1);
+  }, [repositoryRevision, refreshHistory]);
   const {
     context: referenceContext,
     remotes,
-    busy: referenceBusy,
+    busy: referenceRequestBusy,
     apply: applyReference,
     applyRemote,
     reload: reloadReferences,
@@ -133,6 +145,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     start: startOperation,
     cancel: cancelOperation,
   } = useOperations();
+  const referenceBusy = referenceRequestBusy || runningOperation(operations, active?.id) !== undefined;
+  const [localChangesPreview, setLocalChangesPreview] = useState<RepositoryLocalChangesPreview>();
+  const [previewError, setPreviewError] = useState<string>();
+  const previewGeneration = useRef(0);
+  const [dialogSnapshot, setDialogSnapshot] = useState<string>();
   const [referenceDialog, setReferenceDialog] = useState<ReferenceDialogRequest>();
   const [referenceFailure, setReferenceFailure] = useState<{
     readonly message: string;
@@ -248,16 +265,37 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [requestReveal, setView],
   );
 
-  const referencesReady = referenceContext !== undefined;
+  const referencesReady = referenceContext !== undefined && referenceContext.repositoryId === active?.id;
   const referenceLoading = 'The branches and tags of this repository are still loading.';
 
-  const openReferenceDialog = useCallback((request: ReferenceDialogRequest) => {
-    setReferenceFailure(undefined);
-    setReferenceStatus(undefined);
-    setReferenceDialog(request);
-  }, []);
+  const loadLocalChangesPreview = useCallback(() => {
+    const generation = ++previewGeneration.current;
+    setLocalChangesPreview(undefined);
+    setPreviewError(undefined);
+    const id = active?.id;
+    if (!id || active.bare) return;
+    void window.desktop?.repository.previewLocalChanges({ id }).then((result) => {
+      if (activeRepositoryId.current !== id || previewGeneration.current !== generation) return;
+      if (result.ok) setLocalChangesPreview(result.value);
+      else setPreviewError(result.error.message);
+    });
+  }, [active]);
+
+  const openReferenceDialog = useCallback(
+    (request: ReferenceDialogRequest) => {
+      previewGeneration.current += 1;
+      setPreviewError(undefined);
+      setReferenceFailure(undefined);
+      setReferenceStatus(undefined);
+      setDialogSnapshot(referenceContext?.snapshot);
+      if (request.kind.startsWith('checkout') || request.kind === 'new-branch') loadLocalChangesPreview();
+      setReferenceDialog(request);
+    },
+    [loadLocalChangesPreview, referenceContext?.snapshot],
+  );
 
   const closeReferenceDialog = useCallback(() => {
+    previewGeneration.current += 1;
     setReferenceDialog(undefined);
     setReferenceFailure(undefined);
   }, []);
@@ -268,8 +306,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
    */
   const runReferenceAction = useCallback(
     (action: RepositoryReferenceAction) => {
-      void applyReference(action)
+      const owner = active?.id;
+      void applyReference(action, referenceDialog ? dialogSnapshot : undefined)
         .then((result) => {
+          if (activeRepositoryId.current !== owner) return;
           if (result.status === 'applied') {
             setReferenceDialog(undefined);
             setReferenceFailure(undefined);
@@ -282,11 +322,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           setReferenceStatus({ message: `${result.message}${detail}`, blocked: true });
         })
         .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
           reportError(reason instanceof Error ? reason.message : 'That branch or tag action failed.');
           reloadReferences();
         });
     },
-    [applyReference, refresh, reloadReferences, reportError],
+    [active?.id, applyReference, dialogSnapshot, referenceDialog, refresh, reloadReferences, reportError],
   );
 
   const commitTarget = useCallback(
@@ -342,13 +383,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const historyReferences = useMemo<HistoryReferenceCommands>(
     () => ({
-      ready: referencesReady,
+      ready: referencesReady && !referenceBusy,
       newBranch: (commit) => openReferenceDialog({ kind: 'new-branch', target: commitTarget(commit) }),
       newTag: (commit) => openReferenceDialog({ kind: 'new-tag', target: commitTarget(commit) }),
       checkoutCommit: (commit) =>
         openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
     }),
-    [commitTarget, openReferenceDialog, referencesReady],
+    [commitTarget, openReferenceDialog, referenceBusy, referencesReady],
   );
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
@@ -356,12 +397,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [activityOpen, setActivityOpen] = useState(false);
   const activeOperation = runningOperation(operations, active?.id);
 
-  const openNetworkDialog = useCallback((request: NetworkDialogRequest) => {
-    setNetworkFailure(undefined);
-    setNetworkDialog(request);
-  }, []);
+  const openNetworkDialog = useCallback(
+    (request: NetworkDialogRequest) => {
+      previewGeneration.current += 1;
+      setPreviewError(undefined);
+      setNetworkFailure(undefined);
+      setDialogSnapshot(referenceContext?.snapshot);
+      if (request.kind === 'pull') loadLocalChangesPreview();
+      setNetworkDialog(request);
+    },
+    [loadLocalChangesPreview, referenceContext?.snapshot],
+  );
 
   const closeNetworkDialog = useCallback(() => {
+    previewGeneration.current += 1;
     setNetworkDialog(undefined);
     setNetworkFailure(undefined);
   }, []);
@@ -376,10 +425,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       setNetworkFailure(undefined);
       void startOperation(active.id, request)
         .then(() => {
+          if (activeRepositoryId.current !== active.id) return;
           setNetworkDialog(undefined);
           setActivityOpen(true);
         })
         .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== active.id) return;
           setNetworkFailure(
             reason instanceof Error ? reason.message : 'That operation could not be started.',
           );
@@ -390,9 +441,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const runRemoteAction = useCallback(
     (action: RepositoryRemoteAction) => {
+      const owner = active?.id;
       setNetworkFailure(undefined);
       void applyRemote(action)
         .then((result) => {
+          if (activeRepositoryId.current !== owner) return;
           if (result.status === 'blocked') {
             setNetworkFailure(result.message);
             return;
@@ -403,10 +456,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           refresh();
         })
         .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
           setNetworkFailure(reason instanceof Error ? reason.message : 'That remote change failed.');
         });
     },
-    [applyRemote, refresh],
+    [active?.id, applyRemote, refresh],
   );
 
   // A finished operation refreshes the views whose refs or working tree it changed, once.
@@ -427,8 +481,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const networkBusyReason = activeOperation
     ? 'Another network operation is running for this repository.'
     : undefined;
-  const networkDisabledReason =
-    remotes.length === 0
+  const networkDisabledReason = !referencesReady
+    ? referenceLoading
+    : remotes.length === 0
       ? 'This repository has no remotes yet. Add one from the Repository menu.'
       : undefined;
   const pullDisabledReason = active?.bare
@@ -482,7 +537,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       : branch.isHead
         ? 'This branch is already checked out.'
         : undefined,
-    run: () => runReferenceAction({ kind: 'checkout-branch', fullName: branch.fullName }),
+    run: () => openReferenceDialog({ kind: 'checkout-branch', branch }),
   }));
 
   const branchMenuItems: MenuEntry[] = compactMenu([
@@ -510,7 +565,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       else if (is('Mod+Shift+T')) {
         if (!repositoryBusy) void reopenClosed();
       } else if (is('Mod+Shift+B')) {
-        if (headTarget) openReferenceDialog({ kind: 'new-branch', target: headTarget });
+        if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-branch', target: headTarget });
       } else if (is('Mod+Shift+F')) {
         if (active && remotes.length > 0 && !activeOperation) openNetworkDialog({ kind: 'fetch' });
       } else if (is('Ctrl+Tab')) cycleTab(1);
@@ -550,6 +605,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     platform,
     networkDialog,
     referenceDialog,
+    referenceBusy,
     remotes.length,
     refresh,
     reopenClosed,
@@ -749,7 +805,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   pullDisabledReason !== undefined ||
                   activeOperation !== undefined,
                 disabledReason: networkDisabledReason ?? pullDisabledReason ?? networkBusyReason,
-                run: () => startNetwork({ kind: 'pull', prune: true }),
+                run: () => {
+                  if (currentBranch) openNetworkDialog({ kind: 'pull', branch: currentBranch });
+                },
               },
               {
                 id: 'push',
@@ -964,7 +1022,65 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             label: `Checkout '${reference.name}'`,
             disabled: reference.isHead || branchReason !== undefined || referenceBusy,
             disabledReason: reference.isHead ? 'This branch is already checked out.' : branchReason,
-            run: () => runReferenceAction({ kind: 'checkout-branch', fullName: reference.fullName }),
+            run: () => {
+              if (branch) openReferenceDialog({ kind: 'checkout-branch', branch });
+            },
+          },
+          menuSeparator,
+          {
+            id: 'fast-forward',
+            label: `Fast-Forward to '${branch?.upstream ?? 'upstream'}'`,
+            disabled:
+              !branch?.upstreamRemote ||
+              !branch.upstreamBranch ||
+              Boolean(branch.worktreePath) ||
+              referenceBusy,
+            disabledReason: branch?.worktreePath
+              ? 'This branch is checked out in another worktree.'
+              : 'Choose an upstream branch first.',
+            run: () => {
+              if (referenceContext)
+                startNetwork({
+                  kind: 'fast-forward',
+                  fullName: reference.fullName,
+                  snapshot: referenceContext.snapshot,
+                });
+            },
+          },
+          {
+            id: 'pull-branch',
+            label: `Pull '${branch?.upstream ?? reference.name}'…`,
+            disabled: !branch || Boolean(branch.worktreePath) || referenceBusy || remotes.length === 0,
+            disabledReason: branch?.worktreePath
+              ? 'This branch is checked out in another worktree.'
+              : (networkDisabledReason ?? networkBusyReason),
+            run: () => {
+              if (branch) openNetworkDialog({ kind: 'pull', branch });
+            },
+          },
+          {
+            id: 'push-branch',
+            label: `Push to '${branch?.upstreamRemote ?? remotes[0]?.name ?? 'remote'}'…`,
+            disabled: !branch || remotes.length === 0 || referenceBusy,
+            disabledReason: networkDisabledReason ?? networkBusyReason,
+            run: () => pushBranch(branch),
+          },
+          {
+            id: 'create-pull-request',
+            label: `Create Pull Request on '${branch?.upstreamRemote ?? remotes[0]?.name ?? 'remote'}'…`,
+            disabled: !branch || remotes.length === 0 || referenceBusy,
+            disabledReason: networkDisabledReason ?? networkBusyReason,
+            run: () => {
+              const remote = remotes.some((item) => item.name === branch?.upstreamRemote)
+                ? branch!.upstreamRemote!
+                : remotes[0]?.name;
+              if (active && branch && remote)
+                void window.desktop?.repository
+                  .openPullRequest({ id: active.id, fullName: branch.fullName, remote })
+                  .then((result) => {
+                    if (!result.ok) reportError(result.error.message);
+                  });
+            },
           },
           menuSeparator,
           current &&
@@ -994,14 +1110,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             disabled: !referencesReady || referenceBusy,
             disabledReason: referencesReady ? undefined : referenceLoading,
             run: () => openReferenceDialog({ kind: 'new-tag', target }),
-          },
-          menuSeparator,
-          {
-            id: 'push-branch',
-            label: `Push '${reference.name}'…`,
-            disabled: !branch || networkDisabledReason !== undefined || activeOperation !== undefined,
-            disabledReason: networkDisabledReason ?? networkBusyReason ?? referenceLoading,
-            run: () => pushBranch(branch),
           },
           menuSeparator,
           {
@@ -1214,7 +1322,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         pullDisabledReason={pullDisabledReason}
         activityOpen={activityOpen}
         onFetch={() => openNetworkDialog({ kind: 'fetch' })}
-        onPull={() => startNetwork({ kind: 'pull', prune: true })}
+        onPull={() => {
+          if (currentBranch) openNetworkDialog({ kind: 'pull', branch: currentBranch });
+        }}
         onPush={() => pushBranch(currentBranch)}
         onToggleActivity={() => setActivityOpen((open) => !open)}
         onCancelOperation={cancelOperation}
@@ -1278,6 +1388,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   repository={active}
                   refreshSignal={refreshSignal}
                   onCommitted={refresh}
+                  operationBusy={Boolean(activeOperation)}
                 />
               ) : (
                 <HistoryView history={history} references={historyReferences} />
@@ -1301,6 +1412,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           </button>
         </div>
       )}
+      {active && !active.bare && (
+        <RecoveryPanel
+          key={active.id}
+          repositoryId={active.id}
+          refreshSignal={refreshSignal}
+          busy={Boolean(activeOperation)}
+          onRecovered={refresh}
+        />
+      )}
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
@@ -1322,9 +1442,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           request={networkDialog}
           remotes={remotes}
           branches={referenceContext?.branches ?? []}
+          remoteBranches={referenceContext?.remoteBranches}
+          referenceSnapshot={dialogSnapshot}
+          preview={localChangesPreview}
           platform={platform}
           busy={referenceBusy}
-          failure={networkFailure}
+          failure={networkFailure ?? previewError}
           onStart={startNetwork}
           onRemoteAction={runRemoteAction}
           onOpen={openNetworkDialog}
@@ -1335,9 +1458,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         <ReferenceDialog
           request={referenceDialog}
           context={referenceContext}
+          preview={localChangesPreview}
           platform={platform}
           busy={referenceBusy}
-          failure={referenceFailure}
+          failure={
+            referenceFailure ?? (previewError ? { message: previewError, canForce: false } : undefined)
+          }
           onSubmit={runReferenceAction}
           onClose={closeReferenceDialog}
         />

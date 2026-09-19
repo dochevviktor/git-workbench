@@ -1,19 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RepositoryNetworkRequest, RepositoryOperation } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { mergeOperation } from '../lib/operations';
 
 export type RepositoryOperations = ReturnType<typeof useOperations>;
-
-function mergeOperation(
-  current: readonly RepositoryOperation[],
-  next: RepositoryOperation,
-): RepositoryOperation[] {
-  const known = current.some((operation) => operation.id === next.id);
-  const merged = known
-    ? current.map((operation) => (operation.id === next.id ? next : operation))
-    : [next, ...current];
-  return [...merged].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-}
 
 /**
  * Follows the long-running Git operations of this window. Starting one returns as soon as the backend

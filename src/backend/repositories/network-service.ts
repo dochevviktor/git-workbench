@@ -63,7 +63,9 @@ export function planNetworkOperation(input: NetworkOperationInput): NetworkPlan 
       };
     }
     case 'pull': {
-      if (input.head.state !== 'branch' || !input.head.name) {
+      if (Boolean(request.remote) !== Boolean(request.branch))
+        throw new NetworkRequestError('Choose a remote and a source branch together.', 'not-found');
+      if ((!input.head.name || input.head.state !== 'branch') && !request.into) {
         throw new NetworkRequestError(
           'Check out a branch before pulling; a detached HEAD has no upstream to pull from.',
           'no-upstream',
@@ -71,15 +73,35 @@ export function planNetworkOperation(input: NetworkOperationInput): NetworkPlan 
       }
       // Fast-forward only: a pull that would need a merge or a rebase stops instead, because the
       // recovery paths for those belong to P06 and P07.
-      const args = ['pull', '--progress', '--ff-only', '--no-autostash'];
+      const args = [
+        'pull',
+        '--progress',
+        ...(request.rebase === undefined
+          ? ['--ff-only', '--no-rebase']
+          : request.rebase
+            ? ['--rebase']
+            : ['--no-rebase', '--ff']),
+        '--no-autostash',
+      ];
       if (request.prune) args.push('--prune');
+      if (request.remote && request.branch) args.push('--', request.remote, `refs/heads/${request.branch}`);
       return {
         kind: 'pull',
         args,
-        title: `Pull '${input.head.name}'`,
+        title:
+          request.remote && request.branch
+            ? `Pull '${request.remote}/${request.branch}' into '${request.into?.slice('refs/heads/'.length) ?? input.head.name}'`
+            : `Pull '${input.head.name}'`,
         command: displayCommand(args),
       };
     }
+    case 'fast-forward':
+      return {
+        kind: 'fast-forward',
+        args: [],
+        title: `Fast-Forward '${request.fullName.slice('refs/heads/'.length)}'`,
+        command: '',
+      };
     case 'push': {
       const args = ['push', '--progress'];
       if (request.setUpstream) args.push('--set-upstream');
@@ -147,7 +169,7 @@ export async function runNetworkOperation(
     collector.flush();
     return {
       status: 'succeeded',
-      message: successMessage(plan.kind, result),
+      message: successMessage(plan, result),
       output: displayOutput(result.stdout, result.stderr),
     };
   } catch (error) {
@@ -188,19 +210,25 @@ function isLocalBranchRef(fullName: string): boolean {
   return name.length > 0 && !name.startsWith('-') && !/[\u0000-\u001F\u007F\s]/u.test(name);
 }
 
-function successMessage(kind: RepositoryOperationKind, result: GitCommandResult): string {
+function successMessage(plan: NetworkPlan, result: GitCommandResult): string {
   const text = `${result.stdout}\n${result.stderr}`;
   if (/Everything up-to-date/iu.test(text)) return 'Everything is up to date.';
   if (/Already up to date/iu.test(text)) return 'Already up to date.';
-  switch (kind) {
+  switch (plan.kind) {
     case 'fetch':
       return /\S/u.test(text) ? 'Fetched new changes.' : 'Already up to date.';
     case 'pull':
-      return 'Fast-forwarded to the upstream branch.';
+      return plan.args.includes('--ff-only')
+        ? 'Fast-forwarded to the upstream branch.'
+        : plan.args.includes('--rebase')
+          ? 'Pulled changes with rebase.'
+          : 'Pulled remote changes.';
     case 'push':
       return 'Pushed.';
     case 'delete-remote-branch':
       return 'Deleted the branch on the remote.';
+    default:
+      return 'Completed.';
   }
 }
 
@@ -269,7 +297,7 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
       output,
     )
   ) {
-    return plain('local-changes', 'Local changes would be overwritten. Commit or stage them first.');
+    return plain('local-changes', 'Local changes would be overwritten. Commit or stash them first.');
   }
   if (
     /couldn't find remote ref|does not appear to be a git repository|repository not found|remote ref does not exist|no such remote/iu.test(

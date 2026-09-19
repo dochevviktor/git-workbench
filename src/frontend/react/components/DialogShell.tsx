@@ -57,7 +57,7 @@ export function DialogShell({
   );
   const cancel = (
     <button key="cancel" type="button" className="button" onClick={onClose}>
-      Cancel
+      {busy ? 'Close' : 'Cancel'}
     </button>
   );
 
@@ -66,6 +66,7 @@ export function DialogShell({
       ref={dialogRef}
       className="dialog reference-dialog"
       aria-labelledby={titleId}
+      aria-busy={busy}
       data-testid="reference-dialog"
       onClose={onClose}
       onMouseDown={(event) => {
@@ -92,8 +93,10 @@ export function DialogShell({
               </>
             )}
           </p>
-          {/* Windows puts the affirmative button first; Linux and macOS put it last. */}
-          <div className="dialog-actions">{platform === 'win32' ? [confirm, cancel] : [cancel, confirm]}</div>
+          {/* Linux follows the Windows reference; macOS keeps its native button order. */}
+          <div className="dialog-actions">
+            {platform === 'darwin' ? [cancel, confirm] : [confirm, cancel]}
+          </div>
         </div>
       </form>
     </dialog>

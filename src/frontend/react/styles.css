@@ -3012,13 +3012,13 @@ svg.spinning {
 }
 
 .activity-panel {
-  position: absolute;
+  position: fixed;
   z-index: 40;
   top: calc(100% + 6px);
   left: 0;
   display: grid;
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-  width: min(720px, 90vw);
+  width: min(720px, calc(100vw - 16px));
   height: 280px;
   overflow: hidden;
   border: 1px solid var(--menu-border);
@@ -3026,6 +3026,49 @@ svg.spinning {
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   text-align: left;
+}
+
+.local-changes-options {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.local-changes-preview {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+}
+.local-changes-preview ul {
+  padding-left: 20px;
+}
+.push-destination {
+  max-width: 180px;
+}
+.recovery-panel {
+  flex: 0 0 auto;
+  max-height: 220px;
+  overflow: auto;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  font-size: 12px;
+}
+.recovery-panel summary {
+  cursor: pointer;
+}
+.recovery-content {
+  display: grid;
+  gap: 6px;
+  padding-top: 6px;
+}
+.recovery-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .activity-list {

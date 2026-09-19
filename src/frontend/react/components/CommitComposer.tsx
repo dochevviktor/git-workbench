@@ -6,6 +6,7 @@ import type {
   RepositorySummary,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { waitForOperation } from '../lib/operations';
 import { useCommitContext } from '../hooks/use-commit-context';
 import { usePersistentState } from '../hooks/use-persistent-state';
 import { ChevronDownIcon, RecentMessagesIcon } from './Icons';
@@ -114,6 +115,15 @@ export function CommitComposer({
   const [body, setBody] = usePersistentState(`repository.${repository.id}.commit.body`, '', isString);
   const setAmend = onAmendChange;
   const [committing, setCommitting] = useState(false);
+  const mounted = useRef(true);
+  const currentDraft = useRef({ subject, body });
+  currentDraft.current = { subject, body };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [failure, setFailure] = useState<CommitFailure>();
   const [error, setError] = useState<string>();
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -181,7 +191,7 @@ export function CommitComposer({
       setFailure(undefined);
       setError(undefined);
       try {
-        const result = unwrapResult(
+        const accepted = unwrapResult(
           await api.repository.commit({
             id: repository.id,
             subject,
@@ -191,22 +201,29 @@ export function CommitComposer({
             skipHooks,
           }),
         );
+        const operation = await waitForOperation(api, accepted);
+        if (!mounted.current) return;
+        if (operation.result?.kind !== 'commit') throw new Error(operation.message);
+        const result = operation.result.value;
         if (result.status === 'failed') {
           setFailure(result);
           refreshContext();
           return;
         }
-        setSubject('');
-        setBody('');
+        if (currentDraft.current.subject === subject && currentDraft.current.body === body) {
+          setSubject('');
+          setBody('');
+        }
         setAmend(false);
         draftBeforeAmend.current = undefined;
         refreshContext();
         onCommitted();
       } catch (reason: unknown) {
+        if (!mounted.current) return;
         setError(reason instanceof Error ? reason.message : 'The commit could not be completed.');
         refreshContext();
       } finally {
-        setCommitting(false);
+        if (mounted.current) setCommitting(false);
       }
     },
     [

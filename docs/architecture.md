@@ -4,7 +4,8 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, and the initial F34 workspace-chrome slice implemented.
+with its F14 operation registry, the F01–F13 stabilization, minimal saved-change/pull recovery, a branch
+PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
 ## Process boundaries
@@ -90,16 +91,16 @@ explicit skip-hooks flag; the message crosses IPC as text and never as Git argum
 and the `amend` diff target report what an amended commit would contain, by comparing the index with
 HEAD's parent (the empty tree for a root commit). Amend mode is a read: it never moves a commit's changes
 into the index, so unticking it cannot lose staged work. Expected commit
-failures (a hook, a missing identity, an empty message, nothing staged, unmerged files) return a
-structured `failed` result with bounded inert output rather than an exception.
+failures (a hook, a missing identity, an empty message, nothing staged, unmerged files) produce a
+structured terminal `failed` result with bounded inert output rather than an exception.
 The initial F12 slice adds `getReferenceContext()` and `applyReferenceAction()`. The context read returns
 the local branches with their upstream, stale-upstream flag, linked-worktree checkout, and merged state,
 the tags with their peeled commit and annotated flag, the remote and remote-tracking names, the
 working-tree and pending-sequencer state, and a compare-and-swap token over HEAD, the local branches, and
 the tags. Remote-tracking refs stay outside that token so a background fetch cannot invalidate an open
 dialog. `applyReferenceAction()` carries one named action and that token; the renderer never sends Git
-arguments, a revision expression, or a force flag it was not offered. A start point is a commit ID this
-window already received or the full name of a reference the same read reported. Expected refusals — a name
+arguments, a revision expression, or a force flag it was not offered. A start point is a validated commit
+ID checked by Git, or the full name of a reference the context reported. Expected refusals — a name
 in use, an unmerged branch, a branch checked out in another worktree, the current branch, local changes a
 checkout would overwrite, a running sequencer, a missing tagger identity — return a structured `blocked`
 result with the obstacle, the paths Git named, and whether an explicit force would succeed.
@@ -120,6 +121,29 @@ undo/redo/cut/copy/paste/select-all on the requesting window's focused element,
 accepts only an open-session, recent, manager-repository, or source-directory ID. The main process
 resolves that ID to a path it issued to the same window, requires an existing directory, and opens it
 with the desktop's default file manager. Renderer clipboard and permission requests remain denied.
+
+The 2026-09-19 stabilization keeps channel names stable but changes `commit()` and
+`applyReferenceAction()` to return an accepted `RepositoryOperation`. Their structured terminal results
+are carried by the operation's `result` union. The renderer reconciles events and `listOperations()`
+using monotonically increasing revisions; a late accepted reply cannot replace a completed event.
+Reference dialogs retain the snapshot the user reviewed, and completions check repository ownership and
+generation before changing visible state. All conflicting local/network writes share the common-directory
+queue. A Pull validates its destination tip and reviewed context inside that queue; a Pull to an inactive
+branch explicitly checks it out first, while Fast-Forward updates it without switching the worktree.
+
+`previewLocalChanges()`, `getRecovery()`, and `recover()` provide bounded change previews and recovery
+operations. Stash/reapply and checkout Discard validate the preview, create a named Git stash, pin it
+under `refs/git-workbench/recovery/`, and persist a versioned atomic journal in the worktree's Git directory.
+Applying with `--index` restores the staged/unstaged distinction. Failed or interrupted work leaves the
+copy pending. Recovery actions compare a snapshot of saved entries and Git sequencer anchors before
+applying, finishing, or continuing/aborting. Dismissing an entry does not drop Git stash entries.
+`openPullRequest()` accepts only an open repository, local branch, and configured remote; main derives a
+known HTTPS hosting form URL and opens it in the system browser. No generic URL opener is exposed.
+
+Remote display DTOs redact URL credentials and preserve unchanged private URLs in main. Branch DTOs carry
+the exact upstream ref, remote, and remote branch; Push uses those mappings and exposes its destinations.
+The runner normalizes inherited pathspec flags and applies literal-path handling only to file-oriented
+commands, avoiding interference with pathspecs Git constructs inside stash operations.
 
 Requests return typed result envelopes because errors crossing Electron/contextBridge lose useful
 structure. Expected failures have stable codes; backend exceptions become a generic internal error.
@@ -197,6 +221,13 @@ history view then expands any collapsed merge hiding it and selects it. Revision
 directory for the selected commit and load as folders expand. Unit tests check hand-built cases and seeded random histories by
 following every drawn line to the expected parent.
 
+Projection now has a no-collapse fast path and uses topological position to bound ancestry queries when
+collapse is active. Stable repository topology is checked through filesystem identity rather than
+rediscovered on every query. A read coordinator coalesces identical in-flight reads with bounded concurrency;
+write epochs prevent sharing old reads with mutation-time revalidation. Tab polling publishes current HEAD
+and a reference fingerprint; selected working diffs also refresh on F5 and bounded polling. These improve
+the measured audit cases without claiming the outstanding large-repository performance baseline.
+
 ## Desktop security and lifecycle
 
 Windows enable context isolation and sandboxing, disable Node integration and webviews, deny new windows
@@ -271,20 +302,20 @@ per-repository mutation queue, refuses a stale token, and runs one `git commit -
 committing is an explicit user action; the call has its own longer timeout, its output is captured,
 stripped of terminal escapes, and bounded before display, and `--no-verify` is used only when the user
 explicitly chooses it after a failure. A commit that is interrupted reports an unknown outcome instead of
-being retried. The F13 network service builds exactly one `fetch`, `pull --ff-only`, or `push`
-invocation per request, streams Git's carriage-return progress into percentage updates, keeps only
+being retried. The network service builds named `fetch`, explicit-source `pull`, and `push`
+invocations, streams Git's carriage-return progress into percentage updates, keeps only
 completed phases in the log, and strips terminal escapes and URL credentials from everything it shows. It
 classifies transport and receive-pack messages into authentication, network, rejected, lease,
 no-upstream, not-fast-forward, local-changes, not-found, cancelled, and timeout, and never retries a write
-whose outcome is unknown. The operation registry owns the lifetime: one network operation per repository
-at a time, a pull additionally inside the per-repository mutation queue, cancellation through an
+whose outcome is unknown. The operation registry owns network, commit, reference, and recovery lifetimes,
+with conflicting writes in the common-repository mutation queue, cancellation through an
 `AbortSignal` that terminates the child's process group so the transport helper and ssh stop with it, and
 a closed window cancelling its own work. The remote service validates names with Git's own
 `check-ref-format` and declines an `ext::` URL, which would let a remote definition run a local command,
 until the repository trust model exists. The F12 reference service reads branches, tags, remotes, and worktree assignments with
 bounded `for-each-ref`, `remote`, and `worktree list --porcelain` calls, asks Git's own
-`check-ref-format` whether a name is acceptable, and runs exactly one `branch`, `checkout`, or `tag`
-invocation per action inside the same per-repository mutation queue. A tag message crosses IPC as text
+`check-ref-format` whether a name is acceptable, and runs a backend-built `branch`, `checkout`, or `tag`
+action with any explicitly requested save/reapply steps inside the same mutation queue. A tag message crosses IPC as text
 and reaches Git on standard input, never as an argument. A checkout gets the longer timeout because it
 writes the working tree and can run filters and a post-checkout hook. Nothing is ever force-deleted,
 force-created, or discarded without the user choosing that specific action.
@@ -300,8 +331,9 @@ There is still no
 remote authentication prompt, clone workflow, filesystem watcher, full-app
 closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
 discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, clone, background
-fetch scheduling, interactive credential or passphrase prompting, platform secret storage, merge or
-rebase pulls, syntax/image/binary viewers, external integration, automatic updater, or final branding. Window chrome on macOS and Windows, title-bar double-click and
+fetch scheduling, interactive credential or passphrase prompting, platform secret storage, a full conflict
+editor, general stash management, syntax/image/binary viewers, full hosting integration, automatic updater,
+or final branding. Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
@@ -309,4 +341,6 @@ merge collapse, commit and amend behavior, branch/tag creation, checkout, and de
 refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, and the
 Electron bridge; later Git correctness will continue to
 be checked against independent CLI assertions as each workflow is added. Diff merge presentation,
-whole-file discard, signing, and conflict resolution remain future work.
+general whole-file discard, signing, and the full conflict editor remain future work. The reviewed
+checkout/pull/fast-forward/push workflows, recovery controls, and PR browser handoff are verified within
+the narrower stabilization scope recorded in `docs/reviews/f01-f13-review.md`.
