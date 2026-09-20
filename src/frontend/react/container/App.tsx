@@ -15,6 +15,8 @@ import type {
   RepositoryPatchTarget,
   RepositoryStashAction,
   RepositoryStashEntry,
+  RepositoryWorktree,
+  RepositoryWorktreeAction,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { CloneDialog } from '../components/CloneDialog';
@@ -31,6 +33,8 @@ import type { MergeRebaseDialogRequest } from '../components/MergeRebaseDialog';
 import { InteractiveRebaseDialog } from '../components/InteractiveRebaseDialog';
 import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRebaseDialog';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
+import { WorktreeDialog } from '../components/WorktreeDialogs';
+import type { WorktreeDialogRequest } from '../components/WorktreeDialogs';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { StashDialogs } from '../components/StashDialogs';
 import type { StashDialogRequest } from '../components/StashDialogs';
@@ -55,6 +59,7 @@ import { useReferences } from '../hooks/use-references';
 import { useRepositories } from '../hooks/use-repositories';
 import { useRepositoryHistory } from '../hooks/use-repository-history';
 import { useRepositoryStashes } from '../hooks/use-repository-stashes';
+import { useWorktrees } from '../hooks/use-worktrees';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
@@ -197,6 +202,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     reload: reloadReferences,
   } = useReferences(lastActive?.id, refreshSignal);
   const {
+    context: worktreeContext,
+    loading: worktreesLoading,
+    busy: worktreeRequestBusy,
+    apply: applyWorktree,
+    reload: reloadWorktrees,
+  } = useWorktrees(lastActive?.id, refreshSignal);
+  const {
     operations,
     error: operationError,
     start: startOperation,
@@ -224,7 +236,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setCloneOpen(false);
     void openRecent(latest.result.value.path);
   }, [operations, openRecent]);
-  const referenceBusy = referenceRequestBusy || runningOperation(operations, active?.id) !== undefined;
+  const referenceBusy =
+    referenceRequestBusy || worktreeRequestBusy || runningOperation(operations, active?.id) !== undefined;
   const [localChangesPreview, setLocalChangesPreview] = useState<RepositoryLocalChangesPreview>();
   const [previewError, setPreviewError] = useState<string>();
   const previewGeneration = useRef(0);
@@ -238,6 +251,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     readonly message: string;
     readonly blocked: boolean;
   }>();
+  const [worktreeDialog, setWorktreeDialog] = useState<WorktreeDialogRequest>();
+  const [worktreeFailure, setWorktreeFailure] = useState<string>();
   const [stashDialog, setStashDialog] = useState<StashDialogRequest>();
   const development = info?.mode === 'development';
   const nativeMenu = platform === 'darwin';
@@ -374,7 +389,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   const referencesReady = referenceContext !== undefined && referenceContext.repositoryId === active?.id;
+  const worktreesReady = worktreeContext !== undefined && worktreeContext.repositoryId === active?.id;
   const referenceLoading = 'The branches and tags of this repository are still loading.';
+  const worktreeLoading = 'The worktrees of this repository are still loading.';
 
   const loadLocalChangesPreview = useCallback(() => {
     const generation = ++previewGeneration.current;
@@ -407,6 +424,42 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setReferenceDialog(undefined);
     setReferenceFailure(undefined);
   }, []);
+
+  const openWorktreeDialog = useCallback((request: WorktreeDialogRequest) => {
+    setWorktreeFailure(undefined);
+    setWorktreeDialog(request);
+  }, []);
+
+  const closeWorktreeDialog = useCallback(() => {
+    setWorktreeDialog(undefined);
+    setWorktreeFailure(undefined);
+  }, []);
+
+  const runWorktreeAction = useCallback(
+    (action: RepositoryWorktreeAction, snapshot?: string) => {
+      const owner = active?.id;
+      void applyWorktree(action, snapshot)
+        .then((result) => {
+          if (activeRepositoryId.current !== owner) return;
+          if (result.status === 'applied') {
+            setWorktreeDialog(undefined);
+            setWorktreeFailure(undefined);
+            setReferenceStatus({ message: result.message, blocked: false });
+            refresh();
+            if (action.kind === 'create' && result.path) void openRecent(result.path);
+            return;
+          }
+          setWorktreeFailure(result.message);
+          setReferenceStatus({ message: result.message, blocked: true });
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
+          reportError(reason instanceof Error ? reason.message : 'The worktree action failed.');
+          reloadWorktrees();
+        });
+    },
+    [active?.id, applyWorktree, openRecent, refresh, reloadWorktrees, reportError],
+  );
 
   const openStashSave = useCallback(
     (paths: readonly string[] = []) => {
@@ -1527,6 +1580,86 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     });
   };
 
+  const openWorktreeMenu = (worktree: RepositoryWorktree, event: ReactMouseEvent<HTMLElement>) => {
+    const canRemove = !worktree.isCurrent && !worktree.isMain && worktree.exists && !referenceBusy;
+    showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: worktree.branchName ?? worktree.path,
+      items: compactMenu([
+        {
+          id: 'open',
+          label: 'Open',
+          disabled: !worktree.exists || referenceBusy,
+          disabledReason: worktree.exists ? undefined : 'The worktree directory is missing.',
+          run: () => void openRecent(worktree.path),
+        },
+        {
+          id: 'show-in-file-manager',
+          label: 'Show in File Manager',
+          disabled: !worktree.exists,
+          disabledReason: worktree.exists ? undefined : 'The worktree directory is missing.',
+          run: () => {
+            if (active)
+              openInFileManager({ kind: 'worktree', repositoryId: active.id, worktreeId: worktree.id });
+          },
+        },
+        {
+          id: 'remove',
+          label: 'Delete Worktree…',
+          danger: true,
+          disabled: !canRemove,
+          disabledReason: worktree.isCurrent
+            ? 'The current worktree cannot be removed.'
+            : worktree.isMain
+              ? 'The main worktree cannot be removed.'
+              : !worktree.exists
+                ? 'Prune the missing registration instead.'
+                : referenceBusy
+                  ? 'Another repository operation is running.'
+                  : undefined,
+          run: () => openWorktreeDialog({ kind: 'remove', worktree }),
+        },
+        worktree.prunable && {
+          id: 'prune',
+          label: 'Prune Stale Registration',
+          danger: true,
+          disabled: referenceBusy,
+          run: () => runWorktreeAction({ kind: 'prune' }, worktreeContext?.snapshot),
+        },
+        menuSeparator,
+        { id: 'copy-path', label: 'Copy Path', run: () => copyText(worktree.path) },
+      ]),
+    });
+  };
+
+  const openWorktreeSectionMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    const current = referenceContext?.branches.find((branch) => branch.isHead);
+    const stale = worktreeContext?.worktrees.some((worktree) => worktree.prunable) ?? false;
+    showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: 'Worktrees',
+      items: compactMenu([
+        {
+          id: 'create',
+          label: 'Checkout as Worktree…',
+          disabled: !current || referenceBusy,
+          disabledReason: current ? undefined : 'Check out a branch before creating a worktree.',
+          run: () => {
+            if (current) openWorktreeDialog({ kind: 'create', sourceFullName: current.fullName });
+          },
+        },
+        {
+          id: 'prune',
+          label: 'Prune Stale Registrations',
+          danger: true,
+          disabled: !stale || referenceBusy,
+          disabledReason: stale ? undefined : 'There are no stale worktree registrations.',
+          run: () => runWorktreeAction({ kind: 'prune' }, worktreeContext?.snapshot),
+        },
+      ]),
+    });
+  };
+
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
     const current = referenceContext?.branches.find((candidate) => candidate.isHead);
     const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
@@ -1561,6 +1694,24 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             disabledReason: reference.isHead ? 'This branch is already checked out.' : branchReason,
             run: () => {
               if (branch) checkoutBranch(branch);
+            },
+          },
+          {
+            id: 'checkout-as-worktree',
+            label: `Create Worktree from '${reference.name}'…`,
+            disabled:
+              !worktreesReady || !branch || branch.isHead || branch.worktreePath !== null || referenceBusy,
+            disabledReason: branch?.isHead
+              ? 'The current branch is already checked out here.'
+              : branch?.worktreePath
+                ? `'${reference.name}' is already checked out in the worktree at ${branch.worktreePath}.`
+                : !worktreesReady
+                  ? worktreeLoading
+                  : !branch
+                    ? referenceLoading
+                    : undefined,
+            run: () => {
+              if (branch) openWorktreeDialog({ kind: 'create', sourceFullName: branch.fullName });
             },
           },
           menuSeparator,
@@ -1645,8 +1796,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             id: 'new-branch',
             label: `New Branch from '${reference.name}'…`,
             shortcut: 'Mod+Shift+B',
-            disabled: !referencesReady || referenceBusy,
-            disabledReason: referencesReady ? undefined : referenceLoading,
+            disabled: !referencesReady || !worktreesReady || referenceBusy,
+            disabledReason: !referencesReady
+              ? referenceLoading
+              : worktreesReady
+                ? undefined
+                : worktreeLoading,
             run: () => openReferenceDialog({ kind: 'new-branch', target }),
           },
           {
@@ -1721,6 +1876,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             disabled: !referencesReady || referenceBusy,
             disabledReason: referencesReady ? undefined : referenceLoading,
             run: () => openReferenceDialog({ kind: 'checkout-remote-branch', target }),
+          },
+          {
+            id: 'checkout-as-worktree',
+            label: `Create Worktree from '${reference.name}'…`,
+            disabled: !referencesReady || !worktreesReady || referenceBusy,
+            disabledReason: !referencesReady
+              ? referenceLoading
+              : worktreesReady
+                ? undefined
+                : worktreeLoading,
+            run: () =>
+              openWorktreeDialog({ kind: 'create', sourceFullName: `refs/remotes/${reference.name}` }),
           },
           menuSeparator,
           {
@@ -2006,7 +2173,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               view={view}
               references={references}
               branches={referenceContext?.branches ?? []}
+              worktrees={worktreeContext?.worktrees ?? []}
               referencesLoading={history.loading}
+              worktreesLoading={worktreesLoading}
               onViewChange={setView}
               reveal={history.reveal}
               historyFiltered={history.filter.kind !== 'all'}
@@ -2033,6 +2202,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               onReferenceContextMenu={openReferenceMenu}
               onSectionContextMenu={openSectionMenu}
               onRemoteContextMenu={openRemoteMenu}
+              onWorktreeActivate={(worktree) => void openRecent(worktree.path)}
+              onWorktreeContextMenu={openWorktreeMenu}
+              onWorktreeSectionContextMenu={openWorktreeSectionMenu}
             />
             <Splitter
               orientation="vertical"
@@ -2186,6 +2358,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           }
           onSubmit={runReferenceAction}
           onClose={closeReferenceDialog}
+        />
+      )}
+      {worktreeDialog && (
+        <WorktreeDialog
+          request={worktreeDialog}
+          context={referenceContext}
+          platform={platform}
+          busy={referenceBusy}
+          failure={worktreeFailure}
+          onSubmit={(action) => runWorktreeAction(action, worktreeContext?.snapshot)}
+          onClose={closeWorktreeDialog}
         />
       )}
       {stashDialog && active && (

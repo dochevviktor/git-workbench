@@ -4,6 +4,7 @@ import type {
   RepositoryBranch,
   RepositoryHistoryReference,
   RepositorySummary,
+  RepositoryWorktree,
 } from '../../../common/ipc/contracts';
 import type { HistoryRevealRequest } from '../hooks/use-repository-history';
 import { referenceSections } from '../lib/references';
@@ -33,7 +34,9 @@ interface RepositorySidebarProps {
   readonly references: readonly RepositoryHistoryReference[];
   /** Branch details from the reference read, which carry the tracking counts and worktree state. */
   readonly branches: readonly RepositoryBranch[];
+  readonly worktrees: readonly RepositoryWorktree[];
   readonly referencesLoading: boolean;
+  readonly worktreesLoading: boolean;
   readonly onViewChange: (view: RepositoryView) => void;
   readonly reveal: HistoryRevealRequest | undefined;
   readonly historyFiltered: boolean;
@@ -56,6 +59,9 @@ interface RepositorySidebarProps {
   ) => void;
   readonly onSectionContextMenu: (section: string, event: ReactMouseEvent<HTMLElement>) => void;
   readonly onRemoteContextMenu: (remote: string, event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onWorktreeActivate: (worktree: RepositoryWorktree) => void;
+  readonly onWorktreeContextMenu: (worktree: RepositoryWorktree, event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onWorktreeSectionContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }
 
 const collapsedByDefault = new Set(['section:tags', 'section:stashes']);
@@ -100,7 +106,9 @@ export function RepositorySidebar({
   view,
   references,
   branches,
+  worktrees,
   referencesLoading,
+  worktreesLoading,
   onViewChange,
   reveal,
   historyFiltered,
@@ -114,6 +122,9 @@ export function RepositorySidebar({
   onReferenceContextMenu,
   onSectionContextMenu,
   onRemoteContextMenu,
+  onWorktreeActivate,
+  onWorktreeContextMenu,
+  onWorktreeSectionContextMenu,
 }: RepositorySidebarProps) {
   const [mode, setMode] = useState<'references' | 'search'>('references');
   const [filter, setFilter] = useState('');
@@ -127,9 +138,20 @@ export function RepositorySidebar({
     [branches],
   );
 
-  const { items, referencesByKey } = useMemo(() => {
+  const visibleWorktrees = useMemo(() => {
+    const query = filter.trim().toLocaleLowerCase();
+    if (!query) return worktrees;
+    return worktrees.filter(
+      (worktree) =>
+        worktree.path.toLocaleLowerCase().includes(query) ||
+        (worktree.branchName?.toLocaleLowerCase().includes(query) ?? false),
+    );
+  }, [filter, worktrees]);
+
+  const { items, referencesByKey, worktreesByKey } = useMemo(() => {
     const result: TreeItem[] = [];
     const byKey = new Map<string, RepositoryHistoryReference>();
+    const worktreesByKey = new Map<string, RepositoryWorktree>();
     const expanded = (key: string, level: number) =>
       filtering || expandedByDefault(key, level) !== toggled.has(key);
 
@@ -195,6 +217,49 @@ export function RepositorySidebar({
       if (open) addNodes(nodes, 2, key, id);
     };
 
+    const worktreeSectionKey = 'section:worktrees';
+    if (worktrees.length > 1) {
+      const worktreesOpen = visibleWorktrees.length > 0 && expanded(worktreeSectionKey, 1);
+      result.push({
+        key: worktreeSectionKey,
+        level: 1,
+        label: 'Worktrees',
+        expandable: visibleWorktrees.length > 0,
+        expanded: worktreesOpen,
+        parentKey: null,
+        className: 'section',
+        toggleOnClick: true,
+      });
+      if (worktreesOpen) {
+        for (const worktree of visibleWorktrees) {
+          const key = `worktree:${worktree.id}`;
+          worktreesByKey.set(key, worktree);
+          const meta = worktree.isCurrent
+            ? 'Current'
+            : worktree.workingTree.state === 'dirty'
+              ? 'Dirty'
+              : worktree.locked
+                ? 'Locked'
+                : undefined;
+          result.push({
+            key,
+            level: 2,
+            label:
+              worktree.branchName ?? worktree.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? worktree.path,
+            icon: <FolderIcon size={14} />,
+            meta,
+            expandable: false,
+            expanded: false,
+            parentKey: worktreeSectionKey,
+            className: worktree.isCurrent ? 'worktree current' : 'worktree',
+            title: worktree.path,
+            testId: `worktree-${worktree.id}`,
+          });
+        }
+      }
+    }
+
+    // Worktrees are intentionally the first navigation section, matching the captured linked-tab state.
     addSection('branches', 'Branches', sections.branches);
     addSection('remotes', 'Remotes', sections.remotes);
     addSection('tags', 'Tags', sections.tags);
@@ -207,8 +272,8 @@ export function RepositorySidebar({
         'Submodule inspection is not available yet (planned for P09).',
       );
     }
-    return { items: result, referencesByKey: byKey };
-  }, [branchesByFullName, filtering, sections, toggled]);
+    return { items: result, referencesByKey: byKey, worktreesByKey };
+  }, [branchesByFullName, filtering, sections, toggled, visibleWorktrees, worktrees.length]);
 
   const toggle = (item: TreeItem, expand: boolean) => {
     if (filtering || expand === item.expanded) return;
@@ -221,7 +286,10 @@ export function RepositorySidebar({
   };
 
   const changedFiles = visibleChangeCount ?? repository.workingTree.changedFileCount;
-  const noMatches = filtering && Object.values(sections.counts).every((count) => count === 0);
+  const noMatches =
+    filtering &&
+    Object.values(sections.counts).every((count) => count === 0) &&
+    visibleWorktrees.length === 0;
 
   return (
     <aside
@@ -337,20 +405,36 @@ export function RepositorySidebar({
             onActiveChange={setActiveKey}
             onToggle={toggle}
             onSelect={(item) => {
+              const worktree = worktreesByKey.get(item.key);
+              if (worktree) return;
               const reference = referencesByKey.get(item.key);
               if (reference) onReferenceSelect(reference);
             }}
             onActivate={(item) => {
+              const worktree = worktreesByKey.get(item.key);
+              if (worktree) {
+                onWorktreeActivate(worktree);
+                return;
+              }
               const reference = referencesByKey.get(item.key);
               if (reference) (onReferenceActivate ?? onReferenceSelect)(reference);
             }}
             onContextMenu={(item, event) => {
+              const worktree = worktreesByKey.get(item.key);
+              if (worktree) {
+                onWorktreeContextMenu(worktree, event);
+                return;
+              }
               const reference = referencesByKey.get(item.key);
               if (reference) {
                 onReferenceContextMenu(reference, event);
                 return;
               }
               if (item.key.startsWith('section:')) {
+                if (item.key === 'section:worktrees') {
+                  onWorktreeSectionContextMenu(event);
+                  return;
+                }
                 onSectionContextMenu(item.key.slice('section:'.length), event);
                 return;
               }
@@ -368,7 +452,7 @@ export function RepositorySidebar({
               if (reference) onReferenceDrop(reference, event);
             }}
           >
-            {referencesLoading && references.length === 0 && (
+            {(referencesLoading || worktreesLoading) && references.length === 0 && worktrees.length === 0 && (
               <p className="sidebar-note">Loading references…</p>
             )}
             {noMatches && <p className="sidebar-note">No references match “{filter.trim()}”.</p>}

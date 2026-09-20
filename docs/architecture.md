@@ -4,8 +4,10 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, and the initial F34 workspace-chrome slice implemented.
-Remaining Git services and manager workflows described below are design decisions, not existing code.
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, the initial F34 workspace-chrome slice, and the bounded F22 worktree lifecycle slice implemented.
+F22 topology reads and create/open/remove/prune operations use backend-issued worktree IDs, common-directory
+serialization, linked-tab sessions, and explicit current/main/occupied/dirty/locked/stale guards. Submodules,
+Git-flow, and the remaining P09 family are still design decisions, not existing code.
 
 ## Catalogue-driven corrections (F01–F21 bounded slices verified, 2026-09-20)
 
@@ -191,6 +193,12 @@ ID checked by Git, or the full name of a reference the context reported. Expecte
 in use, an unmerged branch, a branch checked out in another worktree, the current branch, local changes a
 checkout would overwrite, a running sequencer, a missing tagger identity — return a structured `blocked`
 result with the obstacle, the paths Git named, and whether an explicit force would succeed.
+The bounded F22 slice adds `getWorktrees()` and `startWorktreeOperation()`. Worktree reads return
+backend-issued IDs, branch/head/current/main/lock/prune/status state, and a topology snapshot. Create,
+remove, and prune actions are named domain requests; the backend resolves branch sources and worktree
+paths, serializes mutations by common Git directory, and returns structured dirty/locked/current/
+occupied/stale outcomes through the existing operation registry. The renderer can open a returned path
+only through the normal repository session or a validated worktree location; it never sends Git arguments.
 The initial F13 slice adds `listRemotes()`, `applyRemoteAction()`, `startNetworkOperation()`,
 `listOperations()`, `cancelOperation()`, and `onOperationChanged()`. A network request is accepted and
 answered with a running operation record rather than its result, because a fetch or a push outlives the

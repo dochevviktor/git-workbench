@@ -512,6 +512,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.applyRepositoryReferenceAction, (window, request) =>
       repositoryService.startReferenceAction(window.webContents.id, request),
     );
+    register(requests.getRepositoryWorktrees, (window, { id }) =>
+      repositoryService.getWorktrees(window.webContents.id, id),
+    );
+    register(requests.startRepositoryWorktreeOperation, (window, request) =>
+      repositoryService.startWorktreeOperation(window.webContents.id, request),
+    );
     register(requests.startRepositoryMergeRebase, (window, request) =>
       repositoryService.startMergeRebase(window.webContents.id, request),
     );

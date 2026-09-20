@@ -23,7 +23,9 @@ interface RepositoryTabsProps {
 }
 
 function tabLabel(tab: WorkspaceTab): string {
-  return tab.repository ? `${tab.title}, ${tabStatusLabel(tab.repository)}` : tab.title;
+  if (!tab.repository) return tab.title;
+  const linked = !tab.repository.bare && tab.repository.gitDir !== tab.repository.commonDir;
+  return `${tab.title}, ${tabStatusLabel(tab.repository)}${linked ? ', Linked worktree' : ''}`;
 }
 
 export function RepositoryTabs({
@@ -139,6 +141,13 @@ export function RepositoryTabs({
                   aria-hidden="true"
                 />
               )}
+              {tab.repository &&
+                !tab.repository.bare &&
+                tab.repository.gitDir !== tab.repository.commonDir && (
+                  <span className="workspace-tab-worktree" title="Linked worktree" aria-hidden="true">
+                    ↳
+                  </span>
+                )}
               <span className="workspace-tab-title">{tab.title}</span>
               {closable(tab) && (
                 <button

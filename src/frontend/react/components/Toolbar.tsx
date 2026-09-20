@@ -275,6 +275,9 @@ export function Toolbar({
                 {repository.bare ? 'Bare repository' : headDescription(repository)}
               </span>
             )}
+            {!repository.bare && repository.gitDir !== repository.commonDir && (
+              <span className="toolbar-repository-worktree">Linked worktree</span>
+            )}
           </div>
         ) : (
           <div className="toolbar-repository-copy">

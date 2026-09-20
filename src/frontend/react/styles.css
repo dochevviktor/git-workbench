@@ -419,6 +419,12 @@ p {
   white-space: nowrap;
 }
 
+.toolbar-repository-worktree {
+  color: var(--accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .toolbar-repository-tracking {
   align-self: end;
   margin-bottom: 5px;
@@ -475,6 +481,13 @@ p {
 .workspace-tab-title {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.workspace-tab-worktree {
+  flex: none;
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .workspace-tab-dirty {
@@ -1073,6 +1086,18 @@ p {
 
 .tree-row.current .tree-icon {
   color: var(--text);
+}
+
+.tree-row.worktree {
+  color: var(--text-muted);
+}
+
+.tree-row.worktree.current {
+  color: var(--text);
+}
+
+.tree-row.worktree.current .tree-icon {
+  color: var(--accent);
 }
 
 .tree-row.reference[draggable='true'] {

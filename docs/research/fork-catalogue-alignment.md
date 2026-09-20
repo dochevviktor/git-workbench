@@ -38,6 +38,13 @@ disposable-repository/Electron verification. Directory/selected-code history, co
 and general main-graph Back/Forward remain explicit limits; the catalogue's Fork capture status and
 case-level unknowns remain unchanged.
 
+Subsequent implementation: the bounded F22 worktree slice is recorded in the
+[worktree handoff](../reviews/f22-worktrees.md). It maps `P2-001-create-remove-subcase:F1–F2` and
+`P2-001-open-subcase:F1` to typed worktree topology reads, common-directory-serialized create/open/remove/
+prune operations, occupied/current/dirty/locked guards, the Worktrees sidebar and linked tabs. Dirty and
+locked presentation was not captured by Fork; the explicit force policy is a Linux-safe project adaptation.
+Detached creation, lock/unlock, nested worktrees, and the broader P09 family remain explicit limits.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the
@@ -224,7 +231,7 @@ Existing implemented slices remain partial; new corrections require their own ve
 | [P1-031](fork-reference-new/reference/catalogue/features/P1-031.md) | observed | F21            | P08 / C05           | Blame groups and separate historical commit details.                                                                                                                                     |
 | [P1-032](fork-reference-new/reference/catalogue/features/P1-032.md) | observed | F31            | P12 / C05           | Quick Launch command to parameter chooser to existing action dialog.                                                                                                                     |
 | [P1-033](fork-reference-new/reference/catalogue/features/P1-033.md) | partial  | F07, F21       | P03, P08 / C05      | Parent/HEAD navigation and Blame Back/Forward; no general graph history claim.                                                                                                           |
-| [P2-001](fork-reference-new/reference/catalogue/features/P2-001.md) | observed | F22            | P09 / C05           | Worktree create/open/remove; occupied branch and current-worktree action states.                                                                                                         |
+| [P2-001](fork-reference-new/reference/catalogue/features/P2-001.md) | observed | F22            | P09 / C05           | Worktree create/open/remove; occupied branch and current-worktree action states. Bounded implementation is traced in the [F22 handoff](../reviews/f22-worktrees.md).                     |
 | [P2-002](fork-reference-new/reference/catalogue/features/P2-002.md) | observed | F23            | P09 / C05           | Revision cards, dirty child and child tab; Update failure does not prove successful init.                                                                                                |
 | [P2-003](fork-reference-new/reference/catalogue/features/P2-003.md) | observed | F27            | P10 / C05           | Side-by-side, swipe and onion skin; pixel comparison stays public-only.                                                                                                                  |
 | [P2-004](fork-reference-new/reference/catalogue/features/P2-004.md) | observed | F09, F27       | P04 / C02           | Explicit Load Diff for large text; threshold and timing remain unknown.                                                                                                                  |

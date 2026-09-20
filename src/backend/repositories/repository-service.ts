@@ -56,6 +56,9 @@ import type {
   RepositoryReferenceActionRequest,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
+  RepositoryWorktreeActionRequest,
+  RepositoryWorktreeActionResult,
+  RepositoryWorktreeContext,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
@@ -135,6 +138,7 @@ import {
 } from './remote-service';
 import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
+import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
 import {
   applyWorkingChange,
   previewDiscard,
@@ -958,6 +962,70 @@ export class RepositoryService {
         throw this.mapGitFailure(error, 'Git could not update the repository references.');
       }
     });
+  }
+
+  async getWorktrees(ownerId: number, id: string): Promise<RepositoryWorktreeContext> {
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    try {
+      return await readWorktreeContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commonDir: summary.commonDir,
+        currentWorktreePath: summary.worktreePath,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the linked worktrees.');
+    }
+  }
+
+  startWorktreeOperation(ownerId: number, request: RepositoryWorktreeActionRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.action;
+    const title =
+      action.kind === 'create'
+        ? 'Create worktree'
+        : action.kind === 'remove'
+          ? 'Remove worktree'
+          : 'Prune worktrees';
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'worktree',
+        title,
+        command: `git worktree ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+          try {
+            const value = await applyWorktreeAction(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath ?? summary.commonDir,
+              commonDir: summary.commonDir,
+              currentWorktreePath: summary.worktreePath,
+              action,
+              snapshot: request.snapshot,
+              signal: handle.signal,
+              onCommand: (args) =>
+                handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+            });
+            if (value.status === 'applied' && action.kind === 'remove' && value.path)
+              await this.closeRemovedWorktreeTabs(value.path, summary.commonDir);
+            return {
+              status: value.status === 'applied' ? 'succeeded' : 'failed',
+              message: value.message,
+              output: value.output,
+              failureReason: worktreeOperationFailure(value),
+              result: { kind: 'worktree', value },
+            };
+          } catch (error) {
+            if (error instanceof StaleWorktreeSnapshotError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            throw this.mapGitFailure(error, 'Git could not update the linked worktrees.');
+          }
+        }),
+    );
   }
 
   async listRemotes(ownerId: number, id: string): Promise<RepositoryRemote[]> {
@@ -2205,6 +2273,17 @@ export class RepositoryService {
           );
         }
         break;
+      case 'worktree': {
+        const repository = this.sessions.get(ownerId)?.get(location.repositoryId);
+        if (!repository)
+          throw new ExpectedBackendError(
+            'REPOSITORY_NOT_OPEN',
+            'Open the repository tab before opening one of its worktrees.',
+          );
+        const context = await this.getWorktrees(ownerId, location.repositoryId);
+        path = context.worktrees.find((worktree) => worktree.id === location.worktreeId)?.path;
+        break;
+      }
     }
     if (!path) {
       throw new ExpectedBackendError('PATH_NOT_FOUND', 'That repository is no longer listed.');
@@ -2261,6 +2340,28 @@ export class RepositoryService {
     } finally {
       release();
       if (this.mutationQueues.get(key) === current) this.mutationQueues.delete(key);
+    }
+  }
+
+  private async closeRemovedWorktreeTabs(path: string, commonDir: string): Promise<void> {
+    const target = this.pathKey(path);
+    const removals: Array<{ readonly ownerId: number; readonly id: string }> = [];
+    for (const [ownerId, sessions] of this.sessions) {
+      for (const summary of sessions.values()) {
+        if (
+          summary.worktreePath &&
+          this.pathKey(summary.worktreePath) === target &&
+          summary.commonDir === commonDir
+        )
+          removals.push({ ownerId, id: summary.id });
+      }
+    }
+    for (const removal of removals) {
+      try {
+        await this.close(removal.ownerId, removal.id);
+      } catch {
+        this.sessions.get(removal.ownerId)?.delete(removal.id);
+      }
     }
   }
 
@@ -2832,4 +2933,11 @@ function statusEntryCount(output: string): number {
     if (records[index]?.startsWith('2 ')) index += 1;
   }
   return count;
+}
+
+function worktreeOperationFailure(
+  value: RepositoryWorktreeActionResult,
+): NonNullable<RepositoryOperation['failureReason']> | undefined {
+  if (value.status === 'applied') return undefined;
+  return value.reason === 'dirty' ? 'local-changes' : value.reason === 'stale' ? 'other' : 'other';
 }

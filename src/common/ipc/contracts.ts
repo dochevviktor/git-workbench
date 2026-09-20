@@ -201,6 +201,11 @@ export const repositoryLocationSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('recent'), id: repositoryIdSchema }),
   z.strictObject({ kind: z.literal('manager-repository'), id: repositoryManagerRepositoryIdSchema }),
   z.strictObject({ kind: z.literal('source-directory'), id: sourceDirectoryIdSchema }),
+  z.strictObject({
+    kind: z.literal('worktree'),
+    repositoryId: repositoryIdSchema,
+    worktreeId: z.string().regex(/^worktree-[a-f0-9]{64}$/),
+  }),
 ]);
 
 export const repositoryHistoryReferenceKindSchema = z.enum([
@@ -984,6 +989,112 @@ export const repositoryReferenceActionResultSchema = z.discriminatedUnion('statu
   }),
 ]);
 
+export const repositoryWorktreeIdSchema = z.string().regex(/^worktree-[a-f0-9]{64}$/);
+
+export const repositoryWorktreeSchema = z.strictObject({
+  id: repositoryWorktreeIdSchema,
+  path: repositoryPathSchema,
+  branchName: z.string().max(32_768).nullable(),
+  branchFullName: z.string().startsWith('refs/heads/').max(32_768).nullable(),
+  head: gitObjectIdSchema.nullable(),
+  isCurrent: z.boolean(),
+  isMain: z.boolean(),
+  exists: z.boolean(),
+  locked: z.boolean(),
+  lockReason: z.string().max(512).nullable(),
+  prunable: z.boolean(),
+  pruneReason: z.string().max(512).nullable(),
+  workingTree: repositoryWorkingTreeSchema,
+});
+
+export const repositoryWorktreeContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  worktrees: z.array(repositoryWorktreeSchema).max(1_000),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryWorktreeSourceSchema = z
+  .string()
+  .min(1)
+  .max(32_768)
+  .refine(
+    (value) => value.startsWith('refs/heads/') || value.startsWith('refs/remotes/'),
+    'Choose a local or remote-tracking branch from the repository.',
+  )
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F]/u.test(value),
+    'A branch reference cannot contain control characters.',
+  );
+
+export const repositoryWorktreeActionSchema = z
+  .discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('create'),
+      path: repositoryPathSchema,
+      sourceFullName: repositoryWorktreeSourceSchema,
+      /** Required when creating a local branch from a remote-tracking branch. */
+      branchName: repositoryReferenceNameSchema.optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('remove'),
+      worktreeId: repositoryWorktreeIdSchema,
+      /** Explicitly permits deleting a dirty or locked linked worktree. */
+      force: z.boolean(),
+    }),
+    z.strictObject({ kind: z.literal('prune') }),
+  ])
+  .refine(
+    (action) =>
+      action.kind !== 'create' ||
+      !action.sourceFullName.startsWith('refs/remotes/') ||
+      action.branchName !== undefined,
+    'A local branch name is required for a remote worktree.',
+  );
+
+export const repositoryWorktreeActionKindSchema = z.enum(['create', 'remove', 'prune']);
+
+export const repositoryWorktreeFailureReasonSchema = z.enum([
+  'current',
+  'main',
+  'dirty',
+  'locked',
+  'exists',
+  'checked-out',
+  'not-found',
+  'invalid-path',
+  'stale',
+  'other',
+]);
+
+export const repositoryWorktreeActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryWorktreeActionSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryWorktreeActionResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('applied'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryWorktreeActionKindSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    worktreeId: repositoryWorktreeIdSchema.nullable(),
+    path: repositoryPathSchema.nullable(),
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryWorktreeActionKindSchema,
+    reason: repositoryWorktreeFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    worktreeId: repositoryWorktreeIdSchema.nullable(),
+    paths: z.array(repositoryRevisionPathSchema).max(200),
+  }),
+]);
+
 /** A remote as Git has it configured. URLs are the user's own configuration, shown so they can edit it. */
 export const repositoryRemoteSchema = z.strictObject({
   name: z.string().min(1).max(4_096),
@@ -1113,6 +1224,7 @@ export const repositoryOperationKindSchema = z.enum([
   'reset',
   'recovery',
   'stash',
+  'worktree',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1161,6 +1273,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('clone'), value: repositorySummarySchema }),
       z.strictObject({ kind: z.literal('commit'), value: repositoryCommitResultSchema }),
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
+      z.strictObject({ kind: z.literal('worktree'), value: repositoryWorktreeActionResultSchema }),
     ])
     .optional(),
   startedAt: z.string().datetime({ offset: true }),
@@ -1789,6 +1902,16 @@ export const requests = {
     repositoryReferenceActionRequestSchema,
     repositoryOperationSchema,
   ),
+  getRepositoryWorktrees: request(
+    'repository:get-worktrees',
+    repositorySessionSchema,
+    repositoryWorktreeContextSchema,
+  ),
+  startRepositoryWorktreeOperation: request(
+    'repository:start-worktree-operation',
+    repositoryWorktreeActionRequestSchema,
+    repositoryOperationSchema,
+  ),
   startRepositoryMergeRebase: request(
     'repository:start-merge-rebase',
     repositoryMergeRebaseRequestSchema,
@@ -2019,6 +2142,13 @@ export type RepositoryReferenceActionKind = z.infer<typeof repositoryReferenceAc
 export type RepositoryReferenceActionRequest = z.infer<typeof repositoryReferenceActionRequestSchema>;
 export type RepositoryReferenceFailureReason = z.infer<typeof repositoryReferenceFailureReasonSchema>;
 export type RepositoryReferenceActionResult = z.infer<typeof repositoryReferenceActionResultSchema>;
+export type RepositoryWorktree = z.infer<typeof repositoryWorktreeSchema>;
+export type RepositoryWorktreeContext = z.infer<typeof repositoryWorktreeContextSchema>;
+export type RepositoryWorktreeAction = z.infer<typeof repositoryWorktreeActionSchema>;
+export type RepositoryWorktreeActionKind = z.infer<typeof repositoryWorktreeActionKindSchema>;
+export type RepositoryWorktreeActionRequest = z.infer<typeof repositoryWorktreeActionRequestSchema>;
+export type RepositoryWorktreeFailureReason = z.infer<typeof repositoryWorktreeFailureReasonSchema>;
+export type RepositoryWorktreeActionResult = z.infer<typeof repositoryWorktreeActionResultSchema>;
 export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
 export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
 export type RepositoryInteractiveRebaseCommand = z.infer<typeof repositoryInteractiveRebaseCommandSchema>;

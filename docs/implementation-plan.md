@@ -92,6 +92,15 @@ verify old/new filename traversal, blame content, unsafe path rejection, inspect
 HEAD/worktree state. Directory/selected-code history, copies, restart persistence, and general main-graph
 Back/Forward remain outside this bounded verification; P08 remains partial.
 
+F22 implementation checkpoint (2026-09-20): added typed worktree topology reads and common-directory-
+serialized create, local/remote checkout, remove, and prune operations with occupied-branch, current,
+main, dirty, locked, missing, and stale-registration states. The Worktrees sidebar, linked-tab marker,
+branch/remote context routes, safe force-removal dialog, and file-manager handoff are independently
+authored. Disposable Git tests cover the lifecycle and the F22 headless Electron scenario covers
+create/open/remove/tab cleanup. The bounded handoff is in [F22 worktrees](reviews/f22-worktrees.md);
+detached creation, lock/unlock, nested worktrees, and F23/F25 remain outside this slice and P09 remains
+partial.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                        | Depends on                            |
@@ -105,7 +114,7 @@ Back/Forward remain outside this bounded verification; P08 remains partial.
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                         | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); directory/code history, bisect, and patch import remain planned | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                                                                       | P02/P05, common-repo queue            |
+| P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22 worktree lifecycle and linked tabs verified (2026-09-20); submodules and Git-flow remain planned                                                                         | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                                                                       | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                                    | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                   | P02/P03 plus relevant domain services |
@@ -870,6 +879,16 @@ Catalogue anchors: P2-001/P2-002 for worktrees/submodules. Git-flow remains publ
    Make network or recursive mutation scope visible.
 3. Git-flow initialization and feature/release/hotfix workflows with explicit dependency/capability checks.
    Keep ordinary Git available when the extension is absent.
+
+Started F22 worktree slice (2026-09-20): add bounded `getWorktrees()` and operation-backed create,
+remote-tracking checkout, remove, and prune capabilities. Worktree IDs and paths come from backend Git
+topology reads; branch sources are revalidated, mutations serialize by common directory, and removal
+guards current/main, dirty, locked, and missing states. The renderer adds the Worktrees section, linked
+tab marker, Open/file-manager/Delete/Copy Path actions, branch context routes, and explicit force removal.
+Disposable tests cover local/remote creation, occupied branches, dirty/locked guards, pruning, and parent
+state; the headless Electron scenario covers the captured create/open/remove flow. Detached creation,
+lock/unlock, nested worktrees, and the unobserved Fork dirty/locked presentation remain outside this
+bounded slice. Submodules and Git-flow are still planned.
 
 Acceptance:
 

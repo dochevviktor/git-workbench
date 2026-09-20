@@ -86,6 +86,14 @@ and provides Blame revision selection plus Back/Forward. This maps the captured 
 selected-code history, copies, restart persistence, and general main-graph Back/Forward remain outside
 the bounded slice.
 
+F22 is implemented within the bounded [worktree handoff](../reviews/f22-worktrees.md): the renderer lists
+backend-issued linked worktrees, creates local or remote-tracking worktrees, opens them as linked tabs,
+and removes/prunes them with current/main, occupied-branch, dirty, locked, and stale-registration guards.
+This maps the captured `P2-001-create-remove-subcase:F1–F2` and `P2-001-open-subcase:F1` entry points and
+is independently verified on Linux with disposable repositories. Fork's dirty/locked presentation was
+not captured; the explicit force policy is a documented Linux adaptation. Detached creation, lock/unlock,
+nested worktrees, and the broader P09 family remain outside the bounded slice.
+
 Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
 platform, stated version, and theme in [`fork-references.json`](fork-references.json).
 `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
@@ -835,7 +843,7 @@ earlier slices; recording them here does not promote their full feature families
 | F19 | Cherry-pick, revert and Soft/Mixed/Hard reset                                         | D: [product][home]; B: P1-025–027                                         | Partial; bounded single-commit operations, previews, operation-specific Recovery, and safe reset modes verified; broader variants remain open | P06 / C04                     |
 | F20 | Lost commits/reflog mode and recovery                                                 | D: [product][home]; B: P1-028                                             | Partial; bounded reflog mode/Exit and Mixed Reset recovery verified; expiry and named branch/tag variants remain open                         | P08 / C05                     |
 | F21 | File/directory/selected-code history, rename-aware History and Blame                  | D: [product][home], [releases][win]; B: P1-030–031/P1-033                 | Partial; bounded rename-aware file History/Blame inspectors and Back/Forward verified; directory/selected-code/copy variants remain open      | P08 / C05                     |
-| F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Planned; existing topology/ref guards are prerequisites                                                                                       | P09 / C05                     |
+| F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Partial; bounded worktree lifecycle and linked tabs verified; broader P09 variants remain open                                                | P09 / C05                     |
 | F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Planned; captured Update failed, success still required                                                                                       | P09 / C05                     |
 | F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Planned; authenticated services/locks/push unobserved                                                                                         | P10 / C05                     |
 | F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home]; public-only                                           | Planned; separate from Lean Branching                                                                                                         | P09                           |
