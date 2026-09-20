@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type {
   RepositoryDiff,
@@ -6,7 +6,7 @@ import type {
   RepositoryWorkingChangeAction,
   RepositoryWorkingChangeSelection,
 } from '../../../common/ipc/contracts';
-import { parseUnifiedDiff } from '../lib/diff';
+import { diffHighlightRegions, parseUnifiedDiff } from '../lib/diff';
 import type { ParsedDiffLine, ParsedUnifiedDiff } from '../lib/diff';
 import { ListOptionsIcon } from './Icons';
 import { MenuButton } from './menu/MenuButton';
@@ -548,6 +548,21 @@ export function DiffViewer({
     [document],
   );
   const split = useMemo(() => document?.hunks.map((hunk) => splitRows(hunk.lines)) ?? [], [document]);
+  const highlightRegions = useMemo(
+    () =>
+      document?.hunks.map((hunk, hunkIndex) =>
+        diffHighlightRegions(
+          hunk.lines,
+          mode === 'unified'
+            ? hunk.lines.map((_line, index) => [index])
+            : split[hunkIndex]!.map(([left, right]) =>
+                [left, right].filter((line) => line !== undefined).map((line) => indexes.get(line.key)!),
+              ),
+          controls?.entireFile ?? false,
+        ),
+      ) ?? [],
+    [document, mode, split, indexes, controls?.entireFile],
+  );
   const rowHeight = mode === 'split' ? 19 : 18;
   const large = Boolean(
     document?.hunks.some(
@@ -558,8 +573,8 @@ export function DiffViewer({
     let offset = 0;
     return (
       document?.hunks.map((hunk, index) => {
-        const top = offset;
-        offset += 34 + (mode === 'split' ? split[index]!.length : hunk.lines.length) * rowHeight;
+        const top = offset + (index > 0 ? 6 : 0) + 18;
+        offset = top + (mode === 'split' ? split[index]!.length : hunk.lines.length) * rowHeight;
         return top;
       }) ?? []
     );
@@ -603,7 +618,9 @@ export function DiffViewer({
     const saved = positions.get(storageKey);
     if (saved) {
       const line = saved.line ? body.querySelector<HTMLElement>(`[data-line-anchor="${saved.line}"]`) : null;
-      body.scrollTop = line ? line.offsetTop - body.offsetTop - saved.offset : saved.top;
+      body.scrollTop = line
+        ? body.scrollTop + line.getBoundingClientRect().top - body.getBoundingClientRect().top - saved.offset
+        : saved.top;
       body.scrollLeft = saved.left;
       setScrollTop(body.scrollTop);
       setScrollLeft(body.scrollLeft);
@@ -728,43 +745,6 @@ export function DiffViewer({
     />
   );
 
-  const groupActions = (hunkIndex: number, firstIndex: number) => {
-    const hunk = document?.hunks[hunkIndex];
-    if (!controls?.entireFile || !hunk || workingActions.length === 0) return null;
-    const changed = hunk.lines[firstIndex];
-    if (!changed || (changed.kind !== 'add' && changed.kind !== 'remove')) return null;
-    const previous = hunk.lines[firstIndex - 1];
-    if (previous && previous.kind !== 'context') return null;
-    const lineIndexes: number[] = [];
-    for (
-      let index = firstIndex;
-      index < hunk.lines.length && hunk.lines[index]!.kind !== 'context';
-      index += 1
-    ) {
-      if (hunk.lines[index]!.kind === 'add' || hunk.lines[index]!.kind === 'remove') lineIndexes.push(index);
-    }
-    return (
-      <div className="diff-hunk-header">
-        <span>Changed lines</span>
-        <span className="diff-hunk-actions">
-          {workingActions.map((action) => (
-            <button
-              key={action.action}
-              type="button"
-              className="button button-small"
-              data-testid={`diff-hunk-${action.action}`}
-              disabled={Boolean(actionsDisabledReason) || action.disabled || applyingAction !== undefined}
-              title={action.disabledReason ?? actionsDisabledReason}
-              onClick={() => void applySelection(action, { kind: 'lines', hunk: hunkIndex, lineIndexes })}
-            >
-              {actionLabel(action.action, 'hunk')}
-            </button>
-          ))}
-        </span>
-      </div>
-    );
-  };
-
   if (loading && !value) {
     return (
       <div className="diff-viewer" data-testid="diff-viewer">
@@ -876,140 +856,132 @@ export function DiffViewer({
           setScrollLeft(event.currentTarget.scrollLeft);
         }}
       >
-        {document.hunks.map((hunk, hunkIndex) => {
-          const rows = mode === 'split' ? split[hunkIndex]! : hunk.lines;
-          const virtual = rows.length > 2000;
-          const start = virtual
-            ? Math.max(
-                0,
-                Math.min(rows.length - 1, Math.floor((scrollTop - hunkOffsets[hunkIndex]!) / rowHeight) - 80),
-              )
-            : 0;
-          const end = virtual ? Math.min(rows.length, start + 600) : rows.length;
-          const cursor: MatchCursor = { next: searchRows.hunks[hunkIndex]?.[start]?.start ?? 0 };
-          return (
-            <section key={hunk.key} className="diff-hunk" aria-label={hunk.header}>
-              <div className="diff-hunk-header">
-                <span>{hunk.header}</span>
-                {workingActions.length > 0 && !controls?.entireFile && (
-                  <span className="diff-hunk-actions">
-                    {workingActions.map((workingAction) => (
-                      <button
-                        key={workingAction.action}
-                        type="button"
-                        className="button button-small"
-                        disabled={
-                          actionsDisabledReason !== undefined ||
-                          workingAction.disabled === true ||
-                          applyingAction !== undefined
-                        }
-                        title={workingAction.disabledReason ?? actionsDisabledReason}
-                        data-testid={`diff-hunk-${workingAction.action}`}
-                        onClick={() => void applySelection(workingAction, { kind: 'hunk', hunk: hunkIndex })}
-                      >
-                        {actionLabel(workingAction.action, 'hunk')}
-                      </button>
-                    ))}
-                  </span>
+        <div className="diff-document">
+          {document.hunks.map((hunk, hunkIndex) => {
+            const rows = mode === 'split' ? split[hunkIndex]! : hunk.lines;
+            const virtual = rows.length > 2000;
+            const start = virtual
+              ? Math.max(
+                  0,
+                  Math.min(
+                    rows.length - 1,
+                    Math.floor((scrollTop - hunkOffsets[hunkIndex]!) / rowHeight) - 80,
+                  ),
+                )
+              : 0;
+            const end = virtual ? Math.min(rows.length, start + 600) : rows.length;
+            const cursor: MatchCursor = { next: searchRows.hunks[hunkIndex]?.[start]?.start ?? 0 };
+            const renderCell = (line: ParsedDiffLine | undefined, side: DiffCellProps['side']) => (
+              <DiffCell
+                key={line?.key ?? side}
+                line={line}
+                side={side}
+                inlineRange={line ? inline.get(line.key) : undefined}
+                query={query}
+                showWhitespace={showWhitespace}
+                cursor={cursor}
+                activeMatch={activeMatch}
+                lineIndex={workingActions.length > 0 && line ? indexes.get(line.key) : undefined}
+                lineSelected={Boolean(
+                  line &&
+                  selectedLines?.hunk === hunkIndex &&
+                  selectedLines.indexes.has(indexes.get(line.key)!),
                 )}
-              </div>
-              {start > 0 && <div style={{ height: start * rowHeight }} aria-hidden="true" />}
-              {mode === 'unified'
-                ? hunk.lines.slice(start, end).map((line) => (
-                    <Fragment key={line.key}>
-                      {groupActions(hunkIndex, indexes.get(line.key)!)}
-                      <DiffCell
-                        key={line.key}
-                        line={line}
-                        side="unified"
-                        inlineRange={inline.get(line.key)}
-                        query={query}
-                        showWhitespace={showWhitespace}
-                        cursor={cursor}
-                        activeMatch={activeMatch}
-                        lineIndex={workingActions.length > 0 ? indexes.get(line.key) : undefined}
-                        lineSelected={
-                          workingActions.length > 0 &&
-                          selectedLines?.hunk === hunkIndex &&
-                          selectedLines.indexes.has(indexes.get(line.key)!)
-                        }
-                        onToggleLine={
-                          workingActions.length > 0
-                            ? () => toggleLine(hunkIndex, indexes.get(line.key)!)
-                            : undefined
-                        }
-                      />
-                    </Fragment>
-                  ))
-                : split[hunkIndex]!.slice(start, end).map(([oldLine, newLine], visibleIndex) => {
-                    const index = start + visibleIndex;
-                    const key = `${hunk.key}-split-${index}`;
-                    return (
-                      <Fragment key={key}>
-                        {groupActions(
-                          hunkIndex,
-                          Math.min(
-                            oldLine ? indexes.get(oldLine.key)! : Infinity,
-                            newLine ? indexes.get(newLine.key)! : Infinity,
-                          ),
-                        )}
-                        <div className="diff-split-row">
-                          <DiffCell
-                            line={oldLine}
-                            side="old"
-                            inlineRange={oldLine ? inline.get(oldLine.key) : undefined}
-                            query={query}
-                            showWhitespace={showWhitespace}
-                            cursor={cursor}
-                            activeMatch={activeMatch}
-                            lineIndex={
-                              workingActions.length > 0 && oldLine ? indexes.get(oldLine.key) : undefined
-                            }
-                            lineSelected={
-                              workingActions.length > 0 && oldLine
-                                ? selectedLines?.hunk === hunkIndex &&
-                                  selectedLines.indexes.has(indexes.get(oldLine.key)!)
-                                : undefined
-                            }
-                            onToggleLine={
-                              workingActions.length > 0 && oldLine
-                                ? () => toggleLine(hunkIndex, indexes.get(oldLine.key)!)
-                                : undefined
-                            }
-                          />
-                          <DiffCell
-                            line={newLine}
-                            side="new"
-                            inlineRange={newLine ? inline.get(newLine.key) : undefined}
-                            query={query}
-                            showWhitespace={showWhitespace}
-                            cursor={cursor}
-                            activeMatch={activeMatch}
-                            lineIndex={
-                              workingActions.length > 0 && newLine ? indexes.get(newLine.key) : undefined
-                            }
-                            lineSelected={
-                              workingActions.length > 0 && newLine
-                                ? selectedLines?.hunk === hunkIndex &&
-                                  selectedLines.indexes.has(indexes.get(newLine.key)!)
-                                : undefined
-                            }
-                            onToggleLine={
-                              workingActions.length > 0 && newLine
-                                ? () => toggleLine(hunkIndex, indexes.get(newLine.key)!)
-                                : undefined
-                            }
-                          />
-                        </div>
-                      </Fragment>
-                    );
-                  })}
-              {end < rows.length && (
-                <div style={{ height: (rows.length - end) * rowHeight }} aria-hidden="true" />
-              )}
-            </section>
-          );
-        })}
+                onToggleLine={
+                  workingActions.length > 0 && line
+                    ? () => toggleLine(hunkIndex, indexes.get(line.key)!)
+                    : undefined
+                }
+              />
+            );
+            const renderRows = (first: number, last: number) => {
+              const result: ReactNode[] = [];
+              for (let index = first; index < last; index += 1) {
+                if (mode === 'unified') result.push(renderCell(hunk.lines[index], 'unified'));
+                else {
+                  const [oldLine, newLine] = split[hunkIndex]![index]!;
+                  result.push(
+                    <div key={`${hunk.key}-split-${index}`} className="diff-split-row">
+                      {renderCell(oldLine, 'old')}
+                      {renderCell(newLine, 'new')}
+                    </div>,
+                  );
+                }
+              }
+              return result;
+            };
+            const content: ReactNode[] = [];
+            let nextRow = start;
+            const regions = highlightRegions[hunkIndex] ?? [];
+            for (const [regionIndex, region] of regions.entries()) {
+              if (region.endRow <= start) continue;
+              if (region.firstRow >= end) break;
+              const first = Math.max(start, region.firstRow);
+              const last = Math.min(end, region.endRow);
+              content.push(...renderRows(nextRow, first));
+              const selection: RepositoryWorkingChangeSelection =
+                !controls?.entireFile || regions.length === 1
+                  ? { kind: 'hunk', hunk: hunkIndex }
+                  : { kind: 'lines', hunk: hunkIndex, lineIndexes: [...region.changedLineIndexes] };
+              content.push(
+                <div
+                  key={`${hunk.key}-region-${regionIndex}`}
+                  className="diff-change-region"
+                  tabIndex={workingActions.length > 0 ? 0 : undefined}
+                  role={workingActions.length > 0 ? 'group' : undefined}
+                  aria-label={
+                    workingActions.length > 0
+                      ? `Changed block ${hunkIndex + 1}.${regionIndex + 1}`
+                      : undefined
+                  }
+                  data-testid="diff-change-region"
+                >
+                  {renderRows(first, last)}
+                  {workingActions.length > 0 && (
+                    <div className="diff-highlight-track">
+                      <div className="diff-hunk-highlight" data-testid="diff-hunk-highlight">
+                        <span className="diff-hunk-actions">
+                          {workingActions.map((action) => (
+                            <button
+                              key={action.action}
+                              type="button"
+                              className="button button-small"
+                              data-testid={`diff-hunk-${action.action}`}
+                              disabled={
+                                Boolean(actionsDisabledReason) ||
+                                action.disabled ||
+                                applyingAction !== undefined
+                              }
+                              title={action.disabledReason ?? actionsDisabledReason}
+                              onClick={() => void applySelection(action, selection)}
+                            >
+                              {actionLabel(action.action, 'hunk')}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>,
+              );
+              nextRow = last;
+            }
+            content.push(...renderRows(nextRow, end));
+            return (
+              <section key={hunk.key} className="diff-hunk" aria-label={hunk.header}>
+                <div className="diff-range-line" data-testid="diff-range-line">
+                  <span className="diff-range-gutter" aria-hidden="true" />
+                  <span className="diff-range-text">{hunk.header}</span>
+                </div>
+                {start > 0 && <div style={{ height: start * rowHeight }} aria-hidden="true" />}
+                {content}
+                {end < rows.length && (
+                  <div style={{ height: (rows.length - end) * rowHeight }} aria-hidden="true" />
+                )}
+              </section>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

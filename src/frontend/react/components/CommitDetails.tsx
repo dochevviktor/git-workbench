@@ -27,7 +27,8 @@ import { DiffViewer } from './DiffViewer';
 import type { DiffDisplayMode } from './DiffViewer';
 import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
-import { FileIcon, FolderIcon, ListOptionsIcon, SearchIcon } from './Icons';
+import { FileIcon, FolderIcon, ListOptionsIcon, SearchIcon, PopOutIcon, DetailsPanelIcon } from './Icons';
+import { unwrapResult } from '../../../common/ipc/result';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { SearchMatch } from './SearchMatch';
@@ -61,6 +62,10 @@ interface CommitDetailsProps {
   readonly loadedCommitIds: ReadonlySet<string>;
   readonly onSelectCommit: (id: string) => void;
   readonly collapsed?: boolean;
+  readonly onCollapsedChange?: ((collapsed: boolean) => void) | undefined;
+  readonly standalone?: boolean;
+  readonly initialTab?: DetailTab;
+  readonly initialPath?: string | undefined;
   readonly searchQuery?: string;
 }
 
@@ -312,10 +317,18 @@ export function CommitDetails({
   loadedCommitIds,
   onSelectCommit,
   collapsed = false,
+  onCollapsedChange,
+  standalone = false,
+  initialTab,
+  initialPath,
   searchQuery = '',
 }: CommitDetailsProps) {
   const savedPresentation = detailPresentations.get(repositoryId ?? '');
-  const [activeTab, setActiveTab] = useState<DetailTab>(savedPresentation?.activeTab ?? 'commit');
+  const [activeTab, setActiveTab] = useState<DetailTab>(
+    initialTab ?? savedPresentation?.activeTab ?? 'commit',
+  );
+  const [popOutError, setPopOutError] = useState<string>();
+  const [openingPopOut, setOpeningPopOut] = useState(false);
   const [fileListMode, setFileListMode] = usePersistentState<FileListMode>(
     'details.fileListMode',
     'tree',
@@ -373,9 +386,15 @@ export function CommitDetails({
     const saved = detailPresentations.get(repositoryId ?? '');
     const restore = saved?.commitId === commit?.id ? saved : undefined;
     setSelectedChangeKey(restore?.selectedChangeKey);
-    setTreeActiveKey(restore?.treeActiveKey);
-    setExpandedFolders(restore?.expandedFolders ?? new Set());
-  }, [commit?.id, repositoryId]);
+    setTreeActiveKey(
+      restore?.treeActiveKey ?? (initialPath ? `tree:${encodeURIComponent(initialPath)}` : undefined),
+    );
+    const parents = initialPath?.split('/').slice(0, -1) ?? [];
+    setExpandedFolders(
+      restore?.expandedFolders ??
+        new Set(parents.map((_part, index) => parents.slice(0, index + 1).join('/'))),
+    );
+  }, [commit?.id, repositoryId, initialPath]);
 
   useEffect(() => {
     if (!commit || activeTab === 'tree' || changes || changesLoading || changesError) return;
@@ -396,14 +415,16 @@ export function CommitDetails({
       changes &&
       changeEntriesAvailable(changes.changes, fileFilter, selectedChangeKey)
     ) {
-      const first = changes.changes.find(
-        (change) =>
-          !fileFilter.trim() ||
-          change.path.toLocaleLowerCase().includes(fileFilter.trim().toLocaleLowerCase()),
-      );
+      const first =
+        changes.changes.find((change) => initialPath && change.path === initialPath) ??
+        changes.changes.find(
+          (change) =>
+            !fileFilter.trim() ||
+            change.path.toLocaleLowerCase().includes(fileFilter.trim().toLocaleLowerCase()),
+        );
       if (first) setSelectedChangeKey(changeKey(first));
     }
-  }, [activeTab, changes, fileFilter, selectedChangeKey]);
+  }, [activeTab, changes, fileFilter, selectedChangeKey, initialPath]);
 
   const changeEntries = useMemo<FileChangeEntry[]>(() => {
     const filter = fileFilter.trim().toLocaleLowerCase();
@@ -687,23 +708,86 @@ export function CommitDetails({
       className={collapsed ? 'commit-details details-collapsed' : 'commit-details'}
       aria-label="Commit details"
     >
-      <div className="details-tabs" role="tablist" aria-label="Commit detail views">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            id={`commit-detail-tab-${tab.id}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            aria-controls={`commit-detail-panel-${tab.id}`}
-            className={activeTab === tab.id ? 'details-tab active' : 'details-tab'}
-            disabled={!commit && tab.id !== 'commit'}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="details-header">
+        <div className="details-tabs" role="tablist" aria-label="Commit detail views">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              id={`commit-detail-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`commit-detail-panel-${tab.id}`}
+              className={activeTab === tab.id ? 'details-tab active' : 'details-tab'}
+              disabled={!commit && tab.id !== 'commit'}
+              onClick={() => {
+                setActiveTab(tab.id);
+                if (collapsed) onCollapsedChange?.(false);
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {!standalone && (
+          <div className="details-controls">
+            <button
+              type="button"
+              className="pane-icon-button"
+              aria-label="Pop out commit details"
+              title="Pop out commit details"
+              disabled={!repositoryId || !commit || openingPopOut}
+              onClick={() => {
+                if (!repositoryId || !commit || !window.desktop) return;
+                setOpeningPopOut(true);
+                setPopOutError(undefined);
+                const theme = document.documentElement.dataset.theme;
+                void window.desktop.repository
+                  .openCommitDetails({
+                    id: repositoryId,
+                    commitId: commit.id,
+                    tab: activeTab,
+                    path:
+                      activeTab === 'changes'
+                        ? selectedChange?.path
+                        : activeTab === 'tree'
+                          ? inspection.blobPath
+                          : undefined,
+                    theme: theme === 'dark' || theme === 'light' ? theme : 'system',
+                  })
+                  .then(unwrapResult)
+                  .catch((reason: unknown) =>
+                    setPopOutError(
+                      reason instanceof Error ? reason.message : 'Commit details could not be opened.',
+                    ),
+                  )
+                  .finally(() => setOpeningPopOut(false));
+              }}
+            >
+              <PopOutIcon size={14} />
+            </button>
+            {onCollapsedChange && (
+              <button
+                type="button"
+                className="pane-icon-button"
+                aria-label={collapsed ? 'Show commit details' : 'Hide commit details'}
+                title={
+                  collapsed ? 'Show commit details (Ctrl+Shift+D)' : 'Hide commit details (Ctrl+Shift+D)'
+                }
+                aria-expanded={!collapsed}
+                onClick={() => onCollapsedChange(!collapsed)}
+              >
+                <DetailsPanelIcon size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
+      {popOutError && (
+        <div className="inline-alert" role="alert">
+          {popOutError}
+        </div>
+      )}
       <div
         id={`commit-detail-panel-${activeTab}`}
         role="tabpanel"

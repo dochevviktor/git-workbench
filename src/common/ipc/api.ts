@@ -52,6 +52,8 @@ import type {
   RepositoryRevisionTree,
   RepositoryRevisionTreeRequest,
   RepositorySummary,
+  RepositoryCommitDetailsRequest,
+  RepositoryCommitDetailsContext,
   RepositoryWorkingChanges,
   RepositoryWorkingChangeActionRequest,
   RepositoryWorkingChangeActionResult,
@@ -82,6 +84,8 @@ export interface DesktopApi {
     writeText(request: ClipboardText): Promise<IpcResult<null>>;
   };
   readonly repository: {
+    openCommitDetails(request: RepositoryCommitDetailsRequest): Promise<IpcResult<null>>;
+    getCommitDetailsContext(): Promise<IpcResult<RepositoryCommitDetailsContext>>;
     onActivated(listener: (repository: RepositorySummary) => void): Unsubscribe;
     getGitInfo(): Promise<IpcResult<GitInfo>>;
     pickDirectory(): Promise<IpcResult<string | null>>;

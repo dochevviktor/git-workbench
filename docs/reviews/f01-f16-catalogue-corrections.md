@@ -96,3 +96,36 @@ Verified on Linux x64, Node 24.13.0 and Git 2.55.0, on this host reporting an AM
 Original and final light/dark screenshots are compared by matching workflow, selected side and viewport.
 Native Wayland moving/edge-resizing, multi-monitor physical behavior, Windows/macOS runtime and live
 hosting authentication remain unverified. The Electron suite remains headless with the sandbox enabled.
+
+## Interaction follow-up
+
+Verified **2026-09-20**, following the user's three specific corrections to the preceding pass:
+
+- **F09/F10 — hunk presentation:** P0-020's before/selected/after PNGs and
+  `reference/specification/hunk-controls-batch04.json` show a quiet `@@` range line and an outlined
+  changed-row region with inline Stage/Discard controls. The old permanent blue action header was
+  incorrect. Range text now scrolls with the diff; a separate overlay appears on region hover or keyboard
+  focus. It reserves no content row, stays within the viewport at far-right scroll positions, and keeps
+  existing snapshot-validated action semantics. Full-file changed groups have independent controls;
+  selected-line controls and the documented checkbox adaptation remain.
+- **F07/F34 — commit details:** P0-011 documents vertical splitters; P0-012:F1 documents collapse to the
+  tab strip and restoration; P1-031:F1 captures a separate commit-details window. The user's clarification
+  establishes the requested main-pane pop-out entry point. The splitter now clamps to available height;
+  visible Hide/Show and Pop Out buttons sit beside the tabs. Tab selection also expands a hidden pane.
+  Pop Out opens a real, independently navigable read-only window retaining the selected revision, view
+  and path. It survives closing its repository tab and closes with its owning window. Native frame
+  appearance/window-manager interactions remain platform verification work.
+- **F12/F15/F34 — toolbar split buttons:** P0-008's dropdown captures and P0-009's hover PNGs show the
+  separate chevron regions. The user clarified primary-click semantics; the bundle does not independently
+  exercise every primary route. Branch opens Create Branch and Stash opens Save Stash; their smaller
+  right-hand buttons open the existing menus, with independent mouse/keyboard focus and disabled states.
+
+`npm run check` passes **301 tests**, type checks, lint and formatting (the existing opt-in scale test
+remains skipped in the routine suite). `npm run test:e2e` builds production bundles and passes **ten
+headless scenarios**, including the new interaction regression. It checks hover versus hidden controls,
+far-right scrolling with long range/content lines, actual staged bytes, pointer/keyboard resizing,
+hide/restore height, both toolbar segments, commit/Changes/File Tree pop-outs, parent navigation,
+renderer isolation, rejected child mutations, repository-tab independence and owner-close cleanup.
+Focused policy/input tests verify the inspector allowlist and exact sender boundary. `git diff --check`
+passes. Final screenshots (`hunk-hover-scrolled.png`, `commit-details-window.png` and existing light/dark
+workflow captures) remain under git-ignored `test-results/`; catalogue files are unchanged.

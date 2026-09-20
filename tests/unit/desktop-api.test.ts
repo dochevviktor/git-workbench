@@ -70,6 +70,27 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('uses fixed commit inspector requests and rejects unbounded or malformed targets', async () => {
+    const { api, invoke } = fixture();
+    const request = {
+      id: `repo-${'a'.repeat(64)}`,
+      commitId: 'b'.repeat(40),
+      tab: 'commit' as const,
+      theme: 'light' as const,
+    };
+    expect(await api.repository.openCommitDetails(request)).toEqual({ ok: true, value: null });
+    expect(invoke).toHaveBeenCalledWith(requests.openRepositoryCommitDetails.channel, request);
+    expect(await api.repository.openCommitDetails({ ...request, commitId: 'HEAD' })).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    invoke.mockResolvedValueOnce({ ok: true, value: { repositoryId: request.id } });
+    expect(await api.repository.getCommitDetailsContext()).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
+
   it('validates repository paths before crossing IPC', async () => {
     const { api, invoke } = fixture();
     const result = await api.repository.open({ path: '' });

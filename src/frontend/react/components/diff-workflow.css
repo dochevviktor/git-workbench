@@ -19,6 +19,7 @@
   text-align: center;
   font-size: 11px;
 }
+.diff-body.wrap .diff-document,
 .diff-body.wrap .diff-hunk,
 .diff-body.wrap .diff-cell {
   width: 100%;
@@ -123,6 +124,19 @@
   min-width: 100%;
   overflow: visible;
   transform: translateX(var(--diff-horizontal-offset, 0px));
+}
+
+.diff-body.split .diff-range-line {
+  width: 100%;
+  overflow: hidden;
+}
+
+.diff-body.split .diff-range-text {
+  transform: translateX(var(--diff-horizontal-offset, 0px));
+}
+
+.diff-body.split .diff-hunk-highlight::before {
+  inset-inline-start: 0;
 }
 .diff-body.split::after {
   content: '';

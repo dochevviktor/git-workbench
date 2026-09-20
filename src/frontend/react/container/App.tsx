@@ -1840,8 +1840,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         tracking={active ? history.tracking : undefined}
         branchItems={branchMenuItems}
         branchDisabledReason={active?.bare ? 'A bare repository has no working tree.' : undefined}
+        branchPrimaryDisabledReason={
+          headTargetReason ?? (referenceBusy ? 'Another repository operation is running.' : undefined)
+        }
+        onNewBranch={() => {
+          if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-branch', target: headTarget });
+        }}
         stashItems={stashItems}
         stashDisabledReason={stashDisabledReason}
+        onSaveStash={() => openStashSave()}
         openInItems={openInItems}
         appearanceItems={appearanceItems}
         operations={operations}
@@ -1951,6 +1958,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   searchMatches={matchingCommitIds}
                   searchQuery={searchMatches.query}
                   detailsCollapsed={detailsCollapsed}
+                  onDetailsCollapsedChange={setDetailsCollapsed}
                 />
               )}
             </main>

@@ -94,6 +94,10 @@ test('catalogue Local Changes selection, full-file hunk focus, popup, discard an
       if (line) element.scrollTop += line.getBoundingClientRect().top - element.getBoundingClientRect().top;
     });
     const scrollBefore = await page.getByTestId('diff-content').evaluate((element) => element.scrollTop);
+    await page
+      .getByTestId('diff-change-region')
+      .nth(1)
+      .hover({ position: { x: 120, y: 4 } });
     await page.getByTestId('diff-hunk-stage').nth(1).click();
     await expect(staged.getByTestId('working-change').filter({ hasText: 'long.txt' })).toBeVisible();
     await expect(page.getByTestId('diff-hunk-stage')).toHaveCount(2);

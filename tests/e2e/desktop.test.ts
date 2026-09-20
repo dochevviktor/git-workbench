@@ -347,6 +347,10 @@ test('production build loads its isolated preload and renderer', async () => {
     // F10: file/hunk/line actions use a fresh backend snapshot and update both change panes.
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }).click();
     await page.getByRole('button', { name: 'Unified', exact: true }).click();
+    await page
+      .getByTestId('diff-change-region')
+      .first()
+      .hover({ position: { x: 120, y: 4 } });
     await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible();
     await page.getByTestId('diff-hunk-stage').first().click();
     await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toHaveCount(
@@ -354,6 +358,10 @@ test('production build loads its isolated preload and renderer', async () => {
     );
     await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toBeVisible();
     await stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' }).click();
+    await page
+      .getByTestId('diff-change-region')
+      .first()
+      .hover({ position: { x: 120, y: 4 } });
     await expect(page.getByTestId('diff-hunk-unstage').first()).toBeVisible();
     await page.getByTestId('diff-hunk-unstage').first().click();
     await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'partial.txt' })).toHaveCount(0);
@@ -425,6 +433,10 @@ test('production build loads its isolated preload and renderer', async () => {
     });
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' }).click();
     await expect(page.getByTestId('diff-hunk-discard')).toHaveCount(2);
+    await page
+      .getByTestId('diff-change-region')
+      .first()
+      .hover({ position: { x: 120, y: 4 } });
     await page.getByTestId('diff-hunk-discard').first().click();
     await page
       .getByRole('dialog', { name: 'Discard changes' })
@@ -448,11 +460,15 @@ test('production build loads its isolated preload and renderer', async () => {
     // selection instead of assuming one click always lands on the intended row.
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await page
+        .getByTestId('diff-change-region')
+        .first()
+        .hover({ position: { x: 120, y: 4 } });
       await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 20_000 });
     const diffLayout = await page.evaluate(() => {
       const body = document.querySelector<HTMLElement>('[data-testid="diff-content"]');
-      const header = body?.querySelector<HTMLElement>('.diff-hunk-header');
+      const header = body?.querySelector<HTMLElement>('.diff-hunk-highlight');
       if (!body || !header) throw new Error('Diff layout missing');
       return {
         bodyClientWidth: body.clientWidth,
@@ -488,6 +504,10 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(composer.getByTestId('commit-submit')).toHaveText('Commit');
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' }).click();
+      await page
+        .getByTestId('diff-change-region')
+        .first()
+        .hover({ position: { x: 120, y: 4 } });
       await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 20_000 });
     await page.getByTestId('diff-hunk-stage').first().click();
@@ -538,6 +558,10 @@ test('production build loads its isolated preload and renderer', async () => {
     await chmod(hookPath, 0o755);
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await page
+        .getByTestId('diff-change-region')
+        .first()
+        .hover({ position: { x: 120, y: 4 } });
       await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 20_000 });
     await page.getByTestId('diff-hunk-stage').first().click();
@@ -586,7 +610,7 @@ test('production build loads its isolated preload and renderer', async () => {
     const currentBranch = async () =>
       (await fixtureGit.run(['symbolic-ref', '--short', 'HEAD'], { cwd: fixtureRepository })).stdout.trim();
 
-    await page.getByRole('button', { name: 'Branch', exact: true }).click();
+    await page.getByRole('button', { name: 'Branch menu', exact: true }).click();
     await page.getByRole('menu', { name: 'Branch' }).getByRole('menuitem', { name: 'New Branch…' }).click();
     await expect(referenceDialog).toBeVisible();
     await referenceDialog.getByTestId('reference-name').fill('e2e-branch');
@@ -598,7 +622,7 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(page.getByTestId('reference-status')).toContainText("Created and checked out 'e2e-branch'.");
 
     // A name already in use is explained in the dialog, and the create button stays unavailable.
-    await page.getByRole('button', { name: 'Branch', exact: true }).click();
+    await page.getByRole('button', { name: 'Branch menu', exact: true }).click();
     await page.getByRole('menu', { name: 'Branch' }).getByRole('menuitem', { name: 'New Branch…' }).click();
     await referenceDialog.getByTestId('reference-name').fill('e2e-branch');
     await expect(page.getByTestId('reference-dialog-warning')).toContainText(

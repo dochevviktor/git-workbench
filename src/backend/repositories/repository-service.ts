@@ -478,6 +478,21 @@ export class RepositoryService {
     return this.tabStore.getPreferences();
   }
 
+  /** Give a bounded read-only inspector its own session without persisting a tab or scheduling fetch. */
+  async attachInspectionSession(ownerId: number, sourceOwnerId: number, id: string): Promise<void> {
+    const generation = this.ownerGenerations.get(ownerId) ?? 0;
+    const summary = await this.refreshOpenRepository(sourceOwnerId, id, false);
+    if (
+      (this.ownerGenerations.get(ownerId) ?? 0) !== generation ||
+      !this.sessions.get(sourceOwnerId)?.has(id)
+    ) {
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The source repository window was closed.');
+    }
+    if (this.sessions.has(ownerId))
+      throw new ExpectedBackendError('INVALID_REQUEST', 'That inspector already has a repository.');
+    this.sessions.set(ownerId, new Map([[id, summary]]));
+  }
+
   async reorderTabs(ownerId: number, ids: readonly string[]): Promise<RepositorySummary[]> {
     await this.ensureSessions(ownerId);
     const current = this.sessions.get(ownerId)!;

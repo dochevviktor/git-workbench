@@ -89,3 +89,45 @@ function parseHunkHeader(line: string): { readonly oldStart: number; readonly ne
   if (!match?.[1] || !match[2]) return undefined;
   return { oldStart: Number(match[1]), newStart: Number(match[2]) };
 }
+/** A hover region is presentation around changed rows, independent of the @@ range line. */
+export interface DiffHighlightRegion {
+  readonly firstRow: number;
+  readonly endRow: number;
+  readonly changedLineIndexes: readonly number[];
+}
+
+export function diffHighlightRegions(
+  lines: readonly ParsedDiffLine[],
+  rowLineIndexes: readonly (readonly number[])[],
+  entireFile: boolean,
+): DiffHighlightRegion[] {
+  const lineRows = new Map<number, number>();
+  rowLineIndexes.forEach((indexes, row) => indexes.forEach((index) => lineRows.set(index, row)));
+  const groups: number[][] = [];
+  let current: number[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const kind = lines[index]!.kind;
+    if (kind === 'add' || kind === 'remove') current.push(index);
+    else if (kind === 'context' && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length) groups.push(current);
+  const regions = (entireFile ? groups : groups.length ? [groups.flat()] : []).map((indexes) => ({
+    firstRow: Math.max(0, (lineRows.get(indexes[0]!) ?? 0) - 2),
+    endRow: Math.min(rowLineIndexes.length, (lineRows.get(indexes.at(-1)!) ?? 0) + 3),
+    changedLineIndexes: indexes,
+  }));
+  // Neighbouring regions share the available context without nesting or highlighting rows twice.
+  for (let index = 1; index < regions.length; index += 1) {
+    const previous = regions[index - 1]!;
+    const next = regions[index]!;
+    if (previous.endRow > next.firstRow) {
+      const boundary = Math.floor((previous.endRow + next.firstRow) / 2);
+      previous.endRow = boundary;
+      next.firstRow = boundary;
+    }
+  }
+  return regions;
+}

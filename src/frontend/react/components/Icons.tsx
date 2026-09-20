@@ -361,3 +361,19 @@ export function CloseGlyph() {
     </svg>
   );
 }
+export function PopOutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 2h5v5M14 2 7 9M7 3H3v10h10V9" />
+    </Icon>
+  );
+}
+
+export function DetailsPanelIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2" y="3" width="12" height="10" rx="1" />
+      <path d="M2 9h12" />
+    </Icon>
+  );
+}

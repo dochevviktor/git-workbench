@@ -98,6 +98,33 @@ afterEach(() => {
 });
 
 describe('IPC sender and window lifecycle', () => {
+  it('rejects inspector mutations even from its registered top frame', async () => {
+    const service = {
+      disposeWindow: vi.fn(),
+      subscribeOperations: () => () => undefined,
+    } as unknown as RepositoryService;
+    const ipc = registerAppIpc(service);
+    const inspector = new TestWindow(8);
+    ipc.attachWindow(inspector.asWindow(), inspector.webContents.getURL(), {
+      parentId: 1,
+      context: {} as never,
+    });
+    expect(
+      await handlers.get(requests.openRepository.channel)?.(inspector.event(), { path: '/repo' }),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handlers.get(requests.windowCommand.channel)?.(inspector.event(), { action: 'quit' }),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handlers.get(requests.getRepositoryWorkingChanges.channel)?.(inspector.event(), {}),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(await handlers.get(requests.getWindowState.channel)?.(inspector.event())).toMatchObject({
+      ok: true,
+    });
+    ipc.dispose();
+    expect(service.disposeWindow).toHaveBeenCalledWith(8);
+  });
+
   it('routes commands to their owning window and registers handlers only once', async () => {
     const ipc = registerAppIpc();
     const first = new TestWindow(1);

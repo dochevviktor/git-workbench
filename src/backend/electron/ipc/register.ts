@@ -1,11 +1,19 @@
 import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { events, requests } from '../../../common/ipc/contracts';
-import type { AppInfo, RequestContract, WindowState, RepositorySummary } from '../../../common/ipc/contracts';
+import type {
+  AppInfo,
+  RequestContract,
+  WindowState,
+  RepositorySummary,
+  RepositoryCommitDetailsContext,
+} from '../../../common/ipc/contracts';
 import { ExpectedBackendError } from '../../errors';
 import type { RepositoryService } from '../../repositories/repository-service';
 import { isTrustedDocument } from '../security';
 import { executeRequest } from './execute-request';
+import { createCommitDetailsWindow } from '../commit-details-window';
+import { canInvokeCommitInspector } from '../commit-inspector-policy';
 
 const minimumZoomLevel = -3;
 const maximumZoomLevel = 5;
@@ -27,8 +35,53 @@ function changeZoom(window: BrowserWindow, delta: number): void {
 }
 
 export function registerAppIpc(repositoryService?: RepositoryService) {
-  const windows = new Map<number, { window: BrowserWindow; url: string; cleanup: () => void }>();
+  const windows = new Map<
+    number,
+    {
+      window: BrowserWindow;
+      url: string;
+      cleanup: () => void;
+      inspector?: { parentId: number; context: RepositoryCommitDetailsContext } | undefined;
+    }
+  >();
+  const openingInspectors = new Map<number, number>();
   const channels: string[] = [];
+
+  const attachWindow = (
+    window: BrowserWindow,
+    url: string,
+    inspector?: { parentId: number; context: RepositoryCommitDetailsContext },
+  ) => {
+    const id = window.webContents.id;
+    windows.get(id)?.cleanup();
+    const publishState = () => {
+      if (!window.isDestroyed() && isTrustedDocument(window.webContents.getURL(), url)) {
+        window.webContents.send(events.windowStateChanged.channel, windowState(window));
+      }
+    };
+    window.on('maximize', publishState);
+    window.on('unmaximize', publishState);
+    window.on('focus', publishState);
+    window.on('blur', publishState);
+    window.on('enter-full-screen', publishState);
+    window.on('leave-full-screen', publishState);
+    const cleanup = () => {
+      for (const entry of windows.values()) {
+        if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
+      }
+      repositoryService?.disposeWindow(id);
+      windows.delete(id);
+      window.removeListener('maximize', publishState);
+      window.removeListener('unmaximize', publishState);
+      window.removeListener('focus', publishState);
+      window.removeListener('blur', publishState);
+      window.removeListener('enter-full-screen', publishState);
+      window.removeListener('leave-full-screen', publishState);
+      window.removeListener('closed', cleanup);
+    };
+    windows.set(id, { window, url, cleanup, inspector });
+    window.once('closed', cleanup);
+  };
 
   const authorizedWindow = (event: IpcMainInvokeEvent): BrowserWindow | undefined => {
     const entry = windows.get(event.sender.id);
@@ -54,7 +107,9 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       return executeRequest(
         contract,
         payload,
-        window !== undefined,
+        window !== undefined &&
+          (!windows.get(window.webContents.id)?.inspector ||
+            canInvokeCommitInspector(contract.channel, payload)),
         (input) => {
           if (!window) throw new Error('Missing IPC window');
           return handler(window, input);
@@ -151,6 +206,49 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
   });
 
   if (repositoryService) {
+    register(requests.getRepositoryCommitDetailsContext, (window) => {
+      const context = windows.get(window.webContents.id)?.inspector?.context;
+      if (!context) throw new ExpectedBackendError('FORBIDDEN', 'This window is not a commit inspector.');
+      return context;
+    });
+    register(requests.openRepositoryCommitDetails, async (parent, request) => {
+      const ownerId = parent.webContents.id;
+      const pending = openingInspectors.get(ownerId) ?? 0;
+      const openCount = [...windows.values()].filter((entry) => entry.inspector?.parentId === ownerId).length;
+      if (pending + openCount >= 8)
+        throw new ExpectedBackendError(
+          'OPERATION_FAILED',
+          'Close a commit details window before opening another one.',
+        );
+      openingInspectors.set(ownerId, pending + 1);
+      try {
+        const page = await repositoryService.getHistory(ownerId, request.id, 0, 1, {
+          kind: 'reference',
+          target: request.commitId,
+        });
+        const commit = page.commits.find((candidate) => candidate.id === request.commitId);
+        if (!commit) throw new ExpectedBackendError('INVALID_REQUEST', 'That commit is no longer available.');
+        if (parent.isDestroyed())
+          throw new ExpectedBackendError('UNAVAILABLE', 'The source window was closed.');
+        const context: RepositoryCommitDetailsContext = {
+          repositoryId: request.id,
+          commit,
+          references: page.references,
+          tab: request.tab,
+          path: request.path,
+          theme: request.theme,
+        };
+        await createCommitDetailsWindow(parent, async (child, url) => {
+          attachWindow(child, url, { parentId: ownerId, context });
+          await repositoryService.attachInspectionSession(child.webContents.id, ownerId, request.id);
+        });
+        return null;
+      } finally {
+        const remaining = (openingInspectors.get(ownerId) ?? 1) - 1;
+        if (remaining > 0) openingInspectors.set(ownerId, remaining);
+        else openingInspectors.delete(ownerId);
+      }
+    });
     register(requests.getGitInfo, () => repositoryService.getGitInfo());
     register(requests.pickRepositoryDirectory, (window) =>
       dialog
@@ -346,34 +444,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
         events.repositoryActivated.payload.parse(repository),
       );
     },
-    attachWindow(window: BrowserWindow, url: string) {
-      const id = window.webContents.id;
-      windows.get(id)?.cleanup();
-      const publishState = () => {
-        if (!window.isDestroyed() && isTrustedDocument(window.webContents.getURL(), url)) {
-          window.webContents.send(events.windowStateChanged.channel, windowState(window));
-        }
-      };
-      window.on('maximize', publishState);
-      window.on('unmaximize', publishState);
-      window.on('focus', publishState);
-      window.on('blur', publishState);
-      window.on('enter-full-screen', publishState);
-      window.on('leave-full-screen', publishState);
-      const cleanup = () => {
-        repositoryService?.disposeWindow(id);
-        windows.delete(id);
-        window.removeListener('maximize', publishState);
-        window.removeListener('unmaximize', publishState);
-        window.removeListener('focus', publishState);
-        window.removeListener('blur', publishState);
-        window.removeListener('enter-full-screen', publishState);
-        window.removeListener('leave-full-screen', publishState);
-        window.removeListener('closed', cleanup);
-      };
-      windows.set(id, { window, url, cleanup });
-      window.once('closed', cleanup);
-    },
+    attachWindow,
     dispose() {
       releaseOperations?.();
       for (const channel of channels) ipcMain.removeHandler(channel);

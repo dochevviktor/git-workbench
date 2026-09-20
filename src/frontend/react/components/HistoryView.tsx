@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
@@ -39,6 +39,7 @@ interface HistoryViewProps {
   readonly searchMatches?: ReadonlySet<string>;
   readonly searchQuery?: string;
   readonly detailsCollapsed?: boolean;
+  readonly onDetailsCollapsedChange?: ((collapsed: boolean) => void) | undefined;
 }
 
 interface CommitRowProps {
@@ -171,11 +172,14 @@ export function HistoryView({
   searchMatches,
   searchQuery = '',
   detailsCollapsed = false,
+  onDetailsCollapsedChange,
 }: HistoryViewProps) {
   const sessionKey = `${history.repositoryId}:${history.filterKey}`;
   const savedPresentation = historyPresentations.get(sessionKey);
   const showContextMenu = useContextMenu();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLElement>(null);
+  const [maximumListHeight, setMaximumListHeight] = useState(4000);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [contextCommitId, setContextCommitId] = useState<string>();
   const [viewport, setViewport] = useState({ top: savedPresentation?.scrollTop ?? 0, height: 600 });
@@ -185,6 +189,24 @@ export function HistoryView({
     defaultListHeight,
     isNumberBetween(96, 4000),
   );
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const update = () => {
+      const strips = Array.from(view.children).filter(
+        (element) =>
+          element.classList.contains('history-filter-strip') || element.classList.contains('inline-alert'),
+      );
+      const overhead = strips.reduce((height, element) => height + element.getBoundingClientRect().height, 0);
+      setMaximumListHeight(Math.max(96, view.clientHeight - overhead - 151));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(view);
+    for (const child of view.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [history.filterKey, history.reveal?.status, history.error, detailsCollapsed]);
+  const visibleListHeight = Math.min(listHeight, maximumListHeight);
   const {
     commits: loadedCommits,
     references,
@@ -548,8 +570,9 @@ export function HistoryView({
   return (
     <section
       className="history-view"
+      ref={viewRef}
       aria-label="Commit history"
-      style={{ '--history-list-height': detailsCollapsed ? '100%' : `${listHeight}px` } as CSSProperties}
+      style={{ '--history-list-height': `${visibleListHeight}px` } as CSSProperties}
     >
       {filter.kind === 'reference' && (
         <div className="history-filter-strip" role="status">
@@ -677,10 +700,10 @@ export function HistoryView({
       {!detailsCollapsed && (
         <Splitter
           orientation="horizontal"
-          label="Resize commit list"
-          value={listHeight}
+          label="Resize commit details"
+          value={visibleListHeight}
           minimum={96}
-          maximum={4000}
+          maximum={maximumListHeight}
           onChange={setListHeight}
         />
       )}
@@ -692,6 +715,7 @@ export function HistoryView({
         loadedCommitIds={loadedCommitIds}
         onSelectCommit={(id) => (loadedCommitIds.has(id) ? reveal(id) : history.requestReveal(id))}
         collapsed={detailsCollapsed}
+        onCollapsedChange={onDetailsCollapsedChange}
         searchQuery={selectedCommit && searchMatches?.has(selectedCommit.id) ? searchQuery : ''}
       />
     </section>

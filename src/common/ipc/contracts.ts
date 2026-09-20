@@ -1300,6 +1300,23 @@ export const repositoryRevisionBlobSchema = z.strictObject({
   byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
 });
 
+export const repositoryCommitDetailsRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  tab: z.enum(['commit', 'changes', 'tree']),
+  path: repositoryRevisionPathSchema.optional(),
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
+export const repositoryCommitDetailsContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commit: repositoryHistoryCommitSchema,
+  references: z.array(repositoryHistoryReferenceSchema).max(10_000),
+  tab: z.enum(['commit', 'changes', 'tree']),
+  path: repositoryRevisionPathSchema.optional(),
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
 export const requests = {
   getAppInfo: request('app:get-info', z.undefined(), appInfoSchema),
   getWindowState: request('window:get-state', z.undefined(), windowStateSchema),
@@ -1307,6 +1324,16 @@ export const requests = {
   editCommand: request('edit:command', editCommandSchema, z.null()),
   writeClipboardText: request('clipboard:write-text', clipboardTextSchema, z.null()),
   getGitInfo: request('git:get-info', z.undefined(), gitInfoSchema),
+  openRepositoryCommitDetails: request(
+    'repository:open-commit-details',
+    repositoryCommitDetailsRequestSchema,
+    z.null(),
+  ),
+  getRepositoryCommitDetailsContext: request(
+    'repository:get-commit-details-context',
+    z.undefined(),
+    repositoryCommitDetailsContextSchema,
+  ),
   pickRepositoryDirectory: request(
     'repository:pick-directory',
     z.undefined(),
@@ -1545,6 +1572,8 @@ export type RepositoryTabPreferences = z.infer<typeof repositoryTabPreferencesSc
 export type RepositoryCloneRequest = z.infer<typeof repositoryCloneRequestSchema>;
 export type RepositoryConnectionRequest = z.infer<typeof repositoryConnectionRequestSchema>;
 export type RepositorySummary = z.infer<typeof repositorySummarySchema>;
+export type RepositoryCommitDetailsRequest = z.infer<typeof repositoryCommitDetailsRequestSchema>;
+export type RepositoryCommitDetailsContext = z.infer<typeof repositoryCommitDetailsContextSchema>;
 export type RecentRepository = z.infer<typeof recentRepositorySchema>;
 export type SourceDirectoryStatus = z.infer<typeof sourceDirectoryStatusSchema>;
 export type RepositoryManagerSourceDirectory = z.infer<typeof repositoryManagerSourceDirectorySchema>;

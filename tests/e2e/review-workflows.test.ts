@@ -391,7 +391,7 @@ test('a checkout hook outlives the control deadline without overwriting another 
     await expect(page.getByText('The application did not respond in time.', { exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: /^second, /u }).click();
     await expect(page.getByTestId('history-commit').first()).toContainText('second fixture');
-    await page.getByRole('button', { name: 'Branch', exact: true }).click();
+    await page.getByRole('button', { name: 'Branch menu', exact: true }).click();
     await page
       .getByRole('menu', { name: 'Branch', exact: true })
       .getByRole('menuitem', { name: 'New Tag…', exact: true })

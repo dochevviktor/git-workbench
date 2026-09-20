@@ -41,6 +41,13 @@ test also passes. Catalogue corrections and deliberately retained adaptations ar
 [F01–F16 record](reviews/f01-f16-catalogue-corrections.md). The runner's scale-allocation defect was fixed
 without relaxing memory limits. Phases stay partial where their broader criteria are not yet verified.
 
+Interaction follow-up (2026-09-20): corrected hunk hover regions and horizontal scrolling, added
+bounded vertical details resizing with hide/restore and a separate read-only commit-details window,
+and split the Branch/Stash toolbar buttons into primary and menu actions. The
+[follow-up record](reviews/f01-f16-catalogue-corrections.md#interaction-follow-up) links the observations,
+implementation and verification. `npm run check` passes 301 tests; production build and all ten
+headless Electron scenarios pass. F17 remains the next incremental feature.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                    | Depends on                            |
@@ -48,8 +55,8 @@ without relaxing memory limits. Phases stay partial where their broader criteria
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                     | —                                     |
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; F01–F16 jobs/auth/cancellation corrections verified (2026-09-20); broad trust policy remains                                     | P00                                   |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; clone, additive tabs/reorder/reopen, CLI and window persistence verified (2026-09-20); manager/watcher scope remains             | P01 runner/jobs                       |
-| P03   | History graph, references, commit details, revision tree             | Partial; scoped search, direct navigation, virtualization and first-parent inspection verified (2026-09-20); browser scale gates remain   | P02 sessions                          |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; catalogue diff/staging/discard/commit corrections verified (2026-09-20); richer syntax/signing scope remains                     | P01 writes, P02/P03 views             |
+| P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                   | P02 sessions                          |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                      | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics and four merge modes/recovery verified (2026-09-20); F17/F19 remain planned                                      | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                                                   | P06                                   |
@@ -57,7 +64,7 @@ without relaxing memory limits. Phases stay partial where their broader criteria
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                   | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                   | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; F03/F34 shell/shortcut/session corrections verified (2026-09-20); productivity/workspaces remain                                 | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                               | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                   | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                   | Every claimed workflow                |
 
@@ -115,6 +122,9 @@ current dossiers to find later subcases that resolve earlier capture failures.
 - Add context increase/decrease, entire-file view, whitespace/symbol controls, unified wrap and split
   availability. Retain line anchors across file/view/repository/layout switches in the captured scope;
   after partial hunk Stage, retain viewport, clear highlight and focus the file row.
+- Keep `@@` range lines in the scrolling text flow. Stage/Unstage/Discard controls belong to a separate
+  hover/focus outline around changed rows; they must not reserve a permanent header row or scroll off the
+  visible diff. Test this with long range labels, long content and full-file/split presentation.
 - Add a selection-linked diff popup (Down changes underlying file; Space closes), independent layout
   state and focus return. Add explicit bounded Load Diff with cancellation/error/resource limits.
   The 60,000-line fixture establishes an opt-in state, not the threshold or an unbounded-load policy.

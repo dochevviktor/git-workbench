@@ -16,8 +16,9 @@ target without changing the Electron/TypeScript boundaries. C01–C06 in the
 [F01–F16 correction record](reviews/f01-f16-catalogue-corrections.md) identifies implemented behavior,
 tests and remaining limits. Additive repository navigation, annotated empty-message tags, scoped search,
 diff controls/discard, merge modes, clone/authentication and lifecycle corrections are now implemented.
-The later initial-slice descriptions are historical where superseded here. Secondary native inspectors,
-the full conflict helper and interactive rebase remain future work.
+The later initial-slice descriptions are historical where superseded here. Commit details now support a
+separate read-only native window; file-history/blame inspectors, the full conflict helper and interactive
+rebase remain future work.
 
 - **Navigation and command state:** one repository-session/order model feeds horizontal tabs and the
   optional workspace repository list simultaneously. Keep repository-list visibility separate from
@@ -28,12 +29,23 @@ the full conflict helper and interactive rebase remain future work.
   Store line anchors/focus separately from byte snapshots and persisted settings. A popup can share file
   selection with its owner while keeping an independent diff layout. Normal restart, in-session switching
   and interrupted Git operations need separate retention rules; see the table below.
-- **Inspection windows:** reusable diff, commit-detail, file-history and blame surfaces may have bounded
-  secondary windows in future phases. The current diff popup is an owned modal inspector inside the
-  renderer, with independent diff layout and shared file selection. Main owns any future native-window
-  creation and immutable owner/target identity; every window gets the same
-  sender/frame validation, CSP, sandbox and exact cleanup as the main shell. Do not add generic renderer
-  URL, filesystem or window creation. A close must release subscriptions/read jobs and return focus.
+- **Inspection windows:** the diff popup remains an owned modal inspector inside the renderer. Commit
+  details use the fixed `openCommitDetails`/`getCommitDetailsContext` capabilities and a separate sandboxed
+  window, initialized with validated repository/commit/tab/path/theme DTOs. Main attaches a non-persisted
+  repository session without scheduling fetch and restricts the child to committed reads and local
+  copy/window controls. Generic repository mutations, working-tree reads, more window creation and app
+  quit are denied even though the shared preload contains those method names. The selected commit stays
+  independent of main-window selection, with parent navigation inside the inspector. At most eight
+  inspectors per owner can be opening/open. Parent-window close releases children, sessions, reads and
+  listeners; closing the repository tab alone leaves its inspector usable. No renderer-selected URL,
+  filesystem access or generic window creation is exposed. File-history/blame windows remain future work.
+- **Diff interaction geometry:** plain `@@` lines participate in horizontal text scrolling. Changed-row
+  groups own an out-of-flow highlight layer; its outline and buttons stay within the viewport on hover
+  or keyboard focus. Unified hunks share a document width so gutters and actions remain aligned even
+  when another hunk contains a longer line. Line anchors use viewport geometry across nested groups.
+- **Details and toolbar controls:** the history/detail splitter is bounded by available container height
+  and keeps the last usable size while hidden; visible buttons and Ctrl+Shift+D hide/restore it. The
+  Branch/Stash primary segments open their existing dialogs; separately focusable chevrons open menus.
 - **Diff data:** extend named contracts/preload/handlers/services together for context/full-file/explicit
   large-diff access. Keep bounded output, cancellation, generation guards and safe asset delivery; a
   Load Diff control cannot bypass resource limits. Reuse presentation in inspectors without conflating

@@ -1,13 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './container/App';
+import CommitInspector from './container/CommitInspector';
 import './styles.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('The application root is missing.');
 
 createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  <StrictMode>{window.location.hash === '#commit-details' ? <CommitInspector /> : <App />}</StrictMode>,
 );

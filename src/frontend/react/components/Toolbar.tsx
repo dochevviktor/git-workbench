@@ -31,6 +31,7 @@ interface ToolbarProps {
   readonly tracking: RepositoryHistoryTracking | undefined;
   readonly branchItems: readonly MenuEntry[];
   readonly branchDisabledReason: string | undefined;
+  readonly branchPrimaryDisabledReason: string | undefined;
   readonly stashItems: readonly MenuEntry[];
   readonly stashDisabledReason: string | undefined;
   readonly openInItems: readonly MenuEntry[];
@@ -44,6 +45,8 @@ interface ToolbarProps {
   readonly onFetch: () => void;
   readonly onPull: () => void;
   readonly onPush: () => void;
+  readonly onNewBranch: () => void;
+  readonly onSaveStash: () => void;
   readonly onToggleActivity: () => void;
   readonly onCancelOperation: (operationId: string) => void;
 }
@@ -56,6 +59,7 @@ interface ToolbarButtonProps {
   readonly shortcut?: string | undefined;
   readonly testId?: string | undefined;
   readonly onClick?: (() => void) | undefined;
+  readonly primaryDisabledReason?: string | undefined;
 }
 
 function ToolbarButton({
@@ -66,16 +70,47 @@ function ToolbarButton({
   shortcut,
   testId,
   onClick,
+  primaryDisabledReason,
 }: ToolbarButtonProps) {
   const content = (
     <>
       <span className="toolbar-button-icon">
         {icon}
-        {menuItems && <ChevronDownIcon className="toolbar-button-chevron" size={9} />}
+        {menuItems && !onClick && <ChevronDownIcon className="toolbar-button-chevron" size={9} />}
       </span>
       <span className="toolbar-button-label">{label}</span>
     </>
   );
+  if (menuItems && onClick) {
+    const primaryReason = disabledReason ?? primaryDisabledReason;
+    return (
+      <div className="toolbar-split-button" role="group" aria-label={`${label} actions`}>
+        <button
+          type="button"
+          className="toolbar-button toolbar-split-primary"
+          aria-label={label}
+          aria-disabled={primaryReason !== undefined || undefined}
+          title={primaryReason ?? label}
+          data-testid={testId}
+          onClick={() => {
+            if (primaryReason === undefined) onClick();
+          }}
+        >
+          {content}
+        </button>
+        <MenuButton
+          className="toolbar-split-menu"
+          items={menuItems}
+          menuLabel={label}
+          aria-label={`${label} menu`}
+          title={`${label} menu`}
+          disabledReason={disabledReason}
+        >
+          <ChevronDownIcon className="toolbar-button-chevron" size={9} />
+        </MenuButton>
+      </div>
+    );
+  }
   if (menuItems) {
     return (
       <MenuButton
@@ -141,6 +176,7 @@ export function Toolbar({
   tracking,
   branchItems,
   branchDisabledReason,
+  branchPrimaryDisabledReason,
   stashItems,
   stashDisabledReason,
   openInItems,
@@ -153,6 +189,8 @@ export function Toolbar({
   onFetch,
   onPull,
   onPush,
+  onNewBranch,
+  onSaveStash,
   onToggleActivity,
   onCancelOperation,
 }: ToolbarProps) {
@@ -208,6 +246,7 @@ export function Toolbar({
           label="Stash"
           disabledReason={noRepository ?? stashDisabledReason}
           menuItems={stashItems}
+          onClick={onSaveStash}
         />
       </div>
 
@@ -270,7 +309,9 @@ export function Toolbar({
           icon={<NewBranchIcon size={18} />}
           label="Branch"
           disabledReason={noRepository ?? branchDisabledReason}
+          primaryDisabledReason={branchPrimaryDisabledReason}
           menuItems={branchItems}
+          onClick={onNewBranch}
         />
       </div>
 

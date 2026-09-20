@@ -73,6 +73,8 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
     edit: { command: (command) => invoke(requests.editCommand, command) },
     clipboard: { writeText: (request) => invoke(requests.writeClipboardText, request) },
     repository: {
+      openCommitDetails: (request) => invoke(requests.openRepositoryCommitDetails, request),
+      getCommitDetailsContext: () => invoke(requests.getRepositoryCommitDetailsContext, undefined),
       onActivated: (listener) => subscribe(events.repositoryActivated, listener),
       getGitInfo: () => invoke(requests.getGitInfo, undefined),
       pickDirectory: () => invoke(requests.pickRepositoryDirectory, undefined),
