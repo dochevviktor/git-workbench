@@ -65,6 +65,10 @@ import type {
   RepositoryRevisionBlobRequest,
   RepositoryRevisionTree,
   RepositoryRevisionTreeRequest,
+  RepositoryLfsFile,
+  RepositoryLfsFileRequest,
+  RepositoryLfsInitializationRequest,
+  RepositoryLfsSaveRequest,
   RepositorySummary,
   RepositoryCommitDetailsRequest,
   RepositoryCommitDetailsContext,
@@ -195,6 +199,11 @@ export interface DesktopApi {
     openPullRequest(request: RepositoryPullRequestHandoff): Promise<IpcResult<null>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
+    getLfsFile(request: RepositoryLfsFileRequest): Promise<IpcResult<RepositoryLfsFile>>;
+    startLfsInitialization(
+      request: RepositoryLfsInitializationRequest,
+    ): Promise<IpcResult<RepositoryOperation>>;
+    saveLfsPayload(request: RepositoryLfsSaveRequest): Promise<IpcResult<RepositoryOperation | null>>;
     openInFileManager(location: RepositoryLocation): Promise<IpcResult<null>>;
   };
 }

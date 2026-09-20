@@ -12,6 +12,7 @@ const readChannels = new Set<string>([
   requests.getRepositoryCommitChanges.channel,
   requests.getRepositoryRevisionTree.channel,
   requests.getRepositoryRevisionBlob.channel,
+  requests.getRepositoryLfsFile.channel,
   requests.cancelRepositoryDiff.channel,
 ]);
 const windowActions = new Set([
@@ -28,6 +29,7 @@ const windowActions = new Set([
 export function canInvokeInspector(kind: InspectorKind, channel: string, payload: unknown): boolean {
   if (readChannels.has(channel)) {
     if (channel === requests.getRepositoryCommitDetailsContext.channel) return kind === 'commit-details';
+    if (channel === requests.getRepositoryLfsFile.channel) return kind === 'commit-details';
     return true;
   }
   if (channel === requests.getRepositoryFileHistoryContext.channel) return kind === 'file-history';
@@ -41,6 +43,7 @@ export function canInvokeInspector(kind: InspectorKind, channel: string, payload
   if (channel === requests.getRepositoryFileHistory.channel)
     return kind === 'file-history' || kind === 'blame';
   if (channel === requests.getRepositoryBlame.channel) return kind === 'blame';
+  if (channel === requests.saveRepositoryLfsPayload.channel) return kind === 'commit-details';
   if (channel === requests.windowCommand.channel) {
     return 'action' in payload && typeof payload.action === 'string' && windowActions.has(payload.action);
   }

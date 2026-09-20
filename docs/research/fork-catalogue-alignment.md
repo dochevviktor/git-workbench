@@ -250,7 +250,7 @@ Existing implemented slices remain partial; new corrections require their own ve
 | [P2-008](fork-reference-new/reference/catalogue/features/P2-008.md) | observed | F32            | P12 / C05           | Contextual command editor and bounded output; variables/forms/errors need local tests.                                                                                                   |
 | [P2-009](fork-reference-new/reference/catalogue/features/P2-009.md) | observed | F33            | P12 / C05           | External tool configuration and historical blob handoff; full merge invocation unverified.                                                                                               |
 | [P2-010](fork-reference-new/reference/catalogue/features/P2-010.md) | observed | F35            | P13 / C05           | Statistics and treemap composition; define metric/date/tile rules independently.                                                                                                         |
-| [P2-011](fork-reference-new/reference/catalogue/features/P2-011.md) | observed | F24            | P10 / C05           | Local initialization and historical payload Save As; pointer stays unchanged.                                                                                                            |
+| [P2-011](fork-reference-new/reference/catalogue/features/P2-011.md) | observed | F24            | P10 / C05           | Local initialization and historical Save As; exact pointer/hash preservation is in the [F24 handoff](../reviews/f24-lfs.md); remote/auth/locks/push remain open.                         |
 | [P2-012](fork-reference-new/reference/catalogue/features/P2-012.md) | observed | F34            | P12 / C01           | Light/dark switch preserves sampled layout and selection.                                                                                                                                |
 | [P2-013](fork-reference-new/reference/catalogue/features/P2-013.md) | observed | F34            | P12, P14 / C01, C06 | Resize constraints and clipping evidence; provide usable Linux minimum/overflow.                                                                                                         |
 | [P2-014](fork-reference-new/reference/catalogue/features/P2-014.md) | blocked  | F34            | P14 / C06           | 125% Fork capture blocked; independently test Linux scaling.                                                                                                                             |
@@ -287,5 +287,5 @@ were rerun for this documentation audit; earlier implementation verification rec
 Documentation validation (2026-09-20): all 82 topics appear exactly once in the crosswalk with their
 catalogue status; the surface contains 38 unique F-items; cited finding IDs, 143 local links/anchors and
 130 reference-style links resolve in the six edited documents. Prettier and `git diff --check` pass.
-All 15 existing phase statuses are unchanged. The supplied bundle and preexisting `.gitignore` edits
-were preserved.
+F24's bounded local slice updates P10 to Partial; the other phase statuses remain unchanged. The supplied
+bundle and preexisting `.gitignore` edits were preserved.

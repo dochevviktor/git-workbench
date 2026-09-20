@@ -144,6 +144,9 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       onOperationChanged: (listener) => subscribe(events.repositoryOperationChanged, listener),
       getRevisionTree: (request) => invoke(requests.getRepositoryRevisionTree, request),
       getRevisionBlob: (request) => invoke(requests.getRepositoryRevisionBlob, request),
+      getLfsFile: (request) => invoke(requests.getRepositoryLfsFile, request),
+      startLfsInitialization: (request) => invoke(requests.startRepositoryLfsInitialization, request),
+      saveLfsPayload: (request) => invoke(requests.saveRepositoryLfsPayload, request),
       openInFileManager: (location) => invoke(requests.openRepositoryInFileManager, location),
     },
   };

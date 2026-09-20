@@ -1,5 +1,6 @@
 import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import { basename } from 'node:path';
 import { events, requests } from '../../../common/ipc/contracts';
 import type {
   AppInfo,
@@ -555,6 +556,21 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryRevisionBlob, (window, { id, commitId, path }) =>
       repositoryService.getRevisionBlob(window.webContents.id, id, commitId, path),
     );
+    register(requests.getRepositoryLfsFile, (window, { id, commitId, path }) =>
+      repositoryService.getLfsFile(window.webContents.id, id, commitId, path),
+    );
+    register(requests.startRepositoryLfsInitialization, (window, request) =>
+      repositoryService.startLfsInitialization(window.webContents.id, request),
+    );
+    register(requests.saveRepositoryLfsPayload, async (window, request) => {
+      const chosen = await dialog.showSaveDialog(window, {
+        title: 'Save LFS Payload',
+        defaultPath: basename(request.path),
+        filters: [{ name: 'All files', extensions: ['*'] }],
+      });
+      if (chosen.canceled || !chosen.filePath) return null;
+      return repositoryService.startLfsPayloadSave(window.webContents.id, request, chosen.filePath);
+    });
     register(requests.getRepositoryFileHistory, (window, { id, commitId, path }) =>
       repositoryService.getFileHistory(window.webContents.id, id, commitId, path),
     );

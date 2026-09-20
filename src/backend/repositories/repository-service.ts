@@ -66,6 +66,9 @@ import type {
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
   RepositoryRevisionTree,
+  RepositoryLfsFile,
+  RepositoryLfsInitializationRequest,
+  RepositoryLfsSaveRequest,
   RepositoryBlame,
   RepositoryFileHistory,
   RepositorySummary,
@@ -171,6 +174,13 @@ import {
   readInteractiveRebasePlan,
   runInteractiveRebase,
 } from './interactive-rebase-service';
+import {
+  LfsPathError,
+  LfsPayloadError,
+  LfsRevisionNotFoundError,
+  readLfsFile,
+  saveLfsPayload,
+} from './lfs-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -2220,6 +2230,122 @@ export class RepositoryService {
     }
   }
 
+  async getLfsFile(ownerId: number, id: string, commitId: string, path: string): Promise<RepositoryLfsFile> {
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    try {
+      return await readLfsFile(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        worktreePath: summary.worktreePath,
+        commitId,
+        path,
+      });
+    } catch (error) {
+      throw this.mapLfsFailure(error, 'Git could not inspect the selected LFS file.');
+    }
+  }
+
+  startLfsInitialization(ownerId: number, request: RepositoryLfsInitializationRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    if (!cached.worktreePath)
+      throw new ExpectedBackendError('UNAVAILABLE', 'A bare repository has no Git LFS working tree.');
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'lfs',
+        title: 'Initialize Git LFS',
+        command: 'git lfs install --local',
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          handle.setCommand?.('git lfs install --local');
+          handle.setProgress({ phase: 'Installing Git LFS hooks', percent: null });
+          try {
+            const result = await this.runner.run(['lfs', 'install', '--local'], {
+              cwd: summary.worktreePath,
+              signal: handle.signal,
+              timeoutMs: 120_000,
+              maxOutputBytes: 64 * 1024,
+            });
+            return {
+              status: 'succeeded' as const,
+              message: 'Initialized Git LFS for this repository.',
+              output: displayOutput(result.stdout, result.stderr),
+            };
+          } catch (error) {
+            if (error instanceof GitCommandError) {
+              const output = displayOutput(error.stdout, error.stderr).slice(0, 65_536);
+              const unavailable = /not a git command|unknown command|not found|cannot find/iu.test(output);
+              return {
+                status: 'failed' as const,
+                failureReason: 'other' as const,
+                message: unavailable
+                  ? 'Git LFS is not installed. Install git-lfs and retry.'
+                  : output
+                    ? `Git LFS could not be initialized. ${output.slice(0, 400)}`
+                    : 'Git LFS could not be initialized.',
+                output,
+              };
+            }
+            throw this.mapGitFailure(error, 'Git LFS could not be initialized.');
+          }
+        }),
+    );
+  }
+
+  startLfsPayloadSave(
+    ownerId: number,
+    request: RepositoryLfsSaveRequest,
+    destination: string,
+  ): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'lfs',
+        title: 'Save historical LFS payload',
+        command: 'Git LFS Save As',
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+          try {
+            const value = await saveLfsPayload(
+              this.runner,
+              {
+                repositoryId: request.id,
+                cwd: summary.worktreePath ?? summary.commonDir,
+                worktreePath: summary.worktreePath,
+                commitId: request.commitId,
+                path: request.path,
+              },
+              destination,
+              handle,
+            );
+            return {
+              status: 'succeeded' as const,
+              message: `Saved ${value.byteLength.toLocaleString()} bytes of LFS content.`,
+              output: `SHA-256 ${value.sha256}`,
+              result: { kind: 'lfs' as const, value },
+            };
+          } catch (error) {
+            if (error instanceof LfsPayloadError) {
+              return {
+                status: 'failed' as const,
+                failureReason: 'other' as const,
+                message: error.message,
+                output: '',
+              };
+            }
+            throw this.mapGitFailure(error, 'The historical LFS payload could not be saved.');
+          }
+        }),
+    );
+  }
+
   async getFileHistory(
     ownerId: number,
     id: string,
@@ -2767,6 +2893,19 @@ export class RepositoryService {
       );
     }
     if (error instanceof RevisionPathError) {
+      return new ExpectedBackendError('OPERATION_FAILED', error.message);
+    }
+    return this.mapGitFailure(error, fallback);
+  }
+
+  private mapLfsFailure(error: unknown, fallback: string): ExpectedBackendError {
+    if (error instanceof LfsRevisionNotFoundError) {
+      return new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'That commit is no longer available in this repository.',
+      );
+    }
+    if (error instanceof LfsPathError || error instanceof LfsPayloadError) {
       return new ExpectedBackendError('OPERATION_FAILED', error.message);
     }
     return this.mapGitFailure(error, fallback);

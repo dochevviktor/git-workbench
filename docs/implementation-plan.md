@@ -114,6 +114,14 @@ Electron scenarios pass. The bounded handoff is in [F23 submodules](reviews/f23-
 interrupted-update/cancellation, and submodule-conflict continuation variants remain unverified; P09
 remains partial.
 
+F24 implementation checkpoint (2026-09-20): added bounded local Git LFS pointer/materialized-state
+inspection, optional `git lfs install --local`, historical payload metadata, native Save As with streamed
+SHA-256 verification, cancellable progress, and Changes/File Tree LFS cards. Disposable Git tests and
+the F24 headless Electron scenario prove exact payload bytes/hash and unchanged pointer, worktree, and
+status state. The bounded handoff is in [F24 LFS](reviews/f24-lfs.md). Authenticated/remote transfers,
+push, locks, track/untrack editing, and remote missing-object recovery remain outside this slice; P10
+remains partial.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                        | Depends on                            |
@@ -128,7 +136,7 @@ remains partial.
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                         | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); directory/code history, bisect, and patch import remain planned | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22 worktree lifecycle and F23 submodule lifecycle/revision/navigation slices verified (2026-09-20); broader submodule variants and Git-flow remain planned                  | P02/P05, common-repo queue            |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                                                                       | P04, safe assets; P05 transfers       |
+| P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS inspection/retrieval verified (2026-09-20); image viewers, signing, authenticated transfers and locks remain planned                                           | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                                    | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                   | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                       | P03 history; P12 tools for AI         |

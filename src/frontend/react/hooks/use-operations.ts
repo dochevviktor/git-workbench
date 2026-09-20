@@ -107,6 +107,14 @@ export function useOperations() {
     [],
   );
 
+  const startLfsInitialization = useCallback(async (repositoryId: string): Promise<RepositoryOperation> => {
+    const api = window.desktop;
+    if (!api) throw new Error('Open this application in Electron to initialize Git LFS.');
+    const accepted = unwrapResult(await api.repository.startLfsInitialization({ id: repositoryId }));
+    if (mounted.current) setOperations((current) => mergeOperation(current, accepted));
+    return accepted;
+  }, []);
+
   const cancel = useCallback((operationId: string) => {
     const api = window.desktop;
     if (!api) return;
@@ -133,6 +141,7 @@ export function useOperations() {
     startMergeRebase,
     startHistoryOperation,
     startInteractiveRebase,
+    startLfsInitialization,
     cancel,
     clearError,
   };

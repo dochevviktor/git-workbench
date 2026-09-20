@@ -12,6 +12,7 @@ import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persi
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRevisionInspection } from '../hooks/use-revision-inspection';
 import type { RevisionInspection } from '../hooks/use-revision-inspection';
+import { useRepositoryLfs } from '../hooks/use-repository-lfs';
 import { changeDetail, statusBadge } from '../lib/change-status';
 import {
   avatarColor,
@@ -149,6 +150,105 @@ interface ChangeFactsProps {
   readonly onWhitespaceChange: (whitespace: RepositoryDiffWhitespace) => void;
   readonly showWhitespace: boolean;
   readonly onShowWhitespaceChange: (show: boolean) => void;
+  readonly lfs: ReturnType<typeof useRepositoryLfs>;
+}
+
+function lfsSizeLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB (${bytes.toLocaleString()} B)`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB (${bytes.toLocaleString()} B)`;
+  return `${bytes.toLocaleString()} B`;
+}
+
+interface LfsPayloadCardProps {
+  readonly path: string;
+  readonly lfs: ReturnType<typeof useRepositoryLfs>;
+}
+
+function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
+  const file = lfs.lfs;
+  const history = file?.history.kind === 'lfs' ? file.history : undefined;
+  const operation = lfs.saveOperation;
+  const running = operation?.status === 'running';
+  const canSave = history?.payloadState === 'available' && !running;
+  const saveLabel = running
+    ? operation?.progress
+      ? `${operation.progress.phase}${
+          operation.progress.percent === null ? '' : ` ${operation.progress.percent}%`
+        }`
+      : 'Retrieving…'
+    : operation?.status === 'succeeded'
+      ? operation.message
+      : operation?.status === 'failed'
+        ? operation.message
+        : undefined;
+
+  return (
+    <div className="lfs-preview" data-testid="lfs-file-card" aria-live="polite">
+      <div className="preview-header">
+        <span className="lfs-badge">LFS</span>
+        <span className="preview-path" title={path}>
+          {path}
+        </span>
+      </div>
+      {lfs.loading ? (
+        <p className="preview-note">Inspecting Git LFS metadata…</p>
+      ) : lfs.error ? (
+        <p className="preview-note" role="alert">
+          {lfs.error}
+        </p>
+      ) : history ? (
+        <div className="lfs-card-body">
+          <span className="lfs-card-state">created</span>
+          <FileIcon size={34} />
+          <strong>{lfsSizeLabel(history.pointer.size)}</strong>
+          <MenuButton
+            className="pane-icon-button"
+            aria-label="LFS payload options"
+            title="LFS payload options"
+            menuLabel="LFS payload options"
+            items={[
+              {
+                id: 'save-as',
+                label: 'Save As…',
+                disabled: !canSave,
+                disabledReason:
+                  history.payloadState === 'missing'
+                    ? 'The payload is not available in the local LFS cache.'
+                    : history.payloadState === 'invalid'
+                      ? 'The local payload does not match the pointer size.'
+                      : running
+                        ? 'The payload is already being retrieved.'
+                        : undefined,
+                run: () => void lfs.saveAs(),
+              },
+            ]}
+          >
+            <span className="lfs-size-menu-mark" aria-hidden="true">
+              ⋮
+            </span>
+          </MenuButton>
+          {saveLabel && <span className="lfs-card-status">{saveLabel}</span>}
+          {lfs.saveError && (
+            <span className="lfs-card-status error" role="alert">
+              {lfs.saveError}
+            </span>
+          )}
+          {history.payloadState !== 'available' && !saveLabel && (
+            <span className="lfs-card-status">
+              {history.payloadState === 'missing'
+                ? 'Payload not available locally; network retrieval is not enabled here.'
+                : 'Local payload size does not match the pointer.'}
+            </span>
+          )}
+          {file?.worktree.state === 'pointer' && (
+            <span className="lfs-card-status">Working tree remains a pointer.</span>
+          )}
+        </div>
+      ) : (
+        <p className="preview-note">This historical file is not a Git LFS pointer.</p>
+      )}
+    </div>
+  );
 }
 
 function ChangeFacts({
@@ -161,6 +261,7 @@ function ChangeFacts({
   onWhitespaceChange,
   showWhitespace,
   onShowWhitespaceChange,
+  lfs,
 }: ChangeFactsProps) {
   const badge = statusBadge(change.status);
   const detail = changeDetail(change);
@@ -174,21 +275,25 @@ function ChangeFacts({
         {detail && <span className="preview-detail">{detail}</span>}
       </div>
       <div className="preview-body diff-preview-body">
-        <DiffViewer
-          value={diff.value}
-          loading={diff.loading}
-          error={diff.error}
-          onRetry={diff.refresh}
-          mode={mode}
-          onModeChange={onModeChange}
-          whitespace={whitespace}
-          onWhitespaceChange={onWhitespaceChange}
-          showWhitespace={showWhitespace}
-          onShowWhitespaceChange={onShowWhitespaceChange}
-          label="Committed change diff"
-          controls={diff.controls}
-          positionKey={positionKey}
-        />
+        {lfs.loading || lfs.error || lfs.lfs?.history.kind === 'lfs' ? (
+          <LfsPayloadCard path={change.path} lfs={lfs} />
+        ) : (
+          <DiffViewer
+            value={diff.value}
+            loading={diff.loading}
+            error={diff.error}
+            onRetry={diff.refresh}
+            mode={mode}
+            onModeChange={onModeChange}
+            whitespace={whitespace}
+            onWhitespaceChange={onWhitespaceChange}
+            showWhitespace={showWhitespace}
+            onShowWhitespaceChange={onShowWhitespaceChange}
+            label="Committed change diff"
+            controls={diff.controls}
+            positionKey={positionKey}
+          />
+        )}
       </div>
     </div>
   );
@@ -506,6 +611,8 @@ export function CommitDetails({
       }));
   }, [changes, fileFilter]);
   const selectedChange = changes?.changes.find((change) => changeKey(change) === selectedChangeKey);
+  const changeLfs = useRepositoryLfs(repositoryId, commit?.id, selectedChange?.path);
+  const treeLfs = useRepositoryLfs(repositoryId, commit?.id, inspection.blobPath);
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
     () =>
       commit && selectedChange
@@ -709,6 +816,7 @@ export function CommitDetails({
                 onWhitespaceChange={setDiffWhitespace}
                 showWhitespace={showWhitespace}
                 onShowWhitespaceChange={setShowWhitespace}
+                lfs={changeLfs}
               />
             ) : (
               <p className="preview-empty">Select a file to see how it changed.</p>
@@ -721,6 +829,7 @@ export function CommitDetails({
   const renderTree = () => {
     if (!commit) return null;
     const { blob, blobPath, blobLoading, blobError, loadBlob } = inspection;
+    const isLfs = treeLfs.lfs?.history.kind === 'lfs' || treeLfs.loading || Boolean(treeLfs.error);
     return (
       <>
         <CommitSummary commit={commit} />
@@ -750,7 +859,9 @@ export function CommitDetails({
                   </span>
                   {blob && <span className="preview-size">{countLabel(blob.byteLength, 'byte')}</span>}
                 </div>
-                {blobLoading ? (
+                {isLfs ? (
+                  <LfsPayloadCard path={blobPath} lfs={treeLfs} />
+                ) : blobLoading ? (
                   <p className="preview-note">Reading file…</p>
                 ) : blobError ? (
                   <RetryAlert message={blobError} onRetry={() => void loadBlob(blobPath)} />

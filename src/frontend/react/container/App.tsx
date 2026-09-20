@@ -227,6 +227,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     startMergeRebase: startMergeRebaseOperation,
     startHistoryOperation: startHistoryOperationOperation,
     startInteractiveRebase: startInteractiveRebaseOperation,
+    startLfsInitialization,
     cancel: cancelOperation,
   } = useOperations();
   const openedClones = useRef(new Set<string>());
@@ -751,6 +752,22 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     },
     [active, startStashOperation],
   );
+
+  const initializeLfs = useCallback(() => {
+    const owner = active?.id;
+    if (!owner || active?.bare) return;
+    void startLfsInitialization(owner)
+      .then(() => {
+        if (activeRepositoryId.current === owner) setActivityOpen(true);
+      })
+      .catch((reason: unknown) => {
+        if (activeRepositoryId.current === owner)
+          setReferenceStatus({
+            message: reason instanceof Error ? reason.message : 'Git LFS could not be initialized.',
+            blocked: true,
+          });
+      });
+  }, [active?.bare, active?.id, startLfsInitialization]);
 
   const openNetworkDialog = useCallback(
     (request: NetworkDialogRequest) => {
@@ -1447,6 +1464,23 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 id: 'remotes',
                 label: 'Remotes…',
                 run: () => openNetworkDialog({ kind: 'remotes' }),
+              },
+              {
+                id: 'git-lfs',
+                label: 'Git LFS',
+                submenu: [
+                  {
+                    id: 'initialize-lfs',
+                    label: 'Initialize Git LFS',
+                    disabled: active.bare || activeOperation !== undefined,
+                    disabledReason: active.bare
+                      ? 'A bare repository has no working tree.'
+                      : activeOperation
+                        ? 'Another repository operation is running.'
+                        : undefined,
+                    run: initializeLfs,
+                  },
+                ],
               },
               {
                 id: 'save-stash',

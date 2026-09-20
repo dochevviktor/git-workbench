@@ -61,6 +61,12 @@ export const repositoryPathSchema = z
   .max(32_768)
   .refine((value) => !value.includes('\0'), 'A repository path cannot contain a NUL byte.');
 
+export const repositoryLfsSaveResultSchema = z.strictObject({
+  path: repositoryPathSchema,
+  byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+
 export const repositoryIdSchema = z.string().regex(/^repo-[a-f0-9]{64}$/);
 
 export const sourceDirectoryIdSchema = z.string().regex(/^source-[a-f0-9]{64}$/);
@@ -1365,6 +1371,7 @@ export const repositoryOperationKindSchema = z.enum([
   'stash',
   'worktree',
   'submodule',
+  'lfs',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1415,6 +1422,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
       z.strictObject({ kind: z.literal('worktree'), value: repositoryWorktreeActionResultSchema }),
       z.strictObject({ kind: z.literal('submodule'), value: repositorySubmoduleActionResultSchema }),
+      z.strictObject({ kind: z.literal('lfs'), value: repositoryLfsSaveResultSchema }),
     ])
     .optional(),
   startedAt: z.string().datetime({ offset: true }),
@@ -1796,6 +1804,52 @@ export const repositoryRevisionBlobSchema = z.strictObject({
   byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
 });
 
+export const repositoryLfsPointerSchema = z.strictObject({
+  version: z.literal('https://git-lfs.github.com/spec/v1'),
+  oid: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  size: z.number().int().nonnegative().max(1_000_000_000_000),
+});
+
+export const repositoryLfsFileSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'An LFS path is required.'),
+  tracked: z.boolean(),
+  history: z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('lfs'),
+      pointer: repositoryLfsPointerSchema,
+      pointerByteLength: z.number().int().positive().max(1_048_576),
+      payloadState: z.enum(['available', 'missing', 'invalid']),
+      payloadByteLength: z.number().int().nonnegative().max(1_000_000_000_000).nullable(),
+    }),
+    z.strictObject({
+      kind: z.literal('regular'),
+      byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
+    }),
+    z.strictObject({ kind: z.literal('missing') }),
+  ]),
+  worktree: z.strictObject({
+    state: z.enum(['pointer', 'materialized', 'missing', 'not-lfs', 'unavailable']),
+    byteLength: z.number().int().nonnegative().max(1_000_000_000_000).nullable(),
+  }),
+  gitLfs: z.strictObject({ available: z.boolean(), version: z.string().max(256).nullable() }),
+});
+
+export const repositoryLfsFileRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'An LFS path is required.'),
+});
+
+export const repositoryLfsInitializationRequestSchema = z.strictObject({ id: repositoryIdSchema });
+
+export const repositoryLfsSaveRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'An LFS path is required.'),
+});
+
 const repositoryHistoricalFilePathSchema = repositoryRevisionPathSchema.refine(
   (value) => value.length > 0,
   'A historical file path is required.',
@@ -2168,6 +2222,21 @@ export const requests = {
     repositoryRevisionBlobRequestSchema,
     repositoryRevisionBlobSchema,
   ),
+  getRepositoryLfsFile: request(
+    'repository:get-lfs-file',
+    repositoryLfsFileRequestSchema,
+    repositoryLfsFileSchema,
+  ),
+  startRepositoryLfsInitialization: request(
+    'repository:start-lfs-initialization',
+    repositoryLfsInitializationRequestSchema,
+    repositoryOperationSchema,
+  ),
+  saveRepositoryLfsPayload: request(
+    'repository:save-lfs-payload',
+    repositoryLfsSaveRequestSchema,
+    repositoryOperationSchema.nullable(),
+  ),
   openRepositoryFileHistory: request(
     'repository:open-file-history',
     repositoryFileHistoryOpenRequestSchema,
@@ -2369,6 +2438,12 @@ export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeE
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;
 export type RepositoryRevisionBlobRequest = z.infer<typeof repositoryRevisionBlobRequestSchema>;
 export type RepositoryRevisionBlob = z.infer<typeof repositoryRevisionBlobSchema>;
+export type RepositoryLfsPointer = z.infer<typeof repositoryLfsPointerSchema>;
+export type RepositoryLfsFileRequest = z.infer<typeof repositoryLfsFileRequestSchema>;
+export type RepositoryLfsFile = z.infer<typeof repositoryLfsFileSchema>;
+export type RepositoryLfsInitializationRequest = z.infer<typeof repositoryLfsInitializationRequestSchema>;
+export type RepositoryLfsSaveRequest = z.infer<typeof repositoryLfsSaveRequestSchema>;
+export type RepositoryLfsSaveResult = z.infer<typeof repositoryLfsSaveResultSchema>;
 export type RepositoryFileHistoryRequest = z.infer<typeof repositoryFileHistoryRequestSchema>;
 export type RepositoryFileHistoryOpenRequest = z.infer<typeof repositoryFileHistoryOpenRequestSchema>;
 export type RepositoryFileHistoryRevision = z.infer<typeof repositoryFileHistoryRevisionSchema>;

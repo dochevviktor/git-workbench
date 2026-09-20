@@ -105,6 +105,39 @@ Linux; Fork's captured local-transport Update failure is retained as research ev
 missing-object, interrupted-update/cancellation, conflict continuation, and broader provider/tool routes
 remain unverified, so F23 and P09 stay partial.
 
+F24 is implemented within the bounded [local LFS handoff](../reviews/f24-lfs.md): the backend recognizes
+Git LFS pointer blobs, reports pointer/materialized state and local object availability, offers an
+operation-backed `git lfs install --local`, and streams an exact local historical payload through native
+Save As without changing the checkout. The renderer shows the historical payload size and retrieval
+progress in Changes and File Tree. This maps `P2-011-initialize-download-subcase:F1–F4` and
+`P2-011-local-lfs-subcase:F1`. Authenticated/remote transfers, push, locks, track/untrack editing and
+remote missing-object recovery remain unverified and outside this bounded slice.
+
+### F24 source refresh
+
+Accessed **2026-09-20**. The supplied Windows 2.22.0.0 catalogue is primary evidence: the captured
+`P2-011-initialize-download-subcase` on **2026-09-19** records Initialize Git LFS adding the four LFS
+hooks, a historical `sample.bin` LFS card showing **32.0 KB (32,768 B)** while the checkout remains a
+130-byte pointer, Save As retrieving the exact SHA-256
+`e11360251d1173650cdcd20f111d8f1ca2e412f572e8b36a4dc067121c1799b8`, and unchanged Git state
+(`P2-011-initialize-download-subcase:F1–F4`). The same-day `P2-011-local-lfs-subcase:F1` confirms the
+badge/size/Save As presentation while leaving initialization and transfer completion unestablished.
+The case explicitly did not test HTTP/authenticated servers, push, or locks.
+
+The current [Git LFS specification][lfs-spec] defines the UTF-8 pointer's `version`, SHA-256 `oid`, and
+byte `size` fields and its bounded pointer form. The official [install manual][lfs-install] documents
+`git lfs install --local` as repository-local filter configuration and hook installation; the general
+[Git LFS manual][lfs-man] documents the optional `git-lfs` executable and its transfer adapters. These
+are high-confidence **D** Git/LFS semantics, accessed 2026-09-20, not observations of Fork or proof of
+Linux parity.
+
+This project chooses an **I** bounded Linux implementation: pointer parsing and local cache lookup stay
+backend-owned; selecting a pointer never downloads a large object; Save As verifies the object size and
+SHA-256 while streaming to a native-selected path; and a missing optional `git-lfs` executable is
+reported without silently installing or replacing it. Remote/authenticated transfers, locks, push,
+track/untrack editing, and remote missing-object recovery remain **U** and are not inferred from local
+Save As.
+
 Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
 platform, stated version, and theme in [`fork-references.json`](fork-references.json).
 `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
@@ -856,7 +889,7 @@ earlier slices; recording them here does not promote their full feature families
 | F21 | File/directory/selected-code history, rename-aware History and Blame                  | D: [product][home], [releases][win]; B: P1-030–031/P1-033                 | Partial; bounded rename-aware file History/Blame inspectors and Back/Forward verified; directory/selected-code/copy variants remain open      | P08 / C05                     |
 | F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Partial; bounded worktree lifecycle and linked tabs verified; broader P09 variants remain open                                                | P09 / C05                     |
 | F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Partial; bounded lifecycle, revision cards, dirty child, successful local Update and child navigation verified; broader variants remain open  | P09 / C05                     |
-| F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Planned; authenticated services/locks/push unobserved                                                                                         | P10 / C05                     |
+| F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Partial; local pointer/materialized inspection, initialization, exact Save As and unchanged-pointer verification; remote/auth/locks/push open | P10 / C05                     |
 | F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home]; public-only                                           | Planned; separate from Lean Branching                                                                                                         | P09                           |
 | F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Planned                                                                                                                                       | P08 / C05                     |
 | F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Planned rich viewers; pixel comparison public-only                                                                                            | P04 fallback, P10 / C02, C05  |
@@ -1015,3 +1048,6 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [bisect-gif]: https://fork.dev/blog/posts/forkwin-1.48/bisect.gif
 [stash-gif]: https://fork.dev/blog/posts/forkwin-1.48/partial-stash.gif
 [dnd-gif]: https://fork.dev/blog/posts/forkwin-1.48/drag-and-drop-merge.gif
+[lfs-spec]: https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md
+[lfs-install]: https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-install.adoc
+[lfs-man]: https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs.adoc
