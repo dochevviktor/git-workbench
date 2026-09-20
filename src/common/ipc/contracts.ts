@@ -1350,6 +1350,148 @@ export const repositorySubmoduleActionResultSchema = z.discriminatedUnion('statu
   }),
 ]);
 
+/** The three topic families supported by the bounded native Git-flow implementation. */
+export const repositoryGitFlowTypeSchema = z.enum(['feature', 'release', 'hotfix']);
+
+export const repositoryGitFlowPrefixSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .refine((value) => value.endsWith('/'), 'A Git-flow prefix must end with /.')
+  .refine((value) => !value.startsWith('/'), 'A Git-flow prefix cannot start with /.')
+  .refine((value) => !value.startsWith('-'), 'A Git-flow prefix cannot start with -.')
+  .refine(
+    // eslint-disable-next-line no-control-regex -- control characters are rejected, not interpreted.
+    (value) => !/[\u0000-\u001F\u007F]/u.test(value),
+    'A Git-flow prefix cannot contain control characters.',
+  );
+
+export const repositoryGitFlowConfigSchema = z.strictObject({
+  productionBranch: repositoryReferenceNameSchema,
+  developBranch: repositoryReferenceNameSchema,
+  featurePrefix: repositoryGitFlowPrefixSchema,
+  releasePrefix: repositoryGitFlowPrefixSchema,
+  hotfixPrefix: repositoryGitFlowPrefixSchema,
+});
+
+export const repositoryGitFlowBranchSchema = z.strictObject({
+  type: repositoryGitFlowTypeSchema,
+  name: repositoryReferenceNameSchema,
+  fullName: z.string().startsWith('refs/heads/').max(32_768),
+  baseBranch: repositoryReferenceNameSchema,
+  target: gitObjectIdSchema,
+  isHead: z.boolean(),
+});
+
+export const repositoryGitFlowLocalBranchSchema = z.strictObject({
+  name: repositoryReferenceNameSchema,
+  target: gitObjectIdSchema,
+  isHead: z.boolean(),
+});
+
+export const repositoryGitFlowCapabilitiesSchema = z.strictObject({
+  canInitialize: z.boolean(),
+  initializeReason: z.string().max(512).nullable(),
+  canStart: z.boolean(),
+  startReason: z.string().max(512).nullable(),
+  canFinish: z.boolean(),
+  finishReason: z.string().max(512).nullable(),
+});
+
+export const repositoryGitFlowContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  status: z.enum(['unconfigured', 'configured', 'invalid']),
+  configured: z.boolean(),
+  config: repositoryGitFlowConfigSchema.nullable(),
+  head: repositoryHeadSchema,
+  localBranches: z.array(repositoryGitFlowLocalBranchSchema).max(10_000),
+  branches: z.array(repositoryGitFlowBranchSchema).max(1_000),
+  clean: z.boolean(),
+  untrackedCount: z.number().int().nonnegative().max(100_000),
+  conflictedCount: z.number().int().nonnegative().max(100_000),
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  capabilities: repositoryGitFlowCapabilitiesSchema,
+  message: z.string().max(512),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryGitFlowActionKindSchema = z.enum(['initialize', 'start', 'finish']);
+
+export const repositoryGitFlowActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('initialize'),
+    config: repositoryGitFlowConfigSchema,
+    snapshot: repositoryDiffSnapshotSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('start'),
+    type: repositoryGitFlowTypeSchema,
+    name: repositoryReferenceNameSchema,
+    snapshot: repositoryDiffSnapshotSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('finish'),
+    type: repositoryGitFlowTypeSchema,
+    name: repositoryReferenceNameSchema,
+    snapshot: repositoryDiffSnapshotSchema,
+    noFastForward: z.boolean(),
+    mergeIntoDevelop: z.boolean(),
+    tagMessage: z.string().max(65_536),
+    keepBranch: z.boolean(),
+  }),
+]);
+
+export const repositoryGitFlowActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositoryGitFlowActionSchema,
+});
+
+export const repositoryGitFlowFailureReasonSchema = z.enum([
+  'already-configured',
+  'invalid-config',
+  'unconfigured',
+  'dirty',
+  'pending-operation',
+  'detached',
+  'missing-base',
+  'branch-exists',
+  'branch-not-found',
+  'not-current',
+  'tag-exists',
+  'active-hotfix',
+  'conflict',
+  'identity',
+  'invalid-name',
+  'other',
+]);
+
+export const repositoryGitFlowActionResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('applied'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryGitFlowActionKindSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    context: repositoryGitFlowContextSchema,
+    createdBranch: z.string().startsWith('refs/heads/').max(32_768).nullable(),
+    deletedBranch: z.string().startsWith('refs/heads/').max(32_768).nullable(),
+    tag: z.string().startsWith('refs/tags/').max(32_768).nullable(),
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    repositoryId: repositoryIdSchema,
+    kind: repositoryGitFlowActionKindSchema,
+    reason: repositoryGitFlowFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    context: repositoryGitFlowContextSchema,
+    paths: z.array(z.string().min(1).max(32_768)).max(200),
+    createdBranch: z.string().startsWith('refs/heads/').max(32_768).nullable(),
+    deletedBranch: z.string().startsWith('refs/heads/').max(32_768).nullable(),
+    tag: z.string().startsWith('refs/tags/').max(32_768).nullable(),
+  }),
+]);
+
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
 export const repositoryOperationKindSchema = z.enum([
@@ -1372,6 +1514,7 @@ export const repositoryOperationKindSchema = z.enum([
   'worktree',
   'submodule',
   'lfs',
+  'git-flow',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1422,6 +1565,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
       z.strictObject({ kind: z.literal('worktree'), value: repositoryWorktreeActionResultSchema }),
       z.strictObject({ kind: z.literal('submodule'), value: repositorySubmoduleActionResultSchema }),
+      z.strictObject({ kind: z.literal('git-flow'), value: repositoryGitFlowActionResultSchema }),
       z.strictObject({ kind: z.literal('lfs'), value: repositoryLfsSaveResultSchema }),
     ])
     .optional(),
@@ -2117,6 +2261,16 @@ export const requests = {
     repositorySubmoduleActionRequestSchema,
     repositoryOperationSchema,
   ),
+  getRepositoryGitFlow: request(
+    'repository:get-git-flow',
+    repositorySessionSchema,
+    repositoryGitFlowContextSchema,
+  ),
+  startRepositoryGitFlowOperation: request(
+    'repository:start-git-flow-operation',
+    repositoryGitFlowActionRequestSchema,
+    repositoryOperationSchema,
+  ),
   openRepositorySubmodule: request(
     'repository:open-submodule',
     repositoryOpenSubmoduleRequestSchema,
@@ -2386,6 +2540,18 @@ export type RepositorySubmoduleRequest = z.infer<typeof repositorySubmoduleReque
 export type RepositoryOpenSubmoduleRequest = z.infer<typeof repositoryOpenSubmoduleRequestSchema>;
 export type RepositorySubmoduleFailureReason = z.infer<typeof repositorySubmoduleFailureReasonSchema>;
 export type RepositorySubmoduleActionResult = z.infer<typeof repositorySubmoduleActionResultSchema>;
+export type RepositoryGitFlowType = z.infer<typeof repositoryGitFlowTypeSchema>;
+export type RepositoryGitFlowPrefix = z.infer<typeof repositoryGitFlowPrefixSchema>;
+export type RepositoryGitFlowConfig = z.infer<typeof repositoryGitFlowConfigSchema>;
+export type RepositoryGitFlowBranch = z.infer<typeof repositoryGitFlowBranchSchema>;
+export type RepositoryGitFlowLocalBranch = z.infer<typeof repositoryGitFlowLocalBranchSchema>;
+export type RepositoryGitFlowCapabilities = z.infer<typeof repositoryGitFlowCapabilitiesSchema>;
+export type RepositoryGitFlowContext = z.infer<typeof repositoryGitFlowContextSchema>;
+export type RepositoryGitFlowActionKind = z.infer<typeof repositoryGitFlowActionKindSchema>;
+export type RepositoryGitFlowAction = z.infer<typeof repositoryGitFlowActionSchema>;
+export type RepositoryGitFlowActionRequest = z.infer<typeof repositoryGitFlowActionRequestSchema>;
+export type RepositoryGitFlowFailureReason = z.infer<typeof repositoryGitFlowFailureReasonSchema>;
+export type RepositoryGitFlowActionResult = z.infer<typeof repositoryGitFlowActionResultSchema>;
 export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
 export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
 export type RepositoryInteractiveRebaseCommand = z.infer<typeof repositoryInteractiveRebaseCommandSchema>;

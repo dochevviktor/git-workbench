@@ -5,6 +5,8 @@ import type {
   RepositoryHistoryCommit,
   RepositoryHistoryReference,
   RepositoryHistoryOperationAction,
+  RepositoryGitFlowAction,
+  RepositoryGitFlowType,
   RepositoryInteractiveRebaseRequest,
   RepositoryLocation,
   RepositoryMergeRebaseAction,
@@ -33,6 +35,8 @@ import type { NetworkDialogRequest } from '../components/NetworkDialogs';
 import { MergeRebaseDialog } from '../components/MergeRebaseDialog';
 import type { MergeRebaseDialogRequest } from '../components/MergeRebaseDialog';
 import { InteractiveRebaseDialog } from '../components/InteractiveRebaseDialog';
+import { GitFlowDialog } from '../components/GitFlowDialog';
+import type { GitFlowActionDraft, GitFlowDialogRequest } from '../components/GitFlowDialog';
 import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRebaseDialog';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { WorktreeDialog } from '../components/WorktreeDialogs';
@@ -64,6 +68,7 @@ import { useRepositoryHistory } from '../hooks/use-repository-history';
 import { useRepositoryStashes } from '../hooks/use-repository-stashes';
 import { useWorktrees } from '../hooks/use-worktrees';
 import { useSubmodules } from '../hooks/use-submodules';
+import { useGitFlow } from '../hooks/use-git-flow';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
@@ -73,6 +78,11 @@ import { workspaceShortcuts } from '../lib/workspace-shortcuts';
 const appearances = ['system', 'light', 'dark'] as const;
 type Appearance = (typeof appearances)[number];
 const appearanceLabels: Record<Appearance, string> = { system: 'System', light: 'Light', dark: 'Dark' };
+const typeLabels: Record<RepositoryGitFlowType, string> = {
+  feature: 'Feature',
+  release: 'Release',
+  hotfix: 'Hotfix',
+};
 const managerTabId = 'repository-manager';
 
 type Desktop = ReturnType<typeof useDesktop>;
@@ -220,6 +230,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     reload: reloadSubmodules,
   } = useSubmodules(lastActive?.id, refreshSignal);
   const {
+    context: gitFlowContext,
+    loading: gitFlowLoading,
+    busy: gitFlowRequestBusy,
+    apply: applyGitFlow,
+    reload: reloadGitFlow,
+  } = useGitFlow(lastActive?.id, refreshSignal);
+  const {
     operations,
     error: operationError,
     start: startOperation,
@@ -252,6 +269,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     referenceRequestBusy ||
     worktreeRequestBusy ||
     submoduleRequestBusy ||
+    gitFlowRequestBusy ||
     runningOperation(operations, active?.id) !== undefined;
   const [localChangesPreview, setLocalChangesPreview] = useState<RepositoryLocalChangesPreview>();
   const [previewError, setPreviewError] = useState<string>();
@@ -728,6 +746,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
   const [networkFailure, setNetworkFailure] = useState<string>();
+  const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
+  const [gitFlowFailure, setGitFlowFailure] = useState<string>();
   const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
   const [mergeRebaseFailure, setMergeRebaseFailure] = useState<string>();
   const [activityOpen, setActivityOpen] = useState(false);
@@ -804,6 +824,48 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setMergeRebaseDialog(undefined);
     setMergeRebaseFailure(undefined);
   }, []);
+
+  const openGitFlowDialog = useCallback((request: GitFlowDialogRequest) => {
+    setGitFlowFailure(undefined);
+    setGitFlowDialog(request);
+  }, []);
+
+  const closeGitFlowDialog = useCallback(() => {
+    setGitFlowDialog(undefined);
+    setGitFlowFailure(undefined);
+  }, []);
+
+  const startGitFlow = useCallback(
+    (draft: GitFlowActionDraft) => {
+      const owner = active?.id;
+      const current = gitFlowContext;
+      if (!owner || !current) return;
+      setGitFlowFailure(undefined);
+      const action = { ...draft, snapshot: current.snapshot } as RepositoryGitFlowAction;
+      void applyGitFlow(action)
+        .then((result) => {
+          if (activeRepositoryId.current !== owner) return;
+          if (result.status === 'applied') {
+            setGitFlowDialog(undefined);
+            setGitFlowFailure(undefined);
+            setReferenceStatus({ message: result.message, blocked: false });
+            refresh();
+          } else {
+            setGitFlowFailure(result.message);
+            setReferenceStatus({ message: result.message, blocked: true });
+            reloadGitFlow();
+          }
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
+          setGitFlowFailure(
+            reason instanceof Error ? reason.message : 'The Git-flow action could not be completed.',
+          );
+          reloadGitFlow();
+        });
+    },
+    [active?.id, applyGitFlow, gitFlowContext, refresh, reloadGitFlow],
+  );
 
   /**
    * Starts one network operation. The request only has to be accepted: the outcome arrives as an
@@ -1065,6 +1127,67 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     },
   ]);
 
+  const currentGitFlowBranch = gitFlowContext?.branches.find((branch) => branch.isHead);
+  const gitFlowUnavailableReason = !active
+    ? 'Open a repository first.'
+    : active.bare
+      ? 'A bare repository has no working tree.'
+      : gitFlowLoading
+        ? 'The Git-flow state is still loading.'
+        : referenceBusy
+          ? 'Another repository operation is running.'
+          : undefined;
+  const gitFlowPrimaryDisabledReason =
+    gitFlowUnavailableReason ??
+    (!gitFlowContext
+      ? 'The Git-flow state is unavailable.'
+      : gitFlowContext.status === 'unconfigured'
+        ? gitFlowContext.capabilities.canInitialize
+          ? undefined
+          : (gitFlowContext.capabilities.initializeReason ?? 'Git-flow cannot be initialized here.')
+        : gitFlowContext.capabilities.canStart
+          ? undefined
+          : (gitFlowContext.capabilities.startReason ?? 'Git-flow cannot start a topic here.'));
+  const gitFlowItems: MenuEntry[] = compactMenu([
+    {
+      id: 'git-flow-initialize',
+      label: 'Initialize…',
+      disabled: gitFlowUnavailableReason !== undefined || !gitFlowContext?.capabilities.canInitialize,
+      disabledReason: gitFlowUnavailableReason ?? gitFlowContext?.capabilities.initializeReason ?? undefined,
+      run: () => openGitFlowDialog({ kind: 'initialize' }),
+    },
+    {
+      id: 'git-flow-start',
+      label: 'Start',
+      disabled: gitFlowUnavailableReason !== undefined || !gitFlowContext?.capabilities.canStart,
+      disabledReason: gitFlowUnavailableReason ?? gitFlowContext?.capabilities.startReason ?? undefined,
+      submenu: (['feature', 'release', 'hotfix'] as const).map((type) => ({
+        id: `git-flow-start-${type}`,
+        label: `${typeLabels[type]}…`,
+        disabled: gitFlowUnavailableReason !== undefined || !gitFlowContext?.capabilities.canStart,
+        run: () => openGitFlowDialog({ kind: 'start', type }),
+      })),
+    },
+    {
+      id: 'git-flow-finish',
+      label: currentGitFlowBranch
+        ? `Finish ${typeLabels[currentGitFlowBranch.type]} '${currentGitFlowBranch.name}'…`
+        : 'Finish Current Topic…',
+      disabled:
+        gitFlowUnavailableReason !== undefined ||
+        !gitFlowContext?.capabilities.canFinish ||
+        currentGitFlowBranch === undefined,
+      disabledReason: gitFlowUnavailableReason ?? gitFlowContext?.capabilities.finishReason ?? undefined,
+      run: () => {
+        if (currentGitFlowBranch) openGitFlowDialog({ kind: 'finish', branch: currentGitFlowBranch });
+      },
+    },
+  ]);
+  const gitFlowPrimary = () => {
+    if (gitFlowContext?.status === 'unconfigured') openGitFlowDialog({ kind: 'initialize' });
+    else openGitFlowDialog({ kind: 'start', type: 'feature' });
+  };
+
   const stashItems: MenuEntry[] = compactMenu([
     {
       id: 'save-stash',
@@ -1141,7 +1264,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         mergeRebaseDialog ||
         historyOperationDialog ||
         interactiveRebaseDialog ||
-        stashDialog
+        stashDialog ||
+        gitFlowDialog
       )
         return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
@@ -1208,6 +1332,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     mergeRebaseDialog,
     historyOperationDialog,
     interactiveRebaseDialog,
+    gitFlowDialog,
     referenceDialog,
     referenceBusy,
     remotes.length,
@@ -1481,6 +1606,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                     run: initializeLfs,
                   },
                 ],
+              },
+              {
+                id: 'git-flow',
+                label: 'Git-flow',
+                submenu: gitFlowItems,
               },
               {
                 id: 'save-stash',
@@ -2298,6 +2428,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onNewBranch={() => {
           if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-branch', target: headTarget });
         }}
+        gitFlowItems={gitFlowItems}
+        gitFlowDisabledReason={gitFlowPrimaryDisabledReason}
+        onGitFlow={gitFlowPrimary}
         stashItems={stashItems}
         stashDisabledReason={stashDisabledReason}
         onSaveStash={() => openStashSave()}
@@ -2489,6 +2622,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onRemoteAction={runRemoteAction}
           onOpen={openNetworkDialog}
           onClose={closeNetworkDialog}
+        />
+      )}
+      {gitFlowDialog && gitFlowContext && (
+        <GitFlowDialog
+          request={gitFlowDialog}
+          context={gitFlowContext}
+          platform={platform}
+          busy={referenceBusy}
+          failure={gitFlowFailure}
+          onSubmit={startGitFlow}
+          onClose={closeGitFlowDialog}
         />
       )}
       {mergeRebaseDialog && (

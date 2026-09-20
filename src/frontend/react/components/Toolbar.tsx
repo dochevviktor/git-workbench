@@ -32,6 +32,8 @@ interface ToolbarProps {
   readonly branchItems: readonly MenuEntry[];
   readonly branchDisabledReason: string | undefined;
   readonly branchPrimaryDisabledReason: string | undefined;
+  readonly gitFlowItems: readonly MenuEntry[];
+  readonly gitFlowDisabledReason: string | undefined;
   readonly stashItems: readonly MenuEntry[];
   readonly stashDisabledReason: string | undefined;
   readonly openInItems: readonly MenuEntry[];
@@ -46,6 +48,7 @@ interface ToolbarProps {
   readonly onPull: () => void;
   readonly onPush: () => void;
   readonly onNewBranch: () => void;
+  readonly onGitFlow: () => void;
   readonly onSaveStash: () => void;
   readonly onToggleActivity: () => void;
   readonly onCancelOperation: (operationId: string) => void;
@@ -177,6 +180,8 @@ export function Toolbar({
   branchItems,
   branchDisabledReason,
   branchPrimaryDisabledReason,
+  gitFlowItems,
+  gitFlowDisabledReason,
   stashItems,
   stashDisabledReason,
   openInItems,
@@ -190,6 +195,7 @@ export function Toolbar({
   onPull,
   onPush,
   onNewBranch,
+  onGitFlow,
   onSaveStash,
   onToggleActivity,
   onCancelOperation,
@@ -315,6 +321,13 @@ export function Toolbar({
           primaryDisabledReason={branchPrimaryDisabledReason}
           menuItems={branchItems}
           onClick={onNewBranch}
+        />
+        <ToolbarButton
+          icon={<BranchIcon size={18} />}
+          label="Git-flow"
+          disabledReason={gitFlowDisabledReason}
+          menuItems={gitFlowItems}
+          onClick={onGitFlow}
         />
       </div>
 

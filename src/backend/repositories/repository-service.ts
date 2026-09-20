@@ -56,6 +56,9 @@ import type {
   RepositoryReferenceActionRequest,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
+  RepositoryGitFlowActionRequest,
+  RepositoryGitFlowActionResult,
+  RepositoryGitFlowContext,
   RepositoryWorktreeActionRequest,
   RepositoryWorktreeActionResult,
   RepositoryWorktreeContext,
@@ -146,6 +149,7 @@ import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
 import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
+import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
 import {
   applyWorkingChange,
   previewDiscard,
@@ -990,6 +994,67 @@ export class RepositoryService {
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the linked worktrees.');
     }
+  }
+
+  async getGitFlow(ownerId: number, id: string): Promise<RepositoryGitFlowContext> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readGitFlowContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        worktreePath: summary.worktreePath,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the Git-flow configuration.');
+    }
+  }
+
+  startGitFlowOperation(ownerId: number, request: RepositoryGitFlowActionRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.action;
+    const title =
+      action.kind === 'initialize'
+        ? 'Initialize Git-flow'
+        : action.kind === 'start'
+          ? `Start ${action.type} '${action.name}'`
+          : `Finish ${action.type} '${action.name}'`;
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'git-flow',
+        title,
+        command: `git flow ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            const value = await applyGitFlowAction(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              gitDir: summary.gitDir,
+              worktreePath: summary.worktreePath,
+              action,
+              signal: handle.signal,
+              onCommand: (args) =>
+                handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+            });
+            return {
+              status: value.status === 'applied' ? 'succeeded' : 'failed',
+              message: value.message,
+              output: value.output,
+              failureReason: value.status === 'blocked' ? gitFlowOperationFailure(value) : undefined,
+              result: { kind: 'git-flow', value },
+            };
+          } catch (error) {
+            if (error instanceof GitFlowSnapshotError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            throw this.mapGitFailure(error, 'Git could not complete the Git-flow action.');
+          }
+        }),
+    );
   }
 
   async getSubmodules(ownerId: number, id: string): Promise<RepositorySubmoduleContext> {
@@ -3165,5 +3230,15 @@ function submoduleOperationFailure(
   if (value.reason === 'dirty') return 'local-changes';
   if (value.reason === 'conflict') return 'conflict';
   if (value.reason === 'missing' || value.reason === 'not-found') return 'not-found';
+  return 'other';
+}
+
+function gitFlowOperationFailure(
+  value: RepositoryGitFlowActionResult,
+): NonNullable<RepositoryOperation['failureReason']> | undefined {
+  if (value.status === 'applied') return undefined;
+  if (value.reason === 'dirty') return 'local-changes';
+  if (value.reason === 'conflict') return 'conflict';
+  if (value.reason === 'identity') return 'other';
   return 'other';
 }

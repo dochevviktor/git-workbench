@@ -54,6 +54,15 @@ an independent Linux result; Fork's captured local-transport failure remains unc
 missing-object, interrupted-update/cancellation, conflict continuation, and broader tool/provider routes
 remain explicit limits.
 
+Subsequent implementation: the public-only F25 native Git-flow slice is recorded in the
+[Git-flow handoff](../reviews/f25-git-flow.md). It maps the vendor's Git-flow feature-family claim and
+the public feature/release/hotfix workflow specification to conventional `gitflow.*` config reads,
+typed capability checks, ordinary-Git initialize/start/finish operations, annotated version tags, and
+the Git-flow toolbar/menu/dialogs. Disposable Git and headless Electron tests complete one feature,
+release, and hotfix lifecycle. Exact Fork defaults, private UI, remote publish/track/delete, topic rebase,
+automatic stash/reapply, linked topic worktrees, and specialized conflict continuation remain public
+gaps or deliberate bounded-slice limits; F38 Lean Branching remains separate from F25.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the
@@ -285,7 +294,8 @@ baseline and Linux accessibility/scaling/restart/error tests remain acceptance g
 were rerun for this documentation audit; earlier implementation verification records retain their dates.
 
 Documentation validation (2026-09-20): all 82 topics appear exactly once in the crosswalk with their
-catalogue status; the surface contains 38 unique F-items; cited finding IDs, 143 local links/anchors and
-130 reference-style links resolve in the six edited documents. Prettier and `git diff --check` pass.
-F24's bounded local slice updates P10 to Partial; the other phase statuses remain unchanged. The supplied
+catalogue status; the surface contains 38 unique F-items; cited finding IDs, local links/anchors and
+reference-style links were checked after the F25 handoff update. Prettier and `git diff --check` pass.
+F24's bounded local slice updates P10 to Partial and the public-only F25 bounded slice updates the
+verified implementation record for P09; the phases remain partial. The supplied
 bundle and preexisting `.gitignore` edits were preserved.

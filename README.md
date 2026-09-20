@@ -35,6 +35,11 @@ child tabs. F24 adds bounded local Git LFS pointer/materialized inspection, opti
 initialization, exact historical payload Save As with SHA-256 verification, and retrieval progress;
 remote/authenticated transfers, push, locks, and remote missing-object recovery remain later work.
 Interrupted updates, nested mutation, missing-object recovery, and conflict continuation remain later work.
+F25 adds native Git-flow initialization plus feature, release, and hotfix start/finish workflows with
+annotated tags, optional develop back-merges, explicit capability checks, and a Git-flow toolbar/menu.
+It uses ordinary Git and repository-local `gitflow.*` configuration; remote publishing, topic rebase,
+automatic stash/reapply, and specialized conflict continuation remain later work. Lean Branching remains
+a separate F38 family.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history
@@ -187,7 +192,7 @@ Both directories are ignored. Application dependencies are currently fully bundl
 
 The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
 Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
-not completed Git Workbench features. The F01–F16 correction pass and bounded F17/F18/F19/F20/F21/F24 slices are
+not completed Git Workbench features. The F01–F16 correction pass and bounded F17/F18/F19/F20/F21/F24/F25 slices are
 verified with the limits in their review records; the bounded F21 slice is implemented in P08. Fork binaries,
 private source, and bundled product assets
 are excluded; reference screenshots stay private/local and are never application assets.

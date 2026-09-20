@@ -122,6 +122,16 @@ status state. The bounded handoff is in [F24 LFS](reviews/f24-lfs.md). Authentic
 push, locks, track/untrack editing, and remote missing-object recovery remain outside this slice; P10
 remains partial.
 
+F25 implementation checkpoint (2026-09-20): added a typed native Git-flow context and operation path for
+conventional `gitflow.*` configuration, initialization, feature/release/hotfix start, and finish. Finish
+supports annotated release/hotfix tags, optional develop back-merges, no-fast-forward selection, branch
+retention, clean/stale/pending-operation capability guards, and structured conflict/identity/name refusals.
+The Git-flow toolbar/menu and dialogs are independently authored; no external git-flow executable is
+required. Disposable Git tests and the headless Electron scenario complete and assert all three lifecycles.
+The bounded handoff is in [F25 Git-flow](reviews/f25-git-flow.md). Topic rebase, publish/track/delete-remote,
+automatic stash/reapply, specialized conflict continuation, and worktree-owned topic branches remain
+outside this slice; F38 Lean Branching remains separate.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                        | Depends on                            |
@@ -135,7 +145,7 @@ remains partial.
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                         | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); directory/code history, bisect, and patch import remain planned | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22 worktree lifecycle and F23 submodule lifecycle/revision/navigation slices verified (2026-09-20); broader submodule variants and Git-flow remain planned                  | P02/P05, common-repo queue            |
+| P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                           | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS inspection/retrieval verified (2026-09-20); image viewers, signing, authenticated transfers and locks remain planned                                           | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                                    | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                   | P02/P03 plus relevant domain services |
@@ -909,7 +919,7 @@ tab marker, Open/file-manager/Delete/Copy Path actions, branch context routes, a
 Disposable tests cover local/remote creation, occupied branches, dirty/locked guards, pruning, and parent
 state; the headless Electron scenario covers the captured create/open/remove flow. Detached creation,
 lock/unlock, nested worktrees, and the unobserved Fork dirty/locked presentation remain outside this
-bounded slice. Submodules and Git-flow are still planned.
+bounded slice. Submodule variants remain planned; F25 is recorded below.
 
 Started F23 submodule slice (2026-09-20): add bounded recursive topology reads and operation-backed
 add/init/update/sync/remove capabilities. Parent gitlinks are compared with the index and initialized
@@ -921,6 +931,17 @@ successful local initialization, dirty refusal, force removal, and parent preser
 Electron scenario verifies the captured dirty-child/child-tab flow and successful local Update. Nested
 mutation, missing objects, interrupted/cancelled updates, and conflict continuation remain outside this
 bounded slice.
+
+F25 implementation checkpoint (2026-09-20): add conventional `gitflow.*` repository configuration
+inspection and explicit initialize/start/finish actions. Feature branches start from develop and finish
+back into develop; release and hotfix branches start from their documented base, finish into production,
+create annotated version tags, and optionally merge the topic into develop before cleanup. The native
+Git implementation refuses dirty/untracked/conflicted/pending-operation states, stale context, missing
+bases, duplicate topics/tags, detached heads, and missing identity with typed capability/result messages.
+The renderer adds a Git-flow toolbar/menu and initialize/start/finish dialogs. `tests/unit/gitflow-service.test.ts`
+verifies refs, tags, content and refusal invariants; `tests/e2e/gitflow.test.ts` verifies the same three
+lifecycles through the real Electron bridge. The [F25 handoff](reviews/f25-git-flow.md) records public
+evidence, Linux adaptations and unverified variants. The separate Lean Branching menu remains F38.
 
 Acceptance:
 
