@@ -11,16 +11,22 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
   context isolation, sandboxing, CSP, and exact subscription cleanup.
 - Put Git semantics in backend services; do not expose a generic command executor to the renderer.
   Use temporary repositories for tests. Never exercise mutating Git tests on the user's working repository.
-- Research Fork from public documentation, release notes, and screenshots only. Do not obtain its
-  proprietary application, binaries, source, or bundled assets. Record source URLs, dates, confidence,
-  and platform differences in `docs/research/fork-public-surface.md`.
+- Use the user-supplied black-box catalogue in `docs/research/fork-reference-new/` as the primary
+  Windows 2.22.0.0 reference. Read its `reference/catalogue/START_HERE.md`, the relevant feature dossiers,
+  original cases, and linked screenshots/Git evidence. Supplement gaps with public documentation,
+  release notes, and screenshots. Do not obtain Fork's application, binaries, source, or bundled assets,
+  or run the historical Windows capture harness. Record case/finding IDs or public source URLs, dates,
+  confidence, and platform differences in `docs/research/fork-public-surface.md` and its alignment record.
 - Use independently authored visual assets and implementation. Do not present inferred behavior as
   observed behavior or a placeholder as an implemented feature.
-- Before and after layout or styling work, compare the app with the local Fork screenshot library: run
-  `npm run research:references` to restore the git-ignored `docs/research/fork-references/` and browse its
-  `INDEX.md` by topic. Prefer the newest screenshots of the platform being matched (Linux follows Windows).
+- Before and after layout or styling work, compare the app with the catalogue's original screenshots
+  for the relevant case and state (Linux follows Windows). Consult
+  `docs/research/fork-catalogue-alignment.md` for corrections and deliberate adaptations. For public
+  reference gaps, run `npm run research:references` and browse the restored git-ignored
+  `docs/research/fork-references/INDEX.md` by topic. That command does not restore the private bundle.
   Add new public screenshots to `docs/research/fork-references.json` with source, date, platform, stated
-  version, and theme. Never commit the images or copy them into the application.
+  version, and theme. Preserve the private bundle unchanged; never commit its images or copy them into
+  the application. Capture coverage is not implementation completion; retain case-level unknowns.
 - Use npm and the committed lockfile. Run relevant tests plus `npm run check` and `npm run build`
   for a completed phase; run the Electron smoke test when changing startup, preload, or packaging.
 - Update the plan's progress ledger and feature coverage when a phase is actually verified.

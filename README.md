@@ -1,8 +1,9 @@
 # Git Workbench
 
 A Linux-first Git desktop client in early development. **Git Workbench is a working name.**
-The long-term target is the publicly documented functionality of Fork, implemented independently
-with Electron, shared TypeScript contracts, and React.
+The long-term target is Fork's captured Windows workflows and publicly documented feature families,
+implemented independently with Electron, shared TypeScript contracts, and React. The Windows 2.22.0.0
+black-box catalogue now guides the Linux UI; documented platform-specific extensions remain separate.
 
 The current milestone starts F01's local workflow, the first F02 repository-manager slice, the initial
 F03 tab slice, the first F04–F07 history, collapse, filtering, and revision-inspection slices, the
@@ -148,15 +149,23 @@ Both directories are ignored. Application dependencies are currently fully bundl
 - [Implementation plan](docs/implementation-plan.md): ordered phases, dependencies, acceptance criteria,
   and a prompt for the next step.
 - [Fork research](docs/research/fork-public-surface.md): dated public sources, feature coverage,
-  observed layout, and unresolved questions.
+  captured behavior, observed layout, and unresolved questions.
+- [Catalogue alignment](docs/research/fork-catalogue-alignment.md): the 2026-09-20 audit, design rules,
+  corrections, and all 82 capture topics mapped to implementation work.
+- [Private catalogue entry point](docs/research/fork-reference-new/START_HERE.md): the user-supplied
+  Windows 2.22.0.0 screenshots, cases, and Git observations. The evidence directories are git-ignored;
+  retain the complete bundle locally with its relative paths. Public screenshot downloads do not restore it.
 - [Fork reference screenshots](docs/research/fork-references.json): public images for design comparison.
   `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
   folder with a browsable `INDEX.md`; the images are never committed or used in the application.
 - [Architecture](docs/architecture.md): process boundaries, IPC conventions, and Git service direction.
 - [Contributor instructions](AGENTS.md): conventions for future implementation work.
 
-The research baseline is 2026-09-16. It uses public documentation and vendor screenshots only;
-Fork's application, binaries, private source, and assets are not part of this repository.
+The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
+Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
+not completed Git Workbench features. The current implementation above still has the recorded gaps;
+the next correction slice is C01 in the plan. Fork binaries, private source, and bundled product assets
+are excluded; reference screenshots stay private/local and are never application assets.
 
 ## Migration notes
 

@@ -16,3 +16,10 @@ playwright-report/
 
 # Local copies of public Fork screenshots for design comparison; see docs/research/fork-references.json
 docs/research/fork-references/
+/docs/research/fork-reference-new/environment/
+/docs/research/fork-reference-new/evidence/
+/docs/research/fork-reference-new/fixtures/
+/docs/research/fork-reference-new/notes/
+/docs/research/fork-reference-new/reference/
+/docs/research/fork-reference-new/specs/
+/docs/research/fork-reference-new/tools/

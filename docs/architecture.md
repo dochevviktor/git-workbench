@@ -8,6 +8,58 @@ with its F14 operation registry, background-fetch scheduler, and activity views,
 PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
+## Catalogue-driven corrections (planned, 2026-09-20)
+
+The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
+target without changing the Electron/TypeScript boundaries. C01–C06 in the
+[implementation plan](implementation-plan.md#catalogue-correction-sequence) own the work below. These
+are decisions for future implementation; the current descriptions later in this document remain a record
+of existing code, including exclusive tab orientation and blank-message lightweight-tag behavior.
+
+- **Navigation and command state:** one repository-session/order model feeds horizontal tabs and the
+  optional workspace repository list simultaneously. Keep repository-list visibility separate from
+  Commit List Layout. Migrate existing orientation preferences without losing sessions. A shared
+  renderer command model supplies context, availability and shortcuts to menus, toolbar and Quick Launch;
+  backend preconditions remain authoritative for mutation. Resolve current view/tab/zoom shortcut conflicts.
+- **View state:** distinguish repository, revision/path, index/worktree side, diff layout and window owner.
+  Store line anchors/focus separately from byte snapshots and persisted settings. A popup can share file
+  selection with its owner while keeping an independent diff layout. Normal restart, in-session switching
+  and interrupted Git operations need separate retention rules; see the table below.
+- **Inspection windows:** reusable diff, commit-detail, file-history and blame surfaces may have bounded
+  secondary windows. Main owns creation and immutable owner/target identity; every window gets the same
+  sender/frame validation, CSP, sandbox and exact cleanup as the main shell. Do not add generic renderer
+  URL, filesystem or window creation. A close must release subscriptions/read jobs and return focus.
+- **Diff data:** extend named contracts/preload/handlers/services together for context/full-file/explicit
+  large-diff access. Keep bounded output, cancellation, generation guards and safe asset delivery; a
+  Load Diff control cannot bypass resource limits. Reuse presentation in inspectors without conflating
+  their view state with the working-tree mutation snapshot.
+- **Semantic corrections:** tag kind cannot be inferred from a nonempty message; the captured route
+  creates an annotated object even with an empty annotation. Stash Stage new files is not interchangeable
+  with include-untracked: represent the intended policy explicitly and verify stash parent/index shape.
+  Preserve existing recovery, identity validation and operation queues while revising contracts/tests.
+- **Merge/conflict/rebase:** add an explicit merge mode, not raw flags. Backend data includes base/ours/
+  theirs, index stages and the sequencer; the captured helper presents two inputs above an editable result.
+  Resolve writes/stages; Commit/Continue advances history. Interactive Edit pause, amend and replay are
+  distinct operation states. Model squash pending state independently of MERGE_HEAD presence.
+- **Activity:** keep process/job outcome separate from repository sequencer state. Cancel-requested is
+  not proof of termination or remote rollback; a finished process can leave a conflict requiring recovery.
+  Preserve structured errors and do not reproduce misleading captured Activity success labels.
+
+| State                                             | Captured Windows scope                                                          | Planned project policy                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Tabs/order/active repository/window/sidebar width | Restored in normal restart, P2-015                                              | Restore with schema migration and off-screen recovery.                           |
+| Selected commit/detail tab                        | Resets to HEAD/Commit in sampled restart                                        | Match on normal restart; preserve drafts and operation recovery independently.   |
+| Horizontal pane divider                           | Sampled position resets in P2-015                                               | Keep useful existing persistence as a documented deviation.                      |
+| Diff file/line anchor/layout                      | Retained across sampled in-session file/view/repository/layout switches, P0-028 | Retain within that session/target; define stale-content invalidation explicitly. |
+| Post-hunk selection/focus                         | Viewport retained, highlight cleared, file row focused, P0-032                  | Reconcile after successful mutation; preserve recoverable state on failure.      |
+| Drafts and unfinished operations                  | Full persistence not established by the clean restart captures                  | Preserve drafts and durable recovery as independent product requirements.        |
+| Theme and other preferences                       | Light restored in a sampled restart; defaults/nondefault retention incomplete   | Preserve explicit user choices; do not describe them as proven Fork defaults.    |
+
+UIA names, HWNDs, physical screenshot coordinates, Windows paths and capture scripts are evidence, not
+application abstractions. Exact fonts/colors, alternate commit-layout behavior, 125% DPI and inaccessible
+focus/clipping states do not justify guesses presented as parity. Independently authored Linux behavior
+and tests remain required. Public-only integrations and Git-flow retain their separate phase scope.
+
 ## Process boundaries
 
 ```mermaid

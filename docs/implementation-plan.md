@@ -1,14 +1,22 @@
 # Git Workbench implementation plan
 
-Baseline: 2026-09-16. Target: an independently implemented, Linux-first desktop Git client covering
-Fork's publicly documented workflows. [Research and feature IDs](research/fork-public-surface.md)
-define the target; [architecture](architecture.md) defines the boundaries.
+Initial baseline: 2026-09-16. **Realigned: 2026-09-20**, using the supplied Fork Windows **2.22.0.0**
+black-box catalogue. Target: an independently implemented Linux-first desktop Git client covering the
+captured Windows workflows and the separately documented public feature families.
+[Research and feature IDs](research/fork-public-surface.md) define the target;
+[catalogue alignment](research/fork-catalogue-alignment.md) maps all 82 topics, corrections and limits;
+[architecture](architecture.md) defines the boundaries. Capture IDs such as P0-022 are research topics,
+not project phases P00–P14.
 
-**Next implementation request: Continue P06 — three-way conflict helper and conflict-state inspection.**
+**Next implementation request: C01 — reconcile shell, repository navigation and interaction state
+within P02/P03/P12.** C02 then reconciles Local Changes/diffs, C03 references/remotes/stashes, and C04
+returns to P06's conflict helper and P07 history editing. Each correction is a bounded implementation
+request; this documentation audit does not authorize or claim those changes as completed.
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
-checkpoint; it is not full Fork parity. Later phases cover the remaining documented families.
+checkpoint after the outstanding P01–P05 daily-use prerequisites are verified; it is not full Fork
+parity. Later phases cover the remaining captured and publicly documented families.
 Unknown behavior is recorded in research and must not be invented and labeled equivalent.
 
 Review checkpoint (2026-09-19): the audit reproduced mutation-target, operation-lifetime, refresh,
@@ -19,35 +27,142 @@ now closes R1–R12 and verifies the requested branch workflows, including the m
 support and a PR browser handoff brought forward from later phases. F01–F13 still denote partial slices,
 not completed feature families.
 
+Catalogue checkpoint (2026-09-20): all 7,295 portable-manifest entries passed size/SHA-256 verification;
+82 topic summaries, 275 findings and their limits were reviewed, with representative original screenshots
+and focused source inspection. The audit confirms tab-layout and empty-message-tag mismatches and adds
+missing state-level requirements. **No implementation status is promoted.** Historical verification
+records below remain valid for their original scope; they do not verify catalogue parity. F38 now tracks
+the captured Lean Branching menu separately from Git-flow, with execution semantics still unresolved.
+
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                                                                                             | Depends on |
-| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —          |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; jobs, cancellation, literal paths, coordinated reads/writes, F14 scheduler (2026-09-19)                   | P00        |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01        |
-| P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02        |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P03        |
-| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization + F14 fetch/activity (2026-09-19)                                                   | P04        |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; F15 stash/patch plus ordinary F16 merge/rebase and sequencer recovery slices (2026-09-19)                 | P05        |
-| P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06        |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P07        |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P08        |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                            | P09        |
-| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                         | P10        |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16); Fork design refresh (2026-09-17)                 | P11        |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                            | P12        |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                            | P13        |
+| Phase | Deliverable                                                          | Status                                                                                                             | Depends on                            |
+| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                              | —                                     |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; jobs, cancellation, literal paths, coordinated reads/writes, F14 scheduler (2026-09-19)                   | P00                                   |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; F01 local + F02 manager + F03 tab slice (2026-09-16)                                                      | P01 runner/jobs                       |
+| P03   | History graph, references, commit details, revision tree             | Partial; F04 history + graph drawing, F05 collapse, F06 filtering, and F07 revision inspection slices (2026-09-17) | P02 sessions                          |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; F08 status + F09 diff + F10 staging + initial F11 commit slice (2026-09-17)                               | P01 writes, P02/P03 views             |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; F12/F13 stabilization + F14 fetch/activity (2026-09-19)                                                   | P01 jobs, P02/P04, P06 recovery       |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; F15 stash/patch plus ordinary F16 merge/rebase and sequencer recovery slices (2026-09-19)                 | P01/P04/P05 capabilities              |
+| P07   | Interactive rebase and history editing                               | Planned                                                                                                            | P06                                   |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Planned                                                                                                            | P03/P04; recovery for mutations       |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                            | P02/P05, common-repo queue            |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                            | P04, safe assets; P05 transfers       |
+| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                         | P05 auth; browser handoff independent |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Started out of order; F34 window chrome/menus slice (2026-09-16); Fork design refresh (2026-09-17)                 | P02/P03 plus relevant domain services |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                            | P03 history; P12 tools for AI         |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                            | Every claimed workflow                |
 
-The sequence is the default execution order. Within a phase, complete its numbered slices in order;
-each slice can be a separate future request. Refine a slice if public research exposes additional
-requirements. Keep the ledger, feature matrix, and evidence current as work lands.
+The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
+strict P00→P14 execution chain: shell/workspace foundations from P12 and large-diff handling from P10
+must arrive with the workflows that need them. “Depends on” names required capabilities, not an assertion
+that an earlier partial phase is complete. Public-only extensions keep their scope and may follow the
+captured core without blocking unrelated work. Keep implementation and research coverage separate.
+
+## Catalogue correction sequence
+
+All C-items are **planned, unverified** as of 2026-09-20. A completed correction does not complete all of
+its owning phases. Each implementation handoff records case/finding IDs, original image paths, changed
+components/services, validation, and deliberate deviations in the alignment record. Use the catalogue's
+current dossiers to find later subcases that resolve earlier capture failures.
+
+| Correction                                | Ownership and prerequisites                                         | Deliverable and acceptance boundary                                                                                                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C01 — Shell and interaction               | P02/P03/P12; existing sessions, graph and menus                     | Additive repository list plus horizontal tabs, state/shortcut policy, menu availability, splitters and light/dark baselines. No new Git mutation workflows.                     |
+| C02 — Local Changes and diff              | P04 plus bounded diff infrastructure; C01 composition               | Complete selection/diff/staging/discard/commit transitions, context/full-file/wrap/popup/Load Diff and external refresh.                                                        |
+| C03 — References, remotes and stash       | P01/P02/P05 and F15 in P06; existing jobs/recovery, C02 state model | Correct tag and stash-new-file semantics; checkout/dialogs, local clone, remote activity/cancellation, and separately specified authentication.                                 |
+| C04 — Conflicts and history editing       | P06 then P07; C02 staging/composer, C03 refs/jobs                   | Merge modes, two-input/result helper, operation-specific resolution/abort, cherry-pick/revert/reset, then interactive rebase.                                                   |
+| C05 — Investigation and advanced surfaces | P08/P09/P10/P12/P13; each slice's domain prerequisites              | Search/History/Blame/Quick Launch, patches, worktrees/submodules, images/LFS, external tools/custom commands and statistics. Split by feature; no single monolithic acceptance. |
+| C06 — Cross-feature verification          | P14 plus unresolved infrastructure in P01/P02; verified core slices | State retention matrix, scaling/accessibility, performance, failures and Linux packaging; publish bounded parity and deviation coverage.                                        |
+
+### C01 acceptance — next bounded request
+
+- Inspect P0-003–013, P2-012–015 and P2-017. Match the shell at comparable client bounds, theme and
+  focus. Add a toggled repository list grouped by workspace **alongside** horizontal tabs; both share
+  repository identity, active selection and order. Test switching, closing, reopening and drag reorder.
+- Replace the assumption that Appearance's Horizontal/Vertical controls mean repository tab orientation.
+  Model repository-list visibility and Commit List Layout independently. The latter's alternate outcome
+  is not captured: do not enable a placeholder or claim parity from its label alone. Migrate stored tab
+  orientation without losing paths/order; retain any exclusive mode only as an explicit project extension.
+- Reconcile Windows/Linux view shortcuts (Ctrl+0/1/2, Ctrl+Shift+D), tab cycling/reopen and New Tag
+  Ctrl+Shift+G with current tab-number/zoom conflicts. One command map drives labels and handlers;
+  execution still requires implemented capabilities. Verify disabled root/current-branch/no-remote states.
+- Distinguish hover, active/inactive selection, text selection and keyboard focus. Use measured splitter
+  states as references; keep primary controls reachable at the supported Linux minimum. Do not reproduce
+  severe clipping or trapped focus. New preferences/Lean Branching/workspace configuration remain
+  unavailable until implemented; captured labels alone do not complete those workflows.
+- Define the retention matrix before changing persistence: tab order/active repository/window/sidebar
+  restore; normal restart selects HEAD and Commit, while drafts and pending recovery survive. Existing
+  useful pane-size persistence can remain as a documented deviation. Compare in-session retention
+  separately; the catalogue does not establish a universal restore-everything rule.
+- Verify disposable-repository Electron scenarios and before/after light/dark captures. Run the phase
+  checks below; native Wayland moving/resizing/frame verification remains a manual gate when affected.
+
+### C02 acceptance — local workflow corrections
+
+- Use P0-014–032, P2-004, P2-007 and P2-016. Check selected staged/unstaged side, duplicate partial-file
+  rows, filtered count/header, action enablement and next selection after file removal. Preserve the
+  existing snapshot-validated backend and prove insertion-only staging with an intermediate index blob.
+- Add context increase/decrease, entire-file view, whitespace/symbol controls, unified wrap and split
+  availability. Retain line anchors across file/view/repository/layout switches in the captured scope;
+  after partial hunk Stage, retain viewport, clear highlight and focus the file row.
+- Add a selection-linked diff popup (Down changes underlying file; Space closes), independent layout
+  state and focus return. Add explicit bounded Load Diff with cancellation/error/resource limits.
+  The 60,000-line fixture establishes an opt-in state, not the threshold or an unbounded-load policy.
+- Finish file/multi-file discard with exact preview, Cancel invariance, recovery and unrelated-work
+  preservation. Verify rename-only empty diff, deleted text, binary metadata fallback, normal commit,
+  disabled states and read-only amend/cancel; a message-only merge amend preserves tree and both parents.
+
+### C03 acceptance — semantic and dialog corrections
+
+- Use P1-001–015. Correct empty-message Create Tag to produce an annotated object; preserve the ability
+  to inspect existing lightweight tags. Test tag object type/message/target, not just the visible label.
+- Separate clean checkout's immediate action from dirty checkout choices and detached confirmation.
+  Test refusal, successful reapply, reapply conflict and tracked discard. Retain stronger preview/recovery
+  safeguards; staged/untracked/ignored behavior outside the capture needs an explicit independent policy.
+- Reconcile Save Stash's **Stage new files** option and two-parent/index-parent result with the current
+  checked include-untracked implementation. Do not relabel a different Git operation as equivalent.
+  Test existing staged work and conflict retention; Fork's full staged-restoration policy remains unknown.
+- Add local Clone and Test Connection with reviewed destination, progress, auto-open, failure and Cancel.
+  Reconcile Fetch/Pull/Push/remote forms and Activity against the captured states. Preserve local bare-remote
+  tests; credential/askpass/keyring work remains required P05 scope but is not established by this catalogue.
+- Model cancel-requested separately from terminal outcome and verify remaining local/remote refs. A delayed
+  rejecting receiver does not prove accepting-remote cancellation. Keep unfinished Git state authoritative.
+
+### C04 acceptance — operation state machines
+
+- Use P1-006 and P1-015–027. Add FF/No-FF/Squash/Don't Commit modes with distinct parent/index/message/
+  pending-state assertions. The don't-commit trial is non-fast-forward; test FF interaction independently.
+- Implement two visible source panes above an editable result, operation-aware labels, resolution count,
+  disabled Resolve, side selection, write-and-stage and subsequent Commit/Continue. Base content stays
+  available to the backend; a permanently visible third source pane is not a captured requirement.
+- Cover merge/rebase/stash/cherry-pick/revert conflict continuation and abort from a fresh app launch.
+  Test multi-region/manual and non-text conflicts independently; a one-region trial does not prove them.
+  Rebase Skip may remain a project capability; an explicit Fork GUI route is still unestablished.
+- Then implement P07's newest-first plan, reordered actions, squash/fixup message rules and Edit pause →
+  Amend → Continue. Test graph, trees, authors/messages and retained recovery refs. Keep unexercised
+  backup/dependent-ref options distinct from verified captured effects.
+
+### C05/C06 acceptance — bounded advanced work and closure
+
+- Implement P1-028–033 and P2-001–011 as individual slices under their owning phases. Search scopes and
+  graph highlights, inspector navigation/rename traversal, staged patch application, worktree/submodule
+  transitions and local historical LFS retrieval now have concrete references. Do not convert a submodule
+  Update failure into successful-init coverage or infer authenticated LFS/locks from local Save As.
+- Keep public-only feature families and per-case unknowns visible. F38 Lean Branching entry points need
+  a researched or explicitly independent execution specification; they are not Git-flow evidence.
+- Test Linux focus, small-window usability and fractional scaling independently. P2-014 is blocked at
+  125% DPI; P2-017's 351 commits are navigation evidence, not the 100k/1k performance acceptance.
+  P14 closes only after each claimed state has implementation evidence or an explicit deviation/limit.
 
 ## How to execute a future request
 
-1. Read the requested phase, architecture, related F-items, and repository instructions.
+1. Read the requested correction/phase, architecture, related F-items and repository instructions.
 2. Check the current worktree and prerequisite acceptance criteria. Preserve unrelated changes.
-3. Refresh only the relevant public Fork/Git documentation. Record dated evidence and unresolved choices.
+3. Read the relevant catalogue dossiers and original cases; inspect the matching PNG/UIA/Git evidence.
+   Consult public Fork/Git sources for remaining gaps, preserving dates/platforms. Record case/finding IDs,
+   confidence and deliberate Linux adaptations; do not run the historical capture harness.
 4. Implement one complete vertical workflow: contracts, service, bridge, UI, failures, and verification.
 5. Test with disposable repositories and independent Git CLI assertions. Run `npm run check` and
    `npm run build`; run the Electron smoke test for changes to startup, bridge, or packaging.
@@ -72,6 +187,10 @@ on repositories and actions the user selects.
 - Keyboard access, focus management, scaling, and readable contrast are included as each view is built.
 - Performance claims include machine/repository details and measurements. Do not use a toy repository as
   evidence of large-repository behavior.
+- Acceptance covers visible state transitions and independent Git outcomes. A present menu item, an
+  “observed” capture topic or a passing implementation test alone does not establish full Fork parity.
+- Compare each visual workflow with its specific catalogue state before and after changes; supplement
+  with the restored public reference library where the catalogue lacks evidence. Keep images unbundled.
 
 ## P00 — Foundation
 
@@ -154,9 +273,11 @@ Coverage: F01–F03, F33 foundation.
    debounced filesystem invalidation, and stale-response protection. Repositories from separate tabs
    cannot share selected state accidentally.
 3. Persist recent repositories, theme, window bounds, tab order, per-repository preferences, and drafts
-   using versioned atomic storage. Show recovery options for missing/corrupt settings.
+   using versioned atomic storage and the C01 retention matrix. Show recovery options for missing/corrupt
+   settings. Keep in-session selection/scroll retention separate from restart behavior.
 4. Build basic tabs and repository manager; support opening a path from CLI/desktop launch and forward
-   a second-instance request to the existing application. Choose shared renderer state management here.
+   a second-instance request to the existing application. C01 adds the optional workspace repository list
+   alongside horizontal tabs; both share one session/order model. Choose shared renderer state management here.
 5. Evaluate/introduce an allowlisted application asset protocol before adding repository-content views.
    File content must never navigate the privileged renderer.
 
@@ -379,6 +500,8 @@ search scopes other than commit messages, and the eye toggle remain unverified o
 
 Coverage: F04–F07, F34 foundation.
 
+Catalogue anchors: P0-003–012, P1-029/P1-033 and P2-017. C01 owns shell corrections; C05 expands search.
+
 1. Parse paged history and references into stable DTOs. Include full IDs, parents, author/committer,
    dates, subject/body, decorations, HEAD, and tracking information. Handle empty and disconnected histories.
 2. Implement an independently designed graph lane algorithm and virtualized commit rows. Preserve
@@ -386,7 +509,9 @@ Coverage: F04–F07, F34 foundation.
 3. Connect sidebar refs, text/author/hash filters, commit selection, parent navigation, details, changed
    files, and revision tree/blob inspection. Render repository text as inert text.
 4. Add resizable graph/detail panes, keyboard selection/navigation, accessible labels, theme tokens,
-   and selection/scroll persistence. Keep graph colors distinguishable without relying on color alone.
+   and the explicit C01 selection/scroll retention policy. Keep graph colors distinguishable without
+   relying on color alone. Reference-tree selection navigates without checkout; parent/HEAD actions
+   and sidebar search highlights must preserve the distinction between selection and current branch.
 
 Acceptance:
 
@@ -400,10 +525,14 @@ Acceptance:
 
 Coverage: F08–F11, F34; basic text review is the first local-use checkpoint.
 
+Catalogue anchors: P0-014–032, P2-004/P2-007/P2-016; C02 supplies the state-by-state acceptance.
+
 1. Read index/worktree state using a stable machine format; show separate staged/unstaged files, conflicts,
    ignored/untracked toggles, rename/copy metadata, executable-bit changes, and tree/list selection.
 2. Build unified and side-by-side text diffs with inline highlighting, context controls, whitespace mode,
-   search, syntax rendering, and explicit large-file/binary fallbacks.
+   search, syntax rendering, entire-file view, wrap availability and a selection-linked popup. Add an
+   explicit bounded Load Diff action and paired binary metadata fallback; large-text access belongs here,
+   while image decoding/comparison remains P10.
 3. Implement whole-file stage/unstage first. Then hunk and line selection with a tested patch model,
    index/worktree snapshot validation, and useful refresh/retry feedback when files changed externally.
 4. Add commit/amend, subject/body drafts, recent messages, templates, identity diagnostics, hook output,
@@ -418,17 +547,25 @@ Acceptance:
   binary, mode change, empty commit rejection, and a hook failure.
 - An external edit between diff rendering and action is detected and never silently discarded.
 - Repeated partial staging reconstructs the intended tree exactly, not merely a visually plausible diff.
+- Match insertion-only staging, partial-hunk focus/viewport retention, amend/cancel and merge-amend parent
+  preservation to their cases. Test file/view/repository/diff-layout switches without assuming restart parity.
 
 ## P05 — References, remotes, and network operations
 
 Coverage: F01 remote clone, F12–F14.
 
-1. Add create/rename/delete/checkout for branches and lightweight/annotated tags; upstream selection,
+Catalogue anchors: P1-001–012; C03 corrects existing semantic differences before broader network polish.
+
+1. Add create/rename/delete/checkout for branches and revision/tag inspection; upstream selection,
    stale-reference indicators, and safe handling of dirty working trees and checked-out worktree branches.
+   The captured Create Tag route always creates an annotated tag, even with empty Message. Correct the
+   current lightweight fallback; retain lightweight-tag reading and label any explicit creation as an
+   independent extension until a Fork route is established. Add Tag Details and scoped remote deletion/push.
 2. Manage remote URLs and names with validation. Implement credential-helper/SSH-agent integration,
    controlled prompt/askpass handling, and platform secret storage only where secrets must be retained.
 3. Add clone/fetch/push with progress, cancellation, background fetch scheduling, tracking counts,
-   branch/tag selection, and clear authentication/network errors. Avoid duplicate background operations.
+   branch/tag selection, Test Connection, and clear authentication/network errors. Clone reviews URL,
+   parent folder and name, then opens the completed repository. Avoid duplicate background operations.
 4. Add fast-forward-only pull first. The stabilization slice below brings forward the recovery subset
    needed for merge/rebase pull options. Interactive rebase remains P07. Support lease-based force push
    only with explicit preview and confirmation.
@@ -440,6 +577,9 @@ Acceptance:
   upstream deleted on the remote all leave an actionable state.
 - Progress and output are redacted. Force push requires an explicit user action and never silently
   falls back from a rejected ordinary push.
+- Verify clean-versus-dirty checkout triggers, empty-message annotated tag objects and local clone outcomes.
+  Keep cancellation-requested and terminal state distinct; accepting-remote cancellation and credential
+  paths require separate tests from the catalogue's delayed rejecting local receiver.
 
 Electron test hosting (2026-09-19): `npm run test:e2e` now launches Electron on Ozone's `headless`
 platform and removes `DISPLAY` and `WAYLAND_DISPLAY` from the child environment, so the suite needs no
@@ -574,12 +714,20 @@ Fork remain unverified or deferred to F17/P07.
 
 Coverage: F13 completion, F15–F17, F19. Daily-use checkpoint after this phase.
 
+Catalogue anchors: P1-006/P1-013–027. C03 reconciles stash semantics; C04 implements conflict workflows.
+F38 Lean Branching depends on these operations but remains a separately specified P12 follow-on.
+
 1. Model merge/rebase/cherry-pick/revert sequencer states, including operations started outside the app.
-   Add continue/skip/abort where Git supports them and show the exact in-progress operation.
-2. Build merge workflows and a three-way conflict view with base/ours/theirs and editable result.
+   Add continue/skip/abort where Git supports them and show the exact in-progress operation. Rebase Skip
+   is a project recovery capability; explicit Fork GUI Skip remains unobserved. Never let an Activity
+   success label erase an unfinished Git operation.
+2. Build FF/No-FF/Squash/Don't Commit workflows and a conflict helper with two visible source panes over
+   an editable result. Model base/ours/theirs in the backend, with operation-specific visible labels,
+   per-region choices, unresolved count, disabled Resolve, write-and-stage and subsequent Commit/Continue.
    Cover delete/modify, rename, binary, and submodule conflict states; offer external-tool handoff.
 3. Add stash creation, selection/partial stash, inspect/apply/pop/drop, staged-state preservation, and
-   autostash recovery. A conflicted pop must not be reported as a successful deletion.
+   autostash recovery. Reconcile Stage new files with the captured stash index-parent shape instead of
+   treating it as a synonym for include-untracked. A conflicted pop must not be reported as deletion.
 4. Add cherry-pick/revert including merge-parent selection, safe reset variants with previews, and
    conflict recovery. Enable non-fast-forward pull and ordinary rebase once these paths are verified.
 
@@ -589,13 +737,21 @@ Acceptance:
 - Check content, index stages, refs, and sequencer files against the CLI; preexisting unrelated work survives.
 - Display ours/theirs in terms of the current operation so rebase does not misleadingly reverse user intent.
 - Never label a binary conflict resolved just because it has no text markers.
+- Test merge modes independently: FF moves a ref, No-FF produces two parents, Squash stages before a
+  single-parent commit, and the captured non-FF Don't Commit leaves MERGE_HEAD until completion.
+  Extend manual/multi-region editing beyond the one-region capture using an explicit project specification.
 
 ## P07 — Interactive rebase and history editing
 
 Coverage: F16 completion, F18.
 
+Catalogue anchors: P1-023/P1-024, especially plan-execution and Edit/amend/continue subcases; C04 follows P06.
+
 1. Build a reviewed rebase plan with reorder/pick/reword/edit/squash/fixup/drop, autosquash, quick actions,
-   root handling, and dependent-reference updates when supported. Decide explicit merge-preservation support.
+   root handling, and dependent-reference updates when supported. The captured editor is newest-first;
+   show action connectors, dropped rows and inline message editing. Squash combines messages while Fixup
+   omits its message. Decide explicit merge-preservation support; dependent-ref/backup option effects
+   need independent validation because their captured checkboxes were not exercised.
 2. Execute through controlled sequence-editor integration, with temporary recovery refs and job state.
    Preserve user-authored todo/message edits and handle pause/resume without running arbitrary editor commands.
 3. Integrate conflict resolution, continue/abort, published-history warnings, and discoverable recovery.
@@ -606,27 +762,42 @@ Acceptance:
 - Compare resulting trees, parent graph, messages, and updated refs with independently prepared expected
   repositories. Cover root, empty commits, conflicts, interrupted execution, and a changing upstream.
 - Cancel/abort preserves recovery refs until the result is confirmed. No existing local work disappears.
+- Edit pauses detached, enters Amend presentation without staging old content, accepts the amendment,
+  then Continue restores the branch with the expected replayed tree/messages. Preserve original author
+  versus new committer information and test recovery from interruption at each transition.
 
 ## P08 — Investigation, recovery, and patches
 
 Coverage: F06 expansion, F15 patch import and advanced export, F20–F21, F26, F36.
 
+Catalogue anchors: P1-028–033, P2-005/P2-006; separate C05 slices for navigation, recovery and patches.
+
 1. Add author/message/hash/path/content history search, rename-aware file/directory history, selected-code
    history, blame navigation, and historical file retrieval without overwriting the checkout.
+   Captured search exposes Message/Author/Path/Diff Content and Repository/Current Branch scope, separate
+   results and graph highlights. Hash search remains a project extension. History/Blame are separate
+   inspectors with timeline/revision navigation; Back/Forward is established in Blame, not the main graph.
 2. Show reflog entries and recover a selected lost commit to an explicitly named reference.
 3. Add bisect start/good/bad/skip/reset with a visible range and state restored after app restart.
 4. Add patch save/copy/import/apply, applicability preview, conflicts, and option to apply without committing.
-   Reject traversal/absolute paths and validate the selected repository and current state before application.
+   Captured preflight shows location and applicability, not a file/content preview, and applies the mixed
+   text patch to index and worktree. Treat a content browser as an enhancement. Reject traversal/absolute
+   paths and validate the selected repository and current state before application.
 
 Acceptance:
 
 - Validate blame attribution, file history, recovery refs, and bisect result on known fixtures.
 - Preserve bytes/line endings when exporting/importing patches and explain rejected hunks.
 - Search remains cancellable and bounded; changing the repository invalidates obsolete matches.
+- Verify rename traversal, Blame Back/Forward availability, reflog graph mode/Exit, bisect Skip/Abort and
+  staged mixed add/edit/rename patch contents with Cancel invariance. Report a first-bad bisect result
+  as an outcome, without reproducing the captured Git Error presentation.
 
 ## P09 — Worktrees, submodules, and Git-flow
 
 Coverage: F22–F23, F25.
+
+Catalogue anchors: P2-001/P2-002 for worktrees/submodules. Git-flow remains public-only; it is not F38.
 
 1. Worktree list/create/remote-checkout/open/remove/prune with linked-branch visibility and safe
    dirty/locked-worktree handling. Keep worktree tabs distinguishable and respect shared refs.
@@ -641,13 +812,20 @@ Acceptance:
   detached submodule HEAD, and interrupted updates.
 - Worktree removal and submodule removal preview exact paths and never recurse into unrelated content.
 - Complete one feature, release, and hotfix lifecycle and verify branches/tags against expected Git state.
+- Match linked-worktree identity and action availability, submodule old/new revision cards, dirty-child
+  count and child-tab opening. The catalogue records failed local-transport Update, not successful init;
+  verify success independently without copying the Windows fixture's protocol restriction into Linux.
 
 ## P10 — Rich diffs, LFS, and signing
 
 Coverage: F24, F27–F28.
 
+Catalogue anchors: P2-003/P2-011; C05 handles image/local-LFS slices. P04 owns large text and the safe
+fallback. Signing, authenticated LFS and locks remain separately sourced public-only scope.
+
 1. Implement safe image decoding and side-by-side/swipe/overlay/pixel comparison, plus binary metadata and
-   bounded large-file handling. Isolate SVG rendering and avoid executable embedded content.
+   bounded resource handling. Side-by-side, swipe and onion skin are captured; pixel comparison remains
+   public-only. Isolate SVG rendering and avoid executable embedded content.
 2. Add LFS capability detection, pointer/materialized state, on-demand content, transfer progress,
    tracked patterns, lock/unlock, and failures. Do not download large objects just by selecting a row.
 3. Add signing configuration and verification for documented GPG workflows. Research other signing
@@ -658,10 +836,15 @@ Acceptance:
 - Test corrupt/large images, alpha differences, missing LFS objects, cancelled transfers, lock ownership,
   signing failure/cancel, unavailable keys, and an invalid signature.
 - Secrets/passphrases remain outside renderer state and logs. Unsigned results are never labeled verified.
+- Historical LFS Save As must retrieve the payload with the expected size/hash while leaving a worktree
+  pointer unchanged. Local initialization/retrieval does not verify GUI push, locks or authenticated servers.
 
 ## P11 — Hosting integrations
 
 Coverage: F29–F30.
+
+No authenticated hosting workflow is exercised in the supplied catalogue. Keep public sources and the
+verified browser handoff distinct from captured local Git coverage; missing captures do not drop this phase.
 
 1. Define a provider interface and a provider-specific coverage table from fresh public evidence.
    Start with GitHub, then GitLab, Bitbucket, Azure DevOps, and Gitea where documented workflows apply.
@@ -678,30 +861,46 @@ Acceptance:
 
 ## P12 — Productivity and workspace completion
 
-Coverage: F02–F03 completion, F31–F34.
+Coverage: F02–F03 completion, F31–F34, F38. C01 brings shell work forward; C05 covers productivity.
+Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
 
 1. Quick Launch with fuzzy commands, branch/file/repository lookup, discoverable shortcuts, and consistent
-   action availability across keyboard, menus, toolbars, and context menus.
+   action availability across keyboard, menus, toolbars, and context menus. The captured command →
+   parameter chooser → existing action dialog is the baseline; fuzzy matching specifics remain public-only.
 2. External editor/diff/merge/terminal/file-manager adapters with explicit executable/argument configuration,
    Linux desktop defaults, missing-tool diagnostics, and line/repository handoff.
 3. User-defined contextual commands, optional input forms, shared definitions, variable expansion, output
    and cancellation. Imported definitions never auto-execute; preview expanded intent before first execution.
-4. Finish repository grouping/scanning, tab orientations/reopening/colors, multiwindow ownership, saved
-   layouts, preference migrations, issue-link rules, avatars, and accessible focus/shortcut customization.
+4. Finish repository grouping/scanning, additive repository-list navigation, tab reopening/reordering/colors,
+   workspaces, multiwindow ownership, explicitly scoped saved layouts, preference migrations, issue-link
+   rules, avatars, and accessible focus/shortcut customization. Preferences pages have their own captured
+   inventory; visible current settings do not prove defaults.
+5. Specify F38 Lean Branching Start/Sync/Finish separately from Git-flow. Its entries and a disabled Finish
+   state are captured, but outcomes are not. Research the remaining behavior or document an independent
+   specification before enabling operations; use P06's validated services.
 
 Acceptance:
 
-- All primary workflows are keyboard operable. Pane/tab state restores across restart and display changes.
+- All primary workflows are keyboard operable. Test each C01 retention-matrix entry across in-session
+  switches, normal restart and display changes; do not promise that every pane/selection restores.
 - Fuzz command-variable quoting and unusual paths. A repository-provided command definition cannot
   escalate into execution without the user selecting and enabling it.
 - Repeat open/close/reload cycles without leaked listeners, processes, or repository watchers.
+- External tools receive the selected historical blob, not the current checkout. Custom commands stay
+  main-owned with validated definitions/variables; a captured Bash Command editor does not authorize a
+  generic renderer command API. Forms, variable expansion and failures need independent specifications.
 
 ## P13 — Statistics and optional AI integrations
 
 Coverage: F35, F37. These are separate slices; AI is never required for normal Git use.
 
+Catalogue anchor: P2-010 for Statistics/Treemap (C05). AI integrations remain public-only and require
+their own tool/platform research; no account or provider behavior follows from this bundle.
+
 1. Statistics: cached aggregate activity, contributor/time summaries, and repository treemap.
-   Bound computation and keep large repositories cancellable. State the definition of each metric.
+   Match date-range/month chart/contributor table and donut plus file tiles with Commits/Authors views.
+   Bound computation and keep large repositories cancellable. Define metric, date and tile-size semantics
+   independently; exact aggregation algorithms are not established by the captured presentation.
 2. AI adapters: research each publicly documented tool and platform, then add explicitly configured
    commit-message and branch/range-review requests. Preview the repository material being sent,
    support cancellation, and handle missing tools or authentication.
@@ -718,7 +917,7 @@ Acceptance:
 
 Coverage: every F-item and accumulated platform differences.
 
-1. Revisit the dated research baseline; publish a feature-by-feature verified/partial/unsupported ledger.
+1. Revisit the dated catalogue and public research; publish a feature-by-feature verified/partial/unsupported ledger.
    Resolve undocumented assumptions or state them as deliberate differences.
 2. Benchmark large/deep histories, many refs, huge diffs, large monorepos, watcher storms, concurrent tabs,
    and worktrees. Profile actual bottlenecks; add workers/caches only where justified.
@@ -730,7 +929,8 @@ Coverage: every F-item and accumulated platform differences.
 Acceptance:
 
 - Smoke-test installed AppImage/deb distributions and the supported Linux matrix, with sandbox enabled.
-- Every claimed feature links to public evidence and tests/manual verification; remaining gaps are explicit.
+- Every claimed feature links to a captured case/finding or public source and independent implementation
+  tests/manual verification; public-only targets, remaining unknowns and deliberate deviations are explicit.
 - Agree measured startup, memory, graph/diff latency, and cancellation budgets using recorded hardware/data.
 - Release artifacts are reviewable locally. Publishing and signing-identity use are separate release actions.
 
@@ -752,10 +952,17 @@ Use parser unit tests for format edge cases, integration tests against real Git 
 tests for complete workflows. Assert repository state independently of the application's own parser.
 Keep live provider tests opt-in; routine tests remain local and deterministic.
 
+Port relevant synthetic scenarios from the catalogue's descriptions into this TypeScript fixture catalog;
+do not execute its Windows capture/fixture scripts. Link tests to exact case/finding IDs and distinguish
+recorded before/after Git evidence from our independent assertions. Hashes, HWNDs, absolute Windows paths
+and screenshot coordinates are provenance, not implementation constants.
+
 ## Suggested next request
 
-> Continue P05 from docs/implementation-plan.md. Add the clone workflow, then controlled credential
-> and passphrase prompting with
-> platform secret storage only where a secret must be retained. Keep the F13 operation registry, its
-> per-repository lane, and its structured failures intact. P04's whole-file and multi-file discard with
-> an exact preview, confirmation, and recoverable backups is still open and can be taken first.
+> Implement C01 from docs/implementation-plan.md. Read docs/research/fork-catalogue-alignment.md and the
+> private catalogue handoff/design guide, then inspect P0-003–013 and P2-012–015/P2-017 original evidence.
+> Reconcile the shell, additive repository list, tabs, command/shortcut availability, splitters and explicit
+> state-retention policy. Preserve existing Git services and security boundaries. Migrate preferences
+> without losing sessions; document Linux adaptations and unknown Commit List Layout behavior. Verify
+> disposable-repository UI scenarios and matching light/dark before/after captures, run npm run check and
+> npm run build, and update only the acceptance criteria actually verified. Keep C02–C06 planned.

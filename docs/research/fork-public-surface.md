@@ -1,26 +1,67 @@
-# Fork: public feature and layout baseline
+# Fork: captured and public feature surface
 
-Research date: **2026-09-16**; F05/F08 source refresh, design reference refresh, and F09–F11 source
-refresh: **2026-09-17**; F12 and F13 source refresh and workflow audit: **2026-09-19**.
-Scope: independently implementing publicly described workflows, with Linux as the primary target. This
-document is a requirements inventory, not a claim of verified equivalence.
+Public research began **2026-09-16**, with source/design updates on **2026-09-17** and **2026-09-19**.
+**Current alignment: 2026-09-20**, against the user-supplied **Fork Windows 2.22.0.0** black-box catalogue.
+Scope: independently implementing the captured Windows workflows and separately documented public
+feature families, with Linux as the primary target. This is a requirements/evidence inventory, not a
+claim of verified equivalence. The filename is retained for existing links.
 
-Only the public website, official release notes, official blog posts, and published screenshots
-(including public issue attachments and independently published hands-on articles) were consulted.
-No Fork installation, application execution, binary download, decompilation, or proprietary
-source inspection was used. Screenshots were viewed as references and are linked below; they are not
-application assets and are not committed to this repository. Code, branding, icons, wording, and styling
-for this project must be independently authored.
+The earlier research used public websites, release notes, blog posts and screenshots only. The user
+subsequently supplied observations from a dedicated Windows VM: screenshots, public UIA, actions and
+ordinary Git state checks. This audit consumes that evidence without installing/running Fork or
+inspecting its proprietary source/binaries. Code, branding, icons and implementation remain independent;
+reference screenshots are private/local research material, never application assets.
+
+## Current reference and evidence precedence
+
+Start with the [catalogue handoff](fork-reference-new/reference/catalogue/START_HERE.md),
+[design guide](fork-reference-new/reference/catalogue/DESIGN_GUIDE.md) and
+[2026-09-20 alignment audit](fork-catalogue-alignment.md). The audit maps **all 82 topics** to F-items,
+project phases and the C01–C06 correction sequence. The bundle records **147 cases, 275 findings and
+541 unique case-linked screenshots**: **70 observed, 11 partial, one blocked** topics. These are research
+statuses, not Git Workbench implementation percentages. All **7,295** portable-manifest entries passed
+size/hash verification on 2026-09-20; that inventory is distinct from the earlier 7,106-file evidence seal.
+
+The baseline is Windows 11 build 26200, predominantly 96 DPI, captured 2026-09-19–20. Existing settings
+are not pristine defaults. Screenshots establish visible presentation; corresponding Git records establish
+bounded repository effects. Original cases and linked PNG/UIA/Git evidence take precedence over derived
+summaries; later subcases can resolve earlier capture failures. Public material supplements missing
+features/platforms and does not override a captured result for this version. Keep conflicts and limits.
+
+The catalogue resolves several earlier assumptions:
+
+- P0-005: the optional workspace repository list **coexists with horizontal tabs**. Appearance's
+  Horizontal/Vertical entries mean **Commit List Layout**, whose alternate result is not established.
+- P0-022/P0-032: selected-addition staging and post-stage focus/viewport retention are separate acceptance
+  criteria. P0-027/P2-004 add context/full-file/wrap, a selection-linked diff popup and explicit Load Diff.
+- P1-004: Create Tag with an empty message creates an **annotated** tag. The current lightweight fallback
+  is a confirmed implementation difference scheduled in C03.
+- P1-006/P1-016–024: merge modes, two-input/result conflict presentation and interactive Edit/amend/continue
+  now have concrete state and Git-outcome references. Explicit GUI rebase Skip remains unknown.
+- P1-013: **Stage new files** produces a stash with the new file in its index parent; current
+  include-untracked behavior needs reconciliation, not just a label change.
+- P1-029–033: search fields/scopes and graph highlighting, separate History/Blame windows and Blame
+  Back/Forward are captured. General main-graph Back/Forward remains unknown.
+- P2-015: tab/window/sidebar persistence differs from commit/detail/divider restoration. A blanket
+  restore-everything parity requirement is incorrect.
+- P0-008: add **F38 Lean Branching** for observed Start/Sync/Finish entries; their effects are untested.
+
+Exact cases, current source locations, confidence limits and planned corrections are in the
+[alignment audit](fork-catalogue-alignment.md#corrections-to-existing-assumptions). Existing F01–F16,
+F29 and F34 slices retain their partial implementation status; no new phase is complete from this review.
 
 Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
 platform, stated version, and theme in [`fork-references.json`](fork-references.json).
 `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
 folder and writes an `INDEX.md` there, grouped by topic and source. The local copies exist only for
-comparison: they are never committed, bundled, or used as application assets.
+comparison: they are never committed, bundled, or used as application assets. This public downloader
+does **not** restore the private catalogue. Keep that bundle intact at `fork-reference-new/`; its original
+cases/screenshots are the first comparison source for captured Windows states.
 
 ## Baseline and confidence
 
-The public release pages list **Mac 2.70 (2026-09-04)** and **Windows 2.22 (2026-08-28)**.
+At the 2026-09-16 public-source review, the release pages listed **Mac 2.70 (2026-09-04)** and
+**Windows 2.22 (2026-08-28)**.
 Both list vertical repository tabs. The Mac page additionally names Cursor for generated commit messages;
 older Mac entries name Codex integration. Do not assume every integration is identical on Windows.
 Sources: [Mac releases][mac], [Windows releases][win].
@@ -33,16 +74,28 @@ Evidence labels:
 - **D**: explicitly documented by the vendor. Historical posts establish the advertised workflow,
   but do not prove every detail remains unchanged in the current release.
 - **O**: visible in a public screenshot, without interactive verification.
+- **B-UI**: visible presentation/action transition recorded in the supplied Windows catalogue; cite the
+  original case/finding, capture date and limits. This is not a fresh runtime trial by this project.
+- **B-Git**: repository outcome supported by that case's ordinary Git records. UI labels alone do not
+  establish success, rollback, stash structure or remote acceptance.
 - **I**: our implementation/design inference. It must not be described as observed Fork behavior.
-- **U**: unresolved through the material examined. Verify from further public material before claiming parity.
+- **U**: unresolved through the material examined. Seek further supplied black-box/public evidence or
+  define an independent behavior and document the deviation before claiming equivalence.
 
-The matrix covers documented feature families. Hidden preferences, all shortcut bindings, exact
-dialog defaults, error paths, and platform discrepancies need additional research as their phases start.
+The matrix covers captured and documented feature families. Full preference/shortcut/default/error
+matrices and platform discrepancies remain incomplete even where a topic is marked observed.
 F01, the first F02 slice, the initial F03 slice, the initial F04 slice, the initial F05 slice, the
 initial F07 slice, the F08–F11 local-change slices, the initial F12 branch/tag slice, the initial F13
 remote/network slice, the F14 background-fetch/activity slice, and the initial F34 workspace chrome slice are **partial** in this project.
 The stabilization also starts the F15/F16 recovery subset and the F29 PR browser handoff; their full
 feature families and all other F-items remain incomplete or planned.
+
+## Historical source and implementation records
+
+The dated F01–F34 records below preserve what was known and tested at the time. Their statements of
+unknown behavior or public-only research are historical wherever the current catalogue reconciliation
+above supersedes them. They are not new parity claims. In particular, initial vertical-tab assumptions,
+blank-message tag behavior and blanket persistence rules must not be reused as requirements.
 
 ### F01 source refresh
 
@@ -717,51 +770,64 @@ checkout local-change choices, F13 selected-source pull, inactive-branch fast-fo
 destinations, and the early F29 PR browser handoff. The F15/F16 recovery subset supports these workflows;
 the full feature families below remain partial. Reference evidence alone is not implementation evidence.
 
-| ID  | Public capability                                                                                           | Evidence                                                                                                                                                                                                                                           | Planned phase |
-| --- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| F01 | Initialize, clone, add existing repositories, recent repositories                                           | D: [product][home]                                                                                                                                                                                                                                 | P02, P05      |
-| F02 | Repository manager, folder hierarchy, source-directory scanning                                             | D: [Mac 1.0.79][manager], [Mac releases][mac], [Windows releases][win]                                                                                                                                                                             | P02, P12      |
-| F03 | Multiple repository tabs and dirty indicators; vertical tabs and reopen-closed shortcuts                    | D: [manager][manager], [Mac releases][mac], [Windows releases][win]                                                                                                                                                                                | P02, P12      |
-| F04 | Commit graph, reference labels, authors, hashes, dates, selection                                           | O: [history screenshot][history-image]; I: initial local history/graph/selection slice verified against disposable Git fixtures                                                                                                                    | P03           |
-| F05 | Collapse/expand merge branches in the graph                                                                 | D: [graph article][graph]; I: loaded-history projection, merge-tip controls, keyboard/context-menu flow (partial)                                                                                                                                  | P03           |
-| F06 | Branch/file filters, commit search, path/diff-content search                                                | D: [Windows 1.38][diff], [Mac releases][mac]; O: [tracker][tracker-win]; I: reference filter, sidebar message search (partial)                                                                                                                     | P03, P08      |
-| F07 | Commit metadata, parents, changed files, tree at a revision                                                 | D/O: [product][home], [history screenshot][history-image]; I: validated local revision inspection slice (partial)                                                                                                                                  | P03           |
-| F08 | Staged/unstaged lists; tree/list mode; untracked/ignored visibility                                         | O/D: [changes screenshot][changes-image], [Windows 1.23][rebase]; I: bounded local status listing (partial)                                                                                                                                        | P04           |
-| F09 | Unified/split diffs, inline changes/search, whitespace display                                              | D/O: [Windows 1.38][diff], [Mac 1.0.79][manager], [split screenshot][split-image]; I: bounded text-diff viewer (partial)                                                                                                                           | P04           |
-| F10 | File, hunk, and line staging/unstaging; hunk discard controls                                               | D/O: [product][home], [changes screenshot][changes-image]; I: snapshot-validated local staging slice (partial)                                                                                                                                     | P04           |
-| F11 | Commit, amend, recent messages, templates, hooks                                                            | D: [Mac releases][mac], [Windows releases][win]; O: [changes screenshot][changes-image], [length image][length-image]; I: snapshot-validated commit/amend slice (partial)                                                                          | P04           |
-| F12 | Branch/tag creation and deletion; checkout a branch or revision                                             | D: [product][home], [Mac releases][mac], [Windows releases][win]; O: [branch menu][tracker-mac], [Create Tag dialog][tracker-win]; I: snapshot-validated branch/tag slice (partial)                                                                | P05           |
-| F13 | Remotes; fetch/pull/push; upstream indicators; multiple-branch push                                         | D: [product][home], [Windows 1.48][operations], [Mac releases][mac], [Windows releases][win]; O: [Fetch dialog][tracker-win], [activity window][tracker-win]; I: operation registry with fetch/pull/push (partial)                                 | P05, P06      |
-| F14 | Background fetch; cancellable network work; activity and command output                                     | D: [Mac 1.0.67][activity], [Windows 1.48][operations]; O: [activity window][tracker-win]; I: 20-minute scheduler, opt-out, deduplication, progress/cancellation, and All/User/Background views (partial)                                           | P01, P05      |
-| F15 | Stashes in history, partial stashes, patch export                                                           | D: [product][home], [Windows 1.48][operations], [Windows releases][win], [Mac 2.69][mac], [patch export][patches]; I: stable stash history, selected-file stash, inspect/apply/pop/delete, and bounded commit/stash/working patch export (partial) | P06, P08      |
-| F16 | Merge/rebase; drag branches to initiate either operation                                                    | D: [product][home], [Windows 1.48][operations]; I: ordinary merge/rebase jobs, Recovery stash-and-reapply, conflict continuation/skip/abort, branch menus, and branch-row drag/drop (partial)                                                      | P06, P07      |
-| F17 | Built-in conflict helper and editable merge result                                                          | D: [product][home], [Mac 1.0.73][merge]                                                                                                                                                                                                            | P06           |
-| F18 | Visual interactive rebase: ordering, pick/edit/reword/squash/fixup/drop                                     | D: [Windows 1.23][rebase]                                                                                                                                                                                                                          | P07           |
-| F19 | Cherry-pick and revert                                                                                      | D: [product][home]                                                                                                                                                                                                                                 | P06           |
-| F20 | Reflog/lost-commit recovery                                                                                 | D: [product][home]                                                                                                                                                                                                                                 | P08           |
-| F21 | File/directory history, blame; selected-code history                                                        | D: [product][home], [Windows releases][win]                                                                                                                                                                                                        | P08           |
-| F22 | Worktree creation/removal; remote-branch checkout into worktrees                                            | D: [Mac releases][mac], [Windows releases][win]                                                                                                                                                                                                    | P09           |
-| F23 | Submodules and informative submodule revision comparisons                                                   | D: [product][home], [Mac 1.0.73][merge]                                                                                                                                                                                                            | P09           |
-| F24 | Git LFS, image preview/download, server locks                                                               | D: [product][home], [Mac 1.0.79][manager], [Windows 1.48][operations]                                                                                                                                                                              | P10           |
-| F25 | Git-flow workflows                                                                                          | D: [product][home]                                                                                                                                                                                                                                 | P09           |
-| F26 | Bisect with visible progress; good/bad/skip actions                                                         | D: [Windows 1.48][operations], [Windows releases][win]                                                                                                                                                                                             | P08           |
-| F27 | Image comparison: side-by-side, swipe, onion skin; pixel differences                                        | D: [Windows 1.38][diff], [Mac releases][mac]                                                                                                                                                                                                       | P10           |
-| F28 | GPG support, including signed tags                                                                          | D: [product][home], [Mac releases][mac]                                                                                                                                                                                                            | P10           |
-| F29 | Hosted repository accounts; GitHub, GitLab, Bitbucket, Azure PR entry points; Gitea references              | D: [Windows 1.48][operations], [Windows releases][win]                                                                                                                                                                                             | P11           |
-| F30 | GitHub notifications; pull-request/issue lists and filters                                                  | D: [product][home], [Windows releases][win]                                                                                                                                                                                                        | P11           |
-| F31 | Quick Launch: fuzzy command/branch/file lookup; user commands                                               | D: [Quick Launch][quick]                                                                                                                                                                                                                           | P12           |
-| F32 | Contextual custom commands; shared definitions and configurable input controls                              | D: [Mac 1.0.67][activity], [Windows releases][win]                                                                                                                                                                                                 | P12           |
-| F33 | External editors, diff/merge tools, terminal/file-manager actions, CLI repository opening                   | D: [Mac 1.0.67][activity], [Windows 1.23][rebase], [Windows releases][win]                                                                                                                                                                         | P02, P12      |
-| F34 | Theme/appearance, keyboard navigation, split panes, issue links, avatars; title-bar menus and context menus | D/O: [Windows 1.38][diff], [history screenshot][history-image], [Mac releases][mac], [Windows releases][win], [bisect GIF][bisect-gif]                                                                                                             | P03–P04, P12  |
-| F35 | Repository summaries/statistics and activity treemap                                                        | D: [product][home], [Windows releases][win]                                                                                                                                                                                                        | P13           |
-| F36 | Save/apply patches, including clipboard entry points                                                        | D: [Mac 1.0.67][activity], [Mac releases][mac]                                                                                                                                                                                                     | P08           |
-| F37 | External AI tools for commit messages and branch/range review                                               | D: [Mac releases][mac], [Windows releases][win]                                                                                                                                                                                                    | P13           |
+The B topic IDs below resolve through the [complete catalogue crosswalk](fork-catalogue-alignment.md#complete-topic-to-implementation-crosswalk)
+to dossiers and original cases. B is shorthand for catalogue evidence; each claim must distinguish
+B-UI from B-Git and retain its trial's limits. “Partial” describes the implemented subset, not verified
+parity with every captured state. F33's file-manager action and F36's export subset already exist under
+earlier slices; recording them here does not promote their full feature families. F38 is newly inventoried.
+
+| ID  | Target                                                                                | Evidence                                                                  | Project status (2026-09-20)                                           | Owner                         |
+| --- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------- |
+| F01 | Initialize/open/clone/recent repositories                                             | D: [product][home]; B: P0-002, P1-012                                     | Partial; local access verified, clone pending                         | P02, P05 / C03                |
+| F02 | Manager hierarchy, source directories and discovery                                   | D: [manager][manager], [releases][win]; B: P0-002 (opening only)          | Partial; scans exist, full manager still open                         | P02, P12                      |
+| F03 | Horizontal tabs, optional workspace repository list, dirty indicators, reorder/reopen | D: [releases][win]; B: P0-004–005, P2-015                                 | Partial; exclusive orientation differs from capture                   | P02, P12 / C01                |
+| F04 | History graph, labels, authors, hashes, dates and selection                           | O: [history][history-image]; B: P0-003, P0-006–007, P2-017                | Partial; paging/graph exist, scale and state gaps                     | P03 / C01                     |
+| F05 | Graph merge collapse/expand                                                           | D: [graph][graph]; no focused catalogue trial                             | Partial; loaded-history projection verified                           | P03                           |
+| F06 | Ref/file filters and scoped commit/path/content search                                | D: [diff][diff], [releases][mac]; B: P1-029                               | Partial; message search exists, other scopes/highlights open          | P03, P08 / C05                |
+| F07 | Commit metadata, parent navigation, changed files and revision tree                   | D/O: [product][home], [history][history-image]; B: P0-007, P1-033         | Partial; revision reads exist, inspection/navigation gaps             | P03 / C01, C05                |
+| F08 | Separate staged/unstaged lists, tree/list and visibility/count state                  | D/O: [changes][changes-image]; B: P0-014–017, P0-025                      | Partial; status lists exist, captured state audit pending             | P04 / C02                     |
+| F09 | Text diff, context/full-file/wrap, whitespace, popup and explicit large-diff load     | D: [diff][diff]; B: P0-026–028, P2-004/P2-007                             | Partial; context/wrap/popup/load workflows missing                    | P04 / C02                     |
+| F10 | File/hunk/line stage/unstage and discard                                              | D/O: [product][home], [changes][changes-image]; B: P0-018–024, P0-032     | Partial; staging exists, whole-file discard/state gaps                | P04 / C02                     |
+| F11 | Commit/amend, templates/messages/hooks and composer states                            | D: [releases][win]; B: P0-029–031                                         | Partial; commit/amend verified within original scope                  | P04 / C02                     |
+| F12 | Branch/tag lifecycle, tag details, clean/dirty/detached checkout                      | D: [releases][win]; B: P1-001–005                                         | Partial; blank-message tag semantics need correction                  | P05 / C03                     |
+| F13 | Remotes/Test Connection, fetch/pull/push, clone/upstream                              | D: [operations][operations]; B: P1-007–012                                | Partial; network jobs exist, clone/auth and dialog gaps               | P05, P06 / C03                |
+| F14 | Automatic fetch, operation activity/output and cancellation                           | D: [activity][activity]; B: P1-008/P1-011                                 | Partial; scheduler/jobs exist, global preference and state audit open | P01, P05 / C03                |
+| F15 | Stash history, partial stash, new-file policy, apply/pop/drop and patch export        | D: [operations][operations], [patches][patches]; B: P1-013–015, P2-005    | Partial; reconcile new-file semantics; line stash/import remain       | P06, P08 / C03–C05            |
+| F16 | Merge modes, ordinary rebase, recovery and branch drag entry points                   | D: [operations][operations]; B: P1-006/P1-019–022 (drag effects untested) | Partial; ordinary jobs/recovery exist, merge modes missing            | P06, P07 / C04                |
+| F17 | Conflict cards and built-in two-input/editable-result helper                          | D: [merge][merge]; B: P1-015–020, P1-022/P1-025–026                       | Planned; external resolution/recovery is not the helper               | P06 / C04                     |
+| F18 | Visual interactive rebase, plan/message editing and Edit/amend/continue               | D: [rebase][rebase]; B: P1-023–024                                        | Planned                                                               | P07 / C04                     |
+| F19 | Cherry-pick, revert and Soft/Mixed/Hard reset                                         | D: [product][home]; B: P1-025–027                                         | Planned                                                               | P06 / C04                     |
+| F20 | Lost commits/reflog mode and recovery                                                 | D: [product][home]; B: P1-028                                             | Planned                                                               | P08 / C05                     |
+| F21 | File/directory/selected-code history, rename-aware History and Blame                  | D: [product][home], [releases][win]; B: P1-030–031/P1-033                 | Planned; selected-code/directory specifics public-only                | P08 / C05                     |
+| F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Planned; existing topology/ref guards are prerequisites               | P09 / C05                     |
+| F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Planned; captured Update failed, success still required               | P09 / C05                     |
+| F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Planned; authenticated services/locks/push unobserved                 | P10 / C05                     |
+| F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home]; public-only                                           | Planned; separate from Lean Branching                                 | P09                           |
+| F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Planned                                                               | P08 / C05                     |
+| F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Planned rich viewers; pixel comparison public-only                    | P04 fallback, P10 / C02, C05  |
+| F28 | GPG signing/verification and signed tags                                              | D: [product][home], [releases][mac]; public-only                          | Planned                                                               | P10                           |
+| F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                 | Partial; PR browser handoff only                                      | P11                           |
+| F30 | Notifications and issue/PR lists/filters                                              | D: [product][home], [releases][win]; public-only                          | Planned                                                               | P11                           |
+| F31 | Quick Launch commands and parameter selection; fuzzy lookup                           | D: [Quick Launch][quick]; B: P1-032                                       | Planned; fuzzy rules untested in capture                              | P12 / C05                     |
+| F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                       | Planned; forms/variables/sharing public-only or unresolved            | P12 / C05                     |
+| F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                       | Partial; file-manager handoff only, tool/CLI workflows open           | P02, P12 / C05                |
+| F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell exists, catalogue corrections pending                  | P03, P04, P12, P14 / C01, C06 |
+| F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Planned; metric definitions require independent specification         | P13 / C05                     |
+| F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [activity][activity], [releases][mac]; B: P2-005                       | Partial via F15 export; import and clipboard remain                   | P08 / C05                     |
+| F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only                          | Planned; separate platform/provider evidence required                 | P13                           |
+| F38 | Lean Branching Start/Sync/Finish                                                      | B-UI: P0-008-toolbar-dropdown-subcase:F1; effects U                       | Planned; menu inventory only, not Git-flow parity                     | P06 prerequisites, P12        |
 
 Recent release notes also describe conflict previews, rebase-dependent-reference updates, richer worktree
 navigation, and tab ergonomics. These are refinements within F03/F16/F18/F22, not reasons to declare the
 basic workflows complete early. Source: [Mac releases][mac].
 
 ## Layout observations
+
+The current Windows reference is the catalogue's P0-003/P0-005/P0-014 shell, P0-027 diff states,
+P1-017 resolver, P1-023 rebase editor and P1-030/P1-031 inspectors. The
+[design-methodology analysis](fork-catalogue-alignment.md#design-methodology-inferred-from-the-captures)
+derives component/state rules and records measurement limits. The following older public observations
+remain useful context; their broad composition is not an exact current token specification.
 
 The [published history image][history-image] shows a custom title row with menus and window
 controls, a top action toolbar and repository tabs, a narrow left navigation tree, a large commit
@@ -776,7 +842,7 @@ Hunk actions sit beside the relevant change. The [split-diff image][split-image]
 two-column comparison and keyboard hints. These are observations of published images, not measured
 interaction behavior.
 
-Our mature layout (**I**, independently implemented, following the observations above):
+Target shell composition (**I**, derived from captured/public presentation; only partially implemented):
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -800,34 +866,52 @@ Our mature layout (**I**, independently implemented, following the observations 
 └───────────────┴────────────────────────────────────────────────────────────┘
 ```
 
-The sidebar magnifier (⌕) swaps the filter and reference tree for the Search Commits panel.
-Vertical tabs move the tab strip to a column left of the sidebar. The window has no status bar; long
-operations will use the activity surface planned for P01. Panes are resizable and remembered per
-renderer profile. Graph color supplements labels, and added/removed styling supplements signs so color
-is never the only cue. Typography, spacing, icons, and theme tokens are this project's own.
+The sidebar magnifier (⌕) swaps the filter and reference tree for Search Commits. A toggled repository
+list adds an outer column to the left of this diagram while **retaining the horizontal tabs** (P0-005).
+It is distinct from the repository's branch navigation and from Appearance's Commit List Layout.
+The existing exclusive orientation implementation needs C01 correction. Operation banners occupy
+transient rows; the existing F14 activity surface carries jobs/output/cancellation. Resizable panes and
+selection follow the explicit retention policy, with Linux deviations recorded in the alignment audit.
+Graph color supplements labels; added/removed styling supplements signs. Typography, spacing, icons
+and theme tokens are independently authored; exact fonts/palette and alternate commit-layout behavior
+are not established by the available captures.
 
 ## Unresolved parity questions
 
-- **U:** exact defaults and complete option sets for pull, push, reset, discard, stash, and conflict dialogs.
-  Define safe project defaults and document differences until public evidence resolves them.
+- **U:** pristine defaults, first launch and empty manager; exhaustive menus/preferences/focus behavior.
+  Captured Pull/Push/reset/discard/stash/conflict forms now establish concrete option sets and transitions,
+  but selected settings in an existing profile are not defaults. Use the catalogue's per-case limits.
+- **U:** exclusive vertical-tab mode, alternate Commit List Layout result, lightweight-tag creation,
+  explicit GUI rebase Skip and general main-graph Back/Forward. Observed alternatives are documented;
+  failure to find a route is not proof of global absence.
+- **U:** full manual/multi-region/non-text conflict behavior, untracked/ignored destructive scope,
+  force-push implementation, staged restoration in dirty checkout, accepting-remote/network cancellation,
+  dirty/locked worktree removal and successful submodule initialization. Test independent product rules.
 - **U:** full provider-by-provider parity, self-hosted authentication details, review versus browser handoff,
   and notification behavior. A documented PR entry point does not by itself establish an in-app review editor.
 - **U:** all signing backends, sparse checkout, partial clone, reftable/SHA-256 behavior, and platform feature gaps.
   Treat underlying Git capabilities and advertised Fork support as separate questions.
 - **U:** exact performance, graph lane algorithm, internal caching, watcher strategy, and private IPC or service design.
   Choose and measure our own implementation.
-- **U:** exhaustive current menus, preferences, gestures, accessibility behavior, and shortcut conflicts.
-  Older screenshots are useful for information architecture, not an exact current design inventory.
-  The F34 refresh above lists the chrome and graph details that remain unresolved.
+- **U:** exact fonts/colors/graph column boundaries, 125% DPI (capture blocked), full restart/crash
+  retention, accessibility and cross-platform behavior. The 351-commit capture is not a benchmark;
+  96-DPI geometry does not establish scaled layout. Lean Branching entry points lack exercised outcomes.
 - **U:** proprietary algorithms and hidden state are outside this research scope. Equivalence will be assessed
   against documented user outcomes and Git repository state, not against private implementation behavior.
 
 ## Maintaining this record
 
-Before each phase, refresh its sources and add dated evidence for new requirements. Keep three records
-separate: what Fork publicly documents, what this project chooses to implement, and what tests verify.
-Add a feature row if new public behavior has no coverage. Mark a row partial if any promised subworkflow
-is missing. Do not silently remove difficult features from the target.
+Before each correction/phase, read its dossiers, inspect original screenshots and compare matching
+preconditions/Git evidence. Supplement unresolved topics with dated public sources; preserve version,
+platform, confidence and conflicts. Keep four records separate: public claims, captured observations,
+project decisions/deviations, and implementation verification. Add a feature row if a new observed or
+documented surface has no coverage. Mark the project partial while promised subworkflows are missing;
+capture “observed” never implies implemented. Keep public-only requirements visible.
+
+Keep the private bundle unchanged and git-ignored; its historical setup/capture scripts are not new
+implementation instructions. Use its cases as references for independently authored TypeScript fixtures,
+and record case/finding → component/service → tested states → validation → deviation/unknown in
+the [alignment record](fork-catalogue-alignment.md). Do not publish or bundle the images.
 
 Public images used for the F34 refresh: [history image][history-image] and [manager image][manager-image]
 (Windows, 2020 content); [Mac history image][mac-history-image] (2020 content); [collapsible graph
