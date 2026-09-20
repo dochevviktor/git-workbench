@@ -1207,6 +1207,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: !active,
           run: () => setView('history'),
         },
+        {
+          id: 'view-reflog',
+          label: 'Show Lost Commits (Reflog)',
+          checkable: 'checkbox',
+          checked: Boolean(active) && view === 'history' && history.mode === 'reflog',
+          disabled: !active,
+          run: () => {
+            setView('history');
+            history.setMode(history.mode === 'reflog' ? 'normal' : 'reflog');
+          },
+        },
         menuSeparator,
         {
           id: 'show-head',

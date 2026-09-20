@@ -438,6 +438,12 @@ retained Recovery ref for tracked local changes before invoking Git. Untracked f
 Git reset semantics. Merge-parent selection is a bounded numeric choice derived from the selected commit's
 parents; no revision expressions or arbitrary command strings cross IPC.
 
+The bounded F20 reflog mode extends the history read with a named `reflog` request mode. The backend uses
+`git log --reflog --all --not --all` to identify unreachable commit objects, caps that set before parsing,
+and pages it before the ordinary reachable graph. Full commit IDs—not `HEAD@{n}` expressions—cross IPC;
+the existing reference, patch, and F19 history-operation services perform any selected recovery. The
+renderer owns only the mode/session/banner state, and Exit returns to the normal history request.
+
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory

@@ -630,9 +630,21 @@ export function HistoryView({
     <section
       className="history-view"
       ref={viewRef}
-      aria-label="Commit history"
+      aria-label={history.mode === 'reflog' ? 'Commit history with reflog' : 'Commit history'}
       style={{ '--history-list-height': `${visibleListHeight}px` } as CSSProperties}
     >
+      {history.mode === 'reflog' && (
+        <div className="history-filter-strip history-reflog-strip" role="status" data-testid="reflog-banner">
+          <span>Reflog mode enabled</span>
+          <button
+            type="button"
+            className="link-button history-filter-clear"
+            onClick={() => history.setMode('normal')}
+          >
+            Exit
+          </button>
+        </div>
+      )}
       {filter.kind === 'reference' && (
         <div className="history-filter-strip" role="status">
           <span className="history-filter-label">
@@ -737,7 +749,11 @@ export function HistoryView({
                   graph={row}
                   selected={commit.id === selectedCommitId}
                   head={commit.id === headCommit}
-                  dimmed={headLoaded && !reachable.has(commit.id)}
+                  dimmed={
+                    history.mode === 'reflog'
+                      ? !reachable.has(commit.id)
+                      : headLoaded && !reachable.has(commit.id)
+                  }
                   contextTarget={commit.id === contextCommitId}
                   searchMatch={searchMatches?.has(commit.id) ?? false}
                   searchQuery={searchQuery}

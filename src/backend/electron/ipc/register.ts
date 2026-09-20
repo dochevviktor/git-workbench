@@ -311,8 +311,8 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.rescanSourceDirectory, (window, { id }) =>
       repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
-    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor }) =>
-      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor),
+    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor, mode }) =>
+      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor, mode),
     );
     register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
       repositoryService.getCommitChanges(window.webContents.id, id, commitId),

@@ -17,6 +17,10 @@ user-authorized single F01–F16 correction pass is also implemented and verifie
 [correction record](reviews/f01-f16-catalogue-corrections.md). Broader feature-family scope and
 unobserved variants remain partial; later features have not been silently included or completed.
 
+**F20 in P08 — bounded lost-commit/reflog inspection and recovery mode — is implemented and verified
+within the scope in the [F20 handoff](reviews/f20-reflog-recovery.md).** Reflog expiry, named branch/tag
+recovery variants, and the broader P08 investigation family remain partial.
+
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
 checkpoint after the outstanding P01–P05 daily-use prerequisites are verified; it is not full Fork
@@ -68,6 +72,14 @@ deliberate single-commit, untracked-reset, and broader Fork-variant limits. `npm
 320 tests and one existing skip, `npm run build` passes, and all 13 headless Electron scenarios pass.
 P06 remains partial because the broader conflict-family and platform matrices are not verified.
 
+F20 implementation checkpoint (2026-09-20): added a typed, bounded reflog history mode with lost-commit
+paging, direct navigation, a dimmed-row Exit banner, and View-menu entry. Lost rows reuse full-ID branch,
+tag, checkout, patch, cherry-pick, revert, and F19 preview/CAS reset actions. `npm run check` passes with
+322 tests and one existing skip; production build and all 14 headless Electron scenarios pass. Disposable
+Git tests and the F20 Electron scenario verify mode entry/Exit, normal-history exclusion, Mixed Reset
+recovery, index/worktree semantics, and refresh. Reflog expiry and named branch/tag variants remain
+outside this bounded verification; P08 remains partial.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                         | Depends on                            |
@@ -80,7 +92,7 @@ P06 remains partial because the broader conflict-family and platform matrices ar
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains                                      | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                          | P06                                   |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Started early; F06 scoped search verified (2026-09-20); inspectors/reflog/bisect/patch import planned                                                                          | P03/P04; recovery for mutations       |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search and bounded F20 reflog recovery verified (2026-09-20); inspectors/blame/bisect/patch import remain planned                                          | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                                                        | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                                                        | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                     | P05 auth; browser handoff independent |
@@ -1000,8 +1012,8 @@ and screenshot coordinates are provenance, not implementation constants.
 
 ## Suggested next request
 
-> Implement F20 in P08 from docs/implementation-plan.md. Read the F19 handoff and catalogue P1-028 before
-> changing recovery. Add bounded lost-commit/reflog inspection and explicit recovery references while
-> preserving the verified F17 conflict, F18 interactive-rebase, and F19 history-operation state machines.
-> Leave unverified Fork GUI Skip parity, merge-preserving/dependent-reference rebase variants, and
-> public-only feature families distinct.
+> Implement F21 in P08 from docs/implementation-plan.md. Read the F20 handoff and catalogue P1-030/P1-031
+> before changing history inspection. Add one bounded file-history/blame workflow while preserving the
+> verified F17 conflict, F18 interactive-rebase, F19 history-operation, and F20 reflog state machines.
+> Leave selected-code/directory variants and public-only feature families distinct unless independently
+> verified.

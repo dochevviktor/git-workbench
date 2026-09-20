@@ -92,3 +92,59 @@ test('F19 reaches cherry-pick, revert, and reset through the history menu', asyn
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('F20 shows lost commits in reflog mode and recovers one through Mixed Reset', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'git-workbench-reflog-ui-'));
+  const cwd = join(root, 'work');
+  const git = new GitRunner();
+  const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
+  let application: ElectronApplication | undefined;
+  try {
+    await mkdir(cwd);
+    await run('init', '--quiet', '--initial-branch=main');
+    await run('config', 'user.name', 'Reflog UI');
+    await run('config', 'user.email', 'reflog-ui@example.test');
+    await run('config', 'commit.gpgsign', 'false');
+    await writeFile(join(cwd, 'history.txt'), 'base\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'Base');
+    const base = await run('rev-parse', 'HEAD');
+    await writeFile(join(cwd, 'history.txt'), 'lost\n');
+    await run('commit', '--quiet', '-am', 'Lost commit');
+    const lost = await run('rev-parse', 'HEAD');
+    await run('reset', '--hard', base);
+
+    application = await electron.launch({
+      chromiumSandbox: true,
+      args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
+      env: environment(),
+    });
+    const page = await open(application, cwd);
+    const lostRow = page.locator(`[data-commit-id="${lost}"]`);
+
+    await page.getByRole('menubar').getByRole('menuitem', { name: 'View', exact: true }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Show Lost Commits (Reflog)', exact: true }).click();
+    await expect(page.getByTestId('reflog-banner')).toContainText('Reflog mode enabled');
+    await expect(lostRow).toBeVisible();
+    await expect(lostRow).toHaveClass(/dimmed/u);
+
+    await lostRow.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: "Reset 'main' to Here…", exact: true }).click();
+    const dialog = page.getByTestId('reference-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Lost commit');
+    await dialog.getByTestId('reference-dialog-submit').click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => run('rev-parse', 'HEAD')).toBe(lost);
+
+    await expect(lostRow).toBeVisible();
+    await page.getByTestId('toolbar-activity').click();
+    await expect(page.getByTestId('activity')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Exit', exact: true }).click();
+    await expect(page.getByTestId('reflog-banner')).toHaveCount(0);
+    await expect(page.locator(`[data-commit-id="${lost}"]`)).toBeVisible();
+  } finally {
+    await application?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

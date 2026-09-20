@@ -22,6 +22,14 @@ history menu, plan dialog, Commit/Recovery state and disposable-repository/Elect
 preservation, dependent-reference updates and captured option effects remain explicit limits; the
 catalogue's Fork capture status and case-level unknowns remain unchanged.
 
+Subsequent implementation: the bounded F19 history-operation slice is recorded in the
+[history-operations handoff](../reviews/f19-history-operations.md), and the bounded F20 reflog/lost-commit
+slice is recorded in the [reflog recovery handoff](../reviews/f20-reflog-recovery.md). F20 maps P1-028's
+reflog mode, dimmed lost rows, Exit state, and Mixed Reset recovery to the typed history mode, bounded
+Git service, existing operation/CAS reset path, and Electron verification. Reflog expiry and named
+branch/tag recovery variants remain explicit limits; the catalogue's Fork capture status and case-level
+unknowns remain unchanged.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the

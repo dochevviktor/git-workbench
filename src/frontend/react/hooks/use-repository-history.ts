@@ -6,6 +6,7 @@ import type {
   RepositoryHistoryTracking,
   RepositoryHistoryPage,
   RepositoryHistoryAnchor,
+  RepositoryHistoryMode,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 
@@ -32,9 +33,14 @@ function historyFilterKey(filter: RepositoryHistoryFilter): string {
       : `commit-search:${filter.field ?? 'message'}:${filter.scope ?? 'repository'}:${filter.query}`;
 }
 
+function historyRequestKey(filter: RepositoryHistoryFilter, mode: RepositoryHistoryMode): string {
+  return `${mode}:${historyFilterKey(filter)}`;
+}
+
 interface HistorySession {
   readonly page: RepositoryHistoryPage;
   readonly filter: RepositoryHistoryFilter;
+  readonly mode: RepositoryHistoryMode;
   readonly selectedCommitId: string | undefined;
 }
 
@@ -66,6 +72,10 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     readonly repositoryId: string | undefined;
     readonly filter: RepositoryHistoryFilter;
   }>({ repositoryId: undefined, filter: allHistoryFilter });
+  const [ownedMode, setOwnedMode] = useState<{
+    readonly repositoryId: string | undefined;
+    readonly mode: RepositoryHistoryMode;
+  }>({ repositoryId: undefined, mode: 'normal' });
   const [reveal, setReveal] = useState<HistoryRevealRequest>();
   const sessions = useRef(new Map<string, HistorySession>());
   const revealToken = useRef(0);
@@ -75,7 +85,11 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     ownedFilter.repositoryId === repositoryId
       ? ownedFilter.filter
       : ((repositoryId ? sessions.current.get(repositoryId)?.filter : undefined) ?? allHistoryFilter);
-  const filterKey = historyFilterKey(filter);
+  const mode =
+    ownedMode.repositoryId === repositoryId
+      ? ownedMode.mode
+      : ((repositoryId ? sessions.current.get(repositoryId)?.mode : undefined) ?? 'normal');
+  const filterKey = historyRequestKey(filter, mode);
 
   useEffect(() => {
     mounted.current = true;
@@ -91,6 +105,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       replace: boolean,
       requestGeneration: number,
       requestFilter: RepositoryHistoryFilter,
+      requestMode: RepositoryHistoryMode,
       anchor?: RepositoryHistoryAnchor,
       selectFirst = false,
     ) => {
@@ -112,6 +127,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
             offset,
             limit: historyPageSize,
             filter: requestFilter,
+            ...(requestMode === 'reflog' ? { mode: requestMode } : {}),
             ...(anchor ? { anchor } : {}),
           }),
         );
@@ -141,7 +157,12 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
           hasMore: prepend ? previous.page.hasMore : page.hasMore,
           nextOffset: prepend ? previous.page.nextOffset : page.nextOffset,
         };
-        sessions.current.set(id, { page: mergedPage, filter: requestFilter, selectedCommitId: selected });
+        sessions.current.set(id, {
+          page: mergedPage,
+          filter: requestFilter,
+          mode: requestMode,
+          selectedCommitId: selected,
+        });
         setCommits(combined);
         setWindowOffset(mergedPage.offset);
         setReferences(page.references);
@@ -154,6 +175,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
           oldSelection &&
           oldSelection !== selected &&
           previous &&
+          previous.mode === requestMode &&
           historyFilterKey(previous.filter) === historyFilterKey(requestFilter)
         ) {
           revealToken.current += 1;
@@ -193,7 +215,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       return;
     }
     const cached = sessions.current.get(repositoryId);
-    if (cached && historyFilterKey(cached.filter) === historyFilterKey(filter)) {
+    if (cached && cached.mode === mode && historyFilterKey(cached.filter) === historyFilterKey(filter)) {
       setStateRepositoryId(repositoryId);
       setCommits(cached.page.commits);
       setReferences(cached.page.references);
@@ -207,12 +229,21 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       setLoadingMore(false);
       return;
     }
-    void requestPage(repositoryId, 0, true, requestGeneration, filter);
-  }, [filter, repositoryId, requestPage]);
+    void requestPage(repositoryId, 0, true, requestGeneration, filter, mode);
+  }, [filter, mode, repositoryId, requestPage]);
 
   const setFilter = useCallback(
     (next: RepositoryHistoryFilter) => {
+      if (next.kind !== 'all') setOwnedMode({ repositoryId, mode: 'normal' });
       setOwnedFilter({ repositoryId, filter: next });
+    },
+    [repositoryId],
+  );
+
+  const setMode = useCallback(
+    (next: RepositoryHistoryMode) => {
+      setOwnedMode({ repositoryId, mode: next });
+      if (next === 'reflog') setOwnedFilter({ repositoryId, filter: allHistoryFilter });
     },
     [repositoryId],
   );
@@ -226,13 +257,13 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
     setError(undefined);
-    void requestPage(repositoryId, 0, true, requestGeneration, filter);
-  }, [filter, repositoryId, requestPage]);
+    void requestPage(repositoryId, 0, true, requestGeneration, filter, mode);
+  }, [filter, mode, repositoryId, requestPage]);
 
   const loadMore = useCallback(() => {
     if (!repositoryId || loading || loadingMore || !hasMore || nextOffset === null) return;
-    void requestPage(repositoryId, nextOffset, false, generation.current, filter);
-  }, [filter, hasMore, loading, loadingMore, nextOffset, repositoryId, requestPage]);
+    void requestPage(repositoryId, nextOffset, false, generation.current, filter, mode);
+  }, [filter, hasMore, loading, loadingMore, mode, nextOffset, repositoryId, requestPage]);
 
   const loadPrevious = useCallback(() => {
     if (!repositoryId || loading || loadingMore || windowOffset === 0) return;
@@ -242,8 +273,9 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       false,
       generation.current,
       filter,
+      mode,
     );
-  }, [filter, loading, loadingMore, repositoryId, requestPage, windowOffset]);
+  }, [filter, loading, loadingMore, mode, repositoryId, requestPage, windowOffset]);
 
   const requestHome = useCallback(() => {
     if (!repositoryId) return;
@@ -253,8 +285,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     const cached = sessions.current.get(repositoryId);
     if (cached) sessions.current.set(repositoryId, { ...cached, selectedCommitId: undefined });
     setReveal(undefined);
-    void requestPage(repositoryId, 0, true, generation.current, filter, undefined, true);
-  }, [filter, repositoryId, requestPage]);
+    void requestPage(repositoryId, 0, true, generation.current, filter, mode, undefined, true);
+  }, [filter, mode, repositoryId, requestPage]);
 
   const selectCommit = useCallback(
     (id: string) => {
@@ -331,13 +363,27 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       true,
       generation.current,
       filter,
+      mode,
       reveal.target === 'end' ? { kind: 'oldest' } : { kind: 'commit', commitId: reveal.commitId },
     );
-  }, [commits, error, filter, hasMore, loading, loadingMore, nextOffset, repositoryId, requestPage, reveal]);
+  }, [
+    commits,
+    error,
+    filter,
+    hasMore,
+    loading,
+    loadingMore,
+    mode,
+    nextOffset,
+    repositoryId,
+    requestPage,
+    reveal,
+  ]);
 
   const currentRepository = stateRepositoryId === repositoryId;
   return {
     repositoryId,
+    mode,
     filter,
     filterKey,
     commits: currentRepository ? commits : [],
@@ -352,6 +398,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     windowOffset,
     error,
     setFilter,
+    setMode,
     clearFilter,
     refresh,
     loadMore,

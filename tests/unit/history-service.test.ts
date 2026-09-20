@@ -43,6 +43,63 @@ describe('repository history service', () => {
         anchor: { kind: 'commit', commitId: 'HEAD;touch file' },
       }).success,
     ).toBe(false);
+    expect(repositoryHistoryRequestSchema.safeParse({ ...base, mode: 'reflog' }).success).toBe(true);
+    expect(repositoryHistoryRequestSchema.safeParse({ ...base, mode: 'lost' }).success).toBe(false);
+  });
+
+  it('adds bounded reflog-only commits above the reachable graph and supports paging', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'reflog');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(18, repositoryPath, false);
+    await runner.run(['branch', '--quiet', '-M', 'main'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'history.txt'), 'base\n', 'utf8');
+    const baseCommit = await commit(
+      runner,
+      repositoryPath,
+      'Reachable base',
+      '',
+      'Reflog Author',
+      'reflog@example.test',
+      '2026-02-01',
+    );
+    await writeFile(join(repositoryPath, 'history.txt'), 'lost\n', 'utf8');
+    const lostCommit = await commit(
+      runner,
+      repositoryPath,
+      'Lost commit',
+      '',
+      'Reflog Author',
+      'reflog@example.test',
+      '2026-02-02',
+    );
+    await runner.run(['reset', '--hard', baseCommit], { cwd: repositoryPath });
+
+    const normal = await service.getHistory(18, repository.id, 0, 50);
+    expect(normal.commits.map((entry) => entry.id)).toEqual([baseCommit]);
+
+    const first = await service.getHistory(18, repository.id, 0, 1, undefined, undefined, 'reflog');
+    expect(first.commits).toHaveLength(1);
+    expect(first.commits[0]).toMatchObject({ id: lostCommit, subject: 'Lost commit', parents: [baseCommit] });
+    expect(first.hasMore).toBe(true);
+    expect(first.nextOffset).toBe(1);
+
+    const second = await service.getHistory(18, repository.id, 1, 1, undefined, undefined, 'reflog');
+    expect(second.commits.map((entry) => entry.id)).toEqual([baseCommit]);
+    expect(second.hasMore).toBe(false);
+
+    const located = await service.getHistory(
+      18,
+      repository.id,
+      0,
+      2,
+      undefined,
+      { kind: 'commit', commitId: lostCommit },
+      'reflog',
+    );
+    expect(located.commits.map((entry) => entry.id)).toContain(lostCommit);
   });
 
   it('keeps octopus parents, reordered dates, disconnected roots and detached selection consistent with Git', async () => {

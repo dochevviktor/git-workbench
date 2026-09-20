@@ -308,4 +308,34 @@ describe('F19 cherry-pick, revert, and reset', () => {
     expect(applied).toMatchObject({ status: 'succeeded' });
     expect(await readFile(join(f.cwd, 'value.txt'), 'utf8')).toBe('local unstaged\n');
   });
+
+  it('recovers a reflog-only commit with the existing Mixed Reset workflow', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'recovered.txt'), 'recovered\n');
+    await f.run('add', '--all');
+    await f.run('commit', '--quiet', '-m', 'Lost main commit');
+    const lost = await f.run('rev-parse', 'HEAD');
+    await f.run('reset', '--hard', f.before);
+
+    const normal = await f.service.getHistory(1, f.id, 0, 100);
+    expect(normal.commits.map((commit) => commit.id)).not.toContain(lost);
+    const reflog = await f.service.getHistory(1, f.id, 0, 100, undefined, undefined, 'reflog');
+    expect(reflog.commits[0]).toMatchObject({ id: lost, subject: 'Lost main commit' });
+
+    const preview = await f.service.getHistoryOperationPreview(1, {
+      kind: 'reset',
+      id: f.id,
+      targetCommitId: lost,
+      mode: 'mixed',
+    });
+    const result = await terminal(
+      f.service,
+      f.service.startHistoryOperation(1, { id: f.id, action: resetAction(preview, 'mixed') }),
+    );
+    expect(result).toMatchObject({ status: 'succeeded', kind: 'reset' });
+    expect(await f.run('rev-parse', 'HEAD')).toBe(lost);
+    expect(await f.run('show', ':recovered.txt')).toBe('recovered');
+    await expect(readFile(join(f.cwd, 'recovered.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await f.service.getHistory(1, f.id, 0, 100)).commits.map((commit) => commit.id)).toContain(lost);
+  });
 });

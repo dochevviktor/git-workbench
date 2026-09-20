@@ -4,6 +4,7 @@ import type {
   RepositoryHistoryDecoration,
   RepositoryHistoryFilter,
   RepositoryHistoryAnchor,
+  RepositoryHistoryMode,
   RepositoryHistoryPage,
   RepositoryHistoryReference,
   RepositoryHistoryTracking,
@@ -18,6 +19,7 @@ import { ExpectedBackendError } from '../errors';
 const historyReadTimeoutMs = 15_000;
 const historyReadOutputLimit = 8 * 1024 * 1024;
 const maxHistoryOffset = 1_000_000;
+const maxLostCommits = 20_000;
 const commitFieldCount = 10;
 const referenceFieldCount = 6;
 
@@ -35,6 +37,7 @@ export interface ReadHistoryInput {
   readonly limit: number;
   readonly filter?: RepositoryHistoryFilter | undefined;
   readonly anchor?: RepositoryHistoryAnchor | undefined;
+  readonly mode?: RepositoryHistoryMode | undefined;
 }
 
 interface RawReference {
@@ -53,22 +56,49 @@ export async function readRepositoryHistory(
   input: ReadHistoryInput,
 ): Promise<RepositoryHistoryPage> {
   const filter = input.filter ?? { kind: 'all' as const };
+  const mode = input.mode ?? 'normal';
+  if (mode === 'reflog' && filter.kind !== 'all') {
+    throw new ExpectedBackendError(
+      'INVALID_REQUEST',
+      'Reflog mode is only available for the complete repository history.',
+    );
+  }
   const stashes = await readStashes(runner, input.cwd);
   const offset = input.anchor ? await locateHistoryOffset(runner, input, filter, stashes) : input.offset;
   // An unborn HEAD has no current-branch ancestry, even when other refs exist.
   const emptyCurrentBranch =
     filter.kind === 'commit-search' && filter.scope === 'current-branch' && !input.head.commit;
-  const rawHistory = emptyCurrentBranch
-    ? ''
-    : (
-        await runner.run(
-          historyArguments({ ...input, offset }, filter, stashes),
-          readOptions(input.cwd, historyReadOutputLimit),
-        )
-      ).stdout;
-  const parsedCommits = parseCommits(rawHistory);
-  const hasMoreFromGit = parsedCommits.length > input.limit;
-  const commitsWithoutLookahead = parsedCommits.slice(0, input.limit);
+  let commitsWithoutLookahead: RepositoryHistoryCommit[];
+  let hasMoreFromGit: boolean;
+  if (mode === 'reflog') {
+    const lostCommits = await readLostCommits(runner, input.cwd);
+    const pageEnd = offset + input.limit;
+    const lostPage = lostCommits.slice(offset, pageEnd);
+    const normalHistory =
+      pageEnd >= lostCommits.length
+        ? await readNormalHistory(
+            runner,
+            { ...input, offset: Math.max(0, offset - lostCommits.length) },
+            filter,
+            stashes,
+            emptyCurrentBranch,
+          )
+        : { commits: [], hasMore: false };
+    commitsWithoutLookahead = [...lostPage, ...normalHistory.commits].slice(0, input.limit);
+    const normalSlots = Math.max(0, input.limit - lostPage.length);
+    hasMoreFromGit =
+      pageEnd < lostCommits.length || normalHistory.hasMore || normalHistory.commits.length > normalSlots;
+  } else {
+    const normalHistory = await readNormalHistory(
+      runner,
+      { ...input, offset },
+      filter,
+      stashes,
+      emptyCurrentBranch,
+    );
+    commitsWithoutLookahead = normalHistory.commits;
+    hasMoreFromGit = normalHistory.hasMore;
+  }
 
   const [rawReferences, peeledTargets] = await Promise.all([
     runner.run(
@@ -109,6 +139,20 @@ async function locateHistoryOffset(
   filter: RepositoryHistoryFilter,
   stashes: readonly RepositoryStashEntry[],
 ): Promise<number> {
+  if (input.mode === 'reflog') {
+    const lostCommits = await readLostCommits(runner, input.cwd);
+    const anchor = input.anchor;
+    const lostIndex =
+      anchor?.kind === 'commit' ? lostCommits.findIndex((commit) => commit.id === anchor.commitId) : -1;
+    if (lostIndex >= 0) {
+      return Math.max(
+        0,
+        anchor?.kind === 'oldest' ? lostIndex + 1 - input.limit : lostIndex - Math.floor(input.limit / 2),
+      );
+    }
+    const normalOffset = await locateHistoryOffset(runner, { ...input, mode: 'normal' }, filter, stashes);
+    return lostCommits.length + normalOffset;
+  }
   const maximumLocatedCommits = 200_000;
   const args = historyArguments({ ...input, offset: 0, limit: maximumLocatedCommits }, filter, stashes).map(
     (argument) => (argument.startsWith('--pretty=format:') ? '--format=%H' : argument),
@@ -134,6 +178,61 @@ async function locateHistoryOffset(
     0,
     anchor?.kind === 'oldest' ? index + 1 - input.limit : index - Math.floor(input.limit / 2),
   );
+}
+
+interface NormalHistoryPage {
+  readonly commits: RepositoryHistoryCommit[];
+  readonly hasMore: boolean;
+}
+
+async function readNormalHistory(
+  runner: HistoryRunner,
+  input: ReadHistoryInput,
+  filter: RepositoryHistoryFilter,
+  stashes: readonly RepositoryStashEntry[],
+  emptyCurrentBranch: boolean,
+): Promise<NormalHistoryPage> {
+  const rawHistory = emptyCurrentBranch
+    ? ''
+    : (
+        await runner.run(
+          historyArguments(input, filter, stashes),
+          readOptions(input.cwd, historyReadOutputLimit),
+        )
+      ).stdout;
+  const parsedCommits = parseCommits(rawHistory);
+  return {
+    commits: parsedCommits.slice(0, input.limit),
+    hasMore: parsedCommits.length > input.limit,
+  };
+}
+
+/** Reads only commits that are named by a reflog but are unreachable from current refs. */
+async function readLostCommits(runner: HistoryRunner, cwd: string): Promise<RepositoryHistoryCommit[]> {
+  const result = await runner.run(
+    [
+      'log',
+      '--reflog',
+      '--all',
+      '--not',
+      '--all',
+      '--topo-order',
+      '--no-decorate',
+      '--no-color',
+      `--max-count=${maxLostCommits + 1}`,
+      `--pretty=format:${commitFormat}`,
+      '--',
+    ],
+    readOptions(cwd, historyReadOutputLimit),
+  );
+  const commits = parseCommits(result.stdout);
+  if (commits.length > maxLostCommits) {
+    throw new ExpectedBackendError(
+      'UNAVAILABLE',
+      `Reflog mode is limited to ${maxLostCommits.toLocaleString()} lost commits. Recover or prune older entries before inspecting more.`,
+    );
+  }
+  return commits;
 }
 
 function historyArguments(

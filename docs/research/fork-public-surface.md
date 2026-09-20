@@ -73,6 +73,11 @@ provenance labels and external-tool handoff remain bounded; F19 cherry-pick/reve
 within the dated [F19 handoff](../reviews/f19-history-operations.md), with the catalogue's untested
 variants still distinct.
 
+F20 is implemented within the bounded [reflog recovery handoff](../reviews/f20-reflog-recovery.md): the
+renderer can enter and Exit a backend-bounded lost-commit graph, and the existing reviewed reset,
+branch/tag, checkout, cherry-pick, revert, and patch routes receive full commit IDs. Reflog expiry,
+named branch/tag recovery variants, and the broader P08 family remain unverified.
+
 Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
 platform, stated version, and theme in [`fork-references.json`](fork-references.json).
 `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
@@ -820,7 +825,7 @@ earlier slices; recording them here does not promote their full feature families
 | F17 | Conflict cards and built-in two-input/editable-result helper                          | D: [merge][merge]; B: P1-015–020, P1-022/P1-025–026                       | Partial; bounded text inspection/edit/stage/continue verified; non-text and stash provenance limits remain                                    | P06 / C04                     |
 | F18 | Visual interactive rebase, plan/message editing and Edit/amend/continue               | D: [rebase][rebase]; B: P1-023–024                                        | Partial; bounded plan/action/message/Edit recovery verified; merge preservation and dependent refs remain                                     | P07 / C04                     |
 | F19 | Cherry-pick, revert and Soft/Mixed/Hard reset                                         | D: [product][home]; B: P1-025–027                                         | Partial; bounded single-commit operations, previews, operation-specific Recovery, and safe reset modes verified; broader variants remain open | P06 / C04                     |
-| F20 | Lost commits/reflog mode and recovery                                                 | D: [product][home]; B: P1-028                                             | Planned                                                                                                                                       | P08 / C05                     |
+| F20 | Lost commits/reflog mode and recovery                                                 | D: [product][home]; B: P1-028                                             | Partial; bounded reflog mode/Exit and Mixed Reset recovery verified; expiry and named branch/tag variants remain open                         | P08 / C05                     |
 | F21 | File/directory/selected-code history, rename-aware History and Blame                  | D: [product][home], [releases][win]; B: P1-030–031/P1-033                 | Planned; selected-code/directory specifics public-only                                                                                        | P08 / C05                     |
 | F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Planned; existing topology/ref guards are prerequisites                                                                                       | P09 / C05                     |
 | F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Planned; captured Update failed, success still required                                                                                       | P09 / C05                     |

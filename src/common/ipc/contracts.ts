@@ -282,12 +282,16 @@ export const repositoryHistoryAnchorSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('oldest') }),
 ]);
 
+/** The normal graph or a bounded graph augmented with commits reachable only through reflogs. */
+export const repositoryHistoryModeSchema = z.enum(['normal', 'reflog']);
+
 export const repositoryHistoryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   offset: z.number().int().nonnegative().max(1_000_000),
   limit: z.number().int().min(1).max(100),
   filter: repositoryHistoryFilterSchema.optional(),
   anchor: repositoryHistoryAnchorSchema.optional(),
+  mode: repositoryHistoryModeSchema.optional(),
 });
 
 export const repositoryHistoryPageSchema = z.strictObject({
@@ -1864,6 +1868,7 @@ export type RepositoryHistoryReference = z.infer<typeof repositoryHistoryReferen
 export type RepositoryHistoryTracking = z.infer<typeof repositoryHistoryTrackingSchema>;
 export type RepositoryHistoryFilter = z.infer<typeof repositoryHistoryFilterSchema>;
 export type RepositoryHistoryAnchor = z.infer<typeof repositoryHistoryAnchorSchema>;
+export type RepositoryHistoryMode = z.infer<typeof repositoryHistoryModeSchema>;
 export type RepositoryHistoryRequest = z.infer<typeof repositoryHistoryRequestSchema>;
 export type RepositoryHistoryPage = z.infer<typeof repositoryHistoryPageSchema>;
 export type RepositoryCommitChangeStatus = z.infer<typeof repositoryCommitChangeStatusSchema>;

@@ -145,6 +145,17 @@ describe('preload capability API', () => {
       limit: 50,
       filter,
     });
+
+    invoke.mockResolvedValueOnce({ ok: true, value: page });
+    await expect(
+      api.repository.getHistory({ id: repositoryId, offset: 0, limit: 50, mode: 'reflog' }),
+    ).resolves.toEqual({ ok: true, value: page });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryHistory.channel, {
+      id: repositoryId,
+      offset: 0,
+      limit: 50,
+      mode: 'reflog',
+    });
   });
 
   it('validates and routes cherry-pick, revert, and reset previews/actions', async () => {

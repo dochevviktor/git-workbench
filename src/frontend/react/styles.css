@@ -1121,6 +1121,10 @@ p {
   color: var(--text);
 }
 
+.history-reflog-strip {
+  color: var(--accent);
+}
+
 .link-button.history-filter-clear {
   font-family: var(--font-ui);
   font-size: 12px;
