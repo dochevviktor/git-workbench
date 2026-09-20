@@ -125,7 +125,22 @@ export function FileChangeList<Entry extends FileChangeEntry>({
   }, [collapsed, entries, mode, rowTestId]);
 
   return (
-    <div className={`file-change-list ${mode}`}>
+    <div
+      className={`file-change-list ${mode}`}
+      onKeyDownCapture={(event) => {
+        if (
+          event.key.toLocaleLowerCase() !== 'a' ||
+          !(event.ctrlKey || event.metaKey) ||
+          !selectedKeys ||
+          entries.length === 0
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(entries[0]!, { toggle: false, range: false });
+        if (entries.length > 1) onSelect(entries[entries.length - 1]!, { toggle: false, range: true });
+      }}
+    >
       {mode === 'list' && (
         <div className="file-change-columns" aria-hidden="true">
           <span>Name</span>

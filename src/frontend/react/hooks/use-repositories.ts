@@ -25,6 +25,8 @@ type RepositoryBusyState =
 const defaultTabPreferences: RepositoryTabPreferences = {
   tabOrientation: 'horizontal',
   activeRepositoryId: null,
+  repositoryListVisible: false,
+  recentlyClosed: [],
 };
 
 function actionError(reason: unknown): string {
@@ -41,7 +43,7 @@ export function useRepositories() {
   const [open, setOpen] = useState<RepositorySummary[]>([]);
   const [manager, setManager] = useState<RepositoryManagerSnapshot>();
   const [tabPreferences, setTabPreferences] = useState<RepositoryTabPreferences>(defaultTabPreferences);
-  const [recentlyClosed, setRecentlyClosed] = useState<RepositorySummary[]>([]);
+  const [recentlyClosed, setRecentlyClosed] = useState<Pick<RepositorySummary, 'id' | 'path' | 'name'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<RepositoryBusyState>();
   const [error, setError] = useState<string>();
@@ -49,6 +51,7 @@ export function useRepositories() {
   // The Repository Manager is a transient renderer tab, like a browser's new-tab page.
   const [managerTab, setManagerTab] = useState({ open: false, active: false });
   const generation = useRef(0);
+  const reorderGeneration = useRef(0);
   const mounted = useRef(true);
   const busyRef = useRef<RepositoryBusyState>(undefined);
   const openRef = useRef<RepositorySummary[]>([]);
@@ -85,6 +88,7 @@ export function useRepositories() {
       setOpen(nextOpen);
       setManager(nextManager);
       setTabPreferences(nextPreferences);
+      setRecentlyClosed(nextPreferences.recentlyClosed);
       setActiveId((current) => {
         if (current && nextOpen.some((repository) => repository.id === current)) return current;
         if (
@@ -136,6 +140,21 @@ export function useRepositories() {
     const interval = window.setInterval(() => void refreshOpen(), 5_000);
     return () => window.clearInterval(interval);
   }, [refreshOpen]);
+
+  useEffect(
+    () =>
+      desktopApi()?.repository.onActivated((repository) => {
+        setOpen((current) =>
+          current.some((item) => item.id === repository.id)
+            ? current.map((item) => (item.id === repository.id ? repository : item))
+            : [...current, repository],
+        );
+        setActiveId(repository.id);
+        leaveManagerTab();
+        void load();
+      }),
+    [leaveManagerTab, load],
+  );
 
   const openExisting = useCallback(async () => {
     const api = desktopApi();
@@ -223,7 +242,8 @@ export function useRepositories() {
         }
         setActiveId((current) => {
           if (current !== id) return current;
-          return open.find((repository) => repository.id !== id)?.id;
+          const index = open.findIndex((repository) => repository.id === id);
+          return open[index - 1]?.id ?? open[index + 1]?.id;
         });
         await load();
       } catch (reason: unknown) {
@@ -321,18 +341,40 @@ export function useRepositories() {
       const previousOrientation = tabPreferences.tabOrientation;
       setError(undefined);
       try {
-        setTabPreferences((current) => ({ ...current, tabOrientation: orientation }));
-        const nextPreferences = unwrapResult(await api.repository.setTabOrientation(orientation));
+        setTabPreferences((current) => ({
+          ...current,
+          tabOrientation: orientation,
+          repositoryListVisible: orientation === 'vertical',
+        }));
+        const nextPreferences = unwrapResult(
+          await api.repository.setRepositoryListVisible({ visible: orientation === 'vertical' }),
+        );
         if (mounted.current) setTabPreferences(nextPreferences);
       } catch (reason: unknown) {
         if (mounted.current) {
-          setTabPreferences((current) => ({ ...current, tabOrientation: previousOrientation }));
+          setTabPreferences((current) => ({
+            ...current,
+            tabOrientation: previousOrientation,
+            repositoryListVisible: previousOrientation === 'vertical',
+          }));
           setError(actionError(reason));
         }
       }
     },
     [tabPreferences.tabOrientation],
   );
+
+  const reorderTabs = useCallback(async (ids: readonly string[]) => {
+    const api = desktopApi();
+    if (!api || busyRef.current) return;
+    const requestGeneration = ++reorderGeneration.current;
+    try {
+      const next = unwrapResult(await api.repository.reorderTabs({ ids }));
+      if (mounted.current && reorderGeneration.current === requestGeneration) setOpen(next);
+    } catch (reason: unknown) {
+      if (mounted.current) setError(actionError(reason));
+    }
+  }, []);
 
   const addSourceDirectory = useCallback(async () => {
     const api = desktopApi();
@@ -420,6 +462,33 @@ export function useRepositories() {
   const reportError = useCallback((message: string) => setError(message), []);
   const managerActive = open.length === 0 || managerTab.active;
 
+  useEffect(() => {
+    if (!managerActive) return;
+    let disposed = false;
+    let refreshing = false;
+    const refreshManager = async () => {
+      const api = desktopApi();
+      if (!api || refreshing || busyRef.current || document.hidden) return;
+      refreshing = true;
+      try {
+        const snapshot = unwrapResult(await api.repository.listManager());
+        if (!disposed) setManager(snapshot);
+      } catch (reason) {
+        if (!disposed) setError(actionError(reason));
+      } finally {
+        refreshing = false;
+      }
+    };
+    const onFocus = () => void refreshManager();
+    const interval = window.setInterval(onFocus, 15_000);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [managerActive]);
+
   return {
     gitInfo,
     recent,
@@ -434,6 +503,8 @@ export function useRepositories() {
     active: managerActive ? undefined : open.find((repository) => repository.id === activeId),
     lastActive: open.find((repository) => repository.id === activeId),
     tabOrientation: tabPreferences.tabOrientation,
+    repositoryListVisible: tabPreferences.repositoryListVisible,
+    reorderTabs,
     recentlyClosed,
     select,
     loading,

@@ -85,7 +85,7 @@ export function MenuButton({ items, menuLabel, disabledReason, title, children, 
             onDismiss={close}
             isOutsideIgnored={isOutsideIgnored}
           />,
-          document.body,
+          buttonRef.current?.closest('dialog') ?? document.body,
         )}
     </>
   );

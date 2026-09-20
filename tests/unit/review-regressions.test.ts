@@ -181,7 +181,9 @@ describe('review correctness regressions', () => {
     expect(
       await f.apply({ kind: 'create-branch', name: 'copied', checkout: false, tracking: 'auto', startPoint }),
     ).toMatchObject({ status: 'applied' });
-    expect(await f.run('rev-parse', 'refs/tags/release')).toBe(await f.run('rev-parse', 'refs/heads/topic'));
+    expect(await f.run('rev-parse', 'refs/tags/release^{commit}')).toBe(
+      await f.run('rev-parse', 'refs/heads/topic'),
+    );
     expect(await f.run('rev-parse', 'refs/heads/copied')).toBe(await f.run('rev-parse', 'refs/heads/topic'));
     expect(await f.apply({ kind: 'checkout-branch', fullName: 'refs/heads/topic' })).toMatchObject({
       status: 'applied',
@@ -204,7 +206,7 @@ describe('review correctness regressions', () => {
         startPoint: { kind: 'reference', fullName: 'refs/remotes/origin/main' },
       }),
     ).toMatchObject({ status: 'applied' });
-    expect(await f.run('rev-parse', 'refs/tags/remote-tag')).toBe(remoteTarget);
+    expect(await f.run('rev-parse', 'refs/tags/remote-tag^{commit}')).toBe(remoteTarget);
     expect(
       await f.apply({
         kind: 'set-upstream',

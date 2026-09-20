@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { ReadCoordinator } from '../git/read-coordinator';
 import type {
   GitInfo,
+  RepositoryCloneRequest,
+  RepositoryConnectionRequest,
   RecentRepository,
   RepositoryAmendChanges,
   RepositoryCommitChanges,
@@ -11,11 +14,16 @@ import type {
   RepositoryCommitRequest,
   RepositoryCommitResult,
   RepositoryDiff,
+  RepositoryDiffOptions,
+  RepositoryDiffCancel,
+  RepositoryDiscardPreview,
+  RepositoryDiscardPreviewRequest,
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
   RepositoryHead,
   RepositoryHistoryPage,
   RepositoryHistoryFilter,
+  RepositoryHistoryAnchor,
   RepositoryLocation,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
@@ -101,10 +109,20 @@ import {
   runNetworkOperation,
 } from './network-service';
 import type { NetworkPlan } from './network-service';
-import { applyRemoteAction, isAllowedRemoteUrl, readRemotes } from './remote-service';
+import {
+  applyRemoteAction,
+  isAllowedRemoteUrl,
+  isStandaloneRepositoryUrl,
+  readRemotes,
+} from './remote-service';
 import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
-import { applyWorkingChange, StaleWorkingSnapshotError, WorkingChangeActionError } from './staging-service';
+import {
+  applyWorkingChange,
+  previewDiscard,
+  StaleWorkingSnapshotError,
+  WorkingChangeActionError,
+} from './staging-service';
 import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
@@ -145,6 +163,7 @@ export class RepositoryService {
   private readonly sourceScanOptions: SourceScanOptions;
   private readonly maxOpenTabs: number;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
+  private readonly diffReads = new Map<string, AbortController>();
   private readonly restorePromises = new Map<number, Promise<void>>();
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
@@ -152,6 +171,7 @@ export class RepositoryService {
   private readonly operations: OperationRegistry;
   private readonly backgroundFetch: BackgroundFetchScheduler;
   private readonly remoteFetchPreferences: RemoteFetchPreferenceStore;
+  private automaticFetchEnabled = true;
   private readonly releaseOperationSubscription: () => void;
   private gitInfoPromise: Promise<GitInfo> | undefined;
   private readonly topologyKeys = new Map<string, string>();
@@ -270,6 +290,156 @@ export class RepositoryService {
     );
   }
 
+  /** Cloning owns a newly reserved destination and returns a queryable job before network work starts. */
+  async clone(ownerId: number, request: RepositoryCloneRequest): Promise<RepositoryOperation> {
+    await this.requireGit();
+    await this.ensureSessions(ownerId);
+    if (!isStandaloneRepositoryUrl(request.url)) {
+      throw new ExpectedBackendError(
+        'INVALID_REQUEST',
+        'Use an absolute local path, file, HTTPS, SSH or Git URL without embedded credentials.',
+      );
+    }
+    if (
+      !request.name ||
+      request.name === '.' ||
+      request.name === '..' ||
+      // eslint-disable-next-line no-control-regex -- reject control bytes in a destination component.
+      /[\\/\u0000-\u001F\u007F]/u.test(request.name) ||
+      request.name.startsWith('-')
+    ) {
+      throw new ExpectedBackendError('INVALID_REQUEST', 'Choose a single destination folder name.');
+    }
+    if (this.listOpenCached(ownerId).length >= this.maxOpenTabs) {
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Close a repository tab before cloning another repository.',
+      );
+    }
+    const parent = await this.canonicalDirectory(request.parentPath);
+    const destination = join(parent, request.name);
+    const repositoryId = `repo-${createHash('sha256').update(`clone:${destination}`).digest('hex')}`;
+    const generation = this.ownerGenerations.get(ownerId);
+    const args = ['-c', 'protocol.ext.allow=never', 'clone', '--progress', '--', request.url, '.'];
+    return this.operations.start(
+      {
+        ownerId,
+        repositoryId,
+        kind: 'clone',
+        title: `Clone '${request.name}'`,
+        command: `git clone --progress ${request.url} ${destination}`,
+      },
+      async (handle) => {
+        if (handle.signal.aborted)
+          return {
+            status: 'failed',
+            message: 'Clone cancelled before creating the destination.',
+            output: '',
+            failureReason: 'cancelled',
+          };
+        try {
+          // Exclusive mkdir refuses existing directories, symlinks and files, including races after preflight.
+          await mkdir(destination, { recursive: false });
+        } catch (error) {
+          return {
+            status: 'failed',
+            message:
+              (error as NodeJS.ErrnoException).code === 'EEXIST'
+                ? 'The destination already exists. Choose a new folder name.'
+                : 'The destination folder could not be created.',
+            output: '',
+            failureReason: 'other',
+          };
+        }
+        const outcome = await runNetworkOperation(
+          this.runner,
+          {
+            kind: 'clone',
+            args,
+            title: `Clone '${request.name}'`,
+            command: `git clone --progress ${request.url} ${destination}`,
+          },
+          destination,
+          handle,
+        );
+        if (outcome.status !== 'succeeded' || handle.signal.aborted) {
+          return {
+            ...outcome,
+            status: 'failed',
+            message: `${outcome.message} The destination is retained for inspection: ${destination}`.slice(
+              0,
+              512,
+            ),
+          };
+        }
+        if (this.ownerGenerations.get(ownerId) !== generation || !this.sessions.has(ownerId)) {
+          return {
+            status: 'succeeded',
+            message: 'Cloned. Open the destination to inspect it.',
+            output: outcome.output,
+          };
+        }
+        try {
+          const summary = await this.open(ownerId, destination);
+          return {
+            ...outcome,
+            message: 'Cloned and opened the repository.',
+            result: { kind: 'clone', value: summary },
+          };
+        } catch {
+          return {
+            ...outcome,
+            message: 'Cloned. The repository could not be opened automatically; open the destination folder.',
+          };
+        }
+      },
+    );
+  }
+
+  async testConnection(ownerId: number, request: RepositoryConnectionRequest): Promise<RepositoryOperation> {
+    await this.requireGit();
+    let cwd = tmpdir();
+    let url: string;
+    let repositoryId: string;
+    if (request.kind === 'remote') {
+      const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+      cwd = summary.worktreePath ?? summary.commonDir;
+      const remotes = await readRemotes(this.runner, cwd);
+      if (!remotes.some((remote) => remote.name === request.name)) {
+        throw new ExpectedBackendError('INVALID_REQUEST', 'That remote no longer exists.');
+      }
+      url = (
+        await this.runner.run(['remote', 'get-url', '--', request.name], {
+          cwd,
+          timeoutMs: repositoryReadTimeoutMs,
+        })
+      ).stdout.trim();
+      repositoryId = request.id;
+    } else {
+      url = request.url;
+      repositoryId = `repo-${createHash('sha256').update(`connection:${url}`).digest('hex')}`;
+      if (!isStandaloneRepositoryUrl(url))
+        throw new ExpectedBackendError(
+          'INVALID_REQUEST',
+          'Use an absolute local path or supported repository URL without embedded credentials.',
+        );
+    }
+    const args = ['-c', 'protocol.ext.allow=never', 'ls-remote', '--symref', '--', url];
+    const command = `git ls-remote --symref ${url}`;
+    return this.operations.start(
+      { ownerId, repositoryId, kind: 'connection', title: 'Test Connection', command },
+      async (handle) => {
+        const outcome = await runNetworkOperation(
+          this.runner,
+          { kind: 'connection', args, title: 'Test Connection', command },
+          cwd,
+          handle,
+        );
+        return outcome.status === 'succeeded' ? { ...outcome, message: 'Connection succeeded.' } : outcome;
+      },
+    );
+  }
+
   async listOpen(ownerId: number): Promise<RepositorySummary[]> {
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
@@ -293,7 +463,9 @@ export class RepositoryService {
     const preferences = await this.tabStore.getPreferences();
     await this.tabStore.removeTab(id);
     if (preferences.activeRepositoryId === id) {
-      const nextActiveId = [...ownerSessions.keys()].find((candidate) => candidate !== id) ?? null;
+      const ids = [...ownerSessions.keys()];
+      const index = ids.indexOf(id);
+      const nextActiveId = ids[index - 1] ?? ids[index + 1] ?? null;
       await this.tabStore.setActiveRepositoryId(nextActiveId);
     }
     for (const operationId of this.backgroundFetch.remove(ownerId, id))
@@ -304,6 +476,21 @@ export class RepositoryService {
   async getTabPreferences(ownerId: number): Promise<RepositoryTabPreferences> {
     await this.ensureSessions(ownerId);
     return this.tabStore.getPreferences();
+  }
+
+  async reorderTabs(ownerId: number, ids: readonly string[]): Promise<RepositorySummary[]> {
+    await this.ensureSessions(ownerId);
+    const current = this.sessions.get(ownerId)!;
+    if (
+      ids.length !== current.size ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => !current.has(id))
+    ) {
+      throw new ExpectedBackendError('INVALID_REQUEST', 'The tab order changed. Refresh and try again.');
+    }
+    await this.tabStore.reorder(ids);
+    this.sessions.set(ownerId, new Map(ids.map((id) => [id, current.get(id)!])));
+    return this.listOpen(ownerId);
   }
 
   async setTabOrientation(tabOrientation: RepositoryTabOrientation): Promise<RepositoryTabPreferences> {
@@ -329,6 +516,7 @@ export class RepositoryService {
     offset: number,
     limit: number,
     filter?: RepositoryHistoryFilter,
+    anchor?: RepositoryHistoryAnchor,
   ): Promise<RepositoryHistoryPage> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
@@ -369,6 +557,7 @@ export class RepositoryService {
         offset,
         limit,
         filter,
+        anchor,
       });
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
@@ -393,17 +582,62 @@ export class RepositoryService {
     id: string,
     target: RepositoryDiffTarget,
     whitespace: RepositoryDiffWhitespace,
+    options?: RepositoryDiffOptions,
   ): Promise<RepositoryDiff> {
-    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    const readKey = options?.readId ? `${ownerId}:${id}:${options.readId}` : undefined;
+    const controller = new AbortController();
+    if (readKey) {
+      this.diffReads.get(readKey)?.abort();
+      if (
+        !this.diffReads.has(readKey) &&
+        [...this.diffReads.keys()].filter((key) => key.startsWith(`${ownerId}:`)).length >= 4
+      )
+        throw new ExpectedBackendError(
+          'UNAVAILABLE',
+          'Too many diff reads are in progress. Cancel a read and try again.',
+        );
+      this.diffReads.set(readKey, controller);
+    }
     try {
+      const summary = await this.refreshOpenRepository(ownerId, id, false);
       return await readRepositoryDiff(this.runner, {
         repositoryId: id,
         cwd: summary.worktreePath ?? summary.commonDir,
         target,
         whitespace,
+        options,
+        ...(readKey ? { signal: controller.signal } : {}),
       });
     } catch (error) {
       throw this.mapRevisionFailure(error, 'Git could not read the selected diff.');
+    } finally {
+      if (readKey && this.diffReads.get(readKey) === controller) this.diffReads.delete(readKey);
+    }
+  }
+
+  async cancelDiff(ownerId: number, request: RepositoryDiffCancel): Promise<null> {
+    this.diffReads.get(`${ownerId}:${request.id}:${request.readId}`)?.abort();
+    return null;
+  }
+
+  async previewDiscard(
+    ownerId: number,
+    request: RepositoryDiscardPreviewRequest,
+  ): Promise<RepositoryDiscardPreview> {
+    const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+    if (!summary.worktreePath)
+      throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
+    try {
+      return await previewDiscard(this.runner, {
+        repositoryId: request.id,
+        cwd: summary.worktreePath,
+        targets: request.targets,
+        selection: request.selection,
+      });
+    } catch (error) {
+      if (error instanceof WorkingChangeActionError)
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      throw this.mapGitFailure(error, 'Git could not preview the selected changes.');
     }
   }
 
@@ -718,6 +952,7 @@ export class RepositoryService {
   }
 
   private async readConfiguredRemotes(repositoryId: string, cwd: string): Promise<RepositoryRemote[]> {
+    this.automaticFetchEnabled = await this.remoteFetchPreferences.isGloballyEnabled();
     const [remotes, disabled] = await Promise.all([
       readRemotes(this.runner, cwd),
       this.remoteFetchPreferences.disabledRemotes(repositoryId),
@@ -729,6 +964,20 @@ export class RepositoryService {
     }));
   }
 
+  async getAutomaticFetch(): Promise<{ enabled: boolean }> {
+    this.automaticFetchEnabled = await this.remoteFetchPreferences.isGloballyEnabled();
+    return { enabled: this.automaticFetchEnabled };
+  }
+
+  async setAutomaticFetch(enabled: boolean): Promise<{ enabled: boolean }> {
+    await this.remoteFetchPreferences.setGloballyEnabled(enabled);
+    this.automaticFetchEnabled = enabled;
+    for (const [ownerId, sessions] of this.sessions) {
+      for (const summary of sessions.values()) await this.refreshBackgroundFetch(ownerId, summary);
+    }
+    return { enabled };
+  }
+
   private configureBackgroundFetch(
     ownerId: number,
     repositoryId: string,
@@ -737,7 +986,9 @@ export class RepositoryService {
     const cancelled = this.backgroundFetch.configure(
       ownerId,
       repositoryId,
-      remotes.filter((remote) => remote.fetchAutomatically).map((remote) => remote.name),
+      this.automaticFetchEnabled
+        ? remotes.filter((remote) => remote.fetchAutomatically).map((remote) => remote.name)
+        : [],
     );
     for (const operationId of cancelled) this.operations.cancel(ownerId, operationId);
   }
@@ -1044,7 +1295,13 @@ export class RepositoryService {
                     throw new ExpectedBackendError('OPERATION_FAILED', checkout.message);
                 }
                 handle.setCommand?.(plan.command);
-                const result = await runNetworkOperation(this.runner, plan, cwd, handle);
+                const result = await runNetworkOperation(
+                  this.runner,
+                  plan,
+                  cwd,
+                  handle,
+                  source === 'background' ? 'silent' : 'prompt',
+                );
                 if (action.autostash && result.status !== 'succeeded')
                   throw new ExpectedBackendError(
                     'OPERATION_FAILED',
@@ -1055,7 +1312,13 @@ export class RepositoryService {
               handle.signal,
             );
           }
-          const outcome = await runNetworkOperation(this.runner, plan, cwd, handle);
+          const outcome = await runNetworkOperation(
+            this.runner,
+            plan,
+            cwd,
+            handle,
+            source === 'background' ? 'silent' : 'prompt',
+          );
           if (outcome.status === 'succeeded' && action.kind === 'push' && !action.setUpstream) {
             for (const target of action.targets.filter((target) => target.setUpstream)) {
               const name = target.fullName.slice('refs/heads/'.length);
@@ -1300,14 +1563,13 @@ export class RepositoryService {
       });
       const currentTrackedPaths = [...working.staged, ...working.unstaged].map((change) => change.path);
       const currentUntrackedPaths = working.untracked.map((change) => change.path);
+      const includeNew = action.stageNewFiles || action.includeUntracked;
       const selectedPaths =
         action.paths.length > 0
           ? [...new Set(action.paths)]
           : [
               ...new Set(
-                action.includeUntracked
-                  ? [...currentTrackedPaths, ...currentUntrackedPaths]
-                  : currentTrackedPaths,
+                includeNew ? [...currentTrackedPaths, ...currentUntrackedPaths] : currentTrackedPaths,
               ),
             ];
       if (selectedPaths.length === 0)
@@ -1324,16 +1586,27 @@ export class RepositoryService {
           'STALE_SNAPSHOT',
           'A selected path is no longer changed. Review the files again.',
         );
-      if (!action.includeUntracked && selectedPaths.some((path) => untracked.has(path)))
+      if (!includeNew && selectedPaths.some((path) => untracked.has(path)))
         throw new ExpectedBackendError(
           'INVALID_REQUEST',
-          'Enable untracked files before stashing the selected untracked path.',
+          'Choose Stage new files before stashing the selected untracked path.',
         );
-      const args = ['stash', 'push', `--message=${action.message.trim() || 'Git Workbench stash'}`];
-      if (action.includeUntracked) args.push('--include-untracked');
+      const args = ['stash', 'push'];
+      if (action.message.trim()) args.push(`--message=${action.message.trim()}`);
+      if (action.includeUntracked && !action.stageNewFiles) args.push('--include-untracked');
       args.push('--', ...selectedPaths);
       handle.setCommand?.(['git', 'stash', 'push'].join(' '));
+      const newPaths = action.stageNewFiles ? selectedPaths.filter((path) => untracked.has(path)) : [];
       try {
+        // The captured checkbox stages new files before stash, producing an index parent and two
+        // parents total. It deliberately differs from Git's three-parent --include-untracked form.
+        if (newPaths.length)
+          await this.runner.run(['add', '--', ...newPaths], {
+            cwd: context.cwd,
+            signal: handle.signal,
+            timeoutMs: 120_000,
+            maxOutputBytes: 64 * 1024,
+          });
         await this.runner.run(args, {
           cwd: context.cwd,
           signal: handle.signal,
@@ -1341,6 +1614,11 @@ export class RepositoryService {
           maxOutputBytes: 4 * 1024 * 1024,
         });
       } catch (error) {
+        // Unstage only paths that were untracked in the reviewed snapshot. Their files stay present.
+        if (newPaths.length && context.head.commit)
+          await this.runner
+            .run(['reset', '--quiet', 'HEAD', '--', ...newPaths], { cwd: context.cwd })
+            .catch(() => undefined);
         return this.stashCommandFailure(error, 'Git could not save those changes as a stash.');
       }
       const commitId = (
@@ -1370,13 +1648,56 @@ export class RepositoryService {
       };
     const recovery = await readRecovery(this.runner, context);
     const isRecoveryCopy = recovery.copies.some((copy) => copy.commitId === entry.commitId);
-    if (isRecoveryCopy && (action.kind === 'drop' || action.kind === 'pop'))
+    if (isRecoveryCopy && (action.kind === 'drop' || action.kind === 'pop' || action.kind === 'rename'))
       return {
         status: 'failed',
         failureReason: 'other',
         message: 'That stash is a Recovery copy. Use the Recovery panel so it remains recoverable.',
         output: '',
       };
+    if (action.kind === 'rename') {
+      const message = entry.branch ? `On ${entry.branch}: ${action.message.trim()}` : action.message.trim();
+      try {
+        // Store before dropping: a failed or interrupted rename leaves a recoverable duplicate.
+        await this.runner.run(['stash', 'store', '--message', message, entry.commitId], {
+          cwd: context.cwd,
+          signal: handle.signal,
+          timeoutMs: 120_000,
+          maxOutputBytes: 64 * 1024,
+        });
+        const updated = await readStashes(this.runner, context.cwd);
+        const index = entries.findIndex((candidate) => candidate.selector === entry.selector);
+        if (
+          updated.length !== entries.length + 1 ||
+          updated[0]?.commitId !== entry.commitId ||
+          entries.some((candidate, offset) => updated[offset + 1]?.commitId !== candidate.commitId)
+        ) {
+          return {
+            status: 'failed',
+            failureReason: 'other',
+            message:
+              'The stash was renamed, but the list changed before its old entry could be removed. Review the retained entries.',
+            output: '',
+          };
+        }
+        await this.runner.run(['stash', 'drop', updated[index + 1]!.selector], {
+          cwd: context.cwd,
+          signal: handle.signal,
+          timeoutMs: 120_000,
+          maxOutputBytes: 64 * 1024,
+        });
+        return {
+          status: 'succeeded',
+          message: 'Renamed the stash and moved it to the top of the list.',
+          output: '',
+        };
+      } catch (error) {
+        return this.stashCommandFailure(
+          error,
+          'The stash could not be renamed. Its saved contents were retained.',
+        );
+      }
+    }
     if (action.kind === 'drop') {
       handle.setCommand?.(['git', 'stash', 'drop', JSON.stringify(entry.selector)].join(' '));
       try {
@@ -1405,11 +1726,11 @@ export class RepositoryService {
         message: `Finish or abort the ${preview.pendingOperation} before applying a stash.`,
         output: '',
       };
-    if (preview.paths.length + preview.untrackedPaths.length > 0)
+    if (preview.paths.length > 0)
       return {
         status: 'failed',
         failureReason: 'local-changes',
-        message: 'The working tree is not clean. Save or commit current changes before applying a stash.',
+        message: 'Tracked files have local changes. Save or commit them before applying a stash.',
         output: '',
       };
     handle.setCommand?.(['git', 'stash', 'apply', '--index', JSON.stringify(entry.selector)].join(' '));
@@ -1453,7 +1774,7 @@ export class RepositoryService {
       const output = displayOutput(error.stdout, error.stderr).slice(0, 65_536);
       return {
         status: 'failed',
-        failureReason: 'other',
+        failureReason: /CONFLICT|conflict|unmerged/iu.test(output) ? 'conflict' : 'other',
         message: output ? `${fallback} ${output.slice(0, 400)}` : fallback,
         output,
       };
@@ -1654,6 +1975,11 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    for (const [key, controller] of this.diffReads)
+      if (key.startsWith(`${ownerId}:`)) {
+        controller.abort();
+        this.diffReads.delete(key);
+      }
     this.ownerGenerations.set(ownerId, (this.ownerGenerations.get(ownerId) ?? 0) + 1);
     this.restorePromises.delete(ownerId);
     this.sessions.delete(ownerId);
@@ -1663,6 +1989,8 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    for (const controller of this.diffReads.values()) controller.abort();
+    this.diffReads.clear();
     this.ownerGenerations.clear();
     this.restorePromises.clear();
     this.sessions.clear();

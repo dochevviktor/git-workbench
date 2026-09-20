@@ -1,17 +1,23 @@
-import { app, session } from 'electron';
+import { app, dialog, session } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { registerAppIpc } from './ipc/register';
 import { installApplicationMenu } from './menu';
 import { RepositoryService } from '../repositories/repository-service';
 import { createMainWindow } from './window';
+import { forwardedRepositoryPaths, repositoryPathsFromArguments } from './launch-paths';
+import { ExpectedBackendError } from '../errors';
 
 app.setName('Git Workbench');
+const launchPaths = repositoryPathsFromArguments(process.argv, process.cwd(), process.defaultApp === true);
 
-if (!app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })) {
   app.quit();
 } else {
   let mainWindow: BrowserWindow | null = null;
+  let openRequestedPaths = (paths: readonly string[]) => {
+    launchPaths.push(...paths.slice(0, 20));
+  };
   const focusWindow = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -19,7 +25,13 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus();
   };
 
-  app.on('second-instance', focusWindow);
+  app.on('second-instance', (_event, argv, cwd, additionalData) => {
+    openRequestedPaths(
+      forwardedRepositoryPaths(additionalData) ??
+        repositoryPathsFromArguments(argv, cwd, process.defaultApp === true),
+    );
+    focusWindow();
+  });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
@@ -38,10 +50,47 @@ if (!app.requestSingleInstanceLock()) {
       });
       const ipc = registerAppIpc(repositories);
       installApplicationMenu();
+      const loadedWindows = new Set<number>();
+      let openQueue = Promise.resolve();
+      openRequestedPaths = (paths) => {
+        openQueue = openQueue
+          .then(async () => {
+            const window = mainWindow;
+            if (!window || window.isDestroyed() || !loadedWindows.has(window.webContents.id)) {
+              launchPaths.push(...paths.slice(0, 20));
+              return;
+            }
+            for (const path of paths.slice(0, 20)) {
+              if (window.isDestroyed()) break;
+              try {
+                const repository = await repositories.open(window.webContents.id, path);
+                if (!window.isDestroyed()) ipc.publishRepositoryActivated(window, repository);
+              } catch (error) {
+                if (!window.isDestroyed())
+                  await dialog.showMessageBox(window, {
+                    type: 'error',
+                    title: 'Open Repository',
+                    message: 'The requested repository could not be opened.',
+                    detail:
+                      error instanceof ExpectedBackendError
+                        ? error.message
+                        : 'Check that the selected directory contains an accessible Git repository.',
+                  });
+              }
+            }
+          })
+          .catch((error: unknown) => console.error('Unable to handle repository launch', error));
+      };
 
       const openWindow = () => {
         mainWindow = createMainWindow(ipc.attachWindow);
+        const windowId = mainWindow.webContents.id;
+        mainWindow.webContents.once('did-finish-load', () => {
+          loadedWindows.add(windowId);
+          if (launchPaths.length) openRequestedPaths(launchPaths.splice(0, 20));
+        });
         mainWindow.once('closed', () => {
+          loadedWindows.delete(windowId);
           mainWindow = null;
         });
       };

@@ -63,6 +63,84 @@ afterEach(async () => {
 });
 
 describe('F15 stash workflows', () => {
+  it('stages new files into a two-parent stash and preserves the existing staged distinction', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, '.gitignore'), 'ignored.txt\n');
+    await f.run('add', '.gitignore');
+    await f.run('commit', '--quiet', '-m', 'ignore');
+    const head = await f.run('rev-parse', 'HEAD');
+    await writeFile(join(f.cwd, 'a.txt'), 'staged\n');
+    await f.run('add', 'a.txt');
+    await writeFile(join(f.cwd, 'a.txt'), 'unstaged\n');
+    await writeFile(join(f.cwd, 'new.txt'), 'new file\n');
+    await writeFile(join(f.cwd, 'ignored.txt'), 'ignored\n');
+    expect(
+      await stash(f, {
+        kind: 'save',
+        message: '',
+        includeUntracked: false,
+        stageNewFiles: true,
+        paths: [],
+        changesSnapshot: (await f.service.previewLocalChanges(1, f.id)).snapshot,
+      }),
+    ).toMatchObject({ status: 'succeeded' });
+    const [entry] = await f.service.listStashes(1, f.id);
+    expect((await f.run('show', '-s', '--format=%P', entry!.commitId)).split(' ')).toHaveLength(2);
+    expect(await f.run('show', `${entry!.commitId}^2:new.txt`)).toBe('new file');
+    expect(await f.run('show', `${entry!.commitId}^2:a.txt`)).toBe('staged');
+    expect(await f.run('show', `${entry!.commitId}:a.txt`)).toBe('unstaged');
+    expect(await f.run('status', '--porcelain')).toBe('');
+    expect(await f.run('rev-parse', 'HEAD')).toBe(head);
+    expect(await readFile(join(f.cwd, 'ignored.txt'), 'utf8')).toBe('ignored\n');
+    expect(await stash(f, { kind: 'apply', stashId: entry!.commitId })).toMatchObject({
+      status: 'succeeded',
+    });
+    expect(await f.run('show', ':a.txt')).toBe('staged');
+    expect(await f.run('show', ':new.txt')).toBe('new file');
+  });
+
+  it('renames a non-top stash while preserving all saved objects and worktree contents', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'a.txt'), 'first stash\n');
+    await stash(f, { kind: 'save', message: 'first', includeUntracked: false, paths: [] });
+    const [first] = await f.service.listStashes(1, f.id);
+    await writeFile(join(f.cwd, 'b.txt'), 'second stash\n');
+    await stash(f, { kind: 'save', message: 'second', includeUntracked: false, paths: [] });
+    expect(
+      await stash(f, { kind: 'rename', stashId: first!.commitId, message: 'renamed café' }),
+    ).toMatchObject({ status: 'succeeded' });
+    expect((await f.service.listStashes(1, f.id)).map((entry) => entry.message)).toEqual([
+      'renamed café',
+      'second',
+    ]);
+    expect(await f.run('show', `${first!.commitId}:a.txt`)).toBe('first stash');
+    expect(await f.run('status', '--porcelain')).toBe('');
+  });
+
+  it('retains a conflicting pop and accepts external resolution without moving HEAD', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'a.txt'), 'stash change\n');
+    await stash(f, { kind: 'save', message: 'conflict', includeUntracked: false, paths: [] });
+    const [entry] = await f.service.listStashes(1, f.id);
+    await writeFile(join(f.cwd, 'a.txt'), 'branch change\n');
+    await f.run('add', 'a.txt');
+    await f.run('commit', '--quiet', '-m', 'branch');
+    const head = await f.run('rev-parse', 'HEAD');
+    await writeFile(join(f.cwd, 'note.txt'), 'untracked note\n');
+    expect(await stash(f, { kind: 'pop', stashId: entry!.commitId })).toMatchObject({
+      status: 'failed',
+      failureReason: 'conflict',
+    });
+    expect((await f.service.getRecovery(1, f.id)).conflictedCount).toBe(1);
+    expect(await f.service.listStashes(1, f.id)).toHaveLength(1);
+    expect(await readFile(join(f.cwd, 'note.txt'), 'utf8')).toBe('untracked note\n');
+    await writeFile(join(f.cwd, 'a.txt'), 'stash change\n');
+    await f.run('add', 'a.txt');
+    expect((await f.service.getRecovery(1, f.id)).conflictedCount).toBe(0);
+    expect(await f.run('rev-parse', 'HEAD')).toBe(head);
+    expect(await f.service.listStashes(1, f.id)).toHaveLength(1);
+  });
+
   it('saves only selected files and restores staged state with apply --index', async () => {
     const f = await fixture();
     await writeFile(join(f.cwd, 'a.txt'), 'a staged\n');

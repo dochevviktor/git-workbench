@@ -142,6 +142,51 @@ describe('repository revision inspection service', () => {
       code: 'OPERATION_FAILED',
     });
   });
+
+  it('compares a merge against its first parent and preserves both parents and the selected revision tree', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'merge');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(23, repositoryPath, false);
+    await runner.run(['branch', '-M', 'main'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'base.txt'), 'base\n');
+    await commit(runner, repositoryPath, 'root');
+    await runner.run(['switch', '-c', 'feature'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'feature.txt'), 'feature\n');
+    const feature = await commit(runner, repositoryPath, 'feature');
+    await runner.run(['switch', 'main'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'main.txt'), 'main\n');
+    const main = await commit(runner, repositoryPath, 'main');
+    await runner.run(
+      [
+        '-c',
+        'user.name=Tester',
+        '-c',
+        'user.email=tester@test.invalid',
+        'merge',
+        '--no-ff',
+        '-m',
+        'merge',
+        'feature',
+      ],
+      { cwd: repositoryPath },
+    );
+    const merge = (await runner.run(['rev-parse', 'HEAD'], { cwd: repositoryPath })).stdout.trim();
+    const changes = await service.getCommitChanges(23, repository.id, merge);
+    expect(changes.changes.map((change) => change.path)).toEqual(['feature.txt']);
+    expect(
+      (await service.getRevisionTree(23, repository.id, merge, '')).entries.map((entry) => entry.path),
+    ).toEqual(['base.txt', 'feature.txt', 'main.txt']);
+    expect(
+      (await service.getRevisionTree(23, repository.id, main, '')).entries.map((entry) => entry.path),
+    ).toEqual(['base.txt', 'main.txt']);
+    const history = await service.getHistory(23, repository.id, 0, 10);
+    expect(history.commits[0]?.parents).toEqual([main, feature]);
+    expect(history.head.commit).toBe(merge);
+    expect((await runner.run(['status', '--porcelain'], { cwd: repositoryPath })).stdout).toBe('');
+  });
 });
 
 async function commit(runner: GitRunner, cwd: string, subject: string): Promise<string> {

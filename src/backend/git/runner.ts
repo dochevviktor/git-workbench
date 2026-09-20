@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import type { ChildProcessWithoutNullStreams, SpawnOptions } from 'node:child_process';
 import { resolveGitExecutable } from './executable';
+import { applyAuthenticationPolicy } from './authentication-policy';
+import type { GitAuthenticationPolicy } from './authentication-policy';
 
 const defaultOutputLimit = 2 * 1024 * 1024;
 const defaultTimeout = 30_000;
@@ -12,6 +14,8 @@ export interface GitRunOptions {
   readonly maxOutputBytes?: number;
   readonly signal?: AbortSignal | undefined;
   readonly env?: NodeJS.ProcessEnv;
+  /** Only explicit user network operations may invoke configured native authentication prompts. */
+  readonly authentication?: GitAuthenticationPolicy;
   /** Optional patch data supplied by a backend Git service, never by the renderer. */
   readonly stdin?: string | Buffer;
   /**
@@ -103,7 +107,10 @@ function displayCommand(executable: string, args: readonly string[]): string {
   return [executable, ...args].map((value) => JSON.stringify(redactArgument(value))).join(' ');
 }
 
-function controlledEnvironment(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function controlledEnvironment(
+  overrides?: NodeJS.ProcessEnv,
+  authentication: GitAuthenticationPolicy = 'silent',
+): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = { ...process.env, ...overrides };
   // These variables can silently redirect a repository operation away from the selected path.
   for (const key of [
@@ -130,7 +137,7 @@ function controlledEnvironment(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
   environment.GIT_PAGER = 'cat';
   environment.GIT_EDITOR = ':';
   environment.LC_ALL = 'C';
-  return environment;
+  return applyAuthenticationPolicy(environment, authentication);
 }
 
 /**
@@ -152,15 +159,6 @@ function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.
   } catch {
     // The process may have exited between the event and kill(). The close event settles it.
   }
-}
-
-function appendOutput(
-  current: Buffer<ArrayBufferLike>,
-  chunk: Buffer<ArrayBufferLike>,
-  limit: number,
-): Buffer<ArrayBufferLike> {
-  if (current.byteLength + chunk.byteLength > limit) throw new Error('output-limit');
-  return Buffer.concat([current, chunk]);
 }
 
 export interface GitRunnerOptions {
@@ -218,7 +216,7 @@ export class GitRunner {
       try {
         child = spawn(executable, commandArgs, {
           cwd: options.cwd,
-          env: controlledEnvironment(options.env),
+          env: controlledEnvironment(options.env, options.authentication),
           shell: false,
           windowsHide: true,
           // A POSIX child leads its own process group, so cancelling a fetch also stops the transport
@@ -231,9 +229,14 @@ export class GitRunner {
         return;
       }
 
-      let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-      let stderr: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+      // Keep bounded chunks and join once. Repeated Buffer.concat copies the entire prefix for every
+      // chunk, making a bounded multi-megabyte history read allocate hundreds of megabytes transiently.
+      const stdout: Buffer<ArrayBufferLike>[] = [];
+      const stderr: Buffer<ArrayBufferLike>[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
       let termination: Error | undefined;
+      let closed = false;
       let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
       const timeoutTimer = setTimeout(() => terminate(new GitTimeoutError()), timeoutMs);
 
@@ -242,7 +245,8 @@ export class GitRunner {
         termination = reason;
         terminateProcess(child, 'SIGTERM');
         forceKillTimer = setTimeout(() => {
-          if (!child.killed) terminateProcess(child, 'SIGKILL');
+          // `killed` only says a signal was sent; it does not mean the process group exited.
+          if (!closed) terminateProcess(child, 'SIGKILL');
         }, 1_000);
       };
 
@@ -254,20 +258,23 @@ export class GitRunner {
       }
       child.stdout.on('data', (chunk: Buffer | string) => {
         if (termination) return;
-        try {
-          stdout = appendOutput(stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk), limit);
-        } catch {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (stdoutBytes + buffer.byteLength > limit) {
           terminate(new GitOutputLimitError('stdout'));
+        } else {
+          stdout.push(buffer);
+          stdoutBytes += buffer.byteLength;
         }
       });
       child.stderr.on('data', (chunk: Buffer | string) => {
         if (termination) return;
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         options.onStderr?.(buffer.toString('utf8'));
-        try {
-          stderr = appendOutput(stderr, buffer, limit);
-        } catch {
+        if (stderrBytes + buffer.byteLength > limit) {
           terminate(new GitOutputLimitError('stderr'));
+        } else {
+          stderr.push(buffer);
+          stderrBytes += buffer.byteLength;
         }
       });
       child.once('error', (error: NodeJS.ErrnoException) => {
@@ -275,10 +282,14 @@ export class GitRunner {
         else terminate(new GitSpawnError());
       });
       child.once('close', (exitCode, signal) => {
+        closed = true;
         if (timeoutTimer) clearTimeout(timeoutTimer);
         if (forceKillTimer) clearTimeout(forceKillTimer);
         options.signal?.removeEventListener('abort', onAbort);
-        const output = { stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8') };
+        const output = {
+          stdout: Buffer.concat(stdout, stdoutBytes).toString('utf8'),
+          stderr: Buffer.concat(stderr, stderrBytes).toString('utf8'),
+        };
         if (termination) {
           reject(termination);
         } else if (exitCode === 0) {

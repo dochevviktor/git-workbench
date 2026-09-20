@@ -13,6 +13,9 @@ import type {
   RepositoryCommitRequest,
   RepositoryDiff,
   RepositoryDiffRequest,
+  RepositoryDiffCancel,
+  RepositoryDiscardPreview,
+  RepositoryDiscardPreviewRequest,
   RepositoryInitializeRequest,
   RepositoryHistoryPage,
   RepositoryHistoryRequest,
@@ -42,6 +45,8 @@ import type {
   RepositoryStashEntry,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
+  RepositoryCloneRequest,
+  RepositoryConnectionRequest,
   RepositoryRevisionBlob,
   RepositoryRevisionBlobRequest,
   RepositoryRevisionTree,
@@ -77,15 +82,24 @@ export interface DesktopApi {
     writeText(request: ClipboardText): Promise<IpcResult<null>>;
   };
   readonly repository: {
+    onActivated(listener: (repository: RepositorySummary) => void): Unsubscribe;
     getGitInfo(): Promise<IpcResult<GitInfo>>;
     pickDirectory(): Promise<IpcResult<string | null>>;
     listRecent(): Promise<IpcResult<RecentRepository[]>>;
     listOpen(): Promise<IpcResult<RepositorySummary[]>>;
     open(request: RepositoryOpenRequest): Promise<IpcResult<RepositorySummary>>;
     initialize(request: RepositoryInitializeRequest): Promise<IpcResult<RepositorySummary>>;
+    clone(request: RepositoryCloneRequest): Promise<IpcResult<RepositoryOperation>>;
+    testConnection(request: RepositoryConnectionRequest): Promise<IpcResult<RepositoryOperation>>;
+    getAutomaticFetch(): Promise<IpcResult<{ enabled: boolean }>>;
+    setAutomaticFetch(request: { enabled: boolean }): Promise<IpcResult<{ enabled: boolean }>>;
     close(request: RepositorySession): Promise<IpcResult<null>>;
     getTabPreferences(): Promise<IpcResult<RepositoryTabPreferences>>;
     setTabOrientation(orientation: RepositoryTabOrientation): Promise<IpcResult<RepositoryTabPreferences>>;
+    setRepositoryListVisible(request: {
+      readonly visible: boolean;
+    }): Promise<IpcResult<RepositoryTabPreferences>>;
+    reorderTabs(request: { readonly ids: readonly string[] }): Promise<IpcResult<RepositorySummary[]>>;
     selectTab(request: RepositorySession): Promise<IpcResult<RepositoryTabPreferences>>;
     removeRecent(request: RepositorySession): Promise<IpcResult<null>>;
     listManager(): Promise<IpcResult<RepositoryManagerSnapshot>>;
@@ -95,6 +109,8 @@ export interface DesktopApi {
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
     getCommitChanges(request: RepositoryCommitChangesRequest): Promise<IpcResult<RepositoryCommitChanges>>;
     getDiff(request: RepositoryDiffRequest): Promise<IpcResult<RepositoryDiff>>;
+    cancelDiff(request: RepositoryDiffCancel): Promise<IpcResult<null>>;
+    previewDiscard(request: RepositoryDiscardPreviewRequest): Promise<IpcResult<RepositoryDiscardPreview>>;
     getWorkingChanges(request: RepositoryWorkingChangesRequest): Promise<IpcResult<RepositoryWorkingChanges>>;
     applyWorkingChange(
       request: RepositoryWorkingChangeActionRequest,

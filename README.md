@@ -10,23 +10,29 @@ F03 tab slice, the first F04–F07 history, collapse, filtering, and revision-in
 F08–F11 working-changes, diff, staging, and commit slices, a first F12 branch and tag slice, an initial
 F13 remote and network slice with the F14 operation surface it needs, and an initial F34 workspace-chrome
 slice. It includes a Fork-style workspace: a custom title bar
-with menus and window controls (native traffic lights on macOS), a toolbar, equal-width repository tabs or
-a vertical tab column, a Repository Manager new tab, a repository sidebar with a reference tree and commit
+with menus and window controls (native traffic lights on macOS), a toolbar, horizontal repository tabs
+with an optional repository list alongside them, a Repository Manager new tab, a repository sidebar with a reference tree and commit
 search, a commit table with a collapsible lane graph and colored labels, Commit/Changes/File Tree details,
 a Local Changes view with unified or split diffs, and renderer-drawn context menus. It also covers Git
 discovery, opening existing repositories, local initialization, recent-repository persistence, persisted
 source directories, bounded folder-aware repository scanning, persisted tabs with dirty indicators,
 close/reopen shortcuts, paged commit history, file/hunk/line staging with snapshot validation, committing
-and amending, branch and tag creation, renaming, deletion, checkout and upstream selection, remote
+and amending, annotated tag creation (including empty annotations), branch creation, renaming, deletion, checkout and upstream selection, remote
 management, automatic background fetch, fetch, explicit-source merge/rebase pull, inactive-branch fast-forward, mapped push with
 optional lease-checked force, a PR browser handoff, and System/Light/Dark appearance. Network work,
 commits, and reference actions run as queryable background operations in the activity panel. Checkout
 offers preserve, stash/reapply, or discard, with recovery copies of changed tracked and untracked files.
 F15 adds stash history, named all-file or selected whole-file stashes, staged-state-preserving
-inspect/apply/pop/delete actions, and bounded commit/stash/working-tree patch export. Clone, credential
-prompts, a global automatic-fetch preference, hunk/line stash selection and patch import, general
-whole-file discard, the full conflict editor, custom manager folders, filesystem watchers, and remaining
-Git operations are later work.
+inspect/apply/pop/delete/rename actions, and bounded commit/stash/working-tree patch export.
+
+The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
+Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history
+search with graph highlights and direct distant navigation, full-file/context/wrap and popup diffs,
+explicit bounded Load Diff, confirmed tracked-file discard with recovery, a global automatic-fetch
+preference, native authentication helper policy, captured stash-new-file semantics, and all four merge
+modes. The corrected workflows are verified together; the broader feature families remain partial.
+The full conflict editor (F17), interactive rebase (F18), hunk/line stashes and patch import, syntax/rich
+image viewers, custom manager folders and filesystem watchers remain later work.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.
@@ -35,6 +41,12 @@ Resolve conflicted files externally, stage them in Local Changes, then continue 
 resolved. Recovery entries can be dismissed without changing Git's stash list. Before an action starts,
 Cancel leaves the repository unchanged; after it starts, Close dismisses the dialog and Activity provides
 the operation's cancellation control. Cancellation does not promise rollback.
+
+Explicit network operations use installed Git credential helpers, SSH agents and configured native
+askpass tools. Background operations suppress standard prompts; Git Workbench does not store secrets
+or expose credential text through its renderer API. Clone requires a new destination; failed/cancelled
+destinations are retained for inspection. A paused autostashed merge completed through the composer
+retains its saved copy for explicit Recovery Apply.
 
 Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
 browser. It does not submit the form or require storing hosting credentials in this application.
@@ -163,8 +175,8 @@ Both directories are ignored. Application dependencies are currently fully bundl
 
 The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
 Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
-not completed Git Workbench features. The current implementation above still has the recorded gaps;
-the next correction slice is C01 in the plan. Fork binaries, private source, and bundled product assets
+not completed Git Workbench features. The F01–F16 correction pass is verified with the limits in its
+review record; the next incremental feature is F17 in P06. Fork binaries, private source, and bundled product assets
 are excluded; reference screenshots stay private/local and are never application assets.
 
 ## Migration notes

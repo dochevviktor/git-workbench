@@ -5,9 +5,11 @@ import type {
   RepositoryRemote,
   RepositoryRemoteAction,
   RepositoryLocalChangesPreview,
+  RepositoryOperation,
 } from '../../../common/ipc/contracts';
 import type { Platform } from '../lib/platform';
 import { DialogShell } from './DialogShell';
+import { TestConnection } from './TestConnection';
 import { BranchIcon, FetchIcon, PullIcon, PushIcon, RemoteIcon } from './Icons';
 
 export type NetworkDialogRequest =
@@ -24,6 +26,8 @@ export type NetworkDialogRequest =
     };
 
 interface NetworkDialogProps {
+  readonly repositoryId?: string | undefined;
+  readonly operations?: readonly RepositoryOperation[] | undefined;
   readonly referenceSnapshot?: string | undefined;
   readonly preview?: RepositoryLocalChangesPreview | undefined;
   readonly remoteBranches?: readonly string[] | undefined;
@@ -379,7 +383,14 @@ function trackingSummary(branch: RepositoryBranch): string {
   return parts.join(', ');
 }
 
-function RemotesDialog({ remotes, failure, onRemoteAction, onOpen, ...rest }: NetworkDialogProps) {
+function RemotesDialog({
+  remotes,
+  failure,
+  onRemoteAction,
+  onOpen,
+  operations = [],
+  ...rest
+}: NetworkDialogProps) {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const nameId = useId();
@@ -460,6 +471,12 @@ function RemotesDialog({ remotes, failure, onRemoteAction, onOpen, ...rest }: Ne
           data-testid="remote-url"
           onChange={(event) => setUrl(event.target.value)}
         />
+        <TestConnection
+          key={trimmedUrl}
+          request={{ kind: 'url', url: trimmedUrl }}
+          operations={operations}
+          disabled={!trimmedUrl}
+        />
       </dd>
     </DialogShell>
   );
@@ -469,6 +486,8 @@ function EditRemoteDialog({
   remote,
   failure,
   onRemoteAction,
+  repositoryId,
+  operations = [],
   ...rest
 }: NetworkDialogProps & { readonly remote: RepositoryRemote }) {
   const [name, setName] = useState(remote.name);
@@ -527,6 +546,16 @@ function EditRemoteDialog({
           disabled={renamed}
           data-testid="remote-url"
           onChange={(event) => setUrl(event.target.value)}
+        />
+        <TestConnection
+          key={trimmedUrl}
+          request={
+            !retargeted && repositoryId
+              ? { kind: 'remote', id: repositoryId, name: remote.name }
+              : { kind: 'url', url: trimmedUrl }
+          }
+          operations={operations}
+          disabled={!trimmedUrl}
         />
       </dd>
       {remote.pushUrl && (

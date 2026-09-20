@@ -161,6 +161,35 @@ describe('IPC sender and window lifecycle', () => {
     ipc.dispose();
   });
 
+  it('publishes CLI activation only to an attached trusted application window', () => {
+    const ipc = registerAppIpc();
+    const first = new TestWindow(1);
+    const second = new TestWindow(2);
+    ipc.attachWindow(first.asWindow(), first.webContents.getURL());
+    ipc.attachWindow(second.asWindow(), second.webContents.getURL());
+    const repository = events.repositoryActivated.payload.parse({
+      id: `repo-${'a'.repeat(64)}`,
+      name: 'sample',
+      path: '/sample',
+      worktreePath: '/sample',
+      gitDir: '/sample/.git',
+      commonDir: '/sample/.git',
+      bare: false,
+      head: { state: 'unborn', name: 'main', commit: null },
+      workingTree: { state: 'clean', changedFileCount: 0 },
+    });
+    ipc.publishRepositoryActivated(first.asWindow(), repository);
+    expect(first.webContents.send).toHaveBeenCalledExactlyOnceWith(
+      events.repositoryActivated.channel,
+      repository,
+    );
+    expect(second.webContents.send).not.toHaveBeenCalled();
+    first.webContents.mainFrame.url = 'https://untrusted.invalid';
+    ipc.publishRepositoryActivated(first.asWindow(), repository);
+    expect(first.webContents.send).toHaveBeenCalledTimes(1);
+    ipc.dispose();
+  });
+
   it('applies view, editing, and clipboard commands only to the requesting window', async () => {
     const ipc = registerAppIpc();
     const first = new TestWindow(1);

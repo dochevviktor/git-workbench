@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type {
   RepositoryCommitChange,
@@ -30,12 +30,22 @@ import type { FileChangeEntry, FileListMode } from './FileChangeList';
 import { FileIcon, FolderIcon, ListOptionsIcon, SearchIcon } from './Icons';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
+import { SearchMatch } from './SearchMatch';
 import { StatusBadge } from './StatusBadge';
 import { TreeView } from './TreeView';
 import type { TreeItem } from './TreeView';
 import { MenuButton } from './menu/MenuButton';
 
 type DetailTab = 'commit' | 'changes' | 'tree';
+interface DetailPresentation {
+  readonly activeTab: DetailTab;
+  readonly commitId: string | undefined;
+  readonly selectedChangeKey: string | undefined;
+  readonly fileFilter: string;
+  readonly treeActiveKey: string | undefined;
+  readonly expandedFolders: ReadonlySet<string>;
+}
+const detailPresentations = new Map<string, DetailPresentation>();
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;
@@ -50,6 +60,8 @@ interface CommitDetailsProps {
   readonly referencesByName: ReadonlyMap<string, RepositoryHistoryReference>;
   readonly loadedCommitIds: ReadonlySet<string>;
   readonly onSelectCommit: (id: string) => void;
+  readonly collapsed?: boolean;
+  readonly searchQuery?: string;
 }
 
 function Person({ caption, person }: { readonly caption: string; readonly person: RepositoryHistoryPerson }) {
@@ -84,6 +96,21 @@ function changeKey(change: RepositoryCommitChange): string {
   return `change:${encodeURIComponent(change.previousPath ?? '')}:${encodeURIComponent(change.path)}`;
 }
 
+function changeEntriesAvailable(
+  changes: readonly RepositoryCommitChange[],
+  filter: string,
+  selected: string | undefined,
+): boolean {
+  const needle = filter.trim().toLocaleLowerCase();
+  return (
+    changes.some((change) => !needle || change.path.toLocaleLowerCase().includes(needle)) &&
+    !changes.some(
+      (change) =>
+        changeKey(change) === selected && (!needle || change.path.toLocaleLowerCase().includes(needle)),
+    )
+  );
+}
+
 /** The one-line commit summary above the Changes and File Tree views. */
 function CommitSummary({ commit }: { readonly commit: RepositoryHistoryCommit }) {
   return (
@@ -105,6 +132,7 @@ function CommitSummary({ commit }: { readonly commit: RepositoryHistoryCommit })
 }
 
 interface ChangeFactsProps {
+  readonly positionKey: string;
   readonly change: RepositoryCommitChange;
   readonly diff: ReturnType<typeof useRepositoryDiff>;
   readonly mode: DiffDisplayMode;
@@ -116,6 +144,7 @@ interface ChangeFactsProps {
 }
 
 function ChangeFacts({
+  positionKey,
   change,
   diff,
   mode,
@@ -149,6 +178,8 @@ function ChangeFacts({
           showWhitespace={showWhitespace}
           onShowWhitespaceChange={onShowWhitespaceChange}
           label="Committed change diff"
+          controls={diff.controls}
+          positionKey={positionKey}
         />
       </div>
     </div>
@@ -181,7 +212,7 @@ function RevisionTree({
   onActiveChange,
   onExpandedChange,
 }: RevisionTreeProps) {
-  const { directories, loadDirectory, loadBlob } = inspection;
+  const { directories, loadDirectory, loadBlob, blobPath, blobLoading } = inspection;
   const { items, entries } = useMemo(() => {
     const rows: TreeItem[] = [];
     const byKey = new Map<string, { readonly path: string; readonly type: string }>();
@@ -229,6 +260,11 @@ function RevisionTree({
     return { items: rows, entries: byKey };
   }, [directories, expanded]);
 
+  useEffect(() => {
+    const entry = activeKey ? entries.get(activeKey) : undefined;
+    if (entry?.type === 'blob' && blobPath !== entry.path && !blobLoading) void loadBlob(entry.path);
+  }, [activeKey, blobLoading, blobPath, entries, loadBlob]);
+
   const root = directories.get('');
   if (!root || root.status === 'loading') return <p className="details-empty">Reading the revision tree…</p>;
   if (root.status === 'error')
@@ -275,8 +311,11 @@ export function CommitDetails({
   referencesByName,
   loadedCommitIds,
   onSelectCommit,
+  collapsed = false,
+  searchQuery = '',
 }: CommitDetailsProps) {
-  const [activeTab, setActiveTab] = useState<DetailTab>('commit');
+  const savedPresentation = detailPresentations.get(repositoryId ?? '');
+  const [activeTab, setActiveTab] = useState<DetailTab>(savedPresentation?.activeTab ?? 'commit');
   const [fileListMode, setFileListMode] = usePersistentState<FileListMode>(
     'details.fileListMode',
     'tree',
@@ -287,7 +326,7 @@ export function CommitDetails({
     340,
     isNumberBetween(160, 1600),
   );
-  const [fileFilter, setFileFilter] = useState('');
+  const [fileFilter, setFileFilter] = useState(savedPresentation?.fileFilter ?? '');
   const [selectedChangeKey, setSelectedChangeKey] = useState<string>();
   const [diffMode, setDiffMode] = usePersistentState<DiffDisplayMode>(
     'details.diff.mode',
@@ -309,11 +348,33 @@ export function CommitDetails({
   const inspection = useRevisionInspection(repositoryId, commit?.id);
   const { changes, changesLoading, changesError, loadChanges, directories, loadDirectory } = inspection;
   const chips = commit ? referenceChips(commit.decorations, referencesByName) : [];
+  const presentation = useRef<DetailPresentation | undefined>(undefined);
 
   useEffect(() => {
-    setSelectedChangeKey(undefined);
-    setTreeActiveKey(undefined);
-    setExpandedFolders(new Set());
+    if (commit)
+      presentation.current = {
+        activeTab,
+        commitId: commit.id,
+        selectedChangeKey,
+        fileFilter,
+        treeActiveKey,
+        expandedFolders,
+      };
+  }, [activeTab, commit, expandedFolders, fileFilter, selectedChangeKey, treeActiveKey]);
+
+  useEffect(
+    () => () => {
+      if (repositoryId && presentation.current) detailPresentations.set(repositoryId, presentation.current);
+    },
+    [repositoryId],
+  );
+
+  useEffect(() => {
+    const saved = detailPresentations.get(repositoryId ?? '');
+    const restore = saved?.commitId === commit?.id ? saved : undefined;
+    setSelectedChangeKey(restore?.selectedChangeKey);
+    setTreeActiveKey(restore?.treeActiveKey);
+    setExpandedFolders(restore?.expandedFolders ?? new Set());
   }, [commit?.id, repositoryId]);
 
   useEffect(() => {
@@ -324,7 +385,25 @@ export function CommitDetails({
 
   useEffect(() => {
     if (activeTab === 'tree' && commit && !directories.has('')) void loadDirectory('');
-  }, [activeTab, commit, directories, loadDirectory]);
+    if (activeTab === 'tree' && commit) {
+      for (const path of expandedFolders) if (!directories.has(path)) void loadDirectory(path);
+    }
+  }, [activeTab, commit, directories, expandedFolders, loadDirectory]);
+
+  useEffect(() => {
+    if (
+      activeTab === 'changes' &&
+      changes &&
+      changeEntriesAvailable(changes.changes, fileFilter, selectedChangeKey)
+    ) {
+      const first = changes.changes.find(
+        (change) =>
+          !fileFilter.trim() ||
+          change.path.toLocaleLowerCase().includes(fileFilter.trim().toLocaleLowerCase()),
+      );
+      if (first) setSelectedChangeKey(changeKey(first));
+    }
+  }, [activeTab, changes, fileFilter, selectedChangeKey]);
 
   const changeEntries = useMemo<FileChangeEntry[]>(() => {
     const filter = fileFilter.trim().toLocaleLowerCase();
@@ -394,11 +473,8 @@ export function CommitDetails({
                       key={parent}
                       type="button"
                       className="link-button"
-                      aria-disabled={loaded ? undefined : true}
-                      title={loaded ? parent : `${parent} is not loaded in the commit list yet.`}
-                      onClick={() => {
-                        if (loaded) onSelectCommit(parent);
-                      }}
+                      title={loaded ? parent : `Load and select parent ${parent}`}
+                      onClick={() => onSelectCommit(parent)}
                     >
                       {shortHash(parent)}
                     </button>
@@ -407,8 +483,14 @@ export function CommitDetails({
           </dd>
         </dl>
         <div className="details-message">
-          <h2>{commit.subject || '(no subject)'}</h2>
-          {commit.body && <p className="details-message-body">{commit.body}</p>}
+          <h2>
+            <SearchMatch text={commit.subject || '(no subject)'} query={searchQuery} />
+          </h2>
+          {commit.body && (
+            <p className="details-message-body">
+              <SearchMatch text={commit.body} query={searchQuery} />
+            </p>
+          )}
         </div>
         <div className="details-files">
           {renderChangesStatus()}
@@ -524,6 +606,7 @@ export function CommitDetails({
           <div className="preview-pane">
             {selectedChange ? (
               <ChangeFacts
+                positionKey={`commit:${repositoryId}:${commit.id}:${selectedChange.path}`}
                 change={selectedChange}
                 diff={diff}
                 mode={diffMode}
@@ -600,7 +683,10 @@ export function CommitDetails({
     activeTab === 'commit' ? renderCommit() : activeTab === 'changes' ? renderChanges() : renderTree();
 
   return (
-    <section className="commit-details" aria-label="Commit details">
+    <section
+      className={collapsed ? 'commit-details details-collapsed' : 'commit-details'}
+      aria-label="Commit details"
+    >
       <div className="details-tabs" role="tablist" aria-label="Commit detail views">
         {tabs.map((tab) => (
           <button
@@ -623,6 +709,7 @@ export function CommitDetails({
         role="tabpanel"
         aria-labelledby={`commit-detail-tab-${activeTab}`}
         className={`details-panel ${activeTab}`}
+        hidden={collapsed}
       >
         {panel}
       </div>

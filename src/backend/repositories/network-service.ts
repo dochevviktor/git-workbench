@@ -7,6 +7,7 @@ import type {
 } from '../../common/ipc/contracts';
 import { GitCancelledError, GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
+import type { GitAuthenticationPolicy } from '../git/authentication-policy';
 import type { OperationHandle, OperationOutcome } from '../operations/operation-registry';
 
 /** Network work waits on a remote host, so it gets its own long bound rather than a read timeout. */
@@ -152,6 +153,7 @@ export async function runNetworkOperation(
   plan: NetworkPlan,
   cwd: string,
   handle: OperationHandle,
+  authentication: GitAuthenticationPolicy = 'prompt',
 ): Promise<OperationOutcome> {
   const collector = new ProgressCollector(
     (progress) => handle.setProgress(progress),
@@ -164,6 +166,7 @@ export async function runNetworkOperation(
       timeoutMs: networkTimeoutMs,
       maxOutputBytes: networkOutputLimit,
       signal: handle.signal,
+      authentication,
       onStderr: (chunk) => collector.push(chunk),
     });
     collector.flush();

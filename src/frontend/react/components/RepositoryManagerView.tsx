@@ -28,6 +28,7 @@ interface RepositoryManagerViewProps {
   readonly onSwitchTo: (id: string) => void;
   readonly onOpenExisting: () => void;
   readonly onInitialize: () => void;
+  readonly onClone: () => void;
   readonly onAddSource: () => void;
   readonly onRescanSource: (id: string) => void;
   readonly onRemoveSource: (id: string) => void;
@@ -288,12 +289,7 @@ export function RepositoryManagerView(props: RepositoryManagerViewProps) {
           <button type="button" className="button" disabled={busy} onClick={props.onInitialize}>
             Initialize Repository…
           </button>
-          <button
-            type="button"
-            className="button"
-            aria-disabled="true"
-            title="Remote cloning is not available yet (planned for P05)."
-          >
+          <button type="button" className="button" disabled={busy} onClick={props.onClone}>
             Clone…
           </button>
           <button type="button" className="button" disabled={busy} onClick={props.onAddSource}>

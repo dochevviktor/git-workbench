@@ -1,7 +1,7 @@
 import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { events, requests } from '../../../common/ipc/contracts';
-import type { AppInfo, RequestContract, WindowState } from '../../../common/ipc/contracts';
+import type { AppInfo, RequestContract, WindowState, RepositorySummary } from '../../../common/ipc/contracts';
 import { ExpectedBackendError } from '../../errors';
 import type { RepositoryService } from '../../repositories/repository-service';
 import { isTrustedDocument } from '../security';
@@ -170,6 +170,16 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.initializeRepository, (window, { path, bare }) =>
       repositoryService.initialize(window.webContents.id, path, bare),
     );
+    register(requests.cloneRepository, (window, request) =>
+      repositoryService.clone(window.webContents.id, request),
+    );
+    register(requests.testRepositoryConnection, (window, request) =>
+      repositoryService.testConnection(window.webContents.id, request),
+    );
+    register(requests.getAutomaticFetchPreference, () => repositoryService.getAutomaticFetch());
+    register(requests.setAutomaticFetchPreference, (_window, { enabled }) =>
+      repositoryService.setAutomaticFetch(enabled),
+    );
     register(requests.closeRepository, (window, { id }) =>
       repositoryService.close(window.webContents.id, id).then(() => null),
     );
@@ -181,6 +191,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     );
     register(requests.selectRepositoryTab, (window, { id }) =>
       repositoryService.selectTab(window.webContents.id, id),
+    );
+    register(requests.setRepositoryListVisible, (_window, { visible }) =>
+      repositoryService.setTabOrientation(visible ? 'vertical' : 'horizontal'),
+    );
+    register(requests.reorderRepositoryTabs, (window, { ids }) =>
+      repositoryService.reorderTabs(window.webContents.id, ids),
     );
     register(requests.removeRecentRepository, (_window, { id }) =>
       repositoryService.removeRecent(id).then(() => null),
@@ -197,14 +213,20 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.rescanSourceDirectory, (window, { id }) =>
       repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
-    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter }) =>
-      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter),
+    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor }) =>
+      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor),
     );
     register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
       repositoryService.getCommitChanges(window.webContents.id, id, commitId),
     );
-    register(requests.getRepositoryDiff, (window, { id, target, whitespace }) =>
-      repositoryService.getDiff(window.webContents.id, id, target, whitespace),
+    register(requests.getRepositoryDiff, (window, { id, target, whitespace, options }) =>
+      repositoryService.getDiff(window.webContents.id, id, target, whitespace, options),
+    );
+    register(requests.previewRepositoryDiscard, (window, request) =>
+      repositoryService.previewDiscard(window.webContents.id, request),
+    );
+    register(requests.cancelRepositoryDiff, (window, request) =>
+      repositoryService.cancelDiff(window.webContents.id, request),
     );
     register(requests.getRepositoryWorkingChanges, (window, { id, includeUntracked, includeIgnored }) =>
       repositoryService.getWorkingChanges(window.webContents.id, id, includeUntracked, includeIgnored),
@@ -315,6 +337,15 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
   });
 
   return {
+    publishRepositoryActivated(window: BrowserWindow, repository: RepositorySummary) {
+      const entry = windows.get(window.webContents.id);
+      if (!entry || window.isDestroyed() || !isTrustedDocument(window.webContents.getURL(), entry.url))
+        return;
+      window.webContents.send(
+        events.repositoryActivated.channel,
+        events.repositoryActivated.payload.parse(repository),
+      );
+    },
     attachWindow(window: BrowserWindow, url: string) {
       const id = window.webContents.id;
       windows.get(id)?.cleanup();

@@ -8,13 +8,16 @@ with its F14 operation registry, background-fetch scheduler, and activity views,
 PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
-## Catalogue-driven corrections (planned, 2026-09-20)
+## Catalogue-driven corrections (F01–F16 verified, 2026-09-20)
 
 The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
 target without changing the Electron/TypeScript boundaries. C01–C06 in the
-[implementation plan](implementation-plan.md#catalogue-correction-sequence) own the work below. These
-are decisions for future implementation; the current descriptions later in this document remain a record
-of existing code, including exclusive tab orientation and blank-message lightweight-tag behavior.
+[implementation plan](implementation-plan.md#catalogue-correction-sequence) own the work below. The
+[F01–F16 correction record](reviews/f01-f16-catalogue-corrections.md) identifies implemented behavior,
+tests and remaining limits. Additive repository navigation, annotated empty-message tags, scoped search,
+diff controls/discard, merge modes, clone/authentication and lifecycle corrections are now implemented.
+The later initial-slice descriptions are historical where superseded here. Secondary native inspectors,
+the full conflict helper and interactive rebase remain future work.
 
 - **Navigation and command state:** one repository-session/order model feeds horizontal tabs and the
   optional workspace repository list simultaneously. Keep repository-list visibility separate from
@@ -26,7 +29,9 @@ of existing code, including exclusive tab orientation and blank-message lightwei
   selection with its owner while keeping an independent diff layout. Normal restart, in-session switching
   and interrupted Git operations need separate retention rules; see the table below.
 - **Inspection windows:** reusable diff, commit-detail, file-history and blame surfaces may have bounded
-  secondary windows. Main owns creation and immutable owner/target identity; every window gets the same
+  secondary windows in future phases. The current diff popup is an owned modal inspector inside the
+  renderer, with independent diff layout and shared file selection. Main owns any future native-window
+  creation and immutable owner/target identity; every window gets the same
   sender/frame validation, CSP, sandbox and exact cleanup as the main shell. Do not add generic renderer
   URL, filesystem or window creation. A close must release subscriptions/read jobs and return focus.
 - **Diff data:** extend named contracts/preload/handlers/services together for context/full-file/explicit
@@ -38,7 +43,8 @@ of existing code, including exclusive tab orientation and blank-message lightwei
   with include-untracked: represent the intended policy explicitly and verify stash parent/index shape.
   Preserve existing recovery, identity validation and operation queues while revising contracts/tests.
 - **Merge/conflict/rebase:** add an explicit merge mode, not raw flags. Backend data includes base/ours/
-  theirs, index stages and the sequencer; the captured helper presents two inputs above an editable result.
+  theirs, index stages and the sequencer; F16's four merge modes and paused squash recovery are implemented.
+  The planned F17 helper presents two inputs above an editable result.
   Resolve writes/stages; Commit/Continue advances history. Interactive Edit pause, amend and replay are
   distinct operation states. Model squash pending state independently of MERGE_HEAD presence.
 - **Activity:** keep process/job outcome separate from repository sequencer state. Cancel-requested is
@@ -59,6 +65,20 @@ UIA names, HWNDs, physical screenshot coordinates, Windows paths and capture scr
 application abstractions. Exact fonts/colors, alternate commit-layout behavior, 125% DPI and inaccessible
 focus/clipping states do not justify guesses presented as parity. Independently authored Linux behavior
 and tests remain required. Public-only integrations and Git-flow retain their separate phase scope.
+
+New named capabilities cover clone, connection tests, global fetch preference, tab reorder/list visibility,
+discard preview and diff cancellation. Existing history/diff requests gain validated bounded options.
+The repository-activated event carries a validated summary for CLI/second-instance opening and uses
+the same exact subscription cleanup as operation events. Workspace persistence migrates version 1 to 2
+without losing open paths/order; the legacy orientation channel maps to repository-list visibility.
+Window geometry uses a separate bounded, versioned atomic file and validates placement against usable
+display workareas, with a fallback for Ozone's 1×1 virtual display.
+
+Authentication remains between Git and installed helpers/agents. Silent runner calls suppress askpass
+and standard credential-manager dialogs; explicit network work may prompt through those tools. Secrets
+never enter DTOs or renderer state. The broad trust policy for arbitrary configured programs is still
+unresolved. Long reads and mutations preserve owner/generation guards, bounded output and job cancellation;
+cancellation requested is distinct from terminal status. No automatic rollback or retry is inferred.
 
 ## Process boundaries
 
@@ -401,13 +421,13 @@ manager slice, the initial persisted tab/status workflow, the first paged histor
 workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, the initial F08
 working-changes listing, the initial F09 text-diff viewer, the initial F10 staging slice, and the renderer-drawn window chrome, menus,
 and context menus are implemented.
-There is still no
-remote authentication prompt, clone workflow, global automatic-fetch preference, filesystem watcher, full-app
-closed-tab recovery, custom manager folders, path/diff-content or author/hash history search, whole-file
-discard, commit signing or commit-and-push, tag pushing, multiple-reference selection, interactive credential
-or passphrase prompting, platform secret storage, a full conflict
-editor, hunk-level stash selection and patch import, syntax/image/binary viewers, full hosting integration, automatic updater,
-or final branding. Window chrome on macOS and Windows, title-bar double-click and
+The F01–F16 pass adds clone/Test Connection, installed native authentication helpers, global automatic
+fetch, durable closed-tab/order/window state, author/path/diff-content search, tracked-file discard,
+tag push/details and merge modes. There is still no filesystem watcher, custom manager folder editor,
+hash-search extension, commit signing or commit-and-push, multiple-reference selection, application-managed
+credential/password dialog or secret store, full conflict editor, hunk-level stash selection and patch
+import, syntax/image viewers, full hosting integration, automatic updater or final branding.
+Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
@@ -415,7 +435,10 @@ merge collapse, commit and amend behavior, branch/tag creation, checkout, and de
 refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, ordinary
 merge/rebase and sequencer recovery against disposable histories, and the Electron bridge; later Git
 correctness will continue to be checked against independent CLI assertions as each workflow is added.
-Diff merge presentation,
-general whole-file discard, signing, and the full conflict editor remain future work. The reviewed
+Signing and the full conflict editor remain future work. The reviewed
 checkout/pull/fast-forward/push workflows, recovery controls, and PR browser handoff are verified within
 the narrower stabilization scope recorded in `docs/reviews/f01-f13-review.md`.
+The newer catalogue correction scope and verification are recorded in
+`docs/reviews/f01-f16-catalogue-corrections.md`. Scale results distinguish backend timing and harness
+memory from unmeasured browser paint and memory; reads collect bounded chunks and concatenate once to
+avoid quadratic copying of large Git output.

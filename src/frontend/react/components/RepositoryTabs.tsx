@@ -19,6 +19,7 @@ interface RepositoryTabsProps {
   readonly onClose: (tab: WorkspaceTab) => void;
   readonly onNewTab: () => void;
   readonly onContextMenu: (tab: WorkspaceTab, event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onReorder?: ((sourceId: string, targetId: string) => void) | undefined;
 }
 
 function tabLabel(tab: WorkspaceTab): string {
@@ -34,12 +35,21 @@ export function RepositoryTabs({
   onClose,
   onNewTab,
   onContextMenu,
+  onReorder,
 }: RepositoryTabsProps) {
   const closable = (tab: WorkspaceTab) => tab.kind === 'repository' || tabs.length > 1;
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>, index: number) => {
     const previous = orientation === 'horizontal' ? 'ArrowLeft' : 'ArrowUp';
     const next = orientation === 'horizontal' ? 'ArrowRight' : 'ArrowDown';
+    if (event.altKey && event.shiftKey && (event.key === previous || event.key === next)) {
+      const target = tabs[index + (event.key === previous ? -1 : 1)];
+      if (target && target.kind === 'repository' && tabs[index]?.kind === 'repository') {
+        event.preventDefault();
+        onReorder?.(tabs[index]!.id, target.id);
+      }
+      return;
+    }
     let target: WorkspaceTab | undefined;
     if (event.key === previous) target = tabs[(index - 1 + tabs.length) % tabs.length];
     else if (event.key === next) target = tabs[(index + 1) % tabs.length];
@@ -53,15 +63,18 @@ export function RepositoryTabs({
     event.preventDefault();
     if (!target) return;
     onSelect(target);
-    window.requestAnimationFrame(() => document.getElementById(`workspace-tab-${target.id}`)?.focus());
+    window.requestAnimationFrame(() =>
+      document.getElementById(`workspace-${orientation}-${target.id}`)?.focus(),
+    );
   };
 
   return (
     <div className={`workspace-tabs ${orientation}`}>
+      {orientation === 'vertical' && <div className="repository-list-heading">Workspace</div>}
       <div
         className="workspace-tab-list"
-        role="tablist"
-        aria-label="Repository tabs"
+        role={orientation === 'horizontal' ? 'tablist' : 'listbox'}
+        aria-label={orientation === 'horizontal' ? 'Repository tabs' : 'Repository list'}
         aria-orientation={orientation}
       >
         {tabs.map((tab, index) => {
@@ -70,14 +83,35 @@ export function RepositoryTabs({
           return (
             <div
               key={tab.id}
-              id={`workspace-tab-${tab.id}`}
-              role="tab"
+              id={`workspace-${orientation}-${tab.id}`}
+              role={orientation === 'horizontal' ? 'tab' : 'option'}
               className={selected ? 'workspace-tab active' : 'workspace-tab'}
               aria-selected={selected}
               aria-label={tabLabel(tab)}
               tabIndex={selected ? 0 : -1}
               title={tab.repository?.path ?? tab.title}
               data-kind={tab.kind}
+              draggable={tab.kind === 'repository' && !closeDisabled}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('application/x-git-workbench-tab', tab.id);
+              }}
+              onDragOver={(event) => {
+                if (
+                  tab.kind === 'repository' &&
+                  event.dataTransfer.types.includes('application/x-git-workbench-tab')
+                ) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDrop={(event) => {
+                const sourceId = event.dataTransfer.getData('application/x-git-workbench-tab');
+                if (sourceId && tab.kind === 'repository' && !closeDisabled) {
+                  event.preventDefault();
+                  onReorder?.(sourceId, tab.id);
+                }
+              }}
               onMouseDown={(event) => {
                 if (event.button === 0) onSelect(tab);
                 // Middle click closes a tab; do not start Chromium's autoscroll.

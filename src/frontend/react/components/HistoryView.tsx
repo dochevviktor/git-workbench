@@ -19,6 +19,7 @@ import { CommitGraph } from './CommitGraph';
 import { MessageBodyIcon } from './Icons';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
+import { SearchMatch } from './SearchMatch';
 import { useContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator, planned } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
@@ -35,6 +36,9 @@ export interface HistoryReferenceCommands {
 interface HistoryViewProps {
   readonly history: RepositoryHistory;
   readonly references: HistoryReferenceCommands;
+  readonly searchMatches?: ReadonlySet<string>;
+  readonly searchQuery?: string;
+  readonly detailsCollapsed?: boolean;
 }
 
 interface CommitRowProps {
@@ -44,6 +48,10 @@ interface CommitRowProps {
   readonly head: boolean;
   readonly dimmed: boolean;
   readonly contextTarget: boolean;
+  readonly searchMatch: boolean;
+  readonly searchQuery: string;
+  readonly virtualIndex?: number | undefined;
+  readonly totalRows: number;
   readonly referencesByName: ReadonlyMap<string, RepositoryHistoryReference>;
   readonly onSelect: (id: string) => void;
   readonly onToggleBranch: () => void;
@@ -52,6 +60,14 @@ interface CommitRowProps {
 
 /** About half of the space below the window chrome, as a first-run default. */
 const defaultListHeight = Math.max(240, Math.round((window.innerHeight - 150) * 0.5));
+interface HistoryPresentation {
+  readonly scrollTop: number;
+  readonly collapsed: ReadonlySet<string>;
+  readonly collapseAll: boolean;
+  readonly expanded: ReadonlySet<string>;
+}
+// Session-only view memory deliberately resets on normal application restart (P2-015).
+const historyPresentations = new Map<string, HistoryPresentation>();
 
 function authorName(commit: RepositoryHistoryCommit): string {
   return commit.author.name || commit.author.email || 'Unknown author';
@@ -64,6 +80,10 @@ const CommitRow = memo(function CommitRow({
   head,
   dimmed,
   contextTarget,
+  searchMatch,
+  searchQuery,
+  virtualIndex,
+  totalRows,
   referencesByName,
   onSelect,
   onToggleBranch,
@@ -79,19 +99,28 @@ const CommitRow = memo(function CommitRow({
   if (dimmed) classes.push('dimmed');
   if (contextTarget) classes.push('context-target');
   if (graph.collapsed) classes.push('collapsed');
+  if (searchMatch) classes.push('search-match');
+  if (virtualIndex !== undefined) classes.push('virtual-row');
 
   return (
     <div
       id={`history-commit-${commit.id}`}
       role="option"
       aria-selected={selected}
+      aria-posinset={virtualIndex === undefined ? undefined : virtualIndex + 1}
+      aria-setsize={totalRows}
       aria-label={`${commit.subject || 'Commit without a subject'}${hasBody ? ' (has description)' : ''}, ${author}, ${date}, ${shortHash(commit.id)}${
         graph.merge ? ', merge commit' : ''
       }${graph.collapsed ? ', merged branch collapsed' : ''}${head ? ', HEAD' : ''}`}
       className={classes.join(' ')}
       data-testid="history-commit"
       data-commit-id={commit.id}
-      style={{ '--graph-width': `${graphWidth(graph)}px` } as CSSProperties}
+      style={
+        {
+          '--graph-width': `${graphWidth(graph)}px`,
+          top: virtualIndex === undefined ? undefined : virtualIndex * graphRowHeight,
+        } as CSSProperties
+      }
       onMouseDown={(event) => {
         if (event.button === 0) {
           onSelect(commit.id);
@@ -107,7 +136,9 @@ const CommitRow = memo(function CommitRow({
           onToggle={graph.merge ? onToggleBranch : undefined}
         />
         {chips.length > 0 && <ReferenceChipList chips={chips} lane={graph.lane} />}
-        <span className="commit-subject">{commit.subject || '(no subject)'}</span>
+        <span className="commit-subject">
+          <SearchMatch text={commit.subject || '(no subject)'} query={searchMatch ? searchQuery : ''} />
+        </span>
         {hasBody && (
           <span className="commit-body-indicator" title="The message has a description" aria-hidden="true">
             <MessageBodyIcon size={12} />
@@ -134,11 +165,21 @@ const CommitRow = memo(function CommitRow({
   );
 });
 
-export function HistoryView({ history, references: referenceCommands }: HistoryViewProps) {
+export function HistoryView({
+  history,
+  references: referenceCommands,
+  searchMatches,
+  searchQuery = '',
+  detailsCollapsed = false,
+}: HistoryViewProps) {
+  const sessionKey = `${history.repositoryId}:${history.filterKey}`;
+  const savedPresentation = historyPresentations.get(sessionKey);
   const showContextMenu = useContextMenu();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [contextCommitId, setContextCommitId] = useState<string>();
+  const [viewport, setViewport] = useState({ top: savedPresentation?.scrollTop ?? 0, height: 600 });
+  const restoreScroll = useRef(savedPresentation?.scrollTop ?? 0);
   const [listHeight, setListHeight] = usePersistentState(
     'history.listHeight',
     defaultListHeight,
@@ -150,7 +191,6 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
     headCommit,
     selectedCommitId,
     filter,
-    filterKey,
     clearFilter,
     selectCommit,
     loadMore,
@@ -160,16 +200,21 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
     finishReveal,
   } = history;
   const [manualCollapsedMergeIds, setManualCollapsedMergeIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+    () => savedPresentation?.collapsed ?? new Set(),
   );
-  const [collapseAllMode, setCollapseAllMode] = useState(false);
-  const [expandedMergeIds, setExpandedMergeIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [collapseAllMode, setCollapseAllMode] = useState(savedPresentation?.collapseAll ?? false);
+  const [expandedMergeIds, setExpandedMergeIds] = useState<ReadonlySet<string>>(
+    () => savedPresentation?.expanded ?? new Set(),
+  );
 
   useEffect(() => {
-    setManualCollapsedMergeIds(new Set());
-    setCollapseAllMode(false);
-    setExpandedMergeIds(new Set());
-  }, [filterKey, history.repositoryId]);
+    historyPresentations.set(sessionKey, {
+      scrollTop: viewport.top,
+      collapsed: manualCollapsedMergeIds,
+      collapseAll: collapseAllMode,
+      expanded: expandedMergeIds,
+    });
+  }, [collapseAllMode, expandedMergeIds, manualCollapsedMergeIds, sessionKey, viewport.top]);
 
   const mergeCommitIds = useMemo(() => getMergeCommitIds(loadedCommits), [loadedCommits]);
   const requestedCollapsedMergeIds = useMemo(
@@ -200,6 +245,35 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
   const headLoaded = headCommit !== null && loadedCommitIds.has(headCommit);
   const currentBranch = references.find((reference) => reference.isHead && reference.kind === 'branch');
   const selectedIndex = commits.findIndex((commit) => commit.id === selectedCommitId);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !commits.length || restoreScroll.current === 0) return;
+    element.scrollTop = restoreScroll.current;
+    setViewport({ top: element.scrollTop, height: element.clientHeight });
+    restoreScroll.current = 0;
+  }, [commits.length]);
+  const virtualized = commits.length > 200;
+  const visibleIndices = useMemo(() => {
+    if (!virtualized) return commits.map((_commit, index) => index);
+    const first = Math.max(0, Math.floor(viewport.top / graphRowHeight) - 12);
+    const end = Math.min(commits.length, Math.ceil((viewport.top + viewport.height) / graphRowHeight) + 12);
+    const indices = new Set(
+      Array.from({ length: Math.max(0, end - first) }, (_value, index) => first + index),
+    );
+    // Keep the active descendant mounted even when the user scrolls away from the selection.
+    if (selectedIndex >= 0) indices.add(selectedIndex);
+    return [...indices].sort((left, right) => left - right);
+  }, [commits, selectedIndex, viewport, virtualized]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const update = () => setViewport({ top: element.scrollTop, height: element.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const toggleBranch = useCallback(
     (id: string, collapse: boolean) => {
@@ -249,11 +323,21 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
         }
       }
       selectCommit(id);
+      const visibleIndex = commits.findIndex((commit) => commit.id === id);
+      const scroll = scrollRef.current;
+      if (virtualized && visibleIndex >= 0 && scroll) {
+        const top = visibleIndex * graphRowHeight;
+        if (block === 'center') scroll.scrollTop = top - (scroll.clientHeight - graphRowHeight) / 2;
+        else if (top < scroll.scrollTop) scroll.scrollTop = top;
+        else if (top + graphRowHeight > scroll.scrollTop + scroll.clientHeight)
+          scroll.scrollTop = top + graphRowHeight - scroll.clientHeight;
+        setViewport({ top: scroll.scrollTop, height: scroll.clientHeight });
+      }
       window.requestAnimationFrame(() =>
         document.getElementById(`history-commit-${id}`)?.scrollIntoView({ block }),
       );
     },
-    [collapseAllMode, projection.hiddenByMerge, selectCommit],
+    [collapseAllMode, commits, projection.hiddenByMerge, selectCommit, virtualized],
   );
 
   // A commit chosen elsewhere, such as a search result, is selected once its page has loaded.
@@ -405,10 +489,12 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
         moveSelection(selectedIndex - page);
         break;
       case 'Home':
-        moveSelection(0);
+        if (history.windowOffset > 0) history.requestHome();
+        else moveSelection(0);
         break;
       case 'End':
-        moveSelection(commits.length - 1);
+        if (hasMore) history.requestEnd();
+        else moveSelection(commits.length - 1);
         break;
       case 'ArrowLeft':
       case 'ArrowRight': {
@@ -463,7 +549,7 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
     <section
       className="history-view"
       aria-label="Commit history"
-      style={{ '--history-list-height': `${listHeight}px` } as CSSProperties}
+      style={{ '--history-list-height': detailsCollapsed ? '100%' : `${listHeight}px` } as CSSProperties}
     >
       {filter.kind === 'reference' && (
         <div className="history-filter-strip" role="status">
@@ -486,7 +572,56 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
           </button>
         </div>
       )}
-      <div className="commit-list-scroll" ref={scrollRef}>
+      {revealRequest?.status === 'loading' && (
+        <div className="history-filter-strip" role="status">
+          <span>
+            {revealRequest.target === 'end' ? 'Loading oldest commit' : 'Locating commit'}…{' '}
+            {loadedCommits.length.toLocaleString()} commits loaded
+          </span>
+          <button type="button" className="link-button" onClick={() => finishReveal(revealRequest.token)}>
+            Cancel
+          </button>
+        </div>
+      )}
+      {revealRequest?.status === 'unavailable' && (
+        <div className="history-filter-strip" role="status">
+          <span>
+            The commit is unavailable in this history.{' '}
+            {filter.kind !== 'all' ? 'Clear the history filter to include other branches.' : ''}
+          </span>
+          <button type="button" className="link-button" onClick={() => finishReveal(revealRequest.token)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+      <div
+        className="commit-list-scroll"
+        ref={scrollRef}
+        onScroll={(event) =>
+          setViewport({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })
+        }
+      >
+        {history.windowOffset > 0 && (
+          <div className="history-filter-strip">
+            <span>History from commit {(history.windowOffset + 1).toLocaleString()}</span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={history.loading || loadingMore}
+              onClick={history.loadPrevious}
+            >
+              Load newer commits
+            </button>
+            <button
+              type="button"
+              className="link-button"
+              disabled={history.loading || loadingMore}
+              onClick={history.requestHome}
+            >
+              Newest
+            </button>
+          </div>
+        )}
         {history.loading && commits.length === 0 ? (
           <p className="list-message">Reading commit history…</p>
         ) : history.error && commits.length === 0 ? (
@@ -499,7 +634,8 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
           </p>
         ) : (
           <div
-            className="commit-list"
+            className={virtualized ? 'commit-list virtual-list' : 'commit-list'}
+            style={virtualized ? { height: commits.length * graphRowHeight } : undefined}
             role="listbox"
             aria-label="Commits"
             tabIndex={0}
@@ -508,9 +644,10 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
             }
             onKeyDown={onListKeyDown}
           >
-            {commits.map((commit, index) => {
+            {visibleIndices.map((index) => {
+              const commit = commits[index];
               const row = graph[index];
-              if (!row) return null;
+              if (!row || !commit) return null;
               return (
                 <CommitRow
                   key={commit.id}
@@ -520,6 +657,10 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
                   head={commit.id === headCommit}
                   dimmed={headLoaded && !reachable.has(commit.id)}
                   contextTarget={commit.id === contextCommitId}
+                  searchMatch={searchMatches?.has(commit.id) ?? false}
+                  searchQuery={searchQuery}
+                  virtualIndex={virtualized ? index : undefined}
+                  totalRows={commits.length}
                   referencesByName={referencesByName}
                   onSelect={reveal}
                   onToggleBranch={() => toggleBranch(commit.id, !row.collapsed)}
@@ -533,21 +674,25 @@ export function HistoryView({ history, references: referenceCommands }: HistoryV
           {loadingMore ? 'Loading more commits…' : null}
         </div>
       </div>
-      <Splitter
-        orientation="horizontal"
-        label="Resize commit list"
-        value={listHeight}
-        minimum={96}
-        maximum={4000}
-        onChange={setListHeight}
-      />
+      {!detailsCollapsed && (
+        <Splitter
+          orientation="horizontal"
+          label="Resize commit list"
+          value={listHeight}
+          minimum={96}
+          maximum={4000}
+          onChange={setListHeight}
+        />
+      )}
       <CommitDetails
         repositoryId={history.repositoryId}
         commit={selectedCommit}
         lane={selectedIndex >= 0 ? graph[selectedIndex]?.lane : undefined}
         referencesByName={referencesByName}
         loadedCommitIds={loadedCommitIds}
-        onSelectCommit={reveal}
+        onSelectCommit={(id) => (loadedCommitIds.has(id) ? reveal(id) : history.requestReveal(id))}
+        collapsed={detailsCollapsed}
+        searchQuery={selectedCommit && searchMatches?.has(selectedCommit.id) ? searchQuery : ''}
       />
     </section>
   );

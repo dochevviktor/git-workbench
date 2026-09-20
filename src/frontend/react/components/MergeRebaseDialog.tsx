@@ -8,6 +8,9 @@ import type { Platform } from '../lib/platform';
 import { BranchIcon } from './Icons';
 import { DialogShell } from './DialogShell';
 
+type MergeMode = 'default' | 'no-ff' | 'squash' | 'no-commit';
+let lastMergeMode: MergeMode = 'default';
+
 export type MergeRebaseDialogRequest =
   | {
       readonly kind: 'merge';
@@ -41,6 +44,7 @@ export function MergeRebaseDialog({
 }) {
   const hasChanges = preview ? preview.paths.length + preview.untrackedPaths.length > 0 : undefined;
   const [autostash, setAutostash] = useState(false);
+  const [mode, setMode] = useState<MergeMode>(lastMergeMode);
   const title = request.kind === 'merge' ? 'Merge Branch' : 'Rebase Branch';
   const submitLabel = request.kind === 'merge' ? 'Merge' : 'Rebase';
   const subtitle =
@@ -60,13 +64,16 @@ export function MergeRebaseDialog({
       busy={busy}
       onSubmit={() => {
         if (!referenceSnapshot) return;
-        onSubmit({
-          kind: request.kind,
+        const common = {
           sourceFullName: request.source.fullName,
           snapshot: referenceSnapshot,
           autostash,
           changesSnapshot: autostash ? preview?.snapshot : undefined,
-        });
+        };
+        if (request.kind === 'merge') {
+          lastMergeMode = mode;
+          onSubmit({ kind: 'merge', mode, ...common });
+        } else onSubmit({ kind: 'rebase', ...common });
       }}
       onClose={onClose}
     >
@@ -80,6 +87,31 @@ export function MergeRebaseDialog({
         <BranchIcon size={13} />
         <strong>{request.current.name}</strong>
       </dd>
+      {request.kind === 'merge' && (
+        <>
+          <dt>
+            <label htmlFor="merge-mode">Merge Option:</label>
+          </dt>
+          <dd>
+            <select
+              id="merge-mode"
+              className="reference-input"
+              value={mode}
+              onChange={(event) => setMode(event.target.value as MergeMode)}
+            >
+              <option value="default">Default — Fast-forward if possible</option>
+              <option value="no-ff">No Fast-Forward — Always create a merge commit</option>
+              <option value="squash">Squash — Stage a single-parent result</option>
+              <option value="no-commit">Don't Commit — Merge without commit</option>
+            </select>
+            {mode === 'no-commit' && (
+              <p className="dialog-inline-note">
+                A fast-forward updates the branch immediately; a merge commit pauses for review.
+              </p>
+            )}
+          </dd>
+        </>
+      )}
       <dt>Local changes:</dt>
       <dd>
         <label className="reference-checkbox">

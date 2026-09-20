@@ -1,8 +1,11 @@
 import { devNull } from 'node:os';
+import { lstat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   RepositoryDiff,
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
+  RepositoryDiffOptions,
   RepositoryWorkingChange,
 } from '../../common/ipc/contracts';
 import { repositoryDiffSchema } from '../../common/ipc/contracts';
@@ -25,6 +28,8 @@ export interface ReadRepositoryDiffInput {
   readonly cwd: string;
   readonly target: RepositoryDiffTarget;
   readonly whitespace: RepositoryDiffWhitespace;
+  readonly options?: RepositoryDiffOptions | undefined;
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Reads one bounded text diff while keeping all Git argument construction in the backend. */
@@ -49,10 +54,11 @@ export async function readRepositoryDiff(
 
   let result: GitCommandResult;
   try {
-    result = await runner.run(diffArguments(input.target, input.whitespace, amendBase), {
+    result = await runner.run(diffArguments(input.target, input.whitespace, amendBase, input.options), {
       cwd: input.cwd,
       timeoutMs: diffReadTimeoutMs,
       maxOutputBytes: diffReadOutputLimit,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
   } catch (error) {
     if (error instanceof GitOutputLimitError) return tooLarge(input, snapshot);
@@ -76,6 +82,14 @@ export async function readRepositoryDiff(
 
   const content = result.stdout;
   const binary = isBinaryDiff(content);
+  // Loading is opt-in above our own resource budget; the captured 60,000-line file is not a threshold.
+  if (
+    !binary &&
+    !input.options?.loadLarge &&
+    (content.length > 512 * 1024 || content.split('\n').length > 10_000)
+  ) {
+    return tooLarge(input, snapshot);
+  }
   return repositoryDiffSchema.parse({
     repositoryId: input.repositoryId,
     target: input.target,
@@ -84,6 +98,7 @@ export async function readRepositoryDiff(
     byteLength: Buffer.byteLength(content, 'utf8'),
     message: binary ? 'Binary changes do not have an inline text diff.' : null,
     snapshot,
+    ...(binary ? { binaryMetadata: await binaryMetadata(runner, input, content) } : {}),
   });
 }
 
@@ -91,7 +106,9 @@ function diffArguments(
   target: RepositoryDiffTarget,
   whitespace: RepositoryDiffWhitespace,
   amendBase: string | undefined,
+  options?: RepositoryDiffOptions,
 ): string[] {
+  const context = options?.entireFile ? 1_000_000 : (options?.contextLines ?? 3);
   if (target.kind === 'commit') {
     const args = [
       'diff-tree',
@@ -101,9 +118,8 @@ function diffArguments(
       '--no-textconv',
       '--no-color',
       '--full-index',
-      '--binary',
       '--patch',
-      '--unified=3',
+      `--unified=${context}`,
       '-M',
       '-C',
       '-m',
@@ -120,9 +136,8 @@ function diffArguments(
     '--no-textconv',
     '--no-color',
     '--full-index',
-    '--binary',
     '--patch',
-    '--unified=3',
+    `--unified=${context}`,
     '-M',
     '-C',
   ];
@@ -198,6 +213,36 @@ async function ensureWorkingTarget(
 
 function isBinaryDiff(content: string): boolean {
   return /(?:^|\n)(?:Binary files .* differ|GIT binary patch|Subproject commit )/u.test(content);
+}
+
+async function binaryMetadata(
+  runner: DiffRunner,
+  input: ReadRepositoryDiffInput,
+  content: string,
+): Promise<{ beforeBytes: number | null; afterBytes: number | null }> {
+  const index = /^index ([a-f0-9]+)\.\.([a-f0-9]+)/mu.exec(content);
+  const size = async (id: string | undefined): Promise<number | null> => {
+    if (!id) return null;
+    if (/^0+$/u.test(id)) return 0;
+    try {
+      const result = await runner.run(['cat-file', '-s', id], {
+        cwd: input.cwd,
+        timeoutMs: diffReadTimeoutMs,
+        maxOutputBytes: 1024,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+      const value = Number(result.stdout.trim());
+      return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  const beforeBytes = await size(index?.[1]);
+  if (input.target.kind === 'working' && input.target.area !== 'staged') {
+    const details = await lstat(join(input.cwd, input.target.path)).catch(() => undefined);
+    return { beforeBytes, afterBytes: details?.isFile() ? details.size : details ? null : 0 };
+  }
+  return { beforeBytes, afterBytes: await size(index?.[2]) };
 }
 
 function tooLarge(input: ReadRepositoryDiffInput, snapshot: string | null): RepositoryDiff {

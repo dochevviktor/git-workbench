@@ -9,6 +9,7 @@ import {
   ActivityIcon,
   AppearanceIcon,
   BranchIcon,
+  CloseIcon,
   ChevronDownIcon,
   FetchIcon,
   NewBranchIcon,
@@ -16,6 +17,7 @@ import {
   PullIcon,
   PushIcon,
   QuickLaunchIcon,
+  RepositoryIcon,
   StashIcon,
   TerminalIcon,
 } from './Icons';
@@ -23,6 +25,8 @@ import { MenuButton } from './menu/MenuButton';
 import type { MenuEntry } from './menu/menu-model';
 
 interface ToolbarProps {
+  readonly repositoryListVisible: boolean;
+  readonly onToggleRepositoryList: () => void;
   readonly repository: RepositorySummary | undefined;
   readonly tracking: RepositoryHistoryTracking | undefined;
   readonly branchItems: readonly MenuEntry[];
@@ -124,12 +128,15 @@ function headDescription(repository: RepositorySummary): string {
 }
 
 function progressText(operation: RepositoryOperation): string {
+  if (operation.cancelRequested) return 'Cancelling…';
   if (!operation.progress) return operation.message;
   const percent = operation.progress.percent;
   return percent === null ? operation.progress.phase : `${operation.progress.phase} ${percent}%`;
 }
 
 export function Toolbar({
+  repositoryListVisible,
+  onToggleRepositoryList,
   repository,
   tracking,
   branchItems,
@@ -159,6 +166,16 @@ export function Toolbar({
   return (
     <div className="toolbar" role="toolbar" aria-label="Repository commands">
       <div className="toolbar-group">
+        <button
+          type="button"
+          className="toolbar-repository-list"
+          aria-label="Show repository list"
+          aria-pressed={repositoryListVisible}
+          title="Show repository list"
+          onClick={onToggleRepositoryList}
+        >
+          <RepositoryIcon size={17} />
+        </button>
         <ToolbarButton
           icon={<QuickLaunchIcon size={18} />}
           label="Quick Launch"
@@ -222,13 +239,27 @@ export function Toolbar({
           </div>
         ) : (
           <div className="toolbar-repository-copy">
-            <strong>Welcome to Git Workbench!</strong>
-            <span className="toolbar-repository-branch">Open a repository to start</span>
+            <strong>{runningOperation?.title ?? 'Welcome to Git Workbench!'}</strong>
+            <span className="toolbar-repository-branch">
+              {runningOperation ? progressText(runningOperation) : 'Open a repository to start'}
+            </span>
           </div>
         )}
         <span className="toolbar-repository-tracking" title={tracking?.upstream ?? undefined}>
           {counts}
         </span>
+        {runningOperation && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Cancel ${runningOperation.title}`}
+            title={runningOperation.cancelRequested ? 'Cancellation requested' : 'Cancel operation'}
+            disabled={runningOperation.cancelRequested}
+            onClick={() => onCancelOperation(runningOperation.id)}
+          >
+            <CloseIcon size={13} />
+          </button>
+        )}
         {activityOpen && (
           <ActivityPanel operations={operations} onCancel={onCancelOperation} onClose={onToggleActivity} />
         )}

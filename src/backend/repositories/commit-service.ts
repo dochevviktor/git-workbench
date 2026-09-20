@@ -513,6 +513,7 @@ export async function detectPendingOperation(
   if ((await pathExists(join(gitDir, 'rebase-merge'))) || (await pathExists(join(gitDir, 'rebase-apply')))) {
     return 'rebase';
   }
+  if (await pathExists(join(gitDir, 'SQUASH_MSG'))) return 'squash';
   return null;
 }
 
@@ -520,6 +521,8 @@ function pendingOperationLabel(operation: RepositoryCommitPendingOperation): str
   switch (operation) {
     case 'merge':
       return 'A merge';
+    case 'squash':
+      return 'A squash merge';
     case 'cherry-pick':
       return 'A cherry-pick';
     case 'revert':

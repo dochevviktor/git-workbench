@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute } from 'node:path';
+import { basename, dirname, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import {
   repositoryIdSchema,
@@ -16,11 +16,19 @@ const repositoryTabRecordSchema = z.strictObject({
   ),
 });
 
-const repositoryTabFileSchema = z.strictObject({
+const legacyRepositoryTabFileSchema = z.strictObject({
   version: z.literal(1),
   tabOrientation: repositoryTabOrientationSchema,
   activeRepositoryId: repositoryIdSchema.nullable(),
   tabs: z.array(repositoryTabRecordSchema).max(20),
+});
+
+const repositoryTabFileSchema = z.strictObject({
+  version: z.literal(2),
+  repositoryListVisible: z.boolean(),
+  activeRepositoryId: repositoryIdSchema.nullable(),
+  tabs: z.array(repositoryTabRecordSchema).max(20),
+  recentlyClosed: z.array(repositoryTabRecordSchema).max(20),
 });
 
 export type RepositoryTabRecord = z.infer<typeof repositoryTabRecordSchema>;
@@ -36,6 +44,7 @@ export class RepositoryTabStore {
   private readonly maxTabs: number;
   private tabs: RepositoryTabRecord[] | undefined;
   private tabOrientation: RepositoryTabOrientation | undefined;
+  private recentlyClosed: RepositoryTabRecord[] = [];
   private activeRepositoryId: string | null | undefined;
   private loading: Promise<void> | undefined;
   private mutationQueue: Promise<void> = Promise.resolve();
@@ -57,12 +66,15 @@ export class RepositoryTabStore {
     return {
       tabOrientation: this.tabOrientation ?? 'horizontal',
       activeRepositoryId: this.activeRepositoryId ?? null,
+      repositoryListVisible: this.tabOrientation === 'vertical',
+      recentlyClosed: this.recentlyClosed.map((tab) => ({ ...tab, name: basename(tab.path) || tab.path })),
     };
   }
 
   async addTab(tab: RepositoryTabRecord): Promise<void> {
     await this.mutate(async () => {
       await this.load();
+      this.recentlyClosed = this.recentlyClosed.filter((candidate) => candidate.id !== tab.id);
       const existingIndex = (this.tabs ?? []).findIndex((candidate) => candidate.id === tab.id);
       if (existingIndex >= 0) {
         this.tabs![existingIndex] = tab;
@@ -77,6 +89,9 @@ export class RepositoryTabStore {
     await this.mutate(async () => {
       await this.load();
       const existing = this.tabs ?? [];
+      const closed = existing.find((tab) => tab.id === id);
+      if (closed)
+        this.recentlyClosed = [closed, ...this.recentlyClosed.filter((tab) => tab.id !== id)].slice(0, 20);
       const next = existing.filter((tab) => tab.id !== id);
       const activeChanged = this.activeRepositoryId === id;
       if (next.length === existing.length && !activeChanged) return;
@@ -100,6 +115,18 @@ export class RepositoryTabStore {
       await this.load();
       if (this.tabOrientation === tabOrientation) return;
       this.tabOrientation = tabOrientation;
+      await this.save();
+    });
+  }
+
+  async reorder(ids: readonly string[]): Promise<void> {
+    await this.mutate(async () => {
+      await this.load();
+      const byId = new Map(this.tabs!.map((tab) => [tab.id, tab]));
+      if (new Set(ids).size !== ids.length || ids.some((id) => !byId.has(id))) {
+        throw new Error('The tab order is stale. Refresh and try again.');
+      }
+      this.tabs = [...ids.map((id) => byId.get(id)!), ...this.tabs!.filter((tab) => !ids.includes(tab.id))];
       await this.save();
     });
   }
@@ -128,11 +155,23 @@ export class RepositoryTabStore {
   private async readPersisted(): Promise<void> {
     try {
       const content = await readFile(this.filePath, 'utf8');
-      const parsed = repositoryTabFileSchema.safeParse(JSON.parse(content) as unknown);
+      const value: unknown = JSON.parse(content);
+      const parsed = repositoryTabFileSchema.safeParse(value);
+      const legacy = legacyRepositoryTabFileSchema.safeParse(value);
       if (parsed.success) {
         this.tabs = this.deduplicate(parsed.data.tabs);
-        this.tabOrientation = parsed.data.tabOrientation;
+        this.tabOrientation = parsed.data.repositoryListVisible ? 'vertical' : 'horizontal';
         this.activeRepositoryId = parsed.data.activeRepositoryId;
+        const closed = new Map(parsed.data.recentlyClosed.map((tab) => [tab.id, tab]));
+        this.recentlyClosed = [...closed.values()]
+          .filter((tab) => !this.tabs!.some((open) => open.id === tab.id))
+          .slice(0, 20);
+      } else if (legacy.success) {
+        this.tabs = this.deduplicate(legacy.data.tabs);
+        this.tabOrientation = legacy.data.tabOrientation;
+        this.activeRepositoryId = legacy.data.activeRepositoryId;
+        this.recentlyClosed = [];
+        await this.save();
       } else {
         this.setDefaults();
         await this.quarantineCorruptFile();
@@ -155,6 +194,7 @@ export class RepositoryTabStore {
     this.tabs = [];
     this.tabOrientation = 'horizontal';
     this.activeRepositoryId = null;
+    this.recentlyClosed = [];
   }
 
   private async save(): Promise<void> {
@@ -162,10 +202,11 @@ export class RepositoryTabStore {
     const temporaryPath = `${this.filePath}.tmp-${process.pid}-${Date.now()}`;
     const content = `${JSON.stringify(
       {
-        version: 1,
-        tabOrientation: this.tabOrientation ?? 'horizontal',
+        version: 2,
+        repositoryListVisible: this.tabOrientation === 'vertical',
         activeRepositoryId: this.activeRepositoryId ?? null,
         tabs: this.tabs ?? [],
+        recentlyClosed: this.recentlyClosed,
       },
       null,
       2,

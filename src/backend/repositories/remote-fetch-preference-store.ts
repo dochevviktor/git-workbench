@@ -12,7 +12,8 @@ const preferenceEntrySchema = z.strictObject({
 });
 
 const preferenceFileSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
+  enabled: z.boolean().default(true),
   entries: z.array(preferenceEntrySchema).max(maximumRepositories),
 });
 
@@ -20,11 +21,26 @@ const preferenceFileSchema = z.strictObject({
 export class RemoteFetchPreferenceStore {
   private readonly filePath: string;
   private entries: Map<string, Set<string>> | undefined;
+  private enabled = true;
   private loading: Promise<void> | undefined;
   private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(filePath: string) {
     this.filePath = filePath;
+  }
+
+  async isGloballyEnabled(): Promise<boolean> {
+    await this.mutationQueue;
+    await this.load();
+    return this.enabled;
+  }
+
+  async setGloballyEnabled(enabled: boolean): Promise<void> {
+    await this.mutate(async () => {
+      await this.load();
+      this.enabled = enabled;
+      await this.save();
+    });
   }
 
   async isDisabled(repositoryId: string, remote: string): Promise<boolean> {
@@ -106,6 +122,7 @@ export class RemoteFetchPreferenceStore {
       const content = await readFile(this.filePath, 'utf8');
       const parsed = preferenceFileSchema.safeParse(JSON.parse(content) as unknown);
       if (parsed.success) {
+        this.enabled = parsed.data.enabled;
         this.entries = new Map(
           parsed.data.entries.map((entry) => [entry.repositoryId, new Set(entry.remotes)]),
         );
@@ -134,7 +151,7 @@ export class RemoteFetchPreferenceStore {
       repositoryId,
       remotes: [...remotes].slice(0, maximumRemotesPerRepository),
     }));
-    const content = `${JSON.stringify({ version: 1, entries }, null, 2)}\n`;
+    const content = `${JSON.stringify({ version: 2, enabled: this.enabled, entries }, null, 2)}\n`;
     try {
       await writeFile(temporaryPath, content, { encoding: 'utf8', mode: 0o600 });
       await rename(temporaryPath, this.filePath);

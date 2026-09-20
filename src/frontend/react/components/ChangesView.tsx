@@ -32,6 +32,10 @@ import { useContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 import { copyText } from '../lib/clipboard';
+import { DiscardDialog } from './DiscardDialog';
+import type { DiscardRequest } from './DiscardDialog';
+
+const sessionSelections = new Map<string, ListSelection>();
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;
@@ -142,7 +146,10 @@ function ChangesPane({
       data-testid={`working-changes-${id}`}
     >
       <header className="changes-pane-header">
-        <h2 id={`changes-pane-${id}`}>{title}</h2>
+        <h2 id={`changes-pane-${id}`}>
+          {title}
+          <span className="changes-visible-count">{entries.length}</span>
+        </h2>
         <button
           type="button"
           className="button button-small"
@@ -191,6 +198,8 @@ interface ChangePreviewProps {
   readonly showWhitespace: boolean;
   readonly onShowWhitespaceChange: (show: boolean) => void;
   readonly busy: boolean;
+  readonly positionKey: string;
+  readonly onPopup: () => void;
   readonly onWorkingAction: (
     action: RepositoryWorkingChangeAction,
     selection: RepositoryWorkingChangeSelection,
@@ -208,6 +217,8 @@ function ChangePreview({
   showWhitespace,
   onShowWhitespaceChange,
   busy,
+  positionKey,
+  onPopup,
   onWorkingAction,
 }: ChangePreviewProps) {
   const change = entry.change;
@@ -240,6 +251,15 @@ function ChangePreview({
           {change.path}
         </span>
         {changeDetail(change) && <span className="preview-detail">{changeDetail(change)}</span>}
+        <button
+          type="button"
+          className="pane-icon-button"
+          aria-label="Open diff popup"
+          title="Open diff popup (Space)"
+          onClick={onPopup}
+        >
+          ▣
+        </button>
       </div>
       <div className="preview-body diff-preview-body">
         <DiffViewer
@@ -253,6 +273,8 @@ function ChangePreview({
           onWhitespaceChange={onWhitespaceChange}
           showWhitespace={showWhitespace}
           onShowWhitespaceChange={onShowWhitespaceChange}
+          controls={diff.controls}
+          positionKey={positionKey}
           workingActions={workingActions}
           label={entry.kind === 'amend' ? 'Amended commit diff' : 'Working tree diff'}
         />
@@ -272,6 +294,12 @@ interface ChangesViewProps {
   readonly onStashPaths?: (paths: readonly string[]) => void;
   /** Saves the selected file paths as a bounded patch. */
   readonly onSavePatch?: (paths: readonly string[]) => void;
+  readonly onVisibleCountChange?:
+    | ((
+        count: number,
+        options: { readonly includeUntracked: boolean; readonly includeIgnored: boolean },
+      ) => void)
+    | undefined;
 }
 
 export function ChangesView({
@@ -281,6 +309,7 @@ export function ChangesView({
   operationBusy = false,
   onStashPaths,
   onSavePatch,
+  onVisibleCountChange,
 }: ChangesViewProps) {
   const showContextMenu = useContextMenu();
   const [mode, setMode] = usePersistentState<FileListMode>(
@@ -309,7 +338,13 @@ export function ChangesView({
     isNumberBetween(72, 4000),
   );
   const [filter, setFilter] = useState('');
-  const [selection, setSelection] = useState<ListSelection>(emptySelection);
+  const [selection, setSelection] = useState<ListSelection>(
+    () => sessionSelections.get(repository.id) ?? emptySelection,
+  );
+  const [popup, setPopup] = useState(false);
+  const [popupMode, setPopupMode] = useState<DiffDisplayMode>('split');
+  const [discard, setDiscard] = useState<DiscardRequest>();
+  const viewRef = useRef<HTMLElement>(null);
   const [amend, setAmend] = usePersistentState(
     `repository.${repository.id}.commit.amend`,
     false,
@@ -333,7 +368,13 @@ export function ChangesView({
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string>();
   const pendingSelection = useRef<
-    { readonly paths: readonly string[]; readonly area: 'staged' | 'unstaged' } | undefined
+    | {
+        readonly area: 'staged' | 'unstaged';
+        readonly index: number;
+        readonly path: string;
+        readonly inverse: boolean;
+      }
+    | undefined
   >(undefined);
   const { value, loading, error, refresh } = useRepositoryWorkingChanges(
     repository.id,
@@ -345,7 +386,7 @@ export function ChangesView({
   useEffect(() => {
     if (refreshSignal === handledRefresh.current) return;
     handledRefresh.current = refreshSignal;
-    refresh();
+    void refresh();
   }, [refresh, refreshSignal]);
 
   const { unstaged, staged } = useMemo(() => {
@@ -361,6 +402,21 @@ export function ChangesView({
       staged: value.staged.filter(visible).map(workingEntry),
     };
   }, [filter, includeIgnored, value]);
+
+  useEffect(() => {
+    if (value)
+      onVisibleCountChange?.(
+        new Set(
+          [
+            ...value.staged,
+            ...value.unstaged,
+            ...value.untracked,
+            ...(includeIgnored ? value.ignored : []),
+          ].map((change) => change.path),
+        ).size,
+        { includeUntracked, includeIgnored },
+      );
+  }, [includeIgnored, includeUntracked, onVisibleCountChange, value]);
 
   /** The composer reloads its commit guard whenever HEAD or the staged entries change. */
   const changeToken = useMemo(() => {
@@ -402,8 +458,15 @@ export function ChangesView({
   );
 
   useEffect(() => {
-    setSelection((current) => pruneSelection(order, current));
-  }, [order]);
+    if (!value) return;
+    setSelection((current) => {
+      const pruned = pruneSelection(order, current);
+      return pruned.activeKey || order.length === 0 ? pruned : selectKeys(order, [order[0]!]);
+    });
+  }, [order, value]);
+  useEffect(() => {
+    sessionSelections.set(repository.id, selection);
+  }, [repository.id, selection]);
 
   const selectEntry = useCallback(
     (entries: readonly PaneEntry[], entry: PaneEntry, modifiers: SelectionModifiers) => {
@@ -450,6 +513,34 @@ export function ChangesView({
             disabledReason: paths.length === 0 ? 'This row is not a patchable working-tree file.' : undefined,
             run: () => onSavePatch?.(paths),
           },
+          menuSeparator,
+          {
+            id: 'discard-selected',
+            label: 'Discard Changes…',
+            disabled:
+              selectedEntries.some(
+                (candidate) =>
+                  candidate.kind !== 'working' ||
+                  candidate.change.area !== 'unstaged' ||
+                  candidate.change.status === 'unmerged',
+              ) || selectedEntries.length > 100,
+            run: () =>
+              setDiscard({
+                targets: selectedEntries.flatMap((candidate) =>
+                  candidate.kind === 'working'
+                    ? [
+                        {
+                          area: candidate.change.area,
+                          path: candidate.path,
+                          previousPath: candidate.previousPath,
+                        },
+                      ]
+                    : [],
+                ),
+                selection: { kind: 'file' },
+              }),
+          },
+          { id: 'diff-popup', label: 'Open Diff Popup', run: () => setPopup(true) },
           menuSeparator,
           { id: 'copy-path', label: 'Copy Path', run: () => copyText(entry.path) },
         ]),
@@ -514,6 +605,12 @@ export function ChangesView({
         );
         await refresh();
         refreshDiff();
+        window.requestAnimationFrame(() =>
+          viewRef.current
+            ?.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')
+            ?.closest<HTMLElement>('[role="tree"]')
+            ?.focus(),
+        );
         return true;
       } catch (reason: unknown) {
         setActionError(
@@ -534,14 +631,20 @@ export function ChangesView({
         .map((entry) => workingTarget(entry, stagedByPath))
         .filter((target): target is RepositoryWorkingChangeTarget => target !== undefined);
       if (targets.length === 0) return;
-      // Keep the same files selected once they arrive in the other pane.
+      // P0-018: keep browsing the source pane after its selected file moves.
+      const source = action === 'stage' ? unstaged : stagedEntries;
       pendingSelection.current = {
-        paths: targets.map((target) => target.path),
-        area: action === 'stage' ? 'staged' : 'unstaged',
+        area: action === 'stage' ? 'unstaged' : 'staged',
+        index: Math.max(
+          0,
+          source.findIndex((entry) => entry.key === selection.activeKey),
+        ),
+        path: targets[0]!.path,
+        inverse: action === 'unstage',
       };
-      await applyAction(action, targets, { kind: 'file' });
+      if (!(await applyAction(action, targets, { kind: 'file' }))) pendingSelection.current = undefined;
     },
-    [applyAction, stagedByPath],
+    [applyAction, stagedByPath, stagedEntries, unstaged, selection.activeKey],
   );
 
   useEffect(() => {
@@ -549,15 +652,18 @@ export function ChangesView({
     if (!pending) return;
     pendingSelection.current = undefined;
     const pool = pending.area === 'staged' ? stagedEntries : unstaged;
-    const moved = pool.filter((entry) => pending.paths.includes(entry.path)).map((entry) => entry.key);
-    if (moved.length > 0) {
+    const next = pool[Math.min(pending.index, pool.length - 1)];
+    const fallback = pending.inverse
+      ? unstaged.find((entry) => entry.path === pending.path)
+      : stagedEntries[0];
+    const choice = next ?? fallback;
+    if (choice)
       setSelection(
         selectKeys(
-          pool.map((entry) => entry.key),
-          moved,
+          [...unstaged, ...stagedEntries].map((entry) => entry.key),
+          [choice.key],
         ),
       );
-    }
   }, [stagedEntries, unstaged]);
 
   const stageEntries = useMemo<PaneEntry[]>(
@@ -580,7 +686,7 @@ export function ChangesView({
         className="button button-small"
         onClick={() => {
           setActionError(undefined);
-          refresh();
+          void refresh();
           refreshDiff();
         }}
       >
@@ -629,9 +735,33 @@ export function ChangesView({
 
   return (
     <section
+      ref={viewRef}
       className="changes-view"
       aria-label="Local Changes"
       data-testid="working-changes"
+      onKeyDown={(event) => {
+        if (!(event.target instanceof HTMLElement) || event.target.closest('input, textarea, dialog')) return;
+        if (event.code === 'Space' && selected) {
+          event.preventDefault();
+          setPopup(true);
+        }
+        if (event.key === 'Delete' && selected?.kind === 'working' && selected.change.area === 'unstaged') {
+          event.preventDefault();
+          const targets = unstaged
+            .filter(
+              (entry) =>
+                selectedKeys.has(entry.key) &&
+                entry.change.area === 'unstaged' &&
+                entry.change.status !== 'unmerged',
+            )
+            .map((entry) => ({
+              area: entry.change.area,
+              path: entry.path,
+              previousPath: entry.previousPath,
+            }));
+          if (targets.length > 0) setDiscard({ targets, selection: { kind: 'file' } });
+        }
+      }}
       style={
         {
           '--changes-files-width': `${filesWidth}px`,
@@ -671,7 +801,7 @@ export function ChangesView({
         {error && (
           <div className="inline-alert" role="alert">
             <span>{error}</span>
-            <button type="button" className="button button-small" onClick={refresh}>
+            <button type="button" className="button button-small" onClick={() => void refresh()}>
               Retry
             </button>
           </div>
@@ -684,7 +814,7 @@ export function ChangesView({
         )}
         <ChangesPane
           id="unstaged"
-          title="Unstaged"
+          title={`Unstaged${!includeUntracked ? ' (untracked hidden)' : ''}${includeIgnored ? ' (including ignored)' : ''}`}
           action="stage"
           entries={unstaged}
           mode={mode}
@@ -697,7 +827,13 @@ export function ChangesView({
             const chosen = selectedIn(stageEntries);
             void applyFileEntries('stage', chosen.length > 0 ? chosen : stageEntries);
           }}
-          actionDisabled={actionBusy || loading || stageEntries.length === 0}
+          actionDisabled={
+            actionBusy ||
+            operationBusy ||
+            loading ||
+            stageEntries.length === 0 ||
+            (selection.activeKey !== undefined && selectedIn(stageEntries).length === 0)
+          }
           actionDisabledReason={
             stageEntries.length === 0 ? 'There are no unstaged files to stage.' : undefined
           }
@@ -737,7 +873,13 @@ export function ChangesView({
             const chosen = selectedIn(unstageEntries);
             void applyFileEntries('unstage', chosen.length > 0 ? chosen : unstageEntries);
           }}
-          actionDisabled={actionBusy || loading || unstageEntries.length === 0}
+          actionDisabled={
+            actionBusy ||
+            operationBusy ||
+            loading ||
+            unstageEntries.length === 0 ||
+            (selection.activeKey !== undefined && selectedIn(unstageEntries).length === 0)
+          }
           actionDisabledReason={
             unstageEntries.length === 0
               ? amendPreview
@@ -781,9 +923,15 @@ export function ChangesView({
               onWhitespaceChange={setDiffWhitespace}
               showWhitespace={showWhitespace}
               onShowWhitespaceChange={setShowWhitespace}
-              busy={actionBusy}
+              busy={actionBusy || operationBusy}
+              positionKey={`${repository.id}:${selected.key}:main`}
+              onPopup={() => setPopup(true)}
               onWorkingAction={(action, lines, snapshot) => {
                 const target = workingTarget(selected, stagedByPath);
+                if (action === 'discard' && target) {
+                  setDiscard({ targets: [target], selection: lines });
+                  return Promise.resolve(false);
+                }
                 return target ? applyAction(action, [target], lines, snapshot) : Promise.resolve(false);
               }}
             />
@@ -802,6 +950,93 @@ export function ChangesView({
           onCommitted={onCommitted}
         />
       </div>
+      {discard && (
+        <DiscardDialog
+          repositoryId={repository.id}
+          request={discard}
+          busy={actionBusy}
+          failure={actionError}
+          onClose={() => setDiscard(undefined)}
+          onConfirm={async (snapshot) => {
+            if (discard.selection.kind === 'file') {
+              const removed = new Set(discard.targets.map((target) => target.path));
+              const index = unstaged.findIndex((entry) => removed.has(entry.path));
+              pendingSelection.current = {
+                area: 'unstaged',
+                index: Math.max(0, index - 1),
+                path: discard.targets[0]!.path,
+                inverse: false,
+              };
+            }
+            const success = await applyAction('discard', discard.targets, discard.selection, snapshot);
+            if (!success) pendingSelection.current = undefined;
+            return success;
+          }}
+        />
+      )}
+      {popup && selected && (
+        <dialog
+          className="dialog diff-inspector"
+          aria-label="Diff popup"
+          ref={(node) => {
+            if (node && !node.open) node.showModal();
+          }}
+          onClose={() => {
+            setPopup(false);
+            window.requestAnimationFrame(() =>
+              viewRef.current
+                ?.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')
+                ?.closest<HTMLElement>('[role="tree"]')
+                ?.focus(),
+            );
+          }}
+          onKeyDown={(event) => {
+            if (event.target instanceof HTMLElement && event.target.closest('input, textarea')) return;
+            if (event.code === 'Space') {
+              event.preventDefault();
+              event.currentTarget.close();
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              const entries = [...unstaged, ...stagedEntries];
+              const index = entries.findIndex((entry) => entry.key === selected.key);
+              const next =
+                entries[
+                  Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))
+                ];
+              if (next) setSelection(selectKeys(order, [next.key]));
+            }
+          }}
+        >
+          <div className="diff-inspector-content">
+            <header>
+              <strong>{selected.path}</strong>
+              <button
+                type="button"
+                className="button button-small"
+                onClick={(event) => event.currentTarget.closest('dialog')?.close()}
+              >
+                Close
+              </button>
+            </header>
+            <DiffViewer
+              value={diff.value}
+              loading={diff.loading}
+              error={diff.error}
+              onRetry={diff.refresh}
+              mode={popupMode}
+              onModeChange={setPopupMode}
+              whitespace={diffWhitespace}
+              onWhitespaceChange={setDiffWhitespace}
+              showWhitespace={showWhitespace}
+              onShowWhitespaceChange={setShowWhitespace}
+              controls={diff.controls}
+              positionKey={`${repository.id}:${selected.key}:popup`}
+            />
+            <footer>Space bar: close, Up/Down: move file selection</footer>
+          </div>
+        </dialog>
+      )}
     </section>
   );
 }

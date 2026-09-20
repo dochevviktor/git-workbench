@@ -686,14 +686,6 @@ describe('remote management', () => {
     await context.git.run(['commit', '--quiet', '-m', 'background commit'], { cwd: other });
     await context.git.run(['push', '--quiet', 'origin', 'main'], { cwd: other });
 
-    const finished = new Promise<RepositoryOperation>((resolve) => {
-      const release = context.service.subscribeOperations((_ownerId, operation) => {
-        if (operation.source === 'background' && operation.status !== 'running') {
-          release();
-          resolve(operation);
-        }
-      });
-    });
     const disabled = await context.service.applyRemoteAction(1, {
       id: context.repositoryId,
       action: { kind: 'set-automatic-fetch', name: 'origin', enabled: false },
@@ -701,6 +693,21 @@ describe('remote management', () => {
     expect(disabled).toMatchObject({
       status: 'applied',
       remotes: [{ name: 'origin', fetchAutomatically: false }],
+    });
+    // Opting out cancels any in-flight automatic fetch. Observe the new run after re-enabling,
+    // rather than confusing the old job's asynchronous cancellation with its successor's result.
+    const priorOperations = new Set(context.service.listOperations(1).map((operation) => operation.id));
+    const finished = new Promise<RepositoryOperation>((resolve) => {
+      const release = context.service.subscribeOperations((_ownerId, operation) => {
+        if (
+          operation.source === 'background' &&
+          operation.status !== 'running' &&
+          !priorOperations.has(operation.id)
+        ) {
+          release();
+          resolve(operation);
+        }
+      });
     });
     const enabled = await context.service.applyRemoteAction(1, {
       id: context.repositoryId,

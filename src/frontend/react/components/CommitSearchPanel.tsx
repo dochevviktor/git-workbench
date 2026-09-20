@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { commitSearchQueryLimit, useCommitSearch } from '../hooks/use-commit-search';
+import type { CommitSearchField } from '../hooks/use-commit-search';
 import type { HistoryRevealRequest } from '../hooks/use-repository-history';
 import { avatarColor, formatShortDate, initials } from '../lib/format';
 import { ChevronDownIcon, CloseIcon, SearchIcon } from './Icons';
 import { MenuButton } from './menu/MenuButton';
-import { planned } from './menu/menu-model';
+import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
+import { SearchMatch } from './SearchMatch';
 
 interface CommitSearchPanelProps {
   readonly repositoryId: string;
@@ -14,38 +16,14 @@ interface CommitSearchPanelProps {
   /** True while the commit list shows a filtered history that may not contain every result. */
   readonly historyFiltered: boolean;
   readonly onRevealCommit: (commitId: string) => void;
+  readonly onMatchesChanged?: ((matches: readonly string[], query: string) => void) | undefined;
 }
 
-const scopeItems: readonly MenuEntry[] = [
-  { id: 'scope-message', label: 'Commit Message', checkable: 'radio', checked: true },
-  {
-    id: 'scope-author',
-    label: 'Author',
-    checkable: 'radio',
-    checked: false,
-    ...planned('Searching by author', 'P08'),
-  },
-  {
-    id: 'scope-sha',
-    label: 'Commit SHA',
-    checkable: 'radio',
-    checked: false,
-    ...planned('Searching by commit SHA', 'P08'),
-  },
-  {
-    id: 'scope-path',
-    label: 'File Path',
-    checkable: 'radio',
-    checked: false,
-    ...planned('Searching by file path', 'P08'),
-  },
-  {
-    id: 'scope-content',
-    label: 'Changes',
-    checkable: 'radio',
-    checked: false,
-    ...planned('Searching changed content', 'P08'),
-  },
+const searchFields: readonly { readonly field: CommitSearchField; readonly label: string }[] = [
+  { field: 'message', label: 'Commit Message' },
+  { field: 'author', label: 'Author' },
+  { field: 'path', label: 'Path' },
+  { field: 'content', label: 'Diff Content' },
 ];
 
 function resultId(commitId: string): string {
@@ -61,6 +39,7 @@ export function CommitSearchPanel({
   reveal,
   historyFiltered,
   onRevealCommit,
+  onMatchesChanged,
 }: CommitSearchPanelProps) {
   const search = useCommitSearch(repositoryId);
   const { results, hasMore, loading, loadMore } = search;
@@ -69,6 +48,39 @@ export function CommitSearchPanel({
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string>();
   const activeIndex = results.findIndex((commit) => commit.id === activeId);
+  const scopeItems: readonly MenuEntry[] = [
+    ...searchFields.map(({ field, label }) => ({
+      id: `scope-${field}`,
+      label,
+      checkable: 'radio' as const,
+      checked: search.field === field,
+      run: () => search.setField(field),
+    })),
+    menuSeparator,
+    {
+      id: 'search-repository',
+      label: 'Repository',
+      checkable: 'radio',
+      checked: search.scope === 'repository',
+      run: () => search.setScope('repository'),
+    },
+    {
+      id: 'search-current-branch',
+      label: 'Current Branch',
+      checkable: 'radio',
+      checked: search.scope === 'current-branch',
+      run: () => search.setScope('current-branch'),
+    },
+  ];
+
+  useEffect(() => {
+    onMatchesChanged?.(
+      results.map((commit) => commit.id),
+      search.field === 'message' ? search.query : '',
+    );
+  }, [onMatchesChanged, results, search.field, search.query]);
+
+  useEffect(() => () => onMatchesChanged?.([], ''), [onMatchesChanged, repositoryId]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -142,7 +154,10 @@ export function CommitSearchPanel({
           spellCheck={false}
           onChange={(event) => search.setText(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && search.text) {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              search.submit();
+            } else if (event.key === 'Escape' && search.text) {
               event.preventDefault();
               search.setText('');
             } else if (event.key === 'ArrowDown' && results.length > 0) {
@@ -169,13 +184,19 @@ export function CommitSearchPanel({
       </label>
       <div className="commit-search-scope">
         <MenuButton className="commit-search-scope-button" items={scopeItems} menuLabel="Search in">
-          Commit Message
+          {searchFields.find(({ field }) => field === search.field)?.label}
           <ChevronDownIcon size={9} />
         </MenuButton>
         <span className="commit-search-count" role="status" aria-live="polite">
           {status}
         </span>
       </div>
+      {(search.scope === 'current-branch' || search.field === 'content') && (
+        <p className="commit-search-scope-detail">
+          {search.scope === 'current-branch' ? 'Current Branch' : 'Repository'}
+          {search.field === 'content' ? ' · Case-sensitive changed text' : ''}
+        </p>
+      )}
       {search.error && (
         <div className="inline-alert commit-search-alert" role="alert">
           <span>{search.error}</span>
@@ -188,7 +209,7 @@ export function CommitSearchPanel({
         <p className="commit-search-note" role="status">
           {historyFiltered
             ? 'This commit is outside the filtered history. Clear the filter to show it.'
-            : 'This commit is further down than the commit list has loaded. Scroll the list to load it.'}
+            : 'This commit could not be located. Check the history error or refresh the repository.'}
         </p>
       )}
       <div
@@ -219,7 +240,12 @@ export function CommitSearchPanel({
             >
               {initials(commit.author.name, commit.author.email)}
             </span>
-            <span className="commit-search-subject">{commit.subject || '(no subject)'}</span>
+            <span className="commit-search-subject">
+              <SearchMatch
+                text={commit.subject || '(no subject)'}
+                query={search.field === 'message' ? search.query : ''}
+              />
+            </span>
             <time className="commit-search-date" dateTime={commit.author.date}>
               {formatShortDate(commit.author.date)}
             </time>

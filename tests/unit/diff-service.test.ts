@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GitOutputLimitError, GitRunner } from '../../src/backend/git/runner';
+import { GitCancelledError, GitOutputLimitError, GitRunner } from '../../src/backend/git/runner';
 import { readRepositoryDiff } from '../../src/backend/repositories/diff-service';
 
 const temporaryDirectories: string[] = [];
@@ -23,6 +23,93 @@ afterEach(async () => {
 });
 
 describe('repository diff service', () => {
+  it('cancels the bounded Git read when its owner cancels a large diff', async () => {
+    const controller = new AbortController();
+    const runner = {
+      run: vi
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0, signal: null })
+        .mockImplementationOnce(
+          (_args: readonly string[], options: { signal?: AbortSignal }) =>
+            new Promise((_resolve, reject) => {
+              expect(options.signal).toBe(controller.signal);
+              options.signal?.addEventListener('abort', () => reject(new GitCancelledError()), {
+                once: true,
+              });
+              controller.abort();
+            }),
+        ),
+    };
+    await expect(
+      readRepositoryDiff(runner, {
+        repositoryId,
+        cwd: '/unused-disposable-target',
+        target: { kind: 'commit', commitId: 'a'.repeat(40), path: 'large.txt', previousPath: null },
+        whitespace: 'normal',
+        options: { loadLarge: true },
+        signal: controller.signal,
+      }),
+    ).rejects.toBeInstanceOf(GitCancelledError);
+  });
+
+  it('changes context and exposes the full file while large diffs require an explicit bounded load', async () => {
+    const root = await fixtureDirectory();
+    const git = new GitRunner();
+    await git.run(['init', '--quiet'], { cwd: root });
+    const base = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\n') + '\n';
+    await writeFile(join(root, 'file.txt'), base);
+    await git.run(['add', '--', 'file.txt'], { cwd: root });
+    await git.run([...author, 'commit', '--quiet', '-m', 'base'], { cwd: root });
+    await writeFile(join(root, 'file.txt'), base.replace('line 40\n', 'changed 40\n'));
+    const target = {
+      kind: 'working' as const,
+      area: 'unstaged' as const,
+      path: 'file.txt',
+      previousPath: null,
+    };
+    const narrow = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { contextLines: 0 },
+    });
+    const wide = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { contextLines: 6 },
+    });
+    const entire = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { entireFile: true },
+    });
+    expect(narrow.content).not.toContain('\n line 39\n');
+    expect(wide.content).toContain('line 34');
+    expect(entire.content).toContain('line 80');
+    expect(entire.snapshot).toBe(narrow.snapshot);
+    await writeFile(
+      join(root, 'file.txt'),
+      Array.from({ length: 60000 }, (_, index) => `new line ${index}`).join('\n') + '\n',
+    );
+    expect(
+      (await readRepositoryDiff(git, { repositoryId, cwd: root, target, whitespace: 'normal' })).state,
+    ).toBe('too-large');
+    const loaded = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { loadLarge: true },
+    });
+    expect(loaded.state).toBe('text');
+    expect(loaded.content).toContain('+new line 59999');
+  });
+
   it("diffs an amend target against the commit's parent, including files only in the commit", async () => {
     const root = await fixtureDirectory();
     const repository = join(root, 'repository');

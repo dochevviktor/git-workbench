@@ -15,6 +15,7 @@ import type {
   RepositoryStashEntry,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
+import { CloneDialog } from '../components/CloneDialog';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
 import type { HistoryReferenceCommands } from '../components/HistoryView';
@@ -52,6 +53,7 @@ import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
 import type { Platform } from '../lib/platform';
+import { workspaceShortcuts } from '../lib/workspace-shortcuts';
 
 const appearances = ['system', 'light', 'dark'] as const;
 type Appearance = (typeof appearances)[number];
@@ -84,7 +86,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     lastActive,
     managerActive,
     managerTabOpen,
-    tabOrientation,
+    repositoryListVisible,
+    reorderTabs,
     recentlyClosed,
     loading: repositoriesLoading,
     busy,
@@ -109,13 +112,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   } = repositories;
   // History stays loaded for the last repository tab while the Repository Manager tab is in front.
   const history = useRepositoryHistory(lastActive?.id);
-  const {
-    refresh: refreshHistory,
-    selectCommit,
-    references,
-    setFilter: setHistoryFilter,
-    requestReveal,
-  } = history;
+  const { refresh: refreshHistory, references, setFilter: setHistoryFilter, requestReveal } = history;
   const showContextMenu = useContextMenu();
   const [appearance, setAppearance] = usePersistentState<Appearance>(
     'appearance',
@@ -129,6 +126,50 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [automaticFetch, setAutomaticFetch] = useState(true);
+  useEffect(() => {
+    let disposed = false;
+    void window.desktop?.repository.getAutomaticFetch().then((result) => {
+      if (!disposed && result.ok) setAutomaticFetch(result.value.enabled);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  const toggleAutomaticFetch = () => {
+    void window.desktop?.repository.setAutomaticFetch({ enabled: !automaticFetch }).then((result) => {
+      if (result.ok) setAutomaticFetch(result.value.enabled);
+      else reportError(result.error.message);
+    });
+  };
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const [searchMatches, setSearchMatches] = useState<{ ids: readonly string[]; query: string }>({
+    ids: [],
+    query: '',
+  });
+  const [visibleChangeCounts, setVisibleChangeCounts] = useState<
+    Readonly<Record<string, { count: number; includeUntracked: boolean; includeIgnored: boolean }>>
+  >({});
+  const onVisibleCountChange = useCallback(
+    (count: number, visibility: { includeUntracked: boolean; includeIgnored: boolean }) => {
+      const id = active?.id;
+      if (id)
+        setVisibleChangeCounts((current) =>
+          current[id]?.count === count &&
+          current[id]?.includeUntracked === visibility.includeUntracked &&
+          current[id]?.includeIgnored === visibility.includeIgnored
+            ? current
+            : { ...current, [id]: { count, ...visibility } },
+        );
+    },
+    [active?.id],
+  );
+  const onSearchMatchesChanged = useCallback(
+    (ids: readonly string[], query: string) => setSearchMatches({ ids, query }),
+    [],
+  );
+  const matchingCommitIds = useMemo(() => new Set(searchMatches.ids), [searchMatches.ids]);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const stashes = useRepositoryStashes(lastActive?.id, refreshSignal);
   const activeRepositoryId = useRef(active?.id);
@@ -157,6 +198,24 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     startMergeRebase: startMergeRebaseOperation,
     cancel: cancelOperation,
   } = useOperations();
+  const openedClones = useRef(new Set<string>());
+  const operationViewStartedAt = useRef(Date.now());
+  useEffect(() => {
+    const completed = operations
+      .filter(
+        (operation) =>
+          operation.status === 'succeeded' &&
+          operation.result?.kind === 'clone' &&
+          !openedClones.current.has(operation.id) &&
+          Date.parse(operation.finishedAt ?? '') >= operationViewStartedAt.current,
+      )
+      .sort((left, right) => (right.finishedAt ?? '').localeCompare(left.finishedAt ?? ''));
+    for (const operation of completed) openedClones.current.add(operation.id);
+    const latest = completed[0];
+    if (latest?.result?.kind !== 'clone') return;
+    setCloneOpen(false);
+    void openRecent(latest.result.value.path);
+  }, [operations, openRecent]);
   const referenceBusy = referenceRequestBusy || runningOperation(operations, active?.id) !== undefined;
   const [localChangesPreview, setLocalChangesPreview] = useState<RepositoryLocalChangesPreview>();
   const [previewError, setPreviewError] = useState<string>();
@@ -176,6 +235,45 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const nativeMenu = platform === 'darwin';
   const repositoryBusy = busy !== undefined;
   const view: RepositoryView = active && !active.bare ? (views[active.id] ?? 'history') : 'history';
+  const countIncludesUntracked = active ? (visibleChangeCounts[active.id]?.includeUntracked ?? true) : true;
+  const countIncludesIgnored = active ? (visibleChangeCounts[active.id]?.includeIgnored ?? false) : false;
+  useEffect(() => {
+    if (!active || active.bare || view !== 'history') return;
+    let current = true;
+    const id = active.id;
+    void window.desktop?.repository
+      .getWorkingChanges({
+        id,
+        includeUntracked: countIncludesUntracked,
+        includeIgnored: countIncludesIgnored,
+      })
+      .then((result) => {
+        if (!current || !result.ok) return;
+        const value = result.value;
+        const count = new Set(
+          [...value.staged, ...value.unstaged, ...value.untracked, ...value.ignored].map(
+            (change) => change.path,
+          ),
+        ).size;
+        setVisibleChangeCounts((previous) =>
+          previous[id]?.count === count &&
+          previous[id]?.includeUntracked === countIncludesUntracked &&
+          previous[id]?.includeIgnored === countIncludesIgnored
+            ? previous
+            : {
+                ...previous,
+                [id]: {
+                  count,
+                  includeUntracked: countIncludesUntracked,
+                  includeIgnored: countIncludesIgnored,
+                },
+              },
+        );
+      });
+    return () => {
+      current = false;
+    };
+  }, [active, view, countIncludesUntracked, countIncludesIgnored]);
 
   useEffect(() => {
     // Menus are portaled to the document body, so theme tokens live on the root element.
@@ -259,17 +357,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setRefreshSignal((value) => value + 1);
   }, [refreshHistory, refreshOpen]);
 
-  const revealCommit = useCallback(
-    (id: string) => {
-      setView('history');
-      selectCommit(id);
-      window.requestAnimationFrame(() =>
-        document.getElementById(`history-commit-${id}`)?.scrollIntoView({ block: 'center' }),
-      );
-    },
-    [selectCommit, setView],
-  );
-
   const revealSearchResult = useCallback(
     (commitId: string) => {
       setView('history');
@@ -295,12 +382,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   }, [active]);
 
   const openReferenceDialog = useCallback(
-    (request: ReferenceDialogRequest) => {
+    (request: ReferenceDialogRequest, snapshot = referenceContext?.snapshot) => {
       previewGeneration.current += 1;
       setPreviewError(undefined);
       setReferenceFailure(undefined);
       setReferenceStatus(undefined);
-      setDialogSnapshot(referenceContext?.snapshot);
+      setDialogSnapshot(snapshot);
       if (request.kind.startsWith('checkout') || request.kind === 'new-branch') loadLocalChangesPreview();
       setReferenceDialog(request);
     },
@@ -329,11 +416,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   const openStashAction = useCallback(
-    (action: 'apply' | 'pop' | 'drop', entry: RepositoryStashEntry) => {
+    (action: 'apply' | 'pop' | 'drop' | 'rename', entry: RepositoryStashEntry) => {
       if (!active) return;
       const repositoryId = active.id;
       setStashDialog({ kind: 'action', action, entry });
-      if (action === 'drop') return;
+      if (action === 'drop' || action === 'rename') return;
       void window.desktop?.repository.previewLocalChanges({ id: repositoryId }).then((result) => {
         if (activeRepositoryId.current !== repositoryId || !result.ok) return;
         setStashDialog((current) =>
@@ -369,9 +456,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
    * in the open dialog when there is one, and always in the status strip, so nothing fails silently.
    */
   const runReferenceAction = useCallback(
-    (action: RepositoryReferenceAction) => {
+    (action: RepositoryReferenceAction, snapshot?: string) => {
       const owner = active?.id;
-      void applyReference(action, referenceDialog ? dialogSnapshot : undefined)
+      void applyReference(action, snapshot ?? (referenceDialog ? dialogSnapshot : undefined))
         .then((result) => {
           if (activeRepositoryId.current !== owner) return;
           if (result.status === 'applied') {
@@ -392,6 +479,38 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         });
     },
     [active?.id, applyReference, dialogSnapshot, referenceDialog, refresh, reloadReferences, reportError],
+  );
+
+  const checkoutBranch = useCallback(
+    (branch: RepositoryBranch) => {
+      const owner = active?.id;
+      if (!owner || referenceBusy) return;
+      void window.desktop?.repository.getReferenceContext({ id: owner }).then((result) => {
+        if (activeRepositoryId.current !== owner) return;
+        if (!result.ok) {
+          reportError(result.error.message);
+          return;
+        }
+        const context = result.value;
+        const current = context.branches.find((candidate) => candidate.fullName === branch.fullName);
+        if (!current) {
+          reloadReferences();
+          return;
+        }
+        if (
+          !context.dirty &&
+          context.untrackedCount === 0 &&
+          !context.pendingOperation &&
+          !context.conflictedCount
+        ) {
+          runReferenceAction(
+            { kind: 'checkout-branch', fullName: current.fullName, localChanges: 'keep' },
+            context.snapshot,
+          );
+        } else openReferenceDialog({ kind: 'checkout-branch', branch: current }, context.snapshot);
+      });
+    },
+    [active?.id, referenceBusy, runReferenceAction, openReferenceDialog, reloadReferences, reportError],
   );
 
   const commitTarget = useCallback(
@@ -589,19 +708,41 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   // A finished operation refreshes the views whose refs or working tree it changed, once.
-  const reportedOperation = useRef<string | undefined>(undefined);
+  const reportedOperations = useRef(new Set<string>());
+  const latestReportedOperation = useRef<string | undefined>(undefined);
   useEffect(() => {
     const completed = operations.find(
-      (operation) => operation.status !== 'running' && operation.repositoryId === active?.id,
+      (operation) =>
+        operation.status !== 'running' &&
+        operation.repositoryId === active?.id &&
+        !reportedOperations.current.has(operation.id) &&
+        Date.parse(operation.finishedAt ?? '') >= operationViewStartedAt.current,
     );
-    if (!completed || reportedOperation.current === completed.id) return;
-    reportedOperation.current = completed.id;
+    if (!completed) return;
+    for (const operation of operations) {
+      if (operation.repositoryId === active?.id && operation.status !== 'running')
+        reportedOperations.current.add(operation.id);
+    }
+    latestReportedOperation.current = completed.id;
     setReferenceStatus({
       message: `${completed.title}: ${completed.message}`,
       blocked: completed.status !== 'succeeded',
     });
+    if (active && ['merge', 'rebase', 'pull', 'stash', 'recovery'].includes(completed.kind)) {
+      const id = active.id;
+      void window.desktop?.repository.getRecovery({ id }).then((result) => {
+        if (
+          activeRepositoryId.current === id &&
+          latestReportedOperation.current === completed.id &&
+          result.ok &&
+          (result.value.pendingOperation || result.value.conflictedCount)
+        ) {
+          setViews((current) => ({ ...current, [id]: 'changes' }));
+        }
+      });
+    }
     refresh();
-  }, [active?.id, operations, refresh]);
+  }, [active, operations, refresh]);
 
   const networkBusyReason = activeOperation
     ? 'Another network operation is running for this repository.'
@@ -676,6 +817,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     {
       id: 'new-tag',
       label: 'New Tag…',
+      shortcut: workspaceShortcuts.newTag,
       disabled: reason !== undefined || referenceBusy,
       disabledReason: reason,
       run: () => {
@@ -695,7 +837,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       : branch.isHead
         ? 'This branch is already checked out.'
         : undefined,
-    run: () => openReferenceDialog({ kind: 'checkout-branch', branch }),
+    run: () => checkoutBranch(branch),
   }));
 
   const branchMenuItems: MenuEntry[] = compactMenu([
@@ -778,9 +920,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
-      if (aboutOpen || referenceDialog || networkDialog || mergeRebaseDialog || stashDialog) return;
+      if (aboutOpen || cloneOpen || referenceDialog || networkDialog || mergeRebaseDialog || stashDialog)
+        return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
+      else if (is('Mod+N')) setCloneOpen(true);
       else if (is('Mod+O')) {
         if (!repositoryBusy) void openExisting();
       } else if (is('Mod+W')) closeActiveTab();
@@ -788,6 +932,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         if (!repositoryBusy) void reopenClosed();
       } else if (is('Mod+Shift+B')) {
         if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-branch', target: headTarget });
+      } else if (is(workspaceShortcuts.newTag)) {
+        if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-tag', target: headTarget });
+      } else if (is(workspaceShortcuts.head)) {
+        if (active?.head.commit) revealSearchResult(active.head.commit);
+      } else if (is(workspaceShortcuts.changes)) {
+        if (active && !active.bare) setView('changes');
+      } else if (is(workspaceShortcuts.history)) {
+        if (active) setView('history');
+      } else if (is(workspaceShortcuts.details)) {
+        if (active) setDetailsCollapsed((value) => !value);
       } else if (is('Mod+Shift+F')) {
         if (active && remotes.length > 0 && !activeOperation) openNetworkDialog({ kind: 'fetch' });
       } else if (is('Ctrl+Tab')) cycleTab(1);
@@ -795,7 +949,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       else if (is('F5')) refresh();
       else if (!nativeMenu && (is('Mod+=') || is('Mod+Plus'))) windowCommand('zoom-in');
       else if (!nativeMenu && is('Mod+-')) windowCommand('zoom-out');
-      else if (!nativeMenu && is('Mod+0')) windowCommand('reset-zoom');
+      else if (!nativeMenu && is(workspaceShortcuts.resetZoom)) windowCommand('reset-zoom');
       else if (!nativeMenu && is('F11')) windowCommand('toggle-full-screen');
       else if (!nativeMenu && is('Mod+Q')) windowCommand('quit');
       else if (!nativeMenu && development && is('Mod+R')) windowCommand('reload');
@@ -803,7 +957,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         windowCommand('toggle-developer-tools');
       } else {
         const tab =
-          /^[1-9]$/u.test(event.key) && is(`Mod+${event.key}`) ? tabs[Number(event.key) - 1] : undefined;
+          /^[1-9]$/u.test(event.key) && is(workspaceShortcuts.tab(Number(event.key) - 1))
+            ? tabs[Number(event.key) - 1]
+            : undefined;
         if (!tab) return;
         selectTab(tab);
       }
@@ -813,6 +969,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     aboutOpen,
+    cloneOpen,
     active,
     activeOperation,
     closeActiveTab,
@@ -837,6 +994,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     stashDialog,
     tabs,
     windowCommand,
+    revealSearchResult,
+    setView,
   ]);
 
   const appearanceItems: MenuEntry[] = appearances.map((value) => ({
@@ -879,7 +1038,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: repositoryBusy,
           run: () => void initialize(),
         },
-        { id: 'clone', label: 'Clone…', ...planned('Remote cloning', 'P05') },
+        {
+          id: 'clone',
+          label: 'Clone…',
+          shortcut: 'Mod+N',
+          disabled: repositoryBusy,
+          run: () => setCloneOpen(true),
+        },
         menuSeparator,
         {
           id: 'open-recent',
@@ -932,6 +1097,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         {
           id: 'view-changes',
           label: 'Local Changes',
+          shortcut: workspaceShortcuts.changes,
           checkable: 'radio',
           checked: Boolean(active) && view === 'changes',
           disabled: !active || active.bare,
@@ -940,6 +1106,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         {
           id: 'view-history',
           label: 'All Commits',
+          shortcut: workspaceShortcuts.history,
           checkable: 'radio',
           checked: Boolean(active) && view === 'history',
           disabled: !active,
@@ -947,20 +1114,38 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         },
         menuSeparator,
         {
-          id: 'tabs-horizontal',
-          label: 'Horizontal Tabs',
-          checkable: 'radio',
-          checked: tabOrientation === 'horizontal',
-          run: () => void setTabOrientation('horizontal'),
+          id: 'show-head',
+          label: 'Show HEAD',
+          shortcut: workspaceShortcuts.head,
+          disabled: !active?.head.commit,
+          run: () => {
+            if (active?.head.commit) revealSearchResult(active.head.commit);
+          },
         },
         {
-          id: 'tabs-vertical',
-          label: 'Vertical Tabs',
-          checkable: 'radio',
-          checked: tabOrientation === 'vertical',
-          run: () => void setTabOrientation('vertical'),
+          id: 'toggle-details',
+          label: 'Show Commit Details',
+          shortcut: workspaceShortcuts.details,
+          checkable: 'checkbox',
+          checked: !detailsCollapsed,
+          disabled: !active,
+          run: () => setDetailsCollapsed((value) => !value),
+        },
+        {
+          id: 'repository-list',
+          label: 'Show Repository List',
+          checkable: 'checkbox',
+          checked: repositoryListVisible,
+          run: () => void setTabOrientation(repositoryListVisible ? 'horizontal' : 'vertical'),
         },
         { id: 'appearance', label: 'Appearance', submenu: appearanceItems },
+        {
+          id: 'automatic-fetch',
+          label: 'Fetch Remotes Automatically',
+          checkable: 'checkbox',
+          checked: automaticFetch,
+          run: toggleAutomaticFetch,
+        },
         !nativeMenu && menuSeparator,
         !nativeMenu && {
           id: 'zoom-in',
@@ -977,7 +1162,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         !nativeMenu && {
           id: 'zoom-reset',
           label: 'Actual Size',
-          shortcut: 'Mod+0',
+          shortcut: workspaceShortcuts.resetZoom,
           run: () => windowCommand('reset-zoom'),
         },
         !nativeMenu && menuSeparator,
@@ -1101,7 +1286,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           label: tab.title,
           checkable: 'radio',
           checked: tab.id === activeTabId,
-          shortcut: index < 9 ? `Mod+${index + 1}` : undefined,
+          shortcut: index < 9 ? workspaceShortcuts.tab(index) : undefined,
           run: () => selectTab(tab),
         })),
       ]),
@@ -1238,7 +1423,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
     const current = referenceContext?.branches.find((candidate) => candidate.isHead);
-    const loaded = history.commits.some((commit) => commit.id === reference.target);
     const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
     const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
     const stash = stashes.value.find((candidate) => candidate.commitId === reference.target);
@@ -1258,9 +1442,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const reveal: MenuEntry = {
       id: 'select-commit',
       label: 'Select Commit in List',
-      disabled: !loaded,
-      disabledReason: 'That commit is not loaded in the commit list yet.',
-      run: () => revealCommit(reference.target),
+      run: () => revealSearchResult(reference.target),
     };
     let items: MenuEntry[];
     switch (reference.kind) {
@@ -1272,7 +1454,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             disabled: reference.isHead || branchReason !== undefined || referenceBusy,
             disabledReason: reference.isHead ? 'This branch is already checked out.' : branchReason,
             run: () => {
-              if (branch) openReferenceDialog({ kind: 'checkout-branch', branch });
+              if (branch) checkoutBranch(branch);
             },
           },
           menuSeparator,
@@ -1399,6 +1581,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           {
             id: 'rename',
             label: `Rename '${reference.name}'…`,
+            shortcut: 'F2',
             disabled: !branch || branchReason !== undefined || referenceBusy,
             disabledReason: branchReason ?? (branch ? undefined : referenceLoading),
             run: () => {
@@ -1475,6 +1658,22 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       case 'tag':
         items = [
           {
+            id: 'tag-details',
+            label: 'Show Tag Details…',
+            disabled: !tag,
+            run: () => {
+              if (tag) openReferenceDialog({ kind: 'tag-details', tag });
+            },
+          },
+          {
+            id: 'push-tag',
+            label: `Push '${reference.name}'…`,
+            disabled: !tag || referenceBusy || remotes.length === 0,
+            run: () => {
+              if (tag) openReferenceDialog({ kind: 'push-tag', tag });
+            },
+          },
+          {
             id: 'checkout',
             label: `Checkout '${reference.name}'…`,
             disabled: !referencesReady || referenceBusy,
@@ -1518,6 +1717,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         break;
       case 'stash':
         items = [
+          {
+            id: 'rename-stash',
+            label: 'Rename Stash…',
+            disabled: !stash || referenceBusy,
+            run: () => {
+              if (stash) openStashAction('rename', stash);
+            },
+          },
           {
             id: 'inspect',
             label: 'Inspect Stash…',
@@ -1597,12 +1804,22 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       onClose={closeTab}
       onNewTab={openManagerTab}
       onContextMenu={openTabMenu}
+      onReorder={(sourceId, targetId) => {
+        if (sourceId === targetId) return;
+        const ids = open.map((repository) => repository.id);
+        const from = ids.indexOf(sourceId);
+        const to = ids.indexOf(targetId);
+        if (from < 0 || to < 0) return;
+        ids.splice(from, 1);
+        ids.splice(to, 0, sourceId);
+        void reorderTabs(ids);
+      }}
     />
   );
 
   return (
     <div
-      className={`app tabs-${tabOrientation}`}
+      className={`app${repositoryListVisible ? ' repository-list-visible' : ''}`}
       data-theme={appearance}
       data-platform={platform}
       data-desktop-status={desktopStatus}
@@ -1615,6 +1832,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onWindowCommand={windowCommand}
       />
       <Toolbar
+        repositoryListVisible={repositoryListVisible}
+        onToggleRepositoryList={() =>
+          void setTabOrientation(repositoryListVisible ? 'horizontal' : 'vertical')
+        }
         repository={active}
         tracking={active ? history.tracking : undefined}
         branchItems={branchMenuItems}
@@ -1624,7 +1845,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         openInItems={openInItems}
         appearanceItems={appearanceItems}
         operations={operations}
-        runningOperation={activeOperation}
+        runningOperation={
+          activeOperation ??
+          operations.find((operation) => operation.kind === 'clone' && operation.status === 'running')
+        }
         networkDisabledReason={networkDisabledReason}
         pullDisabledReason={pullDisabledReason}
         activityOpen={activityOpen}
@@ -1636,9 +1860,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onToggleActivity={() => setActivityOpen((open) => !open)}
         onCancelOperation={cancelOperation}
       />
-      {tabOrientation === 'horizontal' && tabStrip('horizontal')}
+      {tabStrip('horizontal')}
       <div className="workbench">
-        {tabOrientation === 'vertical' && tabStrip('vertical')}
+        {repositoryListVisible && tabStrip('vertical')}
         {managerActive || !active ? (
           <RepositoryManagerView
             recent={recent}
@@ -1650,6 +1874,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             onSwitchTo={select}
             onOpenExisting={() => void openExisting()}
             onInitialize={() => void initialize()}
+            onClone={() => setCloneOpen(true)}
             onAddSource={() => void addSourceDirectory()}
             onRescanSource={(id) => void rescanSourceDirectory(id)}
             onRemoveSource={(id) => void removeSourceDirectory(id)}
@@ -1664,6 +1889,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             <RepositorySidebar
               key={active.id}
               repository={active}
+              visibleChangeCount={visibleChangeCounts[active.id]?.count}
               view={view}
               references={references}
               branches={referenceContext?.branches ?? []}
@@ -1672,9 +1898,22 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               reveal={history.reveal}
               historyFiltered={history.filter.kind !== 'all'}
               onRevealCommit={revealSearchResult}
-              onReferenceSelect={(reference) => {
-                if (history.commits.some((commit) => commit.id === reference.target))
-                  revealCommit(reference.target);
+              onSearchMatchesChanged={onSearchMatchesChanged}
+              onReferenceSelect={(reference) => revealSearchResult(reference.target)}
+              onReferenceActivate={(reference) => {
+                const branch = referenceContext?.branches.find(
+                  (candidate) => candidate.fullName === reference.fullName,
+                );
+                if (branch && !branch.isHead && !branch.worktreePath) checkoutBranch(branch);
+                else if (reference.kind === 'remote')
+                  openReferenceDialog({ kind: 'checkout-remote-branch', target: referenceTarget(reference) });
+                else revealSearchResult(reference.target);
+              }}
+              onReferenceRename={(reference) => {
+                const branch = referenceContext?.branches.find(
+                  (candidate) => candidate.fullName === reference.fullName,
+                );
+                if (branch && !referenceBusy) openReferenceDialog({ kind: 'rename-branch', branch });
               }}
               onReferenceDragStart={onReferenceDragStart}
               onReferenceDrop={onReferenceDrop}
@@ -1695,6 +1934,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 <ChangesView
                   key={active.id}
                   repository={active}
+                  onVisibleCountChange={onVisibleCountChange}
                   refreshSignal={refreshSignal}
                   onCommitted={refresh}
                   operationBusy={Boolean(activeOperation)}
@@ -1704,7 +1944,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   }
                 />
               ) : (
-                <HistoryView history={history} references={historyReferences} />
+                <HistoryView
+                  key={`${active.id}:${history.filterKey}`}
+                  history={history}
+                  references={historyReferences}
+                  searchMatches={matchingCommitIds}
+                  searchQuery={searchMatches.query}
+                  detailsCollapsed={detailsCollapsed}
+                />
               )}
             </main>
           </div>
@@ -1750,8 +1997,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         </div>
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
+      {cloneOpen && (
+        <CloneDialog platform={platform} operations={operations} onClose={() => setCloneOpen(false)} />
+      )}
       {networkDialog && (
         <NetworkDialog
+          repositoryId={active?.id}
+          operations={operations}
           request={networkDialog}
           remotes={remotes}
           branches={referenceContext?.branches ?? []}

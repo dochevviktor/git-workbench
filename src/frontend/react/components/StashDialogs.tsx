@@ -17,7 +17,7 @@ export type StashDialogRequest =
     }
   | {
       readonly kind: 'action';
-      readonly action: 'apply' | 'pop' | 'drop';
+      readonly action: 'apply' | 'pop' | 'drop' | 'rename';
       readonly entry: RepositoryStashEntry;
       readonly snapshot?: string | undefined;
     }
@@ -33,8 +33,13 @@ interface StashDialogsProps {
 }
 
 function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose }: StashDialogsProps) {
-  const [message, setMessage] = useState('');
-  const [includeUntracked, setIncludeUntracked] = useState(true);
+  const [message, setMessage] = useState(
+    request.kind === 'action' && request.action === 'rename' ? request.entry.message : '',
+  );
+  const [stageNewFiles, setStageNewFiles] = useState(false);
+  const [deleteAfterApply, setDeleteAfterApply] = useState(
+    request.kind === 'action' && request.action === 'pop',
+  );
 
   const save = request.kind === 'save';
   const action = request.kind === 'action' ? request.action : undefined;
@@ -46,9 +51,17 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
     : action === 'apply'
       ? 'Apply Stash'
       : action === 'pop'
-        ? 'Pop Stash'
-        : 'Delete Stash';
-  const submitLabel = save ? 'Stash' : action === 'apply' ? 'Apply' : action === 'pop' ? 'Pop' : 'Delete';
+        ? 'Apply Stash'
+        : action === 'rename'
+          ? 'Rename Stash'
+          : 'Delete Stash';
+  const submitLabel = save
+    ? 'Save Stash'
+    : action === 'apply' || action === 'pop'
+      ? 'Apply'
+      : action === 'rename'
+        ? 'Rename'
+        : 'Delete';
   const entry = request.kind !== 'save' ? request.entry : undefined;
   const subtitle = save
     ? request.paths.length > 0
@@ -92,12 +105,22 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
             onSubmit({
               kind: 'save',
               message,
-              includeUntracked,
+              includeUntracked: false,
+              stageNewFiles,
               paths: [...request.paths],
               changesSnapshot: request.snapshot,
             });
+          } else if (entry && action === 'rename') {
+            if (message.trim())
+              onSubmit({ kind: 'rename', stashId: entry.commitId, message: message.trim() });
+          } else if (entry && action === 'drop') {
+            onSubmit({ kind: 'drop', stashId: entry.commitId });
           } else if (entry && action) {
-            onSubmit({ kind: action, stashId: entry.commitId, changesSnapshot: request.snapshot });
+            onSubmit({
+              kind: deleteAfterApply ? 'pop' : 'apply',
+              stashId: entry.commitId,
+              changesSnapshot: request.snapshot,
+            });
           }
         }}
       >
@@ -110,7 +133,7 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
             <p className="muted">{subtitle}</p>
           </div>
         </div>
-        {save ? (
+        {save || action === 'rename' ? (
           <div className="stash-dialog-fields">
             <label>
               <span>Message</span>
@@ -124,26 +147,39 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                 onChange={(event) => setMessage(event.target.value)}
               />
             </label>
-            <label className="reference-checkbox">
-              <input
-                type="checkbox"
-                checked={includeUntracked}
-                onChange={(event) => setIncludeUntracked(event.target.checked)}
-              />
-              <span>Include untracked files</span>
-            </label>
-            <div className="stash-path-preview">
-              <strong>{request.paths.length > 0 ? 'Selected files' : 'Files to save'}</strong>
-              {request.paths.length > 0 ? (
-                <ul>
-                  {request.paths.map((path) => (
-                    <li key={path}>{path}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">All supported changed files, subject to the untracked-file option.</p>
-              )}
-            </div>
+            {save && (
+              <>
+                <label className="reference-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={stageNewFiles}
+                    onChange={(event) => setStageNewFiles(event.target.checked)}
+                  />
+                  <span>Stage new files</span>
+                </label>
+                <p className="muted">By default stash ignores new files until you stage them.</p>
+                <div className="stash-path-preview">
+                  <strong>{request.paths.length > 0 ? 'Selected files' : 'Files to save'}</strong>
+                  {request.paths.length > 0 ? (
+                    <ul>
+                      {request.paths.map((path) => (
+                        <li key={path}>{path}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">
+                      Tracked changes{stageNewFiles ? ' and newly staged files' : ''}; ignored files stay
+                      outside the stash.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+            {action === 'rename' && (
+              <p className="muted">
+                The renamed stash moves to the top of the list. Its saved contents are unchanged.
+              </p>
+            )}
           </div>
         ) : (
           <div className="stash-action-copy">
@@ -154,14 +190,27 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                   ? 'The stash will be applied with its staged/unstaged distinction, then deleted only if the apply succeeds.'
                   : 'The stash will be applied with its staged/unstaged distinction and retained in the stash list.'}
             </p>
+            {(action === 'apply' || action === 'pop') && (
+              <>
+                <label className="reference-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={deleteAfterApply}
+                    onChange={(event) => setDeleteAfterApply(event.target.checked)}
+                  />
+                  Delete stash after applying
+                </label>
+                {deleteAfterApply && (
+                  <p className="muted">The stash will not be deleted if a conflict occurs.</p>
+                )}
+              </>
+            )}
             {entry && (
               <dl className="stash-summary">
                 <dt>Message</dt>
                 <dd>{entry.message || '(no message)'}</dd>
                 <dt>Created</dt>
                 <dd>{formatListDate(entry.createdAt)}</dd>
-                <dt>Untracked</dt>
-                <dd>{entry.includesUntracked ? 'Included' : 'Not included'}</dd>
               </dl>
             )}
           </div>

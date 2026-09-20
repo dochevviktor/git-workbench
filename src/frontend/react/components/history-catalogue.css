@@ -1,0 +1,37 @@
+.history-search-match {
+  background: #f8d95c;
+  color: #222;
+  border-radius: 1px;
+}
+
+.commit-row.search-match {
+  box-shadow: inset -3px 0 #d4a500;
+}
+
+.commit-row.virtual-row {
+  position: absolute;
+  inset-inline: 0;
+}
+
+.commit-list.virtual-list {
+  position: relative;
+}
+
+.commit-search-scope-detail {
+  margin: 0 10px 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.commit-details.details-collapsed {
+  flex: none;
+}
+
+.commit-details .details-panel[hidden] {
+  display: none;
+}
+
+.history-view:has(.details-collapsed) .commit-list-scroll {
+  flex: 1;
+  height: auto;
+}

@@ -1,0 +1,132 @@
+.diff-context-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+.diff-context-controls button {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.diff-context-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.diff-context-controls span {
+  min-width: 18px;
+  text-align: center;
+  font-size: 11px;
+}
+.diff-body.wrap .diff-hunk,
+.diff-body.wrap .diff-cell {
+  width: 100%;
+}
+.diff-body.wrap .diff-line-text {
+  width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-line-select,
+.diff-line-number,
+.diff-line-sign {
+  position: sticky;
+  z-index: 1;
+  background: var(--list-bg);
+}
+.diff-line-select {
+  left: 0;
+}
+.diff-line-number {
+  left: 24px;
+}
+.diff-line-sign {
+  left: 76px;
+}
+.dialog.diff-inspector {
+  width: calc(100vw - 60px);
+  height: calc(100vh - 90px);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+}
+.diff-inspector-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.diff-inspector-content > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-inspector-content > header strong {
+  flex: 1;
+  font-weight: 500;
+}
+.diff-inspector-content > footer {
+  padding: 5px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+.dialog.discard-dialog {
+  width: min(760px, calc(100vw - 60px));
+}
+.discard-preview {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+.discard-preview pre {
+  font: 11px/16px var(--font-mono);
+  white-space: pre;
+  margin: 8px;
+}
+.discard-preview summary {
+  padding: 6px 10px;
+  background: var(--sidebar-bg);
+}
+.changes-visible-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 5px;
+}
+.binary-diff-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 18px;
+}
+.binary-diff-cards section {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.diff-body.split .diff-hunk {
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+  min-width: 100cqi;
+}
+.diff-body.split .diff-line-text {
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+  transform: translateX(var(--diff-horizontal-offset, 0px));
+}
+.diff-body.split::after {
+  content: '';
+  display: block;
+  width: max(100%, calc(50cqi + var(--diff-wide-line, 0px) + 110px));
+  height: 1px;
+}

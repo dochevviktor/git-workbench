@@ -32,6 +32,8 @@ export type ReferenceDialogRequest =
   | { readonly kind: 'rename-branch'; readonly branch: RepositoryBranch }
   | { readonly kind: 'delete-branch'; readonly branch: RepositoryBranch }
   | { readonly kind: 'delete-tag'; readonly tag: RepositoryTag }
+  | { readonly kind: 'tag-details'; readonly tag: RepositoryTag }
+  | { readonly kind: 'push-tag'; readonly tag: RepositoryTag }
   | { readonly kind: 'set-upstream'; readonly branch: RepositoryBranch }
   | { readonly kind: 'checkout-remote-branch'; readonly target: ReferenceTarget }
   | { readonly kind: 'checkout-detached'; readonly target: ReferenceTarget };
@@ -94,6 +96,10 @@ export function ReferenceDialog(props: ReferenceDialogProps) {
       return <DeleteBranchDialog {...props} branch={props.request.branch} />;
     case 'delete-tag':
       return <DeleteTagDialog {...props} tag={props.request.tag} />;
+    case 'tag-details':
+      return <TagDetailsDialog tag={props.request.tag} onClose={props.onClose} />;
+    case 'push-tag':
+      return <PushTagDialog {...props} tag={props.request.tag} />;
     case 'checkout-detached':
       return <CheckoutDetachedDialog {...props} target={props.request.target} />;
   }
@@ -195,7 +201,7 @@ function tagNames(context: RepositoryReferenceContext | undefined): ReadonlySet<
 
 function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogPropsWithTarget) {
   const [name, setName] = useState('');
-  const [checkout, setCheckout] = useState(true);
+  const [checkout, setCheckout] = useState(false);
   const [policy, setPolicy] = useState<RepositoryLocalChangesPolicy>('keep');
   const [track, setTrack] = useState(true);
   const taken = useMemo(() => branchNames(context), [context]);
@@ -262,6 +268,8 @@ function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogP
 function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarget) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [push, setPush] = useState(false);
+  const [remote, setRemote] = useState(context?.remotes[0] ?? '');
   const taken = useMemo(() => tagNames(context), [context]);
   const warning = useNameWarning(name, 'tag', taken, failure);
   const trimmed = name.trim();
@@ -271,17 +279,16 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
     <DialogShell
       {...rest}
       title="Create Tag"
-      subtitle={
-        message.trim()
-          ? 'Create an annotated tag at the selected point'
-          : 'Create a tag at the selected point'
-      }
+      subtitle="Create annotated tag at the selected point"
       icon={<TagIcon size={26} />}
       platform={rest.platform}
       warning={warning}
       submitLabel="Create Tag"
       submitDisabled={
-        trimmed.length === 0 || taken.has(trimmed) || referenceNameProblem(trimmed, 'tag') !== null
+        trimmed.length === 0 ||
+        taken.has(trimmed) ||
+        referenceNameProblem(trimmed, 'tag') !== null ||
+        (push && !remote)
       }
       onClose={rest.onClose}
       onSubmit={() =>
@@ -290,6 +297,7 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
           name: trimmed,
           startPoint: target.startPoint,
           message,
+          ...(push ? { pushRemote: remote } : {}),
         })
       }
     >
@@ -312,10 +320,29 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
       </dd>
       <dt />
       <dd className="reference-dialog-options">
-        <label className="reference-checkbox" title="Pushing a tag is not available yet (planned for P05).">
-          <input type="checkbox" checked={false} disabled readOnly />
-          <span className="muted">Push (not available yet)</span>
+        <label className="reference-checkbox">
+          <input
+            type="checkbox"
+            checked={push}
+            disabled={!context?.remotes.length}
+            onChange={(event) => setPush(event.target.checked)}
+          />
+          <span>Push</span>
         </label>
+        {push && (
+          <select
+            aria-label="Push tag to remote"
+            className="reference-input"
+            value={remote}
+            onChange={(event) => setRemote(event.target.value)}
+          >
+            {context?.remotes.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
       </dd>
     </DialogShell>
   );
@@ -528,7 +555,14 @@ function DeleteBranchDialog({ branch, failure, ...rest }: DialogPropsWithBranch)
   );
 }
 
-function DeleteTagDialog({ tag, failure, ...rest }: ReferenceDialogProps & { readonly tag: RepositoryTag }) {
+function DeleteTagDialog({
+  tag,
+  failure,
+  context,
+  ...rest
+}: ReferenceDialogProps & { readonly tag: RepositoryTag }) {
+  const [deleteRemotes, setDeleteRemotes] = useState(false);
+  const [remoteNames, setRemoteNames] = useState<string[]>(context?.remotes ?? []);
   return (
     <DialogShell
       {...rest}
@@ -536,12 +570,18 @@ function DeleteTagDialog({ tag, failure, ...rest }: ReferenceDialogProps & { rea
       subtitle={`Remove the tag '${tag.name}' from this repository`}
       icon={<TagIcon size={26} />}
       platform={rest.platform}
-      warning={failure?.message ?? 'A tag already pushed to a remote is not removed there.'}
+      warning={failure?.message ?? null}
       submitLabel="Delete Tag"
       submitDisabled={false}
       danger
       onClose={rest.onClose}
-      onSubmit={() => rest.onSubmit({ kind: 'delete-tag', fullName: tag.fullName })}
+      onSubmit={() =>
+        rest.onSubmit({
+          kind: 'delete-tag',
+          fullName: tag.fullName,
+          remoteNames: deleteRemotes ? remoteNames : [],
+        })
+      }
     >
       <TargetRow
         label="Tag:"
@@ -552,6 +592,112 @@ function DeleteTagDialog({ tag, failure, ...rest }: ReferenceDialogProps & { rea
           detail: tag.annotated ? 'annotated' : 'lightweight',
         }}
       />
+      <dt />
+      <dd>
+        <label className="reference-checkbox">
+          <input
+            type="checkbox"
+            checked={deleteRemotes}
+            disabled={!context?.remotes.length}
+            onChange={(event) => setDeleteRemotes(event.target.checked)}
+          />
+          Delete tag from remote repositories
+        </label>
+        {deleteRemotes &&
+          context?.remotes.map((name) => (
+            <label className="reference-checkbox" key={name}>
+              <input
+                type="checkbox"
+                checked={remoteNames.includes(name)}
+                onChange={(event) =>
+                  setRemoteNames((current) =>
+                    event.target.checked ? [...current, name] : current.filter((item) => item !== name),
+                  )
+                }
+              />
+              {name}
+            </label>
+          ))}
+      </dd>
+    </DialogShell>
+  );
+}
+
+function TagDetailsDialog({ tag, onClose }: { readonly tag: RepositoryTag; readonly onClose: () => void }) {
+  return (
+    <dialog
+      className="dialog reference-dialog"
+      aria-label="Tag Details"
+      ref={(node) => {
+        if (node && !node.open) node.showModal();
+      }}
+      onClose={onClose}
+    >
+      <div className="dialog-content">
+        <div className="reference-dialog-header">
+          <TagIcon size={26} />
+          <h2>Tag Details</h2>
+        </div>
+        <p>
+          <strong>{tag.name}</strong> · {tag.annotated ? 'Annotated tag' : 'Lightweight tag'} ·{' '}
+          {tag.target.slice(0, 12)}
+        </p>
+        <textarea
+          aria-label="Tag message"
+          className="reference-input reference-message"
+          readOnly
+          rows={9}
+          value={
+            tag.annotated
+              ? [tag.tagger, tag.taggedAt, '', tag.message]
+                  .filter((line) => line !== null && line !== undefined)
+                  .join('\n')
+              : 'This lightweight tag has no tagger or annotation.'
+          }
+        />
+        <div className="dialog-actions">
+          <button type="button" className="button primary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+function PushTagDialog({
+  tag,
+  context,
+  failure,
+  ...rest
+}: ReferenceDialogProps & { readonly tag: RepositoryTag }) {
+  const [remote, setRemote] = useState(context?.remotes[0] ?? '');
+  return (
+    <DialogShell
+      {...rest}
+      title="Push Tag"
+      subtitle={`Push '${tag.name}' to a remote repository`}
+      icon={<TagIcon size={26} />}
+      warning={failure?.message ?? null}
+      submitLabel="Push"
+      submitDisabled={!remote}
+      onSubmit={() => rest.onSubmit({ kind: 'push-tag', fullName: tag.fullName, remote })}
+    >
+      <dt>Remote:</dt>
+      <dd>
+        <select
+          aria-label="Push tag to remote"
+          className="reference-input"
+          value={remote}
+          onChange={(event) => setRemote(event.target.value)}
+        >
+          {context?.remotes.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </dd>
     </DialogShell>
   );
 }

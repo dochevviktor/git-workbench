@@ -10,6 +10,7 @@ import type {
 } from '../../src/common/ipc/contracts';
 import {
   applyWorkingChange,
+  previewDiscard,
   StaleWorkingSnapshotError,
 } from '../../src/backend/repositories/staging-service';
 import { readRepositoryDiff } from '../../src/backend/repositories/diff-service';
@@ -69,6 +70,133 @@ afterEach(async () => {
 });
 
 describe('working-change staging service', () => {
+  it('previews multi-file discard without mutation, rejects stale bytes, and retains a recoverable copy', async () => {
+    const { root, git } = await fixtureRepository();
+    await git.run(['config', 'user.name', 'Discard Author'], { cwd: root });
+    await git.run(['config', 'user.email', 'discard@example.test'], { cwd: root });
+    await commit(git, root, 'file.txt', 'base\n');
+    await commit(git, root, 'other.txt', 'other base\n');
+    await commit(git, root, 'untouched.txt', 'untouched base\n');
+    await writeFile(join(root, 'file.txt'), 'staged\n');
+    await git.run(['add', '--', 'file.txt'], { cwd: root });
+    await writeFile(join(root, 'file.txt'), 'discard one\n');
+    await writeFile(join(root, 'other.txt'), 'discard two\n');
+    await writeFile(join(root, 'untouched.txt'), 'keep this work\n');
+    await writeFile(join(root, 'untracked.txt'), 'keep untracked\n');
+    const targets = ['file.txt', 'other.txt'].map((path) => ({
+      area: 'unstaged' as const,
+      path,
+      previousPath: null,
+    }));
+    const before = await git.run(['diff', '--binary'], { cwd: root });
+    const index = await git.run(['ls-files', '--stage'], { cwd: root });
+    const head = await git.run(['rev-parse', 'HEAD'], { cwd: root });
+    const preview = await previewDiscard(git, { repositoryId, cwd: root, targets });
+    expect(preview.files.map((file) => file.target.path)).toEqual(['file.txt', 'other.txt']);
+    expect((await git.run(['diff', '--binary'], { cwd: root })).stdout).toBe(before.stdout);
+    expect((await git.run(['ls-files', '--stage'], { cwd: root })).stdout).toBe(index.stdout);
+    await expect(readFile(join(root, '.git', 'git-workbench-recovery.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await writeFile(join(root, 'other.txt'), 'new external edit\n');
+    await expect(
+      applyWorkingChange(git, {
+        repositoryId,
+        cwd: root,
+        targets,
+        action: 'discard',
+        selection: { kind: 'file' },
+        snapshot: preview.snapshot,
+      }),
+    ).rejects.toBeInstanceOf(StaleWorkingSnapshotError);
+    expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe('discard one\n');
+    const fresh = await previewDiscard(git, { repositoryId, cwd: root, targets });
+    await applyWorkingChange(git, {
+      repositoryId,
+      cwd: root,
+      targets,
+      action: 'discard',
+      selection: { kind: 'file' },
+      snapshot: fresh.snapshot,
+    });
+    expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe('staged\n');
+    expect(await readFile(join(root, 'other.txt'), 'utf8')).toBe('other base\n');
+    expect(await readFile(join(root, 'untouched.txt'), 'utf8')).toBe('keep this work\n');
+    expect(await readFile(join(root, 'untracked.txt'), 'utf8')).toBe('keep untracked\n');
+    expect((await git.run(['ls-files', '--stage'], { cwd: root })).stdout).toBe(index.stdout);
+    expect((await git.run(['rev-parse', 'HEAD'], { cwd: root })).stdout).toBe(head.stdout);
+    const recovery = JSON.parse(
+      await readFile(join(root, '.git', 'git-workbench-recovery.json'), 'utf8'),
+    ) as { copies: { id: string; commitId: string }[] };
+    const copy = recovery.copies[0]!;
+    expect((await git.run(['show', `${copy.commitId}:file.txt`], { cwd: root })).stdout).toBe(
+      'discard one\n',
+    );
+    expect((await git.run(['show', `${copy.commitId}^2:file.txt`], { cwd: root })).stdout).toBe('staged\n');
+    expect(
+      (await git.run(['rev-parse', `refs/git-workbench/recovery/${copy.id}`], { cwd: root })).stdout.trim(),
+    ).toBe(copy.commitId);
+  });
+
+  it('uses the displayed whole-file context coordinates for insertion-only staging', async () => {
+    const { root, git } = await fixtureRepository();
+    const base = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\n') + '\n';
+    await commit(git, root, 'file.txt', base);
+    const changed = base.replace('line 40\n', 'changed 40\n');
+    await writeFile(join(root, 'file.txt'), changed);
+    const target = {
+      kind: 'working' as const,
+      area: 'unstaged' as const,
+      path: 'file.txt',
+      previousPath: null,
+    };
+    const diff = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { entireFile: true },
+    });
+    const hunk = parseUnifiedDiff(diff.content).hunks[0]!;
+    const insertion = hunk.lines.findIndex((line) => line.kind === 'add');
+    expect(insertion).toBeGreaterThan(30);
+    await apply(git, root, 'stage', target, diff.snapshot!, {
+      kind: 'lines',
+      hunk: 0,
+      lineIndexes: [insertion],
+      entireFile: true,
+      contextLines: 3,
+    });
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe(
+      base.replace('line 40\n', 'line 40\nchanged 40\n'),
+    );
+    expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe(changed);
+  });
+
+  it('stages a hunk displayed with zero context without absorbing other changes', async () => {
+    const { root, git } = await fixtureRepository();
+    const base = 'first\nsecond\nthird\nfourth\nfifth\n';
+    await commit(git, root, 'file.txt', base);
+    await writeFile(join(root, 'file.txt'), base.replace('second', 'SECOND').replace('fifth', 'FIFTH'));
+    const target = {
+      kind: 'working' as const,
+      area: 'unstaged' as const,
+      path: 'file.txt',
+      previousPath: null,
+    };
+    const diff = await readRepositoryDiff(git, {
+      repositoryId,
+      cwd: root,
+      target,
+      whitespace: 'normal',
+      options: { contextLines: 0 },
+    });
+    await apply(git, root, 'stage', target, diff.snapshot!, { kind: 'hunk', hunk: 0, contextLines: 0 });
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe(
+      base.replace('second', 'SECOND'),
+    );
+  });
+
   it('stages one hunk and leaves a distant hunk unstaged', async () => {
     const { root, git } = await fixtureRepository();
     const base = Array.from({ length: 16 }, (_, index) => `line-${index + 1}`).join('\n') + '\n';
@@ -106,6 +234,10 @@ describe('working-change staging service', () => {
       hunk: 0,
       lineIndexes: [firstLine!],
     });
+    // P0-022: insertion-only selection leaves the old line in the intermediate index blob.
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe(
+      base.replace('line-2\n', 'line-2\nchanged-2\n'),
+    );
 
     const second = await diffFor(git, root, 'unstaged');
     const secondDocument = parseUnifiedDiff(second.diff.content);

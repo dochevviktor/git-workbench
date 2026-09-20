@@ -18,6 +18,7 @@ import { GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/r
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { detectPendingOperation } from './commit-service';
 import { readWorkingChanges } from './working-tree-service';
+import { isAllowedRemoteUrl } from './remote-service';
 
 const referenceReadTimeoutMs = 15_000;
 const referenceReadOutputLimit = 8 * 1024 * 1024;
@@ -171,6 +172,7 @@ export async function applyReferenceAction(
       timeoutMs: plan.write ? referenceWriteTimeoutMs : referenceReadTimeoutMs,
       maxOutputBytes: referenceWriteOutputLimit,
       signal: input.signal,
+      authentication: action.kind === 'push-tag' ? 'prompt' : 'silent',
       ...(plan.stdin === undefined ? {} : { stdin: plan.stdin }),
     });
   } catch (error) {
@@ -196,6 +198,54 @@ export async function applyReferenceAction(
       canForce: failure.canForce,
       paths: blockedPaths(output),
     } satisfies RepositoryReferenceActionResult);
+  }
+
+  const remoteNames =
+    action.kind === 'create-tag' && action.pushRemote
+      ? [action.pushRemote]
+      : action.kind === 'delete-tag'
+        ? [...new Set(action.remoteNames ?? [])]
+        : [];
+  const completedRemotes: string[] = [];
+  for (const remote of remoteNames) {
+    const fullName =
+      action.kind === 'create-tag'
+        ? `refs/tags/${action.name}`
+        : action.kind === 'delete-tag'
+          ? action.fullName
+          : '';
+    const args = [
+      'push',
+      '--porcelain',
+      '--',
+      remote,
+      action.kind === 'delete-tag' ? `:${fullName}` : `${fullName}:${fullName}`,
+    ];
+    input.onCommand?.(args);
+    try {
+      await runner.run(args, {
+        cwd: input.cwd,
+        timeoutMs: referenceWriteTimeoutMs,
+        maxOutputBytes: referenceWriteOutputLimit,
+        signal: input.signal,
+        authentication: 'prompt',
+      });
+      completedRemotes.push(remote);
+    } catch (error) {
+      const output = error instanceof GitCommandError ? displayOutput(error.stdout, error.stderr) : '';
+      return repositoryReferenceActionResultSchema.parse({
+        status: 'blocked',
+        repositoryId: input.repositoryId,
+        kind: action.kind,
+        reason: 'other',
+        canForce: false,
+        paths: [],
+        output,
+        message: boundedMessage(
+          `${plan.message} Remote update for '${remote}' did not complete; refresh its refs before retrying.${completedRemotes.length ? ` Completed remotes: ${completedRemotes.join(', ')}.` : ''}`,
+        ),
+      });
+    }
   }
 
   return repositoryReferenceActionResultSchema.parse({
@@ -314,19 +364,12 @@ function planAction(
       const start = resolveStartPoint(context, action.startPoint);
       if (!start) return notFound('That starting point is no longer in this repository.');
       const message = action.message.replace(/\r\n?/gu, '\n').trim();
-      return message
-        ? {
-            // The message is read from standard input, so it never becomes a Git argument.
-            args: ['tag', '--annotate', '--cleanup=whitespace', '--file=-', action.name, start.revision],
-            message: `Created annotated tag '${action.name}'.`,
-            write: false,
-            stdin: `${message}\n`,
-          }
-        : {
-            args: ['tag', action.name, start.revision],
-            message: `Created tag '${action.name}'.`,
-            write: false,
-          };
+      return {
+        args: ['tag', '--annotate', '--cleanup=whitespace', '--file=-', action.name, start.revision],
+        message: `Created annotated tag '${action.name}'.`,
+        write: false,
+        stdin: `${message}\n`,
+      };
     }
     case 'delete-tag': {
       const tag = context.tags.find((candidate) => candidate.fullName === action.fullName);
@@ -335,6 +378,15 @@ function planAction(
         args: ['tag', '--delete', tag.name],
         message: `Deleted tag '${tag.name}'.`,
         write: false,
+      };
+    }
+    case 'push-tag': {
+      const tag = context.tags.find((candidate) => candidate.fullName === action.fullName);
+      if (!tag) return notFound('That tag is no longer in this repository.');
+      return {
+        args: ['push', '--porcelain', '--', action.remote, `${tag.fullName}:${tag.fullName}`],
+        message: `Pushed tag '${tag.name}' to '${action.remote}'.`,
+        write: true,
       };
     }
   }
@@ -347,6 +399,32 @@ async function refuseAction(
   context: RepositoryReferenceContext,
   action: RepositoryReferenceAction,
 ): Promise<ActionRefusal | undefined> {
+  const selectedRemotes =
+    action.kind === 'create-tag' && action.pushRemote
+      ? [action.pushRemote]
+      : action.kind === 'delete-tag'
+        ? (action.remoteNames ?? [])
+        : action.kind === 'push-tag'
+          ? [action.remote]
+          : [];
+  if (selectedRemotes.some((remote) => !context.remotes.includes(remote))) {
+    return notFound('A selected remote is no longer configured. Review the remote selection again.');
+  }
+  for (const remote of new Set(selectedRemotes)) {
+    const urls = await runner.run(['remote', 'get-url', '--push', '--all', remote], readOptions(cwd));
+    if (
+      urls.stdout
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .some((url) => !isAllowedRemoteUrl(url))
+    ) {
+      return {
+        reason: 'other',
+        canForce: false,
+        message: `The configured transport for '${remote}' is unavailable. Review its URL first.`,
+      };
+    }
+  }
   if ('name' in action) {
     const kind = action.kind === 'create-tag' ? 'tags' : 'heads';
     if (!(await isValidReferenceName(runner, cwd, kind, action.name))) {
@@ -543,6 +621,8 @@ function actionDescription(action: RepositoryReferenceAction): string {
       return `create the tag '${action.name}'`;
     case 'delete-tag':
       return 'delete that tag';
+    case 'push-tag':
+      return 'push that tag';
   }
 }
 
@@ -651,14 +731,23 @@ async function readBranches(runner: ReferenceRunner, cwd: string): Promise<RawBr
   return branches;
 }
 
-const tagFormat = ['%(refname)', '%(objectname)', '%(objecttype)', '%(*objectname)'].join('%00');
+const tagFormat = [
+  '%(refname)',
+  '%(objectname)',
+  '%(objecttype)',
+  '%(*objectname)',
+  '%(taggername) %(taggeremail)',
+  '%(taggerdate:iso-strict)',
+  '%(contents)',
+  '',
+].join('%00');
 
 async function readTags(runner: ReferenceRunner, cwd: string): Promise<RepositoryTag[]> {
   const result = await runner.run(['for-each-ref', `--format=${tagFormat}`, 'refs/tags'], readOptions(cwd));
   const tags: RepositoryTag[] = [];
-  for (const line of result.stdout.split('\n')) {
+  for (const line of result.stdout.split('\0\n')) {
     if (!line.trim()) continue;
-    const [fullName, objectName, objectType, peeled] = line.split('\0');
+    const [fullName, objectName, objectType, peeled, tagger, taggedAt, message] = line.split('\0');
     if (!fullName || !objectName || !objectIdPattern.test(objectName)) {
       throw new Error('Git returned an invalid tag record.');
     }
@@ -668,6 +757,10 @@ async function readTags(runner: ReferenceRunner, cwd: string): Promise<Repositor
       fullName,
       target,
       annotated: objectType === 'tag',
+      objectId: objectName,
+      tagger: objectType === 'tag' ? tagger?.trim() || null : null,
+      taggedAt: objectType === 'tag' ? taggedAt || null : null,
+      message: objectType === 'tag' ? (message ?? '').slice(0, 65_536) : '',
     });
   }
   return tags;
@@ -816,7 +909,7 @@ function referenceSnapshot(
       }))
       .sort((left, right) => left.fullName.localeCompare(right.fullName)),
     tags: tags
-      .map((tag) => ({ fullName: tag.fullName, target: tag.target }))
+      .map((tag) => ({ fullName: tag.fullName, target: tag.target, objectId: tag.objectId }))
       .sort((left, right) => left.fullName.localeCompare(right.fullName)),
   };
   return createHash('sha256').update(JSON.stringify(state), 'utf8').digest('hex');

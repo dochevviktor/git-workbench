@@ -96,9 +96,18 @@ export const repositoryWorkingChangeStatusSchema = z.enum([
 
 export const repositoryTabOrientationSchema = z.enum(['vertical', 'horizontal']);
 
+export const repositoryClosedTabSchema = z.strictObject({
+  id: repositoryIdSchema,
+  path: repositoryPathSchema,
+  name: z.string().min(1).max(512),
+});
+
 export const repositoryTabPreferencesSchema = z.strictObject({
+  /** Legacy orientation mirrors repository-list visibility; horizontal tabs always remain visible. */
   tabOrientation: repositoryTabOrientationSchema,
   activeRepositoryId: repositoryIdSchema.nullable(),
+  repositoryListVisible: z.boolean().default(false),
+  recentlyClosed: z.array(repositoryClosedTabSchema).max(20).default([]),
 });
 
 export const repositorySummarySchema = z.strictObject({
@@ -224,7 +233,7 @@ export const repositoryHistoryCommitSchema = z.strictObject({
   committer: repositoryHistoryPersonSchema,
   subject: z.string().max(16_384),
   body: z.string().max(262_144),
-  decorations: z.array(repositoryHistoryDecorationSchema).max(256),
+  decorations: z.array(repositoryHistoryDecorationSchema).max(10_000),
 });
 
 export const repositoryHistoryReferenceSchema = z.strictObject({
@@ -253,7 +262,7 @@ const repositoryHistoryFilterQuerySchema = z
   .max(256)
   .refine((value) => !value.includes('\0'), 'A history search cannot contain a NUL byte.');
 
-/** The first F06 slice keeps filtering explicit so Git arguments remain backend-owned. */
+/** Named search fields and scopes keep Git arguments backend-owned. */
 export const repositoryHistoryFilterSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('all') }),
   z.strictObject({
@@ -263,7 +272,14 @@ export const repositoryHistoryFilterSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('commit-search'),
     query: repositoryHistoryFilterQuerySchema,
+    field: z.enum(['message', 'author', 'path', 'content']).optional(),
+    scope: z.enum(['repository', 'current-branch']).optional(),
   }),
+]);
+
+export const repositoryHistoryAnchorSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({ kind: z.literal('oldest') }),
 ]);
 
 export const repositoryHistoryRequestSchema = z.strictObject({
@@ -271,6 +287,7 @@ export const repositoryHistoryRequestSchema = z.strictObject({
   offset: z.number().int().nonnegative().max(1_000_000),
   limit: z.number().int().min(1).max(100),
   filter: repositoryHistoryFilterSchema.optional(),
+  anchor: repositoryHistoryAnchorSchema.optional(),
 });
 
 export const repositoryHistoryPageSchema = z.strictObject({
@@ -368,10 +385,23 @@ export const repositoryDiffTargetSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+export const repositoryDiffOptionsSchema = z.strictObject({
+  contextLines: z.number().int().min(0).max(100).optional(),
+  entireFile: z.boolean().optional(),
+  loadLarge: z.boolean().optional(),
+  readId: z.string().uuid().optional(),
+});
+
+export const repositoryDiffCancelSchema = z.strictObject({
+  id: repositoryIdSchema,
+  readId: z.string().uuid(),
+});
+
 export const repositoryDiffRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   target: repositoryDiffTargetSchema,
   whitespace: repositoryDiffWhitespaceSchema,
+  options: repositoryDiffOptionsSchema.optional(),
 });
 
 export const repositoryDiffSnapshotSchema = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -390,6 +420,12 @@ export const repositoryDiffSchema = z.strictObject({
   message: z.string().max(512).nullable(),
   /** Working-tree diffs carry a backend-issued compare-and-swap token for mutations. */
   snapshot: repositoryDiffSnapshotSchema.nullable(),
+  binaryMetadata: z
+    .strictObject({
+      beforeBytes: z.number().int().nonnegative().nullable(),
+      afterBytes: z.number().int().nonnegative().nullable(),
+    })
+    .optional(),
 });
 
 const repositoryWorkingChangeCodeSchema = z.string().regex(/^[.ACDMRTUX?!]$/u);
@@ -447,11 +483,15 @@ export const repositoryWorkingChangeSelectionSchema = z.discriminatedUnion('kind
   z.strictObject({
     kind: z.literal('hunk'),
     hunk: z.number().int().nonnegative().max(1_000),
+    contextLines: z.number().int().min(0).max(100).optional(),
+    entireFile: z.boolean().optional(),
   }),
   z.strictObject({
     kind: z.literal('lines'),
     hunk: z.number().int().nonnegative().max(1_000),
     lineIndexes: z.array(z.number().int().nonnegative().max(100_000)).min(1).max(10_000).readonly(),
+    contextLines: z.number().int().min(0).max(100).optional(),
+    entireFile: z.boolean().optional(),
   }),
 ]);
 
@@ -482,6 +522,22 @@ export const repositoryWorkingChangeActionResultSchema = z.strictObject({
   changes: repositoryWorkingChangesSchema,
 });
 
+export const repositoryDiscardPreviewRequestSchema = z
+  .strictObject({
+    id: repositoryIdSchema,
+    targets: z.array(repositoryWorkingChangeTargetSchema).min(1).max(100),
+    selection: repositoryWorkingChangeSelectionSchema.optional(),
+  })
+  .refine(
+    (request) => !request.selection || request.selection.kind === 'file' || request.targets.length === 1,
+    'A hunk or line preview needs exactly one file.',
+  );
+
+export const repositoryDiscardPreviewSchema = z.strictObject({
+  snapshot: repositoryDiffSnapshotSchema,
+  files: z.array(repositoryDiffSchema).min(1).max(100),
+});
+
 /** How the author/committer identity Git would use for a new commit was determined. */
 export const repositoryCommitIdentitySchema = z.strictObject({
   name: z.string().max(4_096),
@@ -505,7 +561,13 @@ export const repositoryCommitAmendTargetSchema = z.strictObject({
   publishedRefs: z.array(z.string().min(1).max(32_768)).max(10),
 });
 
-export const repositoryCommitPendingOperationSchema = z.enum(['merge', 'cherry-pick', 'revert', 'rebase']);
+export const repositoryCommitPendingOperationSchema = z.enum([
+  'merge',
+  'squash',
+  'cherry-pick',
+  'revert',
+  'rebase',
+]);
 
 export const repositoryCommitContextRequestSchema = z.strictObject({ id: repositoryIdSchema });
 
@@ -642,6 +704,10 @@ export const repositoryTagSchema = z.strictObject({
   /** The commit the tag resolves to, after peeling an annotated tag object. */
   target: gitObjectIdSchema,
   annotated: z.boolean(),
+  objectId: gitObjectIdSchema.optional(),
+  tagger: z.string().max(16_384).nullable().optional(),
+  taggedAt: z.string().max(128).nullable().optional(),
+  message: z.string().max(65_536).optional(),
 });
 
 export const repositoryReferenceContextRequestSchema = z.strictObject({ id: repositoryIdSchema });
@@ -724,10 +790,20 @@ export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
     kind: z.literal('create-tag'),
     name: repositoryReferenceNameSchema,
     startPoint: repositoryReferenceStartPointSchema,
-    /** An empty message creates a lightweight tag; any message creates an annotated one. */
+    /** This route always creates an annotated tag, including an empty annotation. */
     message: z.string().max(65_536),
+    pushRemote: z.string().min(1).max(4_096).optional(),
   }),
-  z.strictObject({ kind: z.literal('delete-tag'), fullName: z.string().min(1).max(32_768) }),
+  z.strictObject({
+    kind: z.literal('delete-tag'),
+    fullName: z.string().min(1).max(32_768),
+    remoteNames: z.array(z.string().min(1).max(4_096)).max(1_000).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('push-tag'),
+    fullName: z.string().min(1).max(32_768),
+    remote: z.string().min(1).max(4_096),
+  }),
 ]);
 
 export const repositoryReferenceActionKindSchema = z.enum([
@@ -740,6 +816,7 @@ export const repositoryReferenceActionKindSchema = z.enum([
   'checkout-commit',
   'create-tag',
   'delete-tag',
+  'push-tag',
 ]);
 
 export const repositoryReferenceActionRequestSchema = z.strictObject({
@@ -752,6 +829,7 @@ export const repositoryMergeRebaseActionSchema = z
   .discriminatedUnion('kind', [
     z.strictObject({
       kind: z.literal('merge'),
+      mode: z.enum(['default', 'no-ff', 'squash', 'no-commit']).optional(),
       sourceFullName: repositoryMergeSourceSchema,
       snapshot: repositoryDiffSnapshotSchema,
       autostash: z.boolean(),
@@ -873,6 +951,27 @@ export const repositoryRemoteActionSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+export const repositoryCloneRequestSchema = z.strictObject({
+  url: repositoryRemoteUrlSchema,
+  parentPath: repositoryPathSchema,
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(240)
+    .refine(
+      (name) =>
+        // eslint-disable-next-line no-control-regex -- reject control bytes in a destination component.
+        name !== '.' && name !== '..' && !/[\\/\u0000-\u001F\u007F]/u.test(name) && !name.startsWith('-'),
+      'Use a single folder name without separators or control characters.',
+    ),
+});
+
+export const repositoryConnectionRequestSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('url'), url: repositoryRemoteUrlSchema }),
+  z.strictObject({ kind: z.literal('remote'), id: repositoryIdSchema, name: repositoryRemoteNameSchema }),
+]);
+
 export const repositoryRemoteActionRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   action: repositoryRemoteActionSchema,
@@ -905,6 +1004,8 @@ export const repositoryRemoteActionResultSchema = z.discriminatedUnion('status',
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
 export const repositoryOperationKindSchema = z.enum([
+  'clone',
+  'connection',
   'fetch',
   'pull',
   'push',
@@ -956,10 +1057,12 @@ export const repositoryOperationSchema = z.strictObject({
   source: repositoryOperationSourceSchema,
   title: z.string().min(1).max(512),
   status: repositoryOperationStatusSchema,
+  cancelRequested: z.boolean().optional(),
   /** Monotonically increasing; late IPC replies cannot overwrite newer events. */
   revision: z.number().int().nonnegative().optional(),
   result: z
     .discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('clone'), value: repositorySummarySchema }),
       z.strictObject({ kind: z.literal('commit'), value: repositoryCommitResultSchema }),
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
     ])
@@ -1052,6 +1155,7 @@ export const repositoryRecoveryStateSchema = z.strictObject({
   snapshot: repositoryDiffSnapshotSchema,
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
   copies: z.array(repositoryRecoveryCopySchema).max(100),
+  conflictedCount: z.number().int().nonnegative().max(100_000).optional(),
 });
 export const repositoryRecoveryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
@@ -1097,6 +1201,8 @@ export const repositoryStashActionSchema = z.discriminatedUnion('kind', [
     kind: z.literal('save'),
     message: z.string().max(512),
     includeUntracked: z.boolean(),
+    /** Stage previously untracked paths before saving a two-parent stash. */
+    stageNewFiles: z.boolean().optional(),
     /** Empty means all supported local changes; otherwise these are validated changed paths. */
     paths: z.array(repositoryStashPathSchema).max(1_000),
     changesSnapshot: repositoryDiffSnapshotSchema.optional(),
@@ -1114,6 +1220,11 @@ export const repositoryStashActionSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('drop'),
     stashId: gitObjectIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('rename'),
+    stashId: gitObjectIdSchema,
+    message: z.string().trim().min(1).max(512),
   }),
 ]);
 export const repositoryStashActionRequestSchema = z.strictObject({
@@ -1213,6 +1324,22 @@ export const requests = {
   ),
   openRepository: request('repository:open', repositoryOpenSchema, repositorySummarySchema),
   initializeRepository: request('repository:initialize', repositoryInitializeSchema, repositorySummarySchema),
+  cloneRepository: request('repository:clone', repositoryCloneRequestSchema, repositoryOperationSchema),
+  testRepositoryConnection: request(
+    'repository:test-connection',
+    repositoryConnectionRequestSchema,
+    repositoryOperationSchema,
+  ),
+  getAutomaticFetchPreference: request(
+    'repository:get-automatic-fetch',
+    z.undefined(),
+    z.strictObject({ enabled: z.boolean() }),
+  ),
+  setAutomaticFetchPreference: request(
+    'repository:set-automatic-fetch',
+    z.strictObject({ enabled: z.boolean() }),
+    z.strictObject({ enabled: z.boolean() }),
+  ),
   closeRepository: request('repository:close', repositorySessionSchema, z.null()),
   getRepositoryTabPreferences: request(
     'repository:get-tab-preferences',
@@ -1228,6 +1355,21 @@ export const requests = {
     'repository:select-tab',
     repositorySessionSchema,
     repositoryTabPreferencesSchema,
+  ),
+  setRepositoryListVisible: request(
+    'repository:set-list-visible',
+    z.strictObject({ visible: z.boolean() }),
+    repositoryTabPreferencesSchema,
+  ),
+  reorderRepositoryTabs: request(
+    'repository:reorder-tabs',
+    z.strictObject({
+      ids: z
+        .array(repositoryIdSchema)
+        .max(20)
+        .refine((ids) => new Set(ids).size === ids.length),
+    }),
+    z.array(repositorySummarySchema).max(20),
   ),
   removeRecentRepository: request('repository:remove-recent', repositorySessionSchema, z.null()),
   listRepositoryManager: request('repository-manager:list', z.undefined(), repositoryManagerSnapshotSchema),
@@ -1257,6 +1399,12 @@ export const requests = {
     repositoryCommitChangesSchema,
   ),
   getRepositoryDiff: request('repository:get-diff', repositoryDiffRequestSchema, repositoryDiffSchema),
+  previewRepositoryDiscard: request(
+    'repository:preview-discard',
+    repositoryDiscardPreviewRequestSchema,
+    repositoryDiscardPreviewSchema,
+  ),
+  cancelRepositoryDiff: request('repository:cancel-diff', repositoryDiffCancelSchema, z.null()),
   getRepositoryWorkingChanges: request(
     'repository:get-working-changes',
     repositoryWorkingChangesRequestSchema,
@@ -1377,6 +1525,7 @@ export const requests = {
 
 export const events = {
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
+  repositoryActivated: { channel: 'repository:activated', payload: repositorySummarySchema },
   repositoryOperationChanged: {
     channel: 'repository:operation-changed',
     payload: repositoryOperationSchema,
@@ -1393,6 +1542,8 @@ export type RepositoryHead = z.infer<typeof repositoryHeadSchema>;
 export type RepositoryWorkingTree = z.infer<typeof repositoryWorkingTreeSchema>;
 export type RepositoryTabOrientation = z.infer<typeof repositoryTabOrientationSchema>;
 export type RepositoryTabPreferences = z.infer<typeof repositoryTabPreferencesSchema>;
+export type RepositoryCloneRequest = z.infer<typeof repositoryCloneRequestSchema>;
+export type RepositoryConnectionRequest = z.infer<typeof repositoryConnectionRequestSchema>;
 export type RepositorySummary = z.infer<typeof repositorySummarySchema>;
 export type RecentRepository = z.infer<typeof recentRepositorySchema>;
 export type SourceDirectoryStatus = z.infer<typeof sourceDirectoryStatusSchema>;
@@ -1415,6 +1566,7 @@ export type RepositoryHistoryCommit = z.infer<typeof repositoryHistoryCommitSche
 export type RepositoryHistoryReference = z.infer<typeof repositoryHistoryReferenceSchema>;
 export type RepositoryHistoryTracking = z.infer<typeof repositoryHistoryTrackingSchema>;
 export type RepositoryHistoryFilter = z.infer<typeof repositoryHistoryFilterSchema>;
+export type RepositoryHistoryAnchor = z.infer<typeof repositoryHistoryAnchorSchema>;
 export type RepositoryHistoryRequest = z.infer<typeof repositoryHistoryRequestSchema>;
 export type RepositoryHistoryPage = z.infer<typeof repositoryHistoryPageSchema>;
 export type RepositoryCommitChangeStatus = z.infer<typeof repositoryCommitChangeStatusSchema>;
@@ -1422,6 +1574,10 @@ export type RepositoryCommitChange = z.infer<typeof repositoryCommitChangeSchema
 export type RepositoryCommitChangesRequest = z.infer<typeof repositoryCommitChangesRequestSchema>;
 export type RepositoryCommitChanges = z.infer<typeof repositoryCommitChangesSchema>;
 export type RepositoryDiffWhitespace = z.infer<typeof repositoryDiffWhitespaceSchema>;
+export type RepositoryDiffOptions = z.infer<typeof repositoryDiffOptionsSchema>;
+export type RepositoryDiffCancel = z.infer<typeof repositoryDiffCancelSchema>;
+export type RepositoryDiscardPreviewRequest = z.infer<typeof repositoryDiscardPreviewRequestSchema>;
+export type RepositoryDiscardPreview = z.infer<typeof repositoryDiscardPreviewSchema>;
 export type RepositoryDiffTarget = z.infer<typeof repositoryDiffTargetSchema>;
 export type RepositoryDiffRequest = z.infer<typeof repositoryDiffRequestSchema>;
 export type RepositoryDiffSnapshot = z.infer<typeof repositoryDiffSnapshotSchema>;

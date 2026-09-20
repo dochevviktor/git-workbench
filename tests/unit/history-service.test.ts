@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GitRunner } from '../../src/backend/git/runner';
 import { RepositoryService } from '../../src/backend/repositories/repository-service';
+import { repositoryHistoryRequestSchema } from '../../src/common/ipc/contracts';
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +22,86 @@ afterEach(async () => {
 });
 
 describe('repository history service', () => {
+  it('validates search fields, scopes and object-only navigation anchors', () => {
+    const base = { id: `repo-${'a'.repeat(64)}`, offset: 0, limit: 100 };
+    expect(
+      repositoryHistoryRequestSchema.safeParse({
+        ...base,
+        filter: { kind: 'commit-search', query: 'hello', field: 'author', scope: 'current-branch' },
+        anchor: { kind: 'commit', commitId: 'a'.repeat(40) },
+      }).success,
+    ).toBe(true);
+    for (const filter of [
+      { kind: 'commit-search', query: 'hello', field: '--exec' },
+      { kind: 'commit-search', query: 'hello', scope: '--all' },
+      { kind: 'commit-search', query: 'hello\0there' },
+    ])
+      expect(repositoryHistoryRequestSchema.safeParse({ ...base, filter }).success).toBe(false);
+    expect(
+      repositoryHistoryRequestSchema.safeParse({
+        ...base,
+        anchor: { kind: 'commit', commitId: 'HEAD;touch file' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps octopus parents, reordered dates, disconnected roots and detached selection consistent with Git', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'topology');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(17, repositoryPath, false);
+    const tree = (await runner.run(['mktree'], { cwd: repositoryPath, stdin: '' })).stdout.trim();
+    const create = async (message: string, date: string, parents: string[] = []) =>
+      (
+        await runner.run(
+          [
+            '-c',
+            'user.name=Topology',
+            '-c',
+            'user.email=topology@test.invalid',
+            'commit-tree',
+            tree,
+            ...parents.flatMap((parent) => ['-p', parent]),
+            '-m',
+            message,
+          ],
+          { cwd: repositoryPath, env: commitDates(date) },
+        )
+      ).stdout.trim();
+    const root = await create('root', '2026-01-05');
+    const left = await create('left', '2026-01-02', [root]);
+    const middle = await create('middle', '2026-01-03', [root]);
+    const right = await create('right', '2026-01-04', [root]);
+    const merge = await create('octopus', '2026-01-01', [left, middle, right]);
+    const disconnected = await create('disconnected', '2026-01-06');
+    await runner.run(['update-ref', 'refs/heads/main', merge], { cwd: repositoryPath });
+    await runner.run(['update-ref', 'refs/heads/disconnected', disconnected], { cwd: repositoryPath });
+    await runner.run(['update-ref', 'refs/tags/root-label', root], { cwd: repositoryPath });
+    await runner.run(['switch', '--detach', merge], { cwd: repositoryPath });
+    const expected = (
+      await runner.run(['rev-list', '--all', '--topo-order', '--parents', merge], { cwd: repositoryPath })
+    ).stdout
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const [id, ...parents] = line.split(' ');
+        return { id, parents };
+      });
+    const page = await service.getHistory(17, repository.id, 0, 100);
+    expect(page.commits.map(({ id, parents }) => ({ id, parents }))).toEqual(expected);
+    expect(page.head).toEqual({ state: 'detached', name: null, commit: merge });
+    expect(page.commits.find((entry) => entry.id === merge)?.parents).toEqual([left, middle, right]);
+    const located = await service.getHistory(17, repository.id, 0, 2, undefined, {
+      kind: 'commit',
+      commitId: root,
+    });
+    expect(located.commits.map((entry) => entry.id)).toContain(root);
+    const oldest = await service.getHistory(17, repository.id, 0, 2, undefined, { kind: 'oldest' });
+    expect(oldest.commits.at(-1)?.id).toBe(expected.at(-1)?.id);
+    expect(oldest.hasMore).toBe(false);
+  });
   it('reads commit metadata, merge ancestry, references, tags, and pages from Git', async () => {
     const directory = await fixtureDirectory();
     const repositoryPath = join(directory, 'history');
@@ -215,6 +296,70 @@ describe('repository history service', () => {
       upstream: 'origin/main',
       upstreamGone: true,
     });
+  });
+
+  it('searches literal author, changed path and diff content in repository or current-branch scope without checkout', async () => {
+    const directory = await fixtureDirectory();
+    const repositoryPath = join(directory, 'search');
+    await mkdir(repositoryPath);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const repository = await service.initialize(16, repositoryPath, false);
+    await runner.run(['branch', '-M', 'main'], { cwd: repositoryPath });
+    await mkdir(join(repositoryPath, 'docs'));
+    await writeFile(join(repositoryPath, 'docs', 'literal[one].txt'), 'keep\nneedle[1]\n');
+    const root = await commit(
+      runner,
+      repositoryPath,
+      'first',
+      '',
+      'Ada [Team]',
+      'ada@test.invalid',
+      '2026-01-01',
+    );
+    await runner.run(['switch', '-c', 'other'], { cwd: repositoryPath });
+    await writeFile(join(repositoryPath, 'other.txt'), 'other\n');
+    const other = await commit(
+      runner,
+      repositoryPath,
+      'sidebar other',
+      '',
+      'Bea',
+      'bea@test.invalid',
+      '2026-01-02',
+    );
+    await runner.run(['switch', 'main'], { cwd: repositoryPath });
+    // Same count, but changed line: -S alone would miss this commit.
+    await writeFile(join(repositoryPath, 'docs', 'literal[one].txt'), 'keep\nchanged needle[1]\n');
+    const changed = await commit(
+      runner,
+      repositoryPath,
+      'sidebar main',
+      '',
+      'Ada [Team]',
+      'ada@test.invalid',
+      '2026-01-03',
+    );
+    const search = async (
+      field: 'message' | 'author' | 'path' | 'content',
+      query: string,
+      scope: 'repository' | 'current-branch' = 'repository',
+    ) =>
+      (
+        await service.getHistory(16, repository.id, 0, 50, { kind: 'commit-search', query, field, scope })
+      ).commits.map((entry) => entry.id);
+    expect(await search('author', 'ADA [team]')).toEqual([changed, root]);
+    expect(await search('path', 'LITERAL[ONE]')).toEqual([changed, root]);
+    expect(await search('path', 'docs/literal[one]')).toEqual([changed, root]);
+    expect(await search('path', 'literal*')).toEqual([]);
+    expect(await search('content', 'needle[1]')).toEqual([changed, root]);
+    expect(await search('content', 'needle.*')).toEqual([]);
+    expect(new Set(await search('message', 'sidebar'))).toEqual(new Set([changed, other]));
+    expect(await search('message', 'sidebar', 'current-branch')).toEqual([changed]);
+    expect(
+      (await runner.run(['symbolic-ref', '--short', 'HEAD'], { cwd: repositoryPath })).stdout.trim(),
+    ).toBe('main');
+    expect((await runner.run(['status', '--porcelain'], { cwd: repositoryPath })).stdout).toBe('');
   });
 
   it('returns a valid empty history for an unborn repository', async () => {

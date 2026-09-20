@@ -10,6 +10,7 @@ import type { OperationHandle, OperationOutcome } from '../operations/operation-
 import { displayOutput } from './network-service';
 import { readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { withLocalChanges } from './recovery-service';
+import { detectPendingOperation } from './commit-service';
 import { readWorkingChanges } from './working-tree-service';
 
 const mergeRebaseTimeoutMs = 10 * 60 * 1000;
@@ -133,11 +134,20 @@ export async function runMergeRebase(
         // the application. The runner also applies this policy to all Git work.
         env: { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':' },
       });
+      const pending = await detectPendingOperation(input.gitDir);
       return {
         status: 'succeeded',
         message:
           input.action.kind === 'merge'
-            ? `Merged '${sourceLabel}' into '${currentLabel}'.`
+            ? input.action.mode === 'squash'
+              ? pending === 'squash'
+                ? 'Squash changes are staged. Review the generated message and choose Squash in Local Changes.'
+                : 'The selected source has no squash changes to apply.'
+              : input.action.mode === 'no-commit'
+                ? pending === 'merge'
+                  ? 'Merge changes are staged. Review the generated message and Commit in Local Changes.'
+                  : `Fast-forward completed or '${currentLabel}' was already up to date.`
+                : `Merged '${sourceLabel}' into '${currentLabel}'.`
             : `Rebased '${currentLabel}' on '${sourceLabel}'.`,
         output: displayOutput(result.stdout, result.stderr),
       };
@@ -185,8 +195,29 @@ function createPlan(
   sourceLabel: string,
   currentLabel: string,
 ): MergeRebasePlan {
+  const modeArgs =
+    action.kind === 'merge'
+      ? action.mode === 'no-ff'
+        ? ['--no-ff']
+        : action.mode === 'squash'
+          ? ['--squash']
+          : action.mode === 'no-commit'
+            ? ['--ff', '--no-commit']
+            : ['--ff']
+      : [];
   const args =
-    action.kind === 'merge' ? ['merge', '--no-edit', '--', sourceCommit] : ['rebase', sourceCommit];
+    action.kind === 'merge'
+      ? [
+          'merge',
+          '--no-edit',
+          '--no-autostash',
+          ...modeArgs,
+          '-m',
+          `Merge branch '${sourceLabel}'`,
+          '--',
+          sourceCommit,
+        ]
+      : ['rebase', '--no-autostash', sourceCommit];
   const title =
     action.kind === 'merge'
       ? `Merge '${sourceLabel}' into '${currentLabel}'`

@@ -3,6 +3,7 @@ import type {
   RepositoryHistoryCommit,
   RepositoryHistoryDecoration,
   RepositoryHistoryFilter,
+  RepositoryHistoryAnchor,
   RepositoryHistoryPage,
   RepositoryHistoryReference,
   RepositoryHistoryTracking,
@@ -12,6 +13,7 @@ import { repositoryHistoryPageSchema } from '../../common/ipc/contracts';
 import { GitCommandError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readStashes } from './stash-service';
+import { ExpectedBackendError } from '../errors';
 
 const historyReadTimeoutMs = 15_000;
 const historyReadOutputLimit = 8 * 1024 * 1024;
@@ -32,6 +34,7 @@ export interface ReadHistoryInput {
   readonly offset: number;
   readonly limit: number;
   readonly filter?: RepositoryHistoryFilter | undefined;
+  readonly anchor?: RepositoryHistoryAnchor | undefined;
 }
 
 interface RawReference {
@@ -51,11 +54,19 @@ export async function readRepositoryHistory(
 ): Promise<RepositoryHistoryPage> {
   const filter = input.filter ?? { kind: 'all' as const };
   const stashes = await readStashes(runner, input.cwd);
-  const rawHistory = await runner.run(
-    historyArguments(input, filter, stashes),
-    readOptions(input.cwd, historyReadOutputLimit),
-  );
-  const parsedCommits = parseCommits(rawHistory.stdout);
+  const offset = input.anchor ? await locateHistoryOffset(runner, input, filter, stashes) : input.offset;
+  // An unborn HEAD has no current-branch ancestry, even when other refs exist.
+  const emptyCurrentBranch =
+    filter.kind === 'commit-search' && filter.scope === 'current-branch' && !input.head.commit;
+  const rawHistory = emptyCurrentBranch
+    ? ''
+    : (
+        await runner.run(
+          historyArguments({ ...input, offset }, filter, stashes),
+          readOptions(input.cwd, historyReadOutputLimit),
+        )
+      ).stdout;
+  const parsedCommits = parseCommits(rawHistory);
   const hasMoreFromGit = parsedCommits.length > input.limit;
   const commitsWithoutLookahead = parsedCommits.slice(0, input.limit);
 
@@ -77,18 +88,52 @@ export async function readRepositoryHistory(
       : reference,
   );
   const commits = addDecorations(commitsWithoutLookahead, referencesWithTracking);
-  const canContinue = hasMoreFromGit && input.offset + input.limit <= maxHistoryOffset;
+  const canContinue = hasMoreFromGit && offset + input.limit <= maxHistoryOffset;
 
   return repositoryHistoryPageSchema.parse({
     repositoryId: input.repositoryId,
-    offset: input.offset,
+    offset,
     commits,
     references: referencesWithTracking,
     head: input.head,
     tracking,
     hasMore: canContinue,
-    nextOffset: canContinue ? input.offset + input.limit : null,
+    nextOffset: canContinue ? offset + input.limit : null,
   });
+}
+
+/** Resolve a distant selection without sending or rendering every intervening commit. */
+async function locateHistoryOffset(
+  runner: HistoryRunner,
+  input: ReadHistoryInput,
+  filter: RepositoryHistoryFilter,
+  stashes: readonly RepositoryStashEntry[],
+): Promise<number> {
+  const maximumLocatedCommits = 200_000;
+  const args = historyArguments({ ...input, offset: 0, limit: maximumLocatedCommits }, filter, stashes).map(
+    (argument) => (argument.startsWith('--pretty=format:') ? '--format=%H' : argument),
+  );
+  const output = await runner.run(args, readOptions(input.cwd, 14 * 1024 * 1024));
+  const ids = output.stdout.trim().split(/\r?\n/u).filter(Boolean);
+  if (ids.some((id) => !objectIdPattern.test(id)))
+    throw new Error('Git returned an invalid history position.');
+  const anchor = input.anchor;
+  const index = anchor?.kind === 'commit' ? ids.indexOf(anchor.commitId) : ids.length - 1;
+  if ((anchor?.kind === 'oldest' || index < 0) && ids.length > maximumLocatedCommits) {
+    throw new ExpectedBackendError(
+      'OPERATION_FAILED',
+      'Direct history navigation is limited to 200,000 commits. Filter by a branch to narrow this history.',
+    );
+  }
+  if (index < 0)
+    throw new ExpectedBackendError(
+      'OPERATION_FAILED',
+      'That commit is not present in the current history. Clear the branch filter or refresh the repository.',
+    );
+  return Math.max(
+    0,
+    anchor?.kind === 'oldest' ? index + 1 - input.limit : index - Math.floor(input.limit / 2),
+  );
 }
 
 function historyArguments(
@@ -97,12 +142,32 @@ function historyArguments(
   stashes: readonly RepositoryStashEntry[],
 ): readonly string[] {
   const argumentsList = ['log'];
-  if (filter.kind !== 'reference') argumentsList.push('--all');
+  if (filter.kind !== 'reference' && !(filter.kind === 'commit-search' && filter.scope === 'current-branch'))
+    argumentsList.push('--all');
   argumentsList.push('--topo-order', '--no-decorate', '--no-color');
   if (filter.kind === 'commit-search') {
     // Search text is passed as one argument and treated literally. It never becomes shell code or
     // a regular expression supplied by the renderer.
-    argumentsList.push('--fixed-strings', '--regexp-ignore-case', `--grep=${filter.query}`);
+    const field = filter.field ?? 'message';
+    if (field === 'message' || field === 'author') {
+      argumentsList.push(
+        '--fixed-strings',
+        '--regexp-ignore-case',
+        `--${field === 'author' ? 'author' : 'grep'}=${filter.query}`,
+      );
+    } else if (field === 'content') {
+      // -G searches changed lines (including equal-count replacements). Escape POSIX ERE operators
+      // so text stays literal; content matching is explicitly case-sensitive.
+      argumentsList.push(
+        `-G${filter.query.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`,
+        '--no-ext-diff',
+        '--no-textconv',
+        '--diff-merges=first-parent',
+        '--no-patch',
+      );
+    } else {
+      argumentsList.push('--full-history');
+    }
   }
   argumentsList.push(
     `--skip=${input.offset}`,
@@ -113,6 +178,11 @@ function historyArguments(
   if (startingCommit) argumentsList.push(startingCommit);
   if (filter.kind === 'all') argumentsList.push(...stashes.map((stash) => stash.commitId));
   argumentsList.push('--');
+  if (filter.kind === 'commit-search' && filter.field === 'path') {
+    // Default Git wildcards span slash separators. Escape user wildcard characters before adding
+    // our own contains match, including both current and historical names of changed paths.
+    argumentsList.push(`:(icase)*${filter.query.replace(/[?*[\]\\]/gu, '\\$&')}*`);
+  }
   return argumentsList;
 }
 

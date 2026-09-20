@@ -4,6 +4,11 @@ This audit makes the supplied Windows capture catalogue the primary behavioral a
 for the existing Linux application. It refines the [feature surface](fork-public-surface.md) and
 [implementation plan](../implementation-plan.md); it does not implement or complete a product phase.
 
+Subsequent implementation: the user requested a single F01–F16 correction pass. Its
+[implementation/verification record](../reviews/f01-f16-catalogue-corrections.md) now supersedes the
+planned status and current-code descriptions in this historical audit for those completed corrections.
+The original observations, topic coverage, unknowns and crosswalk remain unchanged.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the

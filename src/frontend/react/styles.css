@@ -550,6 +550,41 @@ p {
   border-radius: 5px;
 }
 
+.repository-list-heading {
+  padding: 10px 12px 2px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.clone-parent-field {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.clone-parent-field > input {
+  min-width: 0;
+  flex: 1;
+}
+
+.toolbar-repository-list {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  width: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.toolbar-repository-list:hover,
+.toolbar-repository-list[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--tab-hover);
+}
+
 /* Layout ------------------------------------------------------------------------------------- */
 
 .workbench {

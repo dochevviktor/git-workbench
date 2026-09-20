@@ -345,6 +345,39 @@ describe('commit service', () => {
     expect(await run(fixture, ['log', '-1', '--format=%P'])).toMatch(/^[0-9a-f]+ [0-9a-f]+$/u);
   });
 
+  it('previews and cancels amend without writes, then amends a merge message with its exact tree and both parents', async () => {
+    const fixture = await fixtureRepository();
+    await stage(fixture, 'base.txt', 'base\n');
+    await commit(fixture, { subject: 'base' });
+    await fixture.git.run(['checkout', '--quiet', '-b', 'topic'], { cwd: fixture.root });
+    await stage(fixture, 'topic.txt', 'topic\n');
+    await commit(fixture, { subject: 'topic' });
+    await fixture.git.run(['checkout', '--quiet', 'main'], { cwd: fixture.root });
+    await stage(fixture, 'main.txt', 'main\n');
+    await commit(fixture, { subject: 'main' });
+    await fixture.git.run(['merge', '--quiet', '--no-ff', '-m', 'Merge topic', 'topic'], {
+      cwd: fixture.root,
+    });
+    const before = await run(fixture, ['show', '-s', '--format=%T %P', 'HEAD']);
+    const headBefore = await run(fixture, ['rev-parse', 'HEAD']);
+    const indexBefore = await run(fixture, ['ls-files', '--stage']);
+    const current = await context(fixture);
+    expect(current.amend?.parentCount).toBe(2);
+    await readAmendChanges(fixture.git, {
+      repositoryId,
+      cwd: fixture.root,
+      gitDir: fixture.gitDir,
+      head: await head(fixture),
+    });
+    expect(await run(fixture, ['rev-parse', 'HEAD'])).toBe(headBefore);
+    expect(await run(fixture, ['ls-files', '--stage'])).toBe(indexBefore);
+    expect(await run(fixture, ['status', '--porcelain'])).toBeNull();
+    const amended = await commit(fixture, { subject: 'Updated merge message', amend: true });
+    expect(amended.status).toBe('committed');
+    expect(await run(fixture, ['show', '-s', '--format=%T %P', 'HEAD'])).toBe(before);
+    expect(await run(fixture, ['rev-parse', 'HEAD'])).not.toBe(headBefore);
+  });
+
   it('refuses to commit while a file is unmerged', async () => {
     const fixture = await fixtureRepository();
     await stage(fixture, 'file.txt', 'base\n');

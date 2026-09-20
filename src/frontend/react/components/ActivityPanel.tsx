@@ -18,6 +18,7 @@ const activityScopes: readonly { readonly id: ActivityScope; readonly label: str
 ];
 
 function statusLabel(operation: RepositoryOperation): string {
+  if (operation.status === 'running' && operation.cancelRequested) return 'Cancelling…';
   switch (operation.status) {
     case 'running':
       return operation.progress
@@ -146,6 +147,7 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
                   className="icon-button"
                   aria-label={`Cancel ${operation.title}`}
                   title="Cancel"
+                  disabled={operation.cancelRequested}
                   onClick={() => onCancel(operation.id)}
                 >
                   <CloseIcon size={12} />

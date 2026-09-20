@@ -43,12 +43,14 @@ function pendingOperationNotice(context: RepositoryCommitContext): string | unde
   switch (context.pendingOperation) {
     case 'merge':
       return 'A merge is in progress. Committing records the merge with its recorded parents.';
+    case 'squash':
+      return 'A squash merge is ready. Committing records the staged result with one parent.';
     case 'cherry-pick':
       return 'A cherry-pick is in progress. Committing finishes it with the staged result.';
     case 'revert':
       return 'A revert is in progress. Committing finishes it with the staged result.';
     case 'rebase':
-      return 'A rebase is in progress. Continue or abort it from Git until rebase support arrives (P07).';
+      return 'A rebase is in progress. Resolve and stage the files, then Continue or Abort from Recovery.';
     case null:
       return undefined;
   }
@@ -248,11 +250,13 @@ export function CommitComposer({
       return 'Configure user.name and user.email before committing.';
     }
     if (conflictedCount > 0) return 'Resolve the conflicted files before committing.';
-    if (!subject.trim() && !body.trim()) return 'Enter a commit message.';
+    if (!subject.trim()) return 'Enter a commit subject.';
+    if (value.pendingOperation === 'rebase')
+      return 'Continue the rebase from Recovery after staging the resolution.';
     if (amend) return value.amend ? undefined : (value.amendBlockedReason ?? 'There is no commit to amend.');
     if (stagedCount === 0 && !value.pendingOperation) return 'Stage at least one change to commit.';
     return undefined;
-  }, [amend, body, busy, conflictedCount, context.error, stagedCount, subject, value]);
+  }, [amend, busy, conflictedCount, context.error, stagedCount, subject, value]);
 
   // Count code points so an emoji or accented character is one character, as a reader would count it.
   const remaining = subjectLengthGuide - [...subject].length;
@@ -260,9 +264,7 @@ export function CommitComposer({
   const commitLabel = committing
     ? 'Committing…'
     : amend
-      ? stagedCount > 0
-        ? `Amend ${fileCountLabel(stagedCount)}`
-        : 'Amend Commit'
+      ? 'Amend Last Commit'
       : stagedCount > 0
         ? `Commit ${fileCountLabel(stagedCount)}`
         : 'Commit';

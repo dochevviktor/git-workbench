@@ -6,6 +6,7 @@ import type {
 } from '../../common/ipc/contracts';
 import { repositoryRemoteActionResultSchema } from '../../common/ipc/contracts';
 import { GitCommandError, redactUrlCredentials } from '../git/runner';
+import { isAbsolute } from 'node:path';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 
 const remoteReadTimeoutMs = 10_000;
@@ -164,14 +165,29 @@ function remoteMessage(action: RepositoryRemoteAction): string {
  * is a later phase, so this slice declines to configure one rather than quietly gaining that power.
  */
 export function isAllowedRemoteUrl(url: string): boolean {
-  if (/^\s*ext::/iu.test(url) || url.startsWith('-')) return false;
+  if (!url.trim() || url.startsWith('-') || /[\r\n\0]/u.test(url)) return false;
+  if (/^[A-Za-z]:[\\/]/u.test(url)) return true;
   try {
     const parsed = new URL(url);
+    if (!['http:', 'https:', 'ssh:', 'git:', 'file:'].includes(parsed.protocol)) return false;
     if (parsed.protocol === 'ssh:' && !parsed.password && !parsed.search) return true;
   } catch {
-    /* SCP and local paths have no URL authority. */
+    // SCP/local paths are valid; arbitrary remote-helper transports would execute local programs.
+    if (/^[^/\\]+::/u.test(url)) return false;
   }
   return redactUrlCredentials(url) === url;
+}
+
+/** Standalone Clone/Test Connection have no repository base for interpreting a relative local path. */
+export function isStandaloneRepositoryUrl(url: string): boolean {
+  if (!isAllowedRemoteUrl(url)) return false;
+  if (isAbsolute(url) || /^[A-Za-z]:[\\/]/u.test(url)) return true;
+  if (/^[^\s/:]+@[^\s/:]+:[^:]/u.test(url)) return true;
+  try {
+    return ['http:', 'https:', 'ssh:', 'git:', 'file:'].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
 }
 
 async function isValidRemoteName(runner: RemoteRunner, cwd: string, name: string): Promise<boolean> {

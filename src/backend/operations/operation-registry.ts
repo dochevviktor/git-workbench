@@ -191,7 +191,7 @@ export class OperationRegistry {
     if (entry.operation.status !== 'running') return entry.operation;
     entry.cancelled = true;
     entry.controller.abort();
-    this.update(entry, { message: 'Cancelling…' });
+    this.update(entry, { message: 'Cancelling…', cancelRequested: true });
     return entry.operation;
   }
 

@@ -19,6 +19,8 @@ export type RevisionInspection = ReturnType<typeof useRevisionInspection>;
 
 /** Loads committed revision data with guards for fast commit, directory, and file selection changes. */
 export function useRevisionInspection(repositoryId: string | undefined, commitId: string | undefined) {
+  const key = `${repositoryId}:${commitId}`;
+  const [owner, setOwner] = useState(key);
   const [changes, setChanges] = useState<RepositoryCommitChanges>();
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string>();
@@ -33,6 +35,7 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
   const blobRequestGeneration = useRef(0);
 
   useEffect(() => {
+    setOwner(key);
     revisionGeneration.current += 1;
     changesRequestGeneration.current += 1;
     blobRequestGeneration.current += 1;
@@ -44,7 +47,12 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
     setBlobPath(undefined);
     setBlobLoading(false);
     setBlobError(undefined);
-  }, [commitId, repositoryId]);
+    return () => {
+      revisionGeneration.current += 1;
+      changesRequestGeneration.current += 1;
+      blobRequestGeneration.current += 1;
+    };
+  }, [key]);
 
   const loadChanges = useCallback(async () => {
     if (!repositoryId || !commitId) return;
@@ -123,14 +131,14 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
   );
 
   return {
-    changes,
+    changes: owner === key ? changes : undefined,
     changesLoading,
     changesError,
     loadChanges,
-    directories,
+    directories: owner === key ? directories : new Map<string, RevisionDirectory>(),
     loadDirectory,
-    blob,
-    blobPath,
+    blob: owner === key ? blob : undefined,
+    blobPath: owner === key ? blobPath : undefined,
     blobLoading,
     blobError,
     loadBlob,

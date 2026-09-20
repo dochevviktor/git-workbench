@@ -277,6 +277,7 @@ export function MenuPopup({
               id={`${idPrefix}-${index}`}
               data-menu-index={index}
               role={role}
+              aria-label={entry.label}
               className={classes.join(' ')}
               aria-checked={entry.checkable ? Boolean(entry.checked) : undefined}
               aria-disabled={entry.disabled ? true : undefined}

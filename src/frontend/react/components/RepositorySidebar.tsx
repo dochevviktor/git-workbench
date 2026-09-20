@@ -28,6 +28,7 @@ export type RepositoryView = 'history' | 'changes';
 
 interface RepositorySidebarProps {
   readonly repository: RepositorySummary;
+  readonly visibleChangeCount?: number | undefined;
   readonly view: RepositoryView;
   readonly references: readonly RepositoryHistoryReference[];
   /** Branch details from the reference read, which carry the tracking counts and worktree state. */
@@ -37,7 +38,10 @@ interface RepositorySidebarProps {
   readonly reveal: HistoryRevealRequest | undefined;
   readonly historyFiltered: boolean;
   readonly onRevealCommit: (commitId: string) => void;
+  readonly onSearchMatchesChanged?: ((ids: readonly string[], query: string) => void) | undefined;
   readonly onReferenceSelect: (reference: RepositoryHistoryReference) => void;
+  readonly onReferenceActivate?: ((reference: RepositoryHistoryReference) => void) | undefined;
+  readonly onReferenceRename?: ((reference: RepositoryHistoryReference) => void) | undefined;
   readonly onReferenceDragStart: (
     reference: RepositoryHistoryReference,
     event: ReactDragEvent<HTMLElement>,
@@ -92,6 +96,7 @@ function expandedByDefault(key: string, level: number): boolean {
 
 export function RepositorySidebar({
   repository,
+  visibleChangeCount,
   view,
   references,
   branches,
@@ -100,7 +105,10 @@ export function RepositorySidebar({
   reveal,
   historyFiltered,
   onRevealCommit,
+  onSearchMatchesChanged,
   onReferenceSelect,
+  onReferenceActivate,
+  onReferenceRename,
   onReferenceDragStart,
   onReferenceDrop,
   onReferenceContextMenu,
@@ -212,11 +220,28 @@ export function RepositorySidebar({
     });
   };
 
-  const changedFiles = repository.workingTree.changedFileCount;
+  const changedFiles = visibleChangeCount ?? repository.workingTree.changedFileCount;
   const noMatches = filtering && Object.values(sections.counts).every((count) => count === 0);
 
   return (
-    <aside className="sidebar" aria-label={`${repository.name} navigation`}>
+    <aside
+      className="sidebar"
+      aria-label={`${repository.name} navigation`}
+      onKeyDown={(event) => {
+        if (
+          event.key !== 'F2' ||
+          mode !== 'references' ||
+          !(event.target instanceof Element) ||
+          !event.target.closest('[role="tree"]')
+        )
+          return;
+        const reference = activeKey ? referencesByKey.get(activeKey) : undefined;
+        if (reference?.kind === 'branch' && onReferenceRename) {
+          event.preventDefault();
+          onReferenceRename(reference);
+        }
+      }}
+    >
       <div className="sidebar-header">
         <strong title={repository.path}>{repository.name}</strong>
         <button
@@ -239,7 +264,10 @@ export function RepositorySidebar({
           onClick={() => onViewChange('changes')}
         >
           <ChangesIcon size={16} />
-          <span>Local Changes{!repository.bare && changedFiles !== null ? ` (${changedFiles})` : ''}</span>
+          <span>
+            Local Changes
+            {!repository.bare && changedFiles !== null && changedFiles > 0 ? ` (${changedFiles})` : ''}
+          </span>
         </button>
         <button
           type="button"
@@ -275,6 +303,7 @@ export function RepositorySidebar({
       </div>
       {mode === 'search' ? (
         <CommitSearchPanel
+          onMatchesChanged={onSearchMatchesChanged}
           repositoryId={repository.id}
           reveal={reveal}
           historyFiltered={historyFiltered}
@@ -313,7 +342,7 @@ export function RepositorySidebar({
             }}
             onActivate={(item) => {
               const reference = referencesByKey.get(item.key);
-              if (reference) onReferenceSelect(reference);
+              if (reference) (onReferenceActivate ?? onReferenceSelect)(reference);
             }}
             onContextMenu={(item, event) => {
               const reference = referencesByKey.get(item.key);

@@ -54,7 +54,7 @@ export class RevisionPathError extends Error {
   }
 }
 
-/** Reads the committed paths changed by one revision, without inspecting the working tree. */
+/** Reads committed changes against the first parent (or empty tree), matching the commit diff view. */
 export async function readCommitChanges(
   runner: RevisionRunner,
   input: ReadRevisionInput,
@@ -71,7 +71,7 @@ export async function readCommitChanges(
       '-r',
       '-M',
       '-C',
-      '-m',
+      '--diff-merges=first-parent',
       '-z',
       input.commitId,
       '--',

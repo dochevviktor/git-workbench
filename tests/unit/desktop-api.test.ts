@@ -26,6 +26,36 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates repository activation events and removes exactly its subscription', () => {
+    const { api, emitter } = fixture();
+    const channel = events.repositoryActivated.channel;
+    const listener = vi.fn();
+    const keep = vi.fn();
+    const stop = api.repository.onActivated(listener);
+    const stopKeep = api.repository.onActivated(keep);
+    emitter.emit(channel, {}, { path: '/invalid-only' });
+    expect(listener).not.toHaveBeenCalled();
+    const repository = {
+      id: `repo-${'c'.repeat(64)}`,
+      name: 'repository',
+      path: '/repository',
+      worktreePath: '/repository',
+      gitDir: '/repository/.git',
+      commonDir: '/repository/.git',
+      bare: false,
+      head: { state: 'unborn', name: 'main', commit: null },
+      workingTree: { state: 'clean', changedFileCount: 0 },
+    };
+    const valid = events.repositoryActivated.payload.safeParse(repository);
+    expect(valid.success).toBe(true);
+    emitter.emit(channel, {}, repository);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(repository);
+    stop();
+    stop();
+    expect(emitter.listenerCount(channel)).toBe(1);
+    stopKeep();
+    expect(emitter.listenerCount(channel)).toBe(0);
+  });
   it('uses a named channel and preserves a structured result', async () => {
     const { api, invoke } = fixture();
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
@@ -553,7 +583,12 @@ describe('preload capability API', () => {
 
   it('validates tab preferences and uses named tab channels', async () => {
     const { api, invoke } = fixture();
-    const preferences = { tabOrientation: 'horizontal', activeRepositoryId: null } as const;
+    const preferences = {
+      tabOrientation: 'horizontal',
+      activeRepositoryId: null,
+      repositoryListVisible: false,
+      recentlyClosed: [],
+    } as const;
     invoke.mockResolvedValueOnce({ ok: true, value: preferences });
     await expect(api.repository.setTabOrientation('horizontal')).resolves.toEqual({
       ok: true,

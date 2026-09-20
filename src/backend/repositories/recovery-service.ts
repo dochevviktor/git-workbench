@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, rename, writeFile } from 'node:fs/promises';
+import { lstat, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type {
@@ -75,15 +75,22 @@ export async function readRecovery(
   runner: RecoveryRunner,
   context: Context,
 ): Promise<RepositoryRecoveryState> {
-  const [copies, pendingOperation] = await Promise.all([
+  const [copies, pendingOperation, changes] = await Promise.all([
     load(runner, context),
     detectPendingOperation(context.gitDir),
+    readWorkingChanges(runner, {
+      repositoryId: context.id,
+      cwd: context.cwd,
+      includeUntracked: false,
+      includeIgnored: false,
+    }),
   ]);
   const anchors = await Promise.all(
     [
       'HEAD',
       'ORIG_HEAD',
       'MERGE_HEAD',
+      'SQUASH_MSG',
       'REBASE_HEAD',
       'CHERRY_PICK_HEAD',
       'REVERT_HEAD',
@@ -112,6 +119,7 @@ export async function readRecovery(
   return {
     copies,
     pendingOperation,
+    conflictedCount: changes.counts.conflicted,
     snapshot: createHash('sha256')
       .update(JSON.stringify([copies, pendingOperation, anchors]))
       .digest('hex'),
@@ -234,13 +242,42 @@ export async function withLocalChanges<T>(
   if (signal?.aborted) throw new GitCancelledError();
   const result = await work();
   if (signal?.aborted) throw new GitCancelledError();
-  if (policy === 'stash') await reapply(runner, context, saved);
+  // A no-commit/squash merge deliberately pauses. Reapply only after Commit/Continue/Abort.
+  if (policy === 'stash' && !(await detectPendingOperation(context.gitDir)))
+    await reapply(runner, context, saved);
+  else if (policy === 'stash') return result;
   else
     await save(
       context,
       copies.map((item) => (item.id === copy.id ? { ...item, pending: false } : item)),
     );
   return result;
+}
+
+/** Preserve tracked work without moving HEAD, index entries, or working files before a discard. */
+export async function saveDiscardRecovery(
+  runner: RecoveryRunner,
+  context: Context,
+  title: string,
+): Promise<void> {
+  const copies = await load(runner, context);
+  if (copies.length >= 100)
+    throw new ExpectedBackendError(
+      'OPERATION_FAILED',
+      'Dismiss old recovery entries before discarding more changes.',
+    );
+  const id = randomUUID();
+  const commitId = (
+    await runner.run(['stash', 'create', `Git Workbench recovery ${id}: ${title}`], options(context.cwd))
+  ).stdout.trim();
+  if (!/^[a-f0-9]{40,64}$/u.test(commitId))
+    throw new ExpectedBackendError(
+      'OPERATION_FAILED',
+      'Git could not save a recovery copy; no changes were discarded.',
+    );
+  await runner.run(['update-ref', recoveryRef(id), commitId], options(context.cwd));
+  copies.push({ id, commitId, title, createdAt: new Date().toISOString(), pending: false });
+  await save(context, copies);
 }
 
 async function reapply(
@@ -291,11 +328,26 @@ export async function recover(
         'OPERATION_FAILED',
         `Git does not support skipping a ${state.pendingOperation} from Recovery.`,
       );
-    await runner.run([state.pendingOperation, `--${request.action}`], {
+    if (request.action === 'continue' && (state.conflictedCount ?? 0) > 0)
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Resolve and stage all conflicted files before continuing.',
+      );
+    const args =
+      state.pendingOperation === 'squash'
+        ? request.action === 'abort'
+          ? ['reset', '--merge', 'HEAD']
+          : ['commit', '--no-edit']
+        : [state.pendingOperation, `--${request.action}`];
+    await runner.run(args, {
       ...options(context.cwd),
       signal,
       env: { GIT_EDITOR: ':', GIT_SEQUENCE_EDITOR: ':' },
     });
+    if (state.pendingOperation === 'squash' && request.action === 'abort')
+      await unlink(join(context.gitDir, 'SQUASH_MSG')).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
     if (!(await detectPendingOperation(context.gitDir))) {
       const pending = state.copies.find((item) => item.pending);
       if (pending) await reapply(runner, context, pending);

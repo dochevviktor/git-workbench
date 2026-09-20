@@ -6,7 +6,7 @@ interface WorkingChangesState {
   readonly value: RepositoryWorkingChanges | undefined;
   readonly loading: boolean;
   readonly error: string | undefined;
-  readonly refresh: () => void;
+  readonly refresh: () => Promise<void>;
 }
 
 function actionError(reason: unknown): string {
@@ -75,9 +75,7 @@ export function useRepositoryWorkingChanges(
     };
   }, [load]);
 
-  const refresh = useCallback(() => {
-    void load();
-  }, [load]);
+  const refresh = useCallback(() => load(), [load]);
 
   return { value, loading, error, refresh };
 }

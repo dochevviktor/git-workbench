@@ -255,7 +255,7 @@ test('F15 saves a selected working file as a named stash from its context menu',
     const dialog = page.getByTestId('stash-dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByRole('textbox', { name: 'Message', exact: true }).fill('selected from UI');
-    await dialog.getByRole('button', { name: 'Stash', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save Stash', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect.poll(() => readFile(join(cwd, 'selected.txt'), 'utf8')).toBe('base selected\n');
     expect(await readFile(join(cwd, 'other.txt'), 'utf8')).toBe('other change\n');
@@ -382,13 +382,13 @@ test('a checkout hook outlives the control deadline without overwriting another 
     await page.getByRole('treeitem', { name: 'topic', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: "Checkout 'topic'", exact: true }).click();
     const dialog = page.getByTestId('reference-dialog');
-    await dialog.getByTestId('reference-dialog-submit').click();
+    // Captured clean checkout starts immediately; only dirty or detached checkout needs a dialog.
+    await expect(dialog).toHaveCount(0);
     await expect.poll(() => readFile(entered, 'utf8').catch(() => '')).toBe('entered');
     // This intentionally crosses the old 15-second preload deadline while the real hook is still running.
     await page.waitForTimeout(16000);
-    await expect(dialog.getByTestId('reference-dialog-submit')).toBeDisabled();
+    await expect(page.getByTestId('toolbar-progress')).toBeVisible();
     await expect(page.getByText('The application did not respond in time.', { exact: true })).toHaveCount(0);
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('tab', { name: /^second, /u }).click();
     await expect(page.getByTestId('history-commit').first()).toContainText('second fixture');
     await page.getByRole('button', { name: 'Branch', exact: true }).click();

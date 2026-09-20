@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import type {
+  RepositoryDiscardPreview,
   RepositoryWorkingChangeAction,
   RepositoryWorkingChangeSelection,
   RepositoryWorkingChangeTarget,
@@ -8,6 +10,7 @@ import type { DiffRunner } from './diff-service';
 import { readWorkingChanges } from './working-tree-service';
 import { GitCommandError } from '../git/runner';
 import type { GitRunOptions } from '../git/runner';
+import { saveDiscardRecovery } from './recovery-service';
 
 const stagingTimeoutMs = 20_000;
 const stagingOutputLimit = 512 * 1024;
@@ -100,6 +103,11 @@ export async function applyWorkingChange(
     cwd: input.cwd,
     target: { kind: 'working' as const, ...target },
     whitespace: 'normal',
+    options: {
+      contextLines: input.selection.contextLines,
+      entireFile: input.selection.entireFile,
+      loadLarge: true,
+    },
   });
   if (!current.snapshot || current.snapshot !== input.snapshot) throw new StaleWorkingSnapshotError();
   if (current.state !== 'text') {
@@ -112,7 +120,92 @@ export async function applyWorkingChange(
   if (Buffer.byteLength(patch, 'utf8') > maximumPatchBytes) {
     throw new WorkingChangeActionError('The selected patch is too large to apply safely.');
   }
-  await applyPatch(runner, input.cwd, input.action, patch);
+  if (input.action === 'discard') {
+    await saveBeforeDiscard(runner, input, 'Discard selected lines');
+    const checked = await readRepositoryDiff(runner, {
+      repositoryId: input.repositoryId,
+      cwd: input.cwd,
+      target: { kind: 'working', ...target },
+      whitespace: 'normal',
+    });
+    if (checked.snapshot !== input.snapshot) throw new StaleWorkingSnapshotError();
+  }
+  await applyPatch(
+    runner,
+    input.cwd,
+    input.action,
+    patch,
+    input.selection.contextLines === 0 && !input.selection.entireFile,
+  );
+}
+
+/** Read-only, exact-content preview. The shared snapshot guards every file in a multi-file discard. */
+export async function previewDiscard(
+  runner: StagingRunner,
+  input: Pick<ApplyWorkingChangeInput, 'repositoryId' | 'cwd' | 'targets'> & {
+    readonly selection?: RepositoryWorkingChangeSelection | undefined;
+  },
+): Promise<RepositoryDiscardPreview> {
+  if (input.targets.length === 0 || input.targets.length > 100)
+    throw new WorkingChangeActionError('Select between 1 and 100 tracked files.');
+  const files = [];
+  let totalBytes = 0;
+  for (const target of input.targets) {
+    validateAction('discard', target, { kind: 'file' });
+    const selection = input.selection;
+    const diff = await readRepositoryDiff(runner, {
+      repositoryId: input.repositoryId,
+      cwd: input.cwd,
+      target: { kind: 'working', ...target },
+      whitespace: 'normal',
+      options: {
+        loadLarge: true,
+        ...(selection && selection.kind !== 'file'
+          ? { contextLines: selection.contextLines, entireFile: selection.entireFile }
+          : {}),
+      },
+    });
+    if (diff.state === 'unavailable' || diff.state === 'too-large')
+      throw new WorkingChangeActionError(diff.message ?? 'This file cannot be previewed safely.');
+    totalBytes += Buffer.byteLength(diff.content, 'utf8');
+    if (totalBytes > maximumPatchBytes)
+      throw new WorkingChangeActionError(
+        'The selected files exceed the 8 MiB discard preview limit. Select fewer files.',
+      );
+    files.push(
+      selection && selection.kind !== 'file'
+        ? { ...diff, content: selectPatch(diff.content, selection) }
+        : diff,
+    );
+  }
+  return {
+    files,
+    snapshot:
+      input.selection && input.selection.kind !== 'file'
+        ? files[0]!.snapshot!
+        : createHash('sha256')
+            .update(JSON.stringify(files.map((file) => [file.target, file.snapshot])))
+            .digest('hex'),
+  };
+}
+
+async function saveBeforeDiscard(
+  runner: StagingRunner,
+  input: ApplyWorkingChangeInput,
+  title: string,
+): Promise<void> {
+  const gitDir = (
+    await runner.run(['rev-parse', '--absolute-git-dir'], {
+      cwd: input.cwd,
+      timeoutMs: stagingTimeoutMs,
+      maxOutputBytes: 32768,
+    })
+  ).stdout.trim();
+  await saveDiscardRecovery(
+    runner,
+    { id: input.repositoryId, cwd: input.cwd, gitDir, head: { state: 'unknown', name: null, commit: null } },
+    title,
+  );
 }
 
 /** Builds a Git patch containing one complete hunk or selected changed lines. */
@@ -203,9 +296,21 @@ function validateAction(
 
 async function applyFileTargets(runner: StagingRunner, input: ApplyWorkingChangeInput): Promise<void> {
   if (input.action === 'discard') {
-    throw new WorkingChangeActionError(
-      'File discard is not enabled yet; use a hunk or line discard with a preview.',
+    const preview = await previewDiscard(runner, input);
+    if (!input.snapshot || preview.snapshot !== input.snapshot) throw new StaleWorkingSnapshotError();
+    await saveBeforeDiscard(
+      runner,
+      input,
+      `Discard ${input.targets.length} selected file${input.targets.length === 1 ? '' : 's'}`,
     );
+    // A concurrent external edit during backup must not be overwritten.
+    if ((await previewDiscard(runner, input)).snapshot !== input.snapshot)
+      throw new StaleWorkingSnapshotError();
+    const paths = [
+      ...new Set(input.targets.flatMap((target) => uniquePaths(target.previousPath, target.path))),
+    ];
+    await runMutation(runner, input.cwd, ['restore', '--worktree', '--', ...paths]);
+    return;
   }
 
   await ensureTargetsCurrent(runner, input);
@@ -290,8 +395,10 @@ async function applyPatch(
   cwd: string,
   action: RepositoryWorkingChangeAction,
   patch: string,
+  zeroContext = false,
 ): Promise<void> {
   const args = ['apply', '--recount', '--whitespace=nowarn'];
+  if (zeroContext) args.push('--unidiff-zero');
   if (action === 'stage' || action === 'unstage') args.push('--cached');
   if (action === 'unstage' || action === 'discard') args.push('--reverse');
   await runMutation(runner, cwd, args, patch);

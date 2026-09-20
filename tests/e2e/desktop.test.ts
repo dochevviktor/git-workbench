@@ -50,7 +50,7 @@ async function chooseMenu(
   page: Page,
   menu: string,
   item: string,
-  role: 'menuitem' | 'menuitemradio' = 'menuitem',
+  role: 'menuitem' | 'menuitemradio' | 'menuitemcheckbox' = 'menuitem',
 ) {
   await page.getByRole('menubar').getByRole('menuitem', { name: menu, exact: true }).click();
   await page.getByRole(role, { name: item, exact: true }).click();
@@ -370,7 +370,8 @@ test('production build loads its isolated preload and renderer', async () => {
     ).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByTestId('working-unstaged-action')).toHaveText('Stage All');
+    // The captured post-action selection remains in the source pane, so this is a selected-file action.
+    await expect(page.getByTestId('working-unstaged-action')).toHaveText('Stage');
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'multi-one.txt' }).click();
     await unstagedFiles
       .getByTestId('working-change')
@@ -390,6 +391,8 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(stagedFiles.getByTestId('working-change').filter({ hasText: 'multi-two.txt' })).toHaveCount(
       0,
     );
+    await stagedFiles.getByTestId('working-change').first().click();
+    await page.keyboard.press('ControlOrMeta+a');
     await page.getByTestId('working-staged-action').click();
     await expect(stagedFiles.getByTestId('working-change')).toHaveCount(0);
 
@@ -423,6 +426,10 @@ test('production build loads its isolated preload and renderer', async () => {
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' }).click();
     await expect(page.getByTestId('diff-hunk-discard')).toHaveCount(2);
     await page.getByTestId('diff-hunk-discard').first().click();
+    await page
+      .getByRole('dialog', { name: 'Discard changes' })
+      .getByRole('button', { name: 'Discard', exact: true })
+      .click();
     await expect
       .poll(() => readFile(join(fixtureRepository, 'discard.txt'), { encoding: 'utf8' }))
       .toBe(discardBase.replace('line-14', 'kept-14'));
@@ -514,7 +521,7 @@ test('production build loads its isolated preload and renderer', async () => {
     ).toBe('');
     await composer.getByTestId('commit-subject').fill('Amended from the composer');
     // The button counts what the amended commit would contain, not just what is staged now.
-    await expect(composer.getByTestId('commit-submit')).toHaveText('Amend 1 File');
+    await expect(composer.getByTestId('commit-submit')).toHaveText('Amend Last Commit');
     await composer.getByTestId('commit-submit').click();
     await expect
       .poll(async () =>
@@ -583,6 +590,8 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('menu', { name: 'Branch' }).getByRole('menuitem', { name: 'New Branch…' }).click();
     await expect(referenceDialog).toBeVisible();
     await referenceDialog.getByTestId('reference-name').fill('e2e-branch');
+    await expect(referenceDialog.getByTestId('reference-checkout')).not.toBeChecked();
+    await referenceDialog.getByTestId('reference-checkout').check();
     await referenceDialog.getByTestId('reference-dialog-submit').click();
     await expect(referenceDialog).toHaveCount(0);
     await expect.poll(currentBranch).toBe('e2e-branch');
@@ -601,7 +610,7 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(referenceDialog).toHaveCount(0);
     expect(await branchNames()).not.toContain('e2e-branch-duplicate');
 
-    // A tag comes from the commit menu; a message makes it an annotated tag object.
+    // A tag comes from the commit menu; this route creates annotated objects with or without a message.
     await page.getByTestId('history-commit').first().click({ button: 'right' });
     await page
       .getByRole('menu', { name: /^Commit / })
@@ -769,9 +778,11 @@ test('production build loads its isolated preload and renderer', async () => {
     ).toBeVisible();
     await expect(page.locator('.workspace-tabs.horizontal')).toBeVisible();
     if (platform !== 'darwin') {
-      await chooseMenu(page, 'View', 'Vertical Tabs', 'menuitemradio');
+      await chooseMenu(page, 'View', 'Show Repository List', 'menuitemcheckbox');
       await expect(page.locator('.workspace-tabs.vertical')).toBeVisible();
-      await chooseMenu(page, 'View', 'Horizontal Tabs', 'menuitemradio');
+      await expect(page.locator('.workspace-tabs.horizontal')).toBeVisible();
+      await chooseMenu(page, 'View', 'Show Repository List', 'menuitemcheckbox');
+      await expect(page.locator('.workspace-tabs.vertical')).toHaveCount(0);
       await expect(page.locator('.workspace-tabs.horizontal')).toBeVisible();
     }
     await page.getByRole('tab', { name: /second/u }).click({ button: 'right' });

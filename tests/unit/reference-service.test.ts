@@ -412,7 +412,7 @@ describe('checkout actions', () => {
 });
 
 describe('tag actions', () => {
-  it('creates a lightweight tag and an annotated tag with its message', async () => {
+  it('creates annotated tags with blank and multiline messages, and exposes tag details', async () => {
     const fixture = await fixtureRepository();
     const commit = await output(fixture, ['rev-parse', 'HEAD']);
     const start = { kind: 'commit', commitId: commit! } as const;
@@ -420,7 +420,9 @@ describe('tag actions', () => {
     expect(
       await apply(fixture, { kind: 'create-tag', name: 'light', startPoint: start, message: '' }),
     ).toMatchObject({ status: 'applied' });
-    expect(await output(fixture, ['cat-file', '-t', 'refs/tags/light'])).toBe('commit');
+    expect(await output(fixture, ['cat-file', '-t', 'refs/tags/light'])).toBe('tag');
+    expect(await output(fixture, ['rev-parse', 'refs/tags/light^{commit}'])).toBe(commit);
+    expect(await output(fixture, ['for-each-ref', '--format=%(contents)', 'refs/tags/light'])).toBeNull();
 
     expect(
       await apply(fixture, {
@@ -436,6 +438,58 @@ describe('tag actions', () => {
       'release notes\n# keeps this line\n',
     );
     expect(await output(fixture, ['rev-list', '-1', 'refs/tags/annotated'])).toBe(commit);
+    const details = (await context(fixture)).tags.find((tag) => tag.name === 'annotated');
+    expect(details).toMatchObject({
+      tagger: 'Reference Author <reference@example.test>',
+      message: 'release notes\n# keeps this line\n',
+    });
+    expect(details?.taggedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+  });
+
+  it('pushes a created or existing tag and deletes selected remote copies', async () => {
+    const fixture = await fixtureRepository();
+    const remote = await addRemote(fixture);
+    const commit = (await output(fixture, ['rev-parse', 'HEAD']))!;
+    expect(
+      await apply(fixture, {
+        kind: 'create-tag',
+        name: 'published',
+        startPoint: { kind: 'commit', commitId: commit },
+        message: '',
+        pushRemote: 'origin',
+      }),
+    ).toMatchObject({ status: 'applied' });
+    expect(
+      (await fixture.git.run(['cat-file', '-t', 'refs/tags/published'], { cwd: remote })).stdout.trim(),
+    ).toBe('tag');
+    expect(
+      await apply(fixture, { kind: 'push-tag', fullName: 'refs/tags/published', remote: 'origin' }),
+    ).toMatchObject({ status: 'applied' });
+    expect(
+      await apply(fixture, { kind: 'delete-tag', fullName: 'refs/tags/published', remoteNames: ['origin'] }),
+    ).toMatchObject({ status: 'applied' });
+    expect(await output(fixture, ['tag', '--list'])).toBeNull();
+    expect((await fixture.git.run(['tag', '--list'], { cwd: remote })).stdout.trim()).toBe('');
+  });
+
+  it('reports a partial tag push failure and retains the created local annotated tag', async () => {
+    const fixture = await fixtureRepository();
+    await fixture.git.run(['remote', 'add', 'missing', join(fixture.root, 'missing.git')], {
+      cwd: fixture.worktree,
+    });
+    const commit = (await output(fixture, ['rev-parse', 'HEAD']))!;
+    const result = await apply(fixture, {
+      kind: 'create-tag',
+      name: 'retained',
+      startPoint: { kind: 'commit', commitId: commit },
+      message: '',
+      pushRemote: 'missing',
+    });
+    expect(result).toMatchObject({
+      status: 'blocked',
+      message: expect.stringContaining("Created annotated tag 'retained'"),
+    });
+    expect(await output(fixture, ['cat-file', '-t', 'refs/tags/retained'])).toBe('tag');
   });
 
   it('refuses a duplicate tag name and deletes an existing tag', async () => {

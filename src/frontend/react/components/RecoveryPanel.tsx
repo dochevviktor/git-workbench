@@ -70,12 +70,17 @@ export function RecoveryPanel({
       setRunning(false);
     }
   };
-  if (!error && !state?.pendingOperation && !state?.copies.length) return null;
+  if (!error && !state?.pendingOperation && !state?.copies.length && !state?.conflictedCount) return null;
   const disabled = running || busy;
   return (
     <details
       className="recovery-panel"
-      open={Boolean(error || state?.pendingOperation || state?.copies.some((copy) => copy.pending))}
+      open={Boolean(
+        error ||
+        state?.pendingOperation ||
+        state?.conflictedCount ||
+        state?.copies.some((copy) => copy.pending),
+      )}
       data-testid="recovery-panel"
     >
       <summary>Recovery{state?.pendingOperation ? ` — ${state.pendingOperation} in progress` : ''}</summary>
@@ -84,11 +89,20 @@ export function RecoveryPanel({
         {state?.pendingOperation && (
           <div>
             <p>
-              Resolve conflicted files and stage them in Local Changes, then continue. Abort returns to the
-              state before this Git operation.
+              {state.pendingOperation === 'squash'
+                ? 'Squashing commits. Review the staged changes and generated message in Local Changes, then choose Squash.'
+                : state.conflictedCount
+                  ? `Resolve ${state.conflictedCount} conflicted file${state.conflictedCount === 1 ? '' : 's'} and stage them in Local Changes, then continue ${state.pendingOperation}.`
+                  : `All conflicts fixed. Continue ${state.pendingOperation} or review the staged changes before completing it.`}
             </p>
-            <button className="button button-small" disabled={disabled} onClick={() => void run('continue')}>
-              Continue {state.pendingOperation}
+            <button
+              className="button button-small"
+              disabled={disabled || Boolean(state.conflictedCount)}
+              onClick={() => void run('continue')}
+            >
+              {state.pendingOperation === 'squash'
+                ? 'Squash with generated message'
+                : `Continue ${state.pendingOperation}`}
             </button>
             {state.pendingOperation === 'rebase' && (
               <button className="button button-small" disabled={disabled} onClick={() => void run('skip')}>
@@ -104,7 +118,11 @@ export function RecoveryPanel({
             </button>
             {confirmAbort && (
               <span>
-                Discard the current conflict-resolution work?{' '}
+                {state.pendingOperation === 'rebase'
+                  ? 'Undo this rebase and return to the original branch? Current resolution work will be discarded.'
+                  : state.pendingOperation === 'squash'
+                    ? 'Discard the staged squash result? Unrelated unstaged changes are preserved when Git can safely retain them.'
+                    : `Abort this ${state.pendingOperation} and discard its resolution work?`}{' '}
                 <button
                   className="button danger"
                   disabled={disabled}
@@ -118,6 +136,12 @@ export function RecoveryPanel({
               </span>
             )}
           </div>
+        )}
+        {!state?.pendingOperation && Boolean(state?.conflictedCount) && (
+          <p role="status">
+            Resolve and stage {state?.conflictedCount} unmerged file{state?.conflictedCount === 1 ? '' : 's'}{' '}
+            in Local Changes. Any stash whose application failed remains in the stash list.
+          </p>
         )}
         {state?.copies.map((copy) => (
           <div className="recovery-copy" key={copy.id}>
