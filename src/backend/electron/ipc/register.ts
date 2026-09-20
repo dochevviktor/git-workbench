@@ -518,6 +518,22 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.startRepositoryWorktreeOperation, (window, request) =>
       repositoryService.startWorktreeOperation(window.webContents.id, request),
     );
+    register(requests.getRepositorySubmodules, (window, { id }) =>
+      repositoryService.getSubmodules(window.webContents.id, id),
+    );
+    register(requests.startRepositorySubmoduleOperation, (window, request) =>
+      repositoryService.startSubmoduleOperation(window.webContents.id, request),
+    );
+    register(requests.openRepositorySubmodule, async (window, { id, submoduleId }) => {
+      const summary = await repositoryService.openSubmodule(window.webContents.id, id, submoduleId);
+      const entry = windows.get(window.webContents.id);
+      if (!window.isDestroyed() && entry && isTrustedDocument(window.webContents.getURL(), entry.url))
+        window.webContents.send(
+          events.repositoryActivated.channel,
+          events.repositoryActivated.payload.parse(summary),
+        );
+      return summary;
+    });
     register(requests.startRepositoryMergeRebase, (window, request) =>
       repositoryService.startMergeRebase(window.webContents.id, request),
     );

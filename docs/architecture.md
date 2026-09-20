@@ -4,12 +4,14 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, the initial F34 workspace-chrome slice, and the bounded F22 worktree lifecycle slice implemented.
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, the initial F34 workspace-chrome slice, the bounded F22 worktree lifecycle slice, and the bounded F23 submodule lifecycle slice implemented.
 F22 topology reads and create/open/remove/prune operations use backend-issued worktree IDs, common-directory
-serialization, linked-tab sessions, and explicit current/main/occupied/dirty/locked/stale guards. Submodules,
-Git-flow, and the remaining P09 family are still design decisions, not existing code.
+serialization, linked-tab sessions, and explicit current/main/occupied/dirty/locked/stale guards. F23
+submodule reads and actions use backend-issued submodule IDs, parent/index/child gitlink comparison,
+common-directory serialization, dirty-path guards, and backend-resolved child sessions. Git-flow and the
+remaining P09 family are still design decisions, not existing code.
 
-## Catalogue-driven corrections (F01–F21 bounded slices verified, 2026-09-20)
+## Catalogue-driven corrections (F01–F23 bounded slices verified, 2026-09-20)
 
 The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
 target without changing the Electron/TypeScript boundaries. C01–C06 in the
@@ -199,6 +201,14 @@ remove, and prune actions are named domain requests; the backend resolves branch
 paths, serializes mutations by common Git directory, and returns structured dirty/locked/current/
 occupied/stale outcomes through the existing operation registry. The renderer can open a returned path
 only through the normal repository session or a validated worktree location; it never sends Git arguments.
+The bounded F23 slice adds `getSubmodules()`, `startSubmoduleOperation()`, and `openSubmodule()`. Reads
+combine `.gitmodules`, recursive submodule status, parent commit/index gitlinks, and child HEAD/status
+into bounded revision/state DTOs. Add/init/update/sync/remove are named actions with a snapshot guard,
+common-directory serialization, explicit recursive/local-transport choices, exact dirty-child removal
+paths, and operation results that include a fresh context. Child opening resolves the submodule ID in the
+backend and uses the normal repository session with an independent display label; no renderer path or Git
+argument is treated as authority. Nested mutation, missing-object recovery, interrupted updates, and
+submodule conflict continuation remain outside the verified slice.
 The initial F13 slice adds `listRemotes()`, `applyRemoteAction()`, `startNetworkOperation()`,
 `listOperations()`, `cancelOperation()`, and `onOperationChanged()`. A network request is accepted and
 answered with a running operation record rather than its result, because a fetch or a push outlives the
@@ -479,7 +489,9 @@ credential/password dialog or secret store, full conflict-family parity, merge-p
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
 integration, automatic updater or final branding. The bounded F21 slice adds rename-aware file History and
 Blame inspectors; directory/selected-code history, copy traversal, restart persistence, and general
-main-graph Back/Forward remain unimplemented or unverified.
+main-graph Back/Forward remain unimplemented or unverified. The bounded F23 slice adds submodule
+inspection and lifecycle actions; nested mutation, interrupted-update recovery, missing-object recovery,
+and conflict continuation remain unimplemented or unverified.
 Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager

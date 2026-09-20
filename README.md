@@ -29,6 +29,10 @@ single-commit cherry-pick/revert plus Soft/Mixed/Hard reset with Recovery safegu
 bounded lost-commit/reflog history mode with Exit and reviewed recovery through those existing actions.
 F21 adds bounded rename-aware file History and Blame inspectors with historical diffs, line attribution,
 revision selection, and Blame Back/Forward; directory and selected-code variants remain later work.
+F23 adds bounded submodule lifecycle inspection with parent/index/child revision cards, dirty-child
+state, nested sidebar navigation, safe Add/Initialize/Update/Sync/Remove actions, and backend-resolved
+child tabs; interrupted updates, nested mutation, missing-object recovery, and conflict continuation
+remain later work.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history

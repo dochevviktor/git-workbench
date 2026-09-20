@@ -4,6 +4,7 @@ import type {
   RepositoryBranch,
   RepositoryHistoryReference,
   RepositorySummary,
+  RepositorySubmodule,
   RepositoryWorktree,
 } from '../../../common/ipc/contracts';
 import type { HistoryRevealRequest } from '../hooks/use-repository-history';
@@ -19,6 +20,7 @@ import {
   SearchIcon,
   SettingsIcon,
   StashItemIcon,
+  SubmoduleIcon,
   TagIcon,
 } from './Icons';
 import { CommitSearchPanel } from './CommitSearchPanel';
@@ -35,8 +37,10 @@ interface RepositorySidebarProps {
   /** Branch details from the reference read, which carry the tracking counts and worktree state. */
   readonly branches: readonly RepositoryBranch[];
   readonly worktrees: readonly RepositoryWorktree[];
+  readonly submodules: readonly RepositorySubmodule[];
   readonly referencesLoading: boolean;
   readonly worktreesLoading: boolean;
+  readonly submodulesLoading: boolean;
   readonly onViewChange: (view: RepositoryView) => void;
   readonly reveal: HistoryRevealRequest | undefined;
   readonly historyFiltered: boolean;
@@ -62,6 +66,11 @@ interface RepositorySidebarProps {
   readonly onWorktreeActivate: (worktree: RepositoryWorktree) => void;
   readonly onWorktreeContextMenu: (worktree: RepositoryWorktree, event: ReactMouseEvent<HTMLElement>) => void;
   readonly onWorktreeSectionContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onSubmoduleActivate: (submodule: RepositorySubmodule) => void;
+  readonly onSubmoduleContextMenu: (
+    submodule: RepositorySubmodule,
+    event: ReactMouseEvent<HTMLElement>,
+  ) => void;
 }
 
 const collapsedByDefault = new Set(['section:tags', 'section:stashes']);
@@ -100,6 +109,33 @@ function expandedByDefault(key: string, level: number): boolean {
   return key.startsWith('remotes/') && level === 2;
 }
 
+interface SubmoduleFolder {
+  readonly folders: Map<string, SubmoduleFolder>;
+  readonly leaves: RepositorySubmodule[];
+}
+
+function emptySubmoduleFolder(): SubmoduleFolder {
+  return { folders: new Map(), leaves: [] };
+}
+
+function submoduleTree(submodules: readonly RepositorySubmodule[]): SubmoduleFolder {
+  const root = emptySubmoduleFolder();
+  for (const submodule of submodules) {
+    const parts = submodule.path.split('/').filter((part) => part.length > 0);
+    let folder = root;
+    for (const part of parts.slice(0, -1)) {
+      let child = folder.folders.get(part);
+      if (!child) {
+        child = emptySubmoduleFolder();
+        folder.folders.set(part, child);
+      }
+      folder = child;
+    }
+    folder.leaves.push(submodule);
+  }
+  return root;
+}
+
 export function RepositorySidebar({
   repository,
   visibleChangeCount,
@@ -107,8 +143,10 @@ export function RepositorySidebar({
   references,
   branches,
   worktrees,
+  submodules,
   referencesLoading,
   worktreesLoading,
+  submodulesLoading,
   onViewChange,
   reveal,
   historyFiltered,
@@ -125,6 +163,8 @@ export function RepositorySidebar({
   onWorktreeActivate,
   onWorktreeContextMenu,
   onWorktreeSectionContextMenu,
+  onSubmoduleActivate,
+  onSubmoduleContextMenu,
 }: RepositorySidebarProps) {
   const [mode, setMode] = useState<'references' | 'search'>('references');
   const [filter, setFilter] = useState('');
@@ -147,11 +187,21 @@ export function RepositorySidebar({
         (worktree.branchName?.toLocaleLowerCase().includes(query) ?? false),
     );
   }, [filter, worktrees]);
+  const visibleSubmodules = useMemo(() => {
+    const query = filter.trim().toLocaleLowerCase();
+    if (!query) return submodules;
+    return submodules.filter(
+      (submodule) =>
+        submodule.path.toLocaleLowerCase().includes(query) ||
+        submodule.name.toLocaleLowerCase().includes(query),
+    );
+  }, [filter, submodules]);
 
-  const { items, referencesByKey, worktreesByKey } = useMemo(() => {
+  const { items, referencesByKey, worktreesByKey, submodulesByKey } = useMemo(() => {
     const result: TreeItem[] = [];
     const byKey = new Map<string, RepositoryHistoryReference>();
     const worktreesByKey = new Map<string, RepositoryWorktree>();
+    const submodulesByKey = new Map<string, RepositorySubmodule>();
     const expanded = (key: string, level: number) =>
       filtering || expandedByDefault(key, level) !== toggled.has(key);
 
@@ -265,15 +315,92 @@ export function RepositorySidebar({
     addSection('tags', 'Tags', sections.tags);
     addSection('stashes', 'Stashes', sections.stashes);
     if (!filtering) {
-      addSection(
-        'submodules',
-        'Submodules',
-        [],
-        'Submodule inspection is not available yet (planned for P09).',
-      );
+      const submoduleSectionKey = 'section:submodules';
+      const submoduleOpen = visibleSubmodules.length > 0 && expanded(submoduleSectionKey, 1);
+      result.push({
+        key: submoduleSectionKey,
+        level: 1,
+        label: 'Submodules',
+        icon: <SubmoduleIcon size={14} />,
+        expandable: visibleSubmodules.length > 0,
+        expanded: submoduleOpen,
+        parentKey: null,
+        className: 'section',
+        toggleOnClick: true,
+        unavailable: submodulesLoading && submodules.length === 0,
+        title: submodulesLoading && submodules.length === 0 ? 'Loading submodules…' : undefined,
+      });
+      if (submoduleOpen) {
+        const tree = submoduleTree(visibleSubmodules);
+        const addSubmoduleNodes = (
+          node: SubmoduleFolder,
+          level: number,
+          parentKey: string,
+          prefix: string,
+        ) => {
+          for (const [name, child] of [...node.folders.entries()].sort(([left], [right]) =>
+            left.localeCompare(right),
+          )) {
+            const key = `submodule-folder:${prefix ? `${prefix}/` : ''}${name}`;
+            const open = expanded(key, level);
+            result.push({
+              key,
+              level,
+              label: name,
+              icon: <FolderIcon size={14} />,
+              expandable: child.folders.size > 0 || child.leaves.length > 0,
+              expanded: open,
+              parentKey,
+              className: 'folder',
+            });
+            if (open) addSubmoduleNodes(child, level + 1, key, prefix ? `${prefix}/${name}` : name);
+          }
+          for (const submodule of [...node.leaves].sort((left, right) =>
+            left.name.localeCompare(right.name),
+          )) {
+            const key = `submodule:${submodule.id}`;
+            submodulesByKey.set(key, submodule);
+            const meta =
+              submodule.state === 'dirty'
+                ? 'Dirty'
+                : submodule.state === 'uninitialized'
+                  ? 'Not initialized'
+                  : submodule.state === 'missing'
+                    ? 'Missing'
+                    : submodule.state === 'detached'
+                      ? 'Detached'
+                      : submodule.state === 'changed'
+                        ? 'Changed'
+                        : undefined;
+            result.push({
+              key,
+              level,
+              label: submodule.name,
+              icon: <SubmoduleIcon size={14} />,
+              meta,
+              expandable: false,
+              expanded: false,
+              parentKey,
+              className: submodule.state === 'dirty' ? 'submodule dirty' : 'submodule',
+              title: submodule.path,
+            });
+          }
+        };
+        addSubmoduleNodes(tree, 2, submoduleSectionKey, '');
+      }
     }
-    return { items: result, referencesByKey: byKey, worktreesByKey };
-  }, [branchesByFullName, filtering, sections, toggled, visibleWorktrees, worktrees.length]);
+    return { items: result, referencesByKey: byKey, worktreesByKey, submodulesByKey };
+  }, [
+    branchesByFullName,
+    filtering,
+    sections,
+    submodules,
+    submodulesLoading,
+    toggled,
+    visibleSubmodules,
+    visibleWorktrees,
+    worktrees.length,
+  ]);
 
   const toggle = (item: TreeItem, expand: boolean) => {
     if (filtering || expand === item.expanded) return;
@@ -289,7 +416,8 @@ export function RepositorySidebar({
   const noMatches =
     filtering &&
     Object.values(sections.counts).every((count) => count === 0) &&
-    visibleWorktrees.length === 0;
+    visibleWorktrees.length === 0 &&
+    visibleSubmodules.length === 0;
 
   return (
     <aside
@@ -407,6 +535,8 @@ export function RepositorySidebar({
             onSelect={(item) => {
               const worktree = worktreesByKey.get(item.key);
               if (worktree) return;
+              const submodule = submodulesByKey.get(item.key);
+              if (submodule) return;
               const reference = referencesByKey.get(item.key);
               if (reference) onReferenceSelect(reference);
             }}
@@ -416,6 +546,11 @@ export function RepositorySidebar({
                 onWorktreeActivate(worktree);
                 return;
               }
+              const submodule = submodulesByKey.get(item.key);
+              if (submodule) {
+                onSubmoduleActivate(submodule);
+                return;
+              }
               const reference = referencesByKey.get(item.key);
               if (reference) (onReferenceActivate ?? onReferenceSelect)(reference);
             }}
@@ -423,6 +558,11 @@ export function RepositorySidebar({
               const worktree = worktreesByKey.get(item.key);
               if (worktree) {
                 onWorktreeContextMenu(worktree, event);
+                return;
+              }
+              const submodule = submodulesByKey.get(item.key);
+              if (submodule) {
+                onSubmoduleContextMenu(submodule, event);
                 return;
               }
               const reference = referencesByKey.get(item.key);
@@ -452,9 +592,10 @@ export function RepositorySidebar({
               if (reference) onReferenceDrop(reference, event);
             }}
           >
-            {(referencesLoading || worktreesLoading) && references.length === 0 && worktrees.length === 0 && (
-              <p className="sidebar-note">Loading references…</p>
-            )}
+            {(referencesLoading || worktreesLoading || submodulesLoading) &&
+              references.length === 0 &&
+              worktrees.length === 0 &&
+              submodules.length === 0 && <p className="sidebar-note">Loading references…</p>}
             {noMatches && <p className="sidebar-note">No references match “{filter.trim()}”.</p>}
           </TreeView>
         </>

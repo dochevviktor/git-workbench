@@ -45,6 +45,15 @@ prune operations, occupied/current/dirty/locked guards, the Worktrees sidebar an
 locked presentation was not captured by Fork; the explicit force policy is a Linux-safe project adaptation.
 Detached creation, lock/unlock, nested worktrees, and the broader P09 family remain explicit limits.
 
+Subsequent implementation: the bounded F23 submodule slice is recorded in the
+[submodule handoff](../reviews/f23-submodules.md). It maps `P2-002-clean-dirty-watcher-subcase:F1–F4`,
+`P2-002-view-subcase:F1`, and `P2-002-missing-update-subcase:F1–F3` to typed recursive submodule reads,
+parent HEAD/index/child revision comparison, dirty-child state, operation-backed lifecycle actions,
+backend-resolved child tabs, and disposable/Electron verification. Successful local initialization is
+an independent Linux result; Fork's captured local-transport failure remains unchanged. Nested mutation,
+missing-object, interrupted-update/cancellation, conflict continuation, and broader tool/provider routes
+remain explicit limits.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the

@@ -101,6 +101,19 @@ create/open/remove/tab cleanup. The bounded handoff is in [F22 worktrees](review
 detached creation, lock/unlock, nested worktrees, and F23/F25 remain outside this slice and P09 remains
 partial.
 
+F23 implementation checkpoint (2026-09-20): added typed recursive submodule reads and common-directory-
+serialized add/init/update/sync/remove operations with parent HEAD/index/child revision comparison,
+dirty-child paths/counts, detached/missing/conflict states, stale snapshots, exact removal guards, and
+an explicit local file-transport allowance for the user-selected action. The Submodules sidebar,
+dirty-child revision card, nested path projection, `parent: child` tab handoff, and Add Submodule dialog
+are independently authored. Disposable Git tests cover clean/dirty/changed/missing state, successful
+local Update, dirty refusal, force removal, parent preservation, and `.gitmodules` cleanup; the F23
+headless Electron scenario covers the captured dirty-child/navigation flow and successful local Update.
+`npm run check` passes with 333 tests and one existing skip; production build and all 17 headless
+Electron scenarios pass. The bounded handoff is in [F23 submodules](reviews/f23-submodules.md). Nested mutation, missing-object,
+interrupted-update/cancellation, and submodule-conflict continuation variants remain unverified; P09
+remains partial.
+
 ## Progress ledger
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                        | Depends on                            |
@@ -114,7 +127,7 @@ partial.
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                         | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); directory/code history, bisect, and patch import remain planned | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22 worktree lifecycle and linked tabs verified (2026-09-20); submodules and Git-flow remain planned                                                                         | P02/P05, common-repo queue            |
+| P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22 worktree lifecycle and F23 submodule lifecycle/revision/navigation slices verified (2026-09-20); broader submodule variants and Git-flow remain planned                  | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                                                                       | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                                    | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                   | P02/P03 plus relevant domain services |
@@ -889,6 +902,17 @@ Disposable tests cover local/remote creation, occupied branches, dirty/locked gu
 state; the headless Electron scenario covers the captured create/open/remove flow. Detached creation,
 lock/unlock, nested worktrees, and the unobserved Fork dirty/locked presentation remain outside this
 bounded slice. Submodules and Git-flow are still planned.
+
+Started F23 submodule slice (2026-09-20): add bounded recursive topology reads and operation-backed
+add/init/update/sync/remove capabilities. Parent gitlinks are compared with the index and initialized
+child HEAD; child dirty paths/counts, detached/missing/conflict states, exact parent-prefixed removal
+paths, and a snapshot guard stay backend-owned. The renderer adds the nested Submodules section, Local
+Changes revision cards and dirty warning, backend-resolved child opening, Update/Initialize/Sync/Remove
+routes, and Add New Submodule dialog. Disposable tests verify clean/dirty/changed/missing states,
+successful local initialization, dirty refusal, force removal, and parent preservation; the headless
+Electron scenario verifies the captured dirty-child/child-tab flow and successful local Update. Nested
+mutation, missing objects, interrupted/cancelled updates, and conflict continuation remain outside this
+bounded slice.
 
 Acceptance:
 

@@ -1100,6 +1100,14 @@ p {
   color: var(--accent);
 }
 
+.tree-row.submodule {
+  color: var(--text-muted);
+}
+
+.tree-row.submodule.dirty {
+  color: var(--danger);
+}
+
 .tree-row.reference[draggable='true'] {
   cursor: grab;
 }
@@ -2304,6 +2312,104 @@ p {
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 12.5px;
+}
+
+.submodule-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  gap: 14px;
+  padding: 22px 28px;
+  overflow: auto;
+  background: var(--list-bg);
+}
+
+.submodule-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.submodule-preview-header svg {
+  color: var(--accent);
+}
+
+.submodule-state {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.submodule-state.dirty {
+  color: var(--danger);
+}
+
+.submodule-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  max-width: 680px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--list-bg));
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.submodule-revisions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 720px;
+}
+
+.submodule-revision-card {
+  display: grid;
+  min-width: 170px;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--sidebar-bg);
+}
+
+.submodule-revision-card.current {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.submodule-revision-label,
+.submodule-detail {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.submodule-revision-card code {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.submodule-revision-arrow {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.submodule-detail {
+  margin: 0;
+}
+
+.submodule-actions {
+  display: flex;
+  gap: 7px;
+  padding-top: 4px;
 }
 
 /* Built-in conflict helper -------------------------------------------------------------------- */

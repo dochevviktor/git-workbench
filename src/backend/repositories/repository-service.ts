@@ -59,6 +59,9 @@ import type {
   RepositoryWorktreeActionRequest,
   RepositoryWorktreeActionResult,
   RepositoryWorktreeContext,
+  RepositorySubmoduleActionRequest,
+  RepositorySubmoduleActionResult,
+  RepositorySubmoduleContext,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
@@ -139,6 +142,7 @@ import {
 import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
+import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
 import {
   applyWorkingChange,
   previewDiscard,
@@ -262,11 +266,11 @@ export class RepositoryService {
     return this.gitInfoPromise;
   }
 
-  async open(ownerId: number, inputPath: string): Promise<RepositorySummary> {
+  async open(ownerId: number, inputPath: string, displayName?: string): Promise<RepositorySummary> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
     const directory = await this.canonicalDirectory(inputPath);
-    const summary = await this.discover(directory);
+    const summary = await this.discover(directory, displayName);
     if (
       !this.sessions.get(ownerId)?.has(summary.id) &&
       this.listOpenCached(ownerId).length >= this.maxOpenTabs
@@ -976,6 +980,79 @@ export class RepositoryService {
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the linked worktrees.');
     }
+  }
+
+  async getSubmodules(ownerId: number, id: string): Promise<RepositorySubmoduleContext> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readSubmoduleContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the repository submodules.');
+    }
+  }
+
+  startSubmoduleOperation(ownerId: number, request: RepositorySubmoduleActionRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.action;
+    const title =
+      action.kind === 'add'
+        ? `Add submodule '${action.path}'`
+        : action.kind === 'remove'
+          ? 'Remove submodule'
+          : `${action.kind[0]!.toLocaleUpperCase()}${action.kind.slice(1)} submodule`;
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'submodule',
+        title,
+        command: `git submodule ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            const value = await applySubmoduleAction(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              action,
+              snapshot: request.snapshot,
+              signal: handle.signal,
+              onCommand: (args) =>
+                handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+            });
+            return {
+              status: value.status === 'applied' ? 'succeeded' : 'failed',
+              message: value.message,
+              output: value.output,
+              failureReason: value.status === 'blocked' ? submoduleOperationFailure(value) : undefined,
+              result: { kind: 'submodule', value },
+            };
+          } catch (error) {
+            if (error instanceof StaleSubmoduleSnapshotError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            throw this.mapGitFailure(error, 'Git could not update the repository submodule.');
+          }
+        }),
+    );
+  }
+
+  async openSubmodule(ownerId: number, id: string, submoduleId: string): Promise<RepositorySummary> {
+    const parent = await this.requireWorktree(ownerId, id);
+    const context = await this.getSubmodules(ownerId, id);
+    const submodule = context.submodules.find((candidate) => candidate.id === submoduleId);
+    if (!submodule)
+      throw new ExpectedBackendError('INVALID_REQUEST', 'That submodule is no longer registered.');
+    if (!submodule.initialized)
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        `The submodule '${submodule.path}' is not initialized. Update it before opening the child repository.`,
+      );
+    const childPath = resolve(parent.worktreePath, submodule.path);
+    return this.open(ownerId, childPath, `${parent.name}: ${submodule.name}`);
   }
 
   startWorktreeOperation(ownerId: number, request: RepositoryWorktreeActionRequest): RepositoryOperation {
@@ -2409,7 +2486,7 @@ export class RepositoryService {
     return canonical;
   }
 
-  private async discover(directory: string): Promise<RepositorySummary> {
+  private async discover(directory: string, displayName?: string): Promise<RepositorySummary> {
     const absoluteGitDir = await this.requiredPath(directory, ['rev-parse', '--absolute-git-dir']);
     const commonDirRaw = await this.requiredOutput(directory, ['rev-parse', '--git-common-dir']);
     const commonDir = await this.resolveGitPath(commonDirRaw, directory);
@@ -2428,7 +2505,7 @@ export class RepositoryService {
 
     const summary: RepositorySummary = {
       id,
-      name: basename(displayPath) || displayPath,
+      name: (displayName ?? basename(displayPath)) || displayPath,
       path: displayPath,
       worktreePath,
       gitDir: absoluteGitDir,
@@ -2940,4 +3017,14 @@ function worktreeOperationFailure(
 ): NonNullable<RepositoryOperation['failureReason']> | undefined {
   if (value.status === 'applied') return undefined;
   return value.reason === 'dirty' ? 'local-changes' : value.reason === 'stale' ? 'other' : 'other';
+}
+
+function submoduleOperationFailure(
+  value: RepositorySubmoduleActionResult,
+): NonNullable<RepositoryOperation['failureReason']> | undefined {
+  if (value.status === 'applied') return undefined;
+  if (value.reason === 'dirty') return 'local-changes';
+  if (value.reason === 'conflict') return 'conflict';
+  if (value.reason === 'missing' || value.reason === 'not-found') return 'not-found';
+  return 'other';
 }

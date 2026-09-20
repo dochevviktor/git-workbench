@@ -13,6 +13,8 @@ import type {
   RepositoryRemoteAction,
   RepositoryLocalChangesPreview,
   RepositoryPatchTarget,
+  RepositorySubmodule,
+  RepositorySubmoduleAction,
   RepositoryStashAction,
   RepositoryStashEntry,
   RepositoryWorktree,
@@ -35,6 +37,7 @@ import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRe
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { WorktreeDialog } from '../components/WorktreeDialogs';
 import type { WorktreeDialogRequest } from '../components/WorktreeDialogs';
+import { SubmoduleDialog } from '../components/SubmoduleDialog';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { StashDialogs } from '../components/StashDialogs';
 import type { StashDialogRequest } from '../components/StashDialogs';
@@ -60,6 +63,7 @@ import { useRepositories } from '../hooks/use-repositories';
 import { useRepositoryHistory } from '../hooks/use-repository-history';
 import { useRepositoryStashes } from '../hooks/use-repository-stashes';
 import { useWorktrees } from '../hooks/use-worktrees';
+import { useSubmodules } from '../hooks/use-submodules';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
 import { detectPlatform, matchesShortcut } from '../lib/platform';
@@ -209,6 +213,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     reload: reloadWorktrees,
   } = useWorktrees(lastActive?.id, refreshSignal);
   const {
+    context: submoduleContext,
+    loading: submodulesLoading,
+    busy: submoduleRequestBusy,
+    apply: applySubmodule,
+    reload: reloadSubmodules,
+  } = useSubmodules(lastActive?.id, refreshSignal);
+  const {
     operations,
     error: operationError,
     start: startOperation,
@@ -237,7 +248,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     void openRecent(latest.result.value.path);
   }, [operations, openRecent]);
   const referenceBusy =
-    referenceRequestBusy || worktreeRequestBusy || runningOperation(operations, active?.id) !== undefined;
+    referenceRequestBusy ||
+    worktreeRequestBusy ||
+    submoduleRequestBusy ||
+    runningOperation(operations, active?.id) !== undefined;
   const [localChangesPreview, setLocalChangesPreview] = useState<RepositoryLocalChangesPreview>();
   const [previewError, setPreviewError] = useState<string>();
   const previewGeneration = useRef(0);
@@ -253,6 +267,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   }>();
   const [worktreeDialog, setWorktreeDialog] = useState<WorktreeDialogRequest>();
   const [worktreeFailure, setWorktreeFailure] = useState<string>();
+  const [submoduleDialogOpen, setSubmoduleDialogOpen] = useState(false);
+  const [submoduleFailure, setSubmoduleFailure] = useState<string>();
   const [stashDialog, setStashDialog] = useState<StashDialogRequest>();
   const development = info?.mode === 'development';
   const nativeMenu = platform === 'darwin';
@@ -459,6 +475,49 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         });
     },
     [active?.id, applyWorktree, openRecent, refresh, reloadWorktrees, reportError],
+  );
+
+  const openSubmodule = useCallback(
+    (submodule: RepositorySubmodule) => {
+      const repositoryId = active?.id;
+      if (!repositoryId) return;
+      void window.desktop?.repository
+        .openSubmodule({ id: repositoryId, submoduleId: submodule.id })
+        .then((result) => {
+          if (activeRepositoryId.current !== repositoryId) return;
+          if (!result.ok) reportError(result.error.message);
+        });
+    },
+    [active?.id, reportError],
+  );
+
+  const runSubmoduleAction = useCallback(
+    (action: RepositorySubmoduleAction) => {
+      const owner = active?.id;
+      if (!owner) return;
+      void applySubmodule(action, submoduleContext?.snapshot)
+        .then((result) => {
+          if (activeRepositoryId.current !== owner) return;
+          setReferenceStatus({ message: result.message, blocked: result.status !== 'applied' });
+          if (result.status === 'applied') refresh();
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
+          reportError(reason instanceof Error ? reason.message : 'The submodule action failed.');
+          reloadSubmodules();
+        });
+    },
+    [active?.id, applySubmodule, refresh, reloadSubmodules, reportError, submoduleContext?.snapshot],
+  );
+
+  const updateSubmodule = useCallback(
+    (submodule: RepositorySubmodule) =>
+      runSubmoduleAction({
+        kind: submodule.initialized ? 'update' : 'init',
+        submoduleId: submodule.id,
+        recursive: true,
+      }),
+    [runSubmoduleAction],
   );
 
   const openStashSave = useCallback(
@@ -1516,6 +1575,29 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       });
       return;
     }
+    if (section === 'submodules') {
+      showContextMenu({
+        anchor: contextMenuAnchor(event, event.currentTarget),
+        label: 'Submodules',
+        items: compactMenu([
+          {
+            id: 'add-submodule',
+            label: 'Add New Submodule…',
+            disabled: !active || active.bare || referenceBusy,
+            disabledReason: active
+              ? referenceBusy
+                ? 'Another repository operation is running.'
+                : undefined
+              : 'Open a repository first.',
+            run: () => {
+              setSubmoduleFailure(undefined);
+              setSubmoduleDialogOpen(true);
+            },
+          },
+        ]),
+      });
+      return;
+    }
     if (section !== 'remotes') return;
     showContextMenu({
       anchor: contextMenuAnchor(event, event.currentTarget),
@@ -1656,6 +1738,69 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabledReason: stale ? undefined : 'There are no stale worktree registrations.',
           run: () => runWorktreeAction({ kind: 'prune' }, worktreeContext?.snapshot),
         },
+      ]),
+    });
+  };
+
+  const openSubmoduleMenu = (submodule: RepositorySubmodule, event: ReactMouseEvent<HTMLElement>) => {
+    const canUpdate = !referenceBusy && submodule.state !== 'dirty' && submodule.state !== 'conflicted';
+    showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: submodule.path,
+      items: compactMenu([
+        {
+          id: 'open',
+          label: 'Open Submodule',
+          disabled: !submodule.initialized || referenceBusy,
+          disabledReason: submodule.initialized
+            ? referenceBusy
+              ? 'Another repository operation is running.'
+              : undefined
+            : 'Initialize the submodule before opening it.',
+          run: () => openSubmodule(submodule),
+        },
+        {
+          id: 'update',
+          label: submodule.initialized ? 'Update Submodule' : 'Initialize Submodule',
+          disabled: !canUpdate,
+          disabledReason:
+            submodule.state === 'dirty' ? 'Save or commit child changes before updating.' : undefined,
+          run: () => updateSubmodule(submodule),
+        },
+        {
+          id: 'sync',
+          label: 'Synchronize URL',
+          disabled: referenceBusy,
+          disabledReason: referenceBusy ? 'Another repository operation is running.' : undefined,
+          run: () => runSubmoduleAction({ kind: 'sync', submoduleId: submodule.id, recursive: true }),
+        },
+        menuSeparator,
+        {
+          id: 'remove',
+          label: 'Remove Submodule…',
+          danger: true,
+          disabled: referenceBusy,
+          run: () => runSubmoduleAction({ kind: 'remove', submoduleId: submodule.id, force: false }),
+        },
+        {
+          id: 'force-remove',
+          label: 'Force Remove Submodule…',
+          danger: true,
+          disabled: referenceBusy,
+          disabledReason: 'Removes the selected child path and its parent registration.',
+          run: () => runSubmoduleAction({ kind: 'remove', submoduleId: submodule.id, force: true }),
+        },
+        {
+          id: 'add-submodule',
+          label: 'Add New Submodule…',
+          disabled: !active || active.bare || referenceBusy,
+          run: () => {
+            setSubmoduleFailure(undefined);
+            setSubmoduleDialogOpen(true);
+          },
+        },
+        menuSeparator,
+        { id: 'copy-path', label: 'Copy Path', run: () => copyText(submodule.path) },
       ]),
     });
   };
@@ -2174,8 +2319,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               references={references}
               branches={referenceContext?.branches ?? []}
               worktrees={worktreeContext?.worktrees ?? []}
+              submodules={submoduleContext?.submodules ?? []}
               referencesLoading={history.loading}
               worktreesLoading={worktreesLoading}
+              submodulesLoading={submodulesLoading}
               onViewChange={setView}
               reveal={history.reveal}
               historyFiltered={history.filter.kind !== 'all'}
@@ -2205,6 +2352,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               onWorktreeActivate={(worktree) => void openRecent(worktree.path)}
               onWorktreeContextMenu={openWorktreeMenu}
               onWorktreeSectionContextMenu={openWorktreeSectionMenu}
+              onSubmoduleActivate={openSubmodule}
+              onSubmoduleContextMenu={openSubmoduleMenu}
             />
             <Splitter
               orientation="vertical"
@@ -2223,6 +2372,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   refreshSignal={refreshSignal}
                   onCommitted={refresh}
                   operationBusy={Boolean(activeOperation)}
+                  submodules={submoduleContext?.submodules ?? []}
+                  onOpenSubmodule={openSubmodule}
+                  onUpdateSubmodule={updateSubmodule}
                   onStashPaths={openStashSave}
                   onSavePatch={(paths) =>
                     savePatch({ kind: 'working', paths: [...paths], includeUntracked: true })
@@ -2369,6 +2521,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           failure={worktreeFailure}
           onSubmit={(action) => runWorktreeAction(action, worktreeContext?.snapshot)}
           onClose={closeWorktreeDialog}
+        />
+      )}
+      {submoduleDialogOpen && active && (
+        <SubmoduleDialog
+          platform={platform}
+          busy={referenceBusy}
+          failure={submoduleFailure}
+          onSubmit={(action) => {
+            setSubmoduleDialogOpen(false);
+            runSubmoduleAction(action);
+          }}
+          onClose={() => {
+            setSubmoduleDialogOpen(false);
+            setSubmoduleFailure(undefined);
+          }}
         />
       )}
       {stashDialog && active && (

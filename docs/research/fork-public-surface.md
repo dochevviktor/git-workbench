@@ -94,6 +94,17 @@ is independently verified on Linux with disposable repositories. Fork's dirty/lo
 not captured; the explicit force policy is a documented Linux adaptation. Detached creation, lock/unlock,
 nested worktrees, and the broader P09 family remain outside the bounded slice.
 
+F23 is implemented within the bounded [submodule handoff](../reviews/f23-submodules.md): the backend reads
+parent gitlinks and child HEAD/dirty state, compares parent baseline/index/child revisions, and exposes
+typed Add/Initialize/Update/Sync/Remove operations with stale snapshots and exact removal guards. The
+renderer replaces the planned Submodules placeholder, shows nested paths and dirty-child revision cards,
+and opens initialized children through a backend-resolved `parent: child` tab. This maps
+`P2-002-clean-dirty-watcher-subcase:F1–F4`, `P2-002-view-subcase:F1`, and
+`P2-002-missing-update-subcase:F1–F3`. Successful local initialization is independently verified on
+Linux; Fork's captured local-transport Update failure is retained as research evidence. Nested mutation,
+missing-object, interrupted-update/cancellation, conflict continuation, and broader provider/tool routes
+remain unverified, so F23 and P09 stay partial.
+
 Since 2026-09-17, public screenshots used for design comparison are listed with their source, date,
 platform, stated version, and theme in [`fork-references.json`](fork-references.json).
 `npm run research:references` downloads them into the git-ignored `docs/research/fork-references/`
@@ -844,7 +855,7 @@ earlier slices; recording them here does not promote their full feature families
 | F20 | Lost commits/reflog mode and recovery                                                 | D: [product][home]; B: P1-028                                             | Partial; bounded reflog mode/Exit and Mixed Reset recovery verified; expiry and named branch/tag variants remain open                         | P08 / C05                     |
 | F21 | File/directory/selected-code history, rename-aware History and Blame                  | D: [product][home], [releases][win]; B: P1-030–031/P1-033                 | Partial; bounded rename-aware file History/Blame inspectors and Back/Forward verified; directory/selected-code/copy variants remain open      | P08 / C05                     |
 | F22 | Worktree lifecycle, occupied-branch state and linked tabs                             | D: [releases][win]; B: P2-001                                             | Partial; bounded worktree lifecycle and linked tabs verified; broader P09 variants remain open                                                | P09 / C05                     |
-| F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Planned; captured Update failed, success still required                                                                                       | P09 / C05                     |
+| F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Partial; bounded lifecycle, revision cards, dirty child, successful local Update and child navigation verified; broader variants remain open  | P09 / C05                     |
 | F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Planned; authenticated services/locks/push unobserved                                                                                         | P10 / C05                     |
 | F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home]; public-only                                           | Planned; separate from Lean Branching                                                                                                         | P09                           |
 | F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Planned                                                                                                                                       | P08 / C05                     |

@@ -1205,6 +1205,145 @@ export const repositoryRemoteActionResultSchema = z.discriminatedUnion('status',
   }),
 ]);
 
+export const repositorySubmoduleIdSchema = z.string().regex(/^submodule-[a-f0-9]{64}$/);
+
+export const repositorySubmoduleStateSchema = z.enum([
+  'clean',
+  'dirty',
+  'changed',
+  'detached',
+  'uninitialized',
+  'missing',
+  'missing-commit',
+  'conflicted',
+  'unknown',
+]);
+
+export const repositorySubmoduleParentStatusSchema = z.enum([
+  'clean',
+  'modified',
+  'staged',
+  'staged-and-modified',
+  'unmerged',
+  'untracked',
+  'unknown',
+]);
+
+/** The three pointers needed to explain a submodule change without treating it as a text diff. */
+export const repositorySubmoduleRevisionsSchema = z.strictObject({
+  /** The gitlink recorded by the parent commit. */
+  head: gitObjectIdSchema.nullable(),
+  /** The gitlink currently recorded in the parent index. */
+  index: gitObjectIdSchema.nullable(),
+  /** The commit checked out in the child worktree. */
+  working: gitObjectIdSchema.nullable(),
+});
+
+export const repositorySubmoduleSchema = z.strictObject({
+  id: repositorySubmoduleIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A submodule path is required.'),
+  name: z.string().min(1).max(4_096),
+  url: z.string().max(32_768),
+  branch: z.string().max(4_096).nullable(),
+  nested: z.boolean(),
+  initialized: z.boolean(),
+  detached: z.boolean(),
+  state: repositorySubmoduleStateSchema,
+  parentStatus: repositorySubmoduleParentStatusSchema,
+  statusCode: z.enum([' ', '+', '-', 'U', '?']),
+  dirtyFileCount: z.number().int().nonnegative().max(100_000).nullable(),
+  revisions: repositorySubmoduleRevisionsSchema,
+  /** True when the parent index differs from its committed gitlink. */
+  indexChanged: z.boolean(),
+  /** True when the child HEAD differs from the gitlink recorded in the parent index. */
+  workingChanged: z.boolean(),
+  /** Relative paths reported by the child status, bounded for safe presentation. */
+  dirtyPaths: z.array(repositoryRevisionPathSchema).max(10_000),
+});
+
+export const repositorySubmoduleContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  submodules: z.array(repositorySubmoduleSchema).max(1_000),
+  snapshot: repositoryDiffSnapshotSchema,
+  truncated: z.boolean(),
+});
+
+export const repositorySubmoduleActionKindSchema = z.enum(['add', 'init', 'update', 'sync', 'remove']);
+
+export const repositorySubmoduleActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('add'),
+    path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A submodule path is required.'),
+    url: repositoryRemoteUrlSchema,
+    branch: z.string().min(1).max(4_096).optional(),
+    recursive: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('init'),
+    submoduleId: repositorySubmoduleIdSchema,
+    recursive: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('update'),
+    submoduleId: repositorySubmoduleIdSchema,
+    recursive: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('sync'),
+    submoduleId: repositorySubmoduleIdSchema,
+    recursive: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.literal('remove'),
+    submoduleId: repositorySubmoduleIdSchema,
+    force: z.boolean(),
+  }),
+]);
+
+export const repositorySubmoduleActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: repositorySubmoduleActionSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositorySubmoduleRequestSchema = z.strictObject({ id: repositoryIdSchema });
+export const repositoryOpenSubmoduleRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  submoduleId: repositorySubmoduleIdSchema,
+});
+
+export const repositorySubmoduleFailureReasonSchema = z.enum([
+  'dirty',
+  'conflict',
+  'missing',
+  'not-found',
+  'invalid-path',
+  'exists',
+  'stale',
+  'other',
+]);
+
+export const repositorySubmoduleActionResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('applied'),
+    repositoryId: repositoryIdSchema,
+    kind: repositorySubmoduleActionKindSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    context: repositorySubmoduleContextSchema,
+  }),
+  z.strictObject({
+    status: z.literal('blocked'),
+    repositoryId: repositoryIdSchema,
+    kind: repositorySubmoduleActionKindSchema,
+    reason: repositorySubmoduleFailureReasonSchema,
+    message: z.string().min(1).max(512),
+    output: z.string().max(65_536),
+    paths: z.array(repositoryRevisionPathSchema).max(200),
+    context: repositorySubmoduleContextSchema,
+  }),
+]);
+
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
 export const repositoryOperationKindSchema = z.enum([
@@ -1225,6 +1364,7 @@ export const repositoryOperationKindSchema = z.enum([
   'recovery',
   'stash',
   'worktree',
+  'submodule',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1274,6 +1414,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('commit'), value: repositoryCommitResultSchema }),
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
       z.strictObject({ kind: z.literal('worktree'), value: repositoryWorktreeActionResultSchema }),
+      z.strictObject({ kind: z.literal('submodule'), value: repositorySubmoduleActionResultSchema }),
     ])
     .optional(),
   startedAt: z.string().datetime({ offset: true }),
@@ -1912,6 +2053,21 @@ export const requests = {
     repositoryWorktreeActionRequestSchema,
     repositoryOperationSchema,
   ),
+  getRepositorySubmodules: request(
+    'repository:get-submodules',
+    repositorySubmoduleRequestSchema,
+    repositorySubmoduleContextSchema,
+  ),
+  startRepositorySubmoduleOperation: request(
+    'repository:start-submodule-operation',
+    repositorySubmoduleActionRequestSchema,
+    repositoryOperationSchema,
+  ),
+  openRepositorySubmodule: request(
+    'repository:open-submodule',
+    repositoryOpenSubmoduleRequestSchema,
+    repositorySummarySchema,
+  ),
   startRepositoryMergeRebase: request(
     'repository:start-merge-rebase',
     repositoryMergeRebaseRequestSchema,
@@ -2149,6 +2305,18 @@ export type RepositoryWorktreeActionKind = z.infer<typeof repositoryWorktreeActi
 export type RepositoryWorktreeActionRequest = z.infer<typeof repositoryWorktreeActionRequestSchema>;
 export type RepositoryWorktreeFailureReason = z.infer<typeof repositoryWorktreeFailureReasonSchema>;
 export type RepositoryWorktreeActionResult = z.infer<typeof repositoryWorktreeActionResultSchema>;
+export type RepositorySubmoduleState = z.infer<typeof repositorySubmoduleStateSchema>;
+export type RepositorySubmoduleParentStatus = z.infer<typeof repositorySubmoduleParentStatusSchema>;
+export type RepositorySubmoduleRevisions = z.infer<typeof repositorySubmoduleRevisionsSchema>;
+export type RepositorySubmodule = z.infer<typeof repositorySubmoduleSchema>;
+export type RepositorySubmoduleContext = z.infer<typeof repositorySubmoduleContextSchema>;
+export type RepositorySubmoduleAction = z.infer<typeof repositorySubmoduleActionSchema>;
+export type RepositorySubmoduleActionKind = z.infer<typeof repositorySubmoduleActionKindSchema>;
+export type RepositorySubmoduleActionRequest = z.infer<typeof repositorySubmoduleActionRequestSchema>;
+export type RepositorySubmoduleRequest = z.infer<typeof repositorySubmoduleRequestSchema>;
+export type RepositoryOpenSubmoduleRequest = z.infer<typeof repositoryOpenSubmoduleRequestSchema>;
+export type RepositorySubmoduleFailureReason = z.infer<typeof repositorySubmoduleFailureReasonSchema>;
+export type RepositorySubmoduleActionResult = z.infer<typeof repositorySubmoduleActionResultSchema>;
 export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
 export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
 export type RepositoryInteractiveRebaseCommand = z.infer<typeof repositoryInteractiveRebaseCommandSchema>;

@@ -5,6 +5,7 @@ import type {
   RepositoryDiffTarget,
   RepositoryDiffWhitespace,
   RepositorySummary,
+  RepositorySubmodule,
   RepositoryWorkingChangeAction,
   RepositoryWorkingChangeSelection,
   RepositoryWorkingChangeTarget,
@@ -35,6 +36,7 @@ import { copyText } from '../lib/clipboard';
 import { DiscardDialog } from './DiscardDialog';
 import type { DiscardRequest } from './DiscardDialog';
 import { ConflictResolver } from './ConflictResolver';
+import { SubmodulePreview } from './SubmodulePreview';
 
 const sessionSelections = new Map<string, ListSelection>();
 
@@ -52,6 +54,7 @@ const areaLabels: Record<RepositoryWorkingChange['area'], string> = {
 interface WorkingEntry extends FileChangeEntry {
   readonly kind: 'working';
   readonly change: RepositoryWorkingChange;
+  readonly submodule?: RepositorySubmodule | undefined;
 }
 
 /** A file the amended commit would contain, which may or may not also be staged right now. */
@@ -63,15 +66,21 @@ interface AmendEntry extends FileChangeEntry {
 
 type PaneEntry = WorkingEntry | AmendEntry;
 
-function workingEntry(change: RepositoryWorkingChange): WorkingEntry {
+function workingEntry(change: RepositoryWorkingChange, submodule?: RepositorySubmodule): WorkingEntry {
   return {
     kind: 'working',
     key: `${change.area}:${encodeURIComponent(change.path)}`,
     status: change.status,
     path: change.path,
     previousPath: change.previousPath,
-    detail: change.previousPath ? `from ${change.previousPath}` : undefined,
+    detail:
+      submodule?.state === 'dirty'
+        ? `${submodule.dirtyFileCount ?? 0} uncommitted ${submodule.dirtyFileCount === 1 ? 'file' : 'files'}`
+        : change.previousPath
+          ? `from ${change.previousPath}`
+          : undefined,
     change,
+    submodule,
   };
 }
 
@@ -207,6 +216,8 @@ interface ChangePreviewProps {
     selection: RepositoryWorkingChangeSelection,
     snapshot: string | undefined,
   ) => Promise<boolean>;
+  readonly onOpenSubmodule: (submodule: RepositorySubmodule) => void;
+  readonly onUpdateSubmodule: (submodule: RepositorySubmodule) => void;
 }
 
 function ChangePreview({
@@ -223,6 +234,8 @@ function ChangePreview({
   onPopup,
   onOpenConflict,
   onWorkingAction,
+  onOpenSubmodule,
+  onUpdateSubmodule,
 }: ChangePreviewProps) {
   const change = entry.change;
   const area = entry.kind === 'working' ? entry.change.area : undefined;
@@ -243,6 +256,16 @@ function ChangePreview({
       onApply: (selection) => onWorkingAction(action, selection, diff.value?.snapshot ?? undefined),
     }));
   }, [area, busy, change.status, diff.value?.snapshot, onWorkingAction]);
+  if (entry.kind === 'working' && entry.submodule) {
+    return (
+      <SubmodulePreview
+        submodule={entry.submodule}
+        busy={busy}
+        onOpen={() => onOpenSubmodule(entry.submodule!)}
+        onUpdate={() => onUpdateSubmodule(entry.submodule!)}
+      />
+    );
+  }
   return (
     <div className="file-preview" data-testid="working-change-preview">
       <div className="preview-header">
@@ -307,6 +330,9 @@ interface ChangesViewProps {
   readonly onStashPaths?: (paths: readonly string[]) => void;
   /** Saves the selected file paths as a bounded patch. */
   readonly onSavePatch?: (paths: readonly string[]) => void;
+  readonly submodules: readonly RepositorySubmodule[];
+  readonly onOpenSubmodule: (submodule: RepositorySubmodule) => void;
+  readonly onUpdateSubmodule: (submodule: RepositorySubmodule) => void;
   readonly onVisibleCountChange?:
     | ((
         count: number,
@@ -322,6 +348,9 @@ export function ChangesView({
   operationBusy = false,
   onStashPaths,
   onSavePatch,
+  submodules,
+  onOpenSubmodule,
+  onUpdateSubmodule,
   onVisibleCountChange,
 }: ChangesViewProps) {
   const showContextMenu = useContextMenu();
@@ -395,6 +424,10 @@ export function ChangesView({
     includeUntracked,
     includeIgnored,
   );
+  const submodulesByPath = useMemo(
+    () => new Map(submodules.map((submodule) => [submodule.path, submodule] as const)),
+    [submodules],
+  );
 
   const handledRefresh = useRef(refreshSignal);
   useEffect(() => {
@@ -412,10 +445,12 @@ export function ChangesView({
       // Fork lists untracked and, when shown, ignored files with the other unstaged changes.
       unstaged: [...value.unstaged, ...value.untracked, ...(includeIgnored ? value.ignored : [])]
         .filter(visible)
-        .map(workingEntry),
-      staged: value.staged.filter(visible).map(workingEntry),
+        .map((change) => workingEntry(change, submodulesByPath.get(change.path))),
+      staged: value.staged
+        .filter(visible)
+        .map((change) => workingEntry(change, submodulesByPath.get(change.path))),
     };
-  }, [filter, includeIgnored, value]);
+  }, [filter, includeIgnored, submodulesByPath, value]);
 
   useEffect(() => {
     if (value)
@@ -564,6 +599,7 @@ export function ChangesView({
   );
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(() => {
     if (!selected) return undefined;
+    if (selected.kind === 'working' && selected.submodule) return undefined;
     return selected.kind === 'amend'
       ? { kind: 'amend', path: selected.path, previousPath: selected.previousPath }
       : {
@@ -941,6 +977,8 @@ export function ChangesView({
               positionKey={`${repository.id}:${selected.key}:main`}
               onPopup={() => setPopup(true)}
               onOpenConflict={() => setConflictPath(selected.path)}
+              onOpenSubmodule={onOpenSubmodule}
+              onUpdateSubmodule={onUpdateSubmodule}
               onWorkingAction={(action, lines, snapshot) => {
                 const target = workingTarget(selected, stagedByPath);
                 if (action === 'discard' && target) {

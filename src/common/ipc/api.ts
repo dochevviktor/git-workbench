@@ -46,6 +46,9 @@ import type {
   RepositoryReferenceContextRequest,
   RepositoryWorktreeActionRequest,
   RepositoryWorktreeContext,
+  RepositorySubmoduleActionRequest,
+  RepositorySubmoduleContext,
+  RepositoryOpenSubmoduleRequest,
   RepositoryRemote,
   RepositoryRemoteActionRequest,
   RepositoryRemoteActionResult,
@@ -155,6 +158,11 @@ export interface DesktopApi {
     applyReferenceAction(request: RepositoryReferenceActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getWorktrees(request: RepositorySession): Promise<IpcResult<RepositoryWorktreeContext>>;
     startWorktreeOperation(request: RepositoryWorktreeActionRequest): Promise<IpcResult<RepositoryOperation>>;
+    getSubmodules(request: RepositorySession): Promise<IpcResult<RepositorySubmoduleContext>>;
+    startSubmoduleOperation(
+      request: RepositorySubmoduleActionRequest,
+    ): Promise<IpcResult<RepositoryOperation>>;
+    openSubmodule(request: RepositoryOpenSubmoduleRequest): Promise<IpcResult<RepositorySummary>>;
     startMergeRebase(request: RepositoryMergeRebaseRequest): Promise<IpcResult<RepositoryOperation>>;
     getHistoryOperationPreview(
       request: RepositoryHistoryOperationPreviewRequest,
