@@ -27,6 +27,8 @@ inspect/apply/pop/delete/rename actions, and bounded commit/stash/working-tree p
 The bounded F17/F18/F19 slices add text conflict resolution, interactive rebase editing, and
 single-commit cherry-pick/revert plus Soft/Mixed/Hard reset with Recovery safeguards. F20 adds a
 bounded lost-commit/reflog history mode with Exit and reviewed recovery through those existing actions.
+F21 adds bounded rename-aware file History and Blame inspectors with historical diffs, line attribution,
+revision selection, and Blame Back/Forward; directory and selected-code variants remain later work.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history
@@ -179,8 +181,8 @@ Both directories are ignored. Application dependencies are currently fully bundl
 
 The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
 Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
-not completed Git Workbench features. The F01–F16 correction pass and bounded F17/F18/F19/F20 slices are
-verified with the limits in their review records; the next incremental feature is F21 in P08. Fork binaries,
+not completed Git Workbench features. The F01–F16 correction pass and bounded F17/F18/F19/F20/F21 slices are
+verified with the limits in their review records; the bounded F21 slice is implemented in P08. Fork binaries,
 private source, and bundled product assets
 are excluded; reference screenshots stay private/local and are never application assets.
 

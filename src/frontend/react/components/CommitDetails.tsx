@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type {
   RepositoryCommitChange,
   RepositoryHistoryCommit,
@@ -36,6 +36,9 @@ import { StatusBadge } from './StatusBadge';
 import { TreeView } from './TreeView';
 import type { TreeItem } from './TreeView';
 import { MenuButton } from './menu/MenuButton';
+import { useContextMenu } from './menu/context-menu';
+import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
+import { copyText } from '../lib/clipboard';
 
 type DetailTab = 'commit' | 'changes' | 'tree';
 interface DetailPresentation {
@@ -208,6 +211,7 @@ interface RevisionTreeProps {
   readonly activeKey: string | undefined;
   readonly onActiveChange: (key: string) => void;
   readonly onExpandedChange: (next: ReadonlySet<string>) => void;
+  readonly onContextMenu: (path: string, event: ReactMouseEvent<HTMLElement>) => void;
 }
 
 function RevisionTree({
@@ -216,6 +220,7 @@ function RevisionTree({
   activeKey,
   onActiveChange,
   onExpandedChange,
+  onContextMenu,
 }: RevisionTreeProps) {
   const { directories, loadDirectory, loadBlob, blobPath, blobLoading } = inspection;
   const { items, entries } = useMemo(() => {
@@ -301,6 +306,10 @@ function RevisionTree({
         }
         onExpandedChange(next);
       }}
+      onContextMenu={(item, event) => {
+        const entry = entries.get(item.key);
+        if (entry?.type === 'blob') onContextMenu(entry.path, event);
+      }}
     >
       {root.tree.truncated && (
         <p className="sidebar-note">This folder contains more entries than can be displayed.</p>
@@ -324,10 +333,12 @@ export function CommitDetails({
   searchQuery = '',
 }: CommitDetailsProps) {
   const savedPresentation = detailPresentations.get(repositoryId ?? '');
+  const showContextMenu = useContextMenu();
   const [activeTab, setActiveTab] = useState<DetailTab>(
     initialTab ?? savedPresentation?.activeTab ?? 'commit',
   );
   const [popOutError, setPopOutError] = useState<string>();
+  const [fileInspectorError, setFileInspectorError] = useState<string>();
   const [openingPopOut, setOpeningPopOut] = useState(false);
   const [fileListMode, setFileListMode] = usePersistentState<FileListMode>(
     'details.fileListMode',
@@ -362,6 +373,62 @@ export function CommitDetails({
   const { changes, changesLoading, changesError, loadChanges, directories, loadDirectory } = inspection;
   const chips = commit ? referenceChips(commit.decorations, referencesByName) : [];
   const presentation = useRef<DetailPresentation | undefined>(undefined);
+
+  const openFileContextMenu = useCallback(
+    (path: string, event: ReactMouseEvent<HTMLElement>) => {
+      if (standalone || !repositoryId || !commit) return;
+      event.preventDefault();
+      showContextMenu({
+        anchor: contextMenuAnchor(event, event.currentTarget),
+        label: `File ${path}`,
+        items: compactMenu([
+          {
+            id: 'file-history',
+            label: 'History…',
+            run: () => {
+              const theme = document.documentElement.dataset.theme;
+              void window.desktop?.repository
+                .openFileHistory({
+                  id: repositoryId,
+                  commitId: commit.id,
+                  path,
+                  theme: theme === 'dark' || theme === 'light' ? theme : 'system',
+                })
+                .then(unwrapResult)
+                .catch((reason: unknown) =>
+                  setFileInspectorError(
+                    reason instanceof Error ? reason.message : 'File history could not be opened.',
+                  ),
+                );
+            },
+          },
+          {
+            id: 'file-blame',
+            label: 'Blame / Timeline',
+            run: () => {
+              const theme = document.documentElement.dataset.theme;
+              void window.desktop?.repository
+                .openBlame({
+                  id: repositoryId,
+                  commitId: commit.id,
+                  path,
+                  theme: theme === 'dark' || theme === 'light' ? theme : 'system',
+                })
+                .then(unwrapResult)
+                .catch((reason: unknown) =>
+                  setFileInspectorError(
+                    reason instanceof Error ? reason.message : 'Blame could not be opened.',
+                  ),
+                );
+            },
+          },
+          menuSeparator,
+          { id: 'copy-file-path', label: 'Copy Path', run: () => copyText(path) },
+        ]),
+      });
+    },
+    [commit, repositoryId, showContextMenu, standalone],
+  );
 
   useEffect(() => {
     if (commit)
@@ -521,7 +588,12 @@ export function CommitDetails({
           {changes && changes.changes.length > 0 && (
             <ul className="details-file-list" aria-label={countLabel(changes.changes.length, 'changed file')}>
               {changes.changes.map((change) => (
-                <li key={changeKey(change)} className="details-file" data-testid="commit-file">
+                <li
+                  key={changeKey(change)}
+                  className="details-file"
+                  data-testid="commit-file"
+                  onContextMenu={(event) => openFileContextMenu(change.path, event)}
+                >
                   <StatusBadge status={change.status} />
                   <FileIcon size={14} />
                   <button
@@ -613,6 +685,7 @@ export function CommitDetails({
                   idPrefix="commit-change"
                   selectedKey={selectedChangeKey}
                   onSelect={(entry) => setSelectedChangeKey(entry.key)}
+                  onContextMenu={(entry, event) => openFileContextMenu(entry.path, event)}
                   rowTestId="commit-change"
                 >
                   {changeEntries.length === 0 && (
@@ -660,6 +733,7 @@ export function CommitDetails({
                 activeKey={treeActiveKey}
                 onActiveChange={setTreeActiveKey}
                 onExpandedChange={setExpandedFolders}
+                onContextMenu={openFileContextMenu}
               />
             </div>
           </div>
@@ -786,6 +860,18 @@ export function CommitDetails({
       {popOutError && (
         <div className="inline-alert" role="alert">
           {popOutError}
+        </div>
+      )}
+      {fileInspectorError && (
+        <div className="inline-alert" role="alert">
+          <span>{fileInspectorError}</span>
+          <button
+            type="button"
+            className="button button-small"
+            onClick={() => setFileInspectorError(undefined)}
+          >
+            Dismiss
+          </button>
         </div>
       )}
       <div

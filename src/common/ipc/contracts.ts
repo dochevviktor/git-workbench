@@ -1542,6 +1542,76 @@ export const repositoryRevisionBlobSchema = z.strictObject({
   byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
 });
 
+const repositoryHistoricalFilePathSchema = repositoryRevisionPathSchema.refine(
+  (value) => value.length > 0,
+  'A historical file path is required.',
+);
+
+export const repositoryFileHistoryRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryHistoricalFilePathSchema,
+});
+
+export const repositoryFileHistoryOpenRequestSchema = repositoryFileHistoryRequestSchema.extend({
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
+export const repositoryFileHistoryRevisionSchema = z.strictObject({
+  commit: repositoryHistoryCommitSchema,
+  /** The path at this revision, which can be the pre-rename name. */
+  path: repositoryHistoricalFilePathSchema,
+  previousPath: repositoryHistoricalFilePathSchema.nullable(),
+  status: repositoryCommitChangeStatusSchema,
+  similarity: z.number().int().nonnegative().max(100).nullable(),
+});
+
+export const repositoryFileHistorySchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  startingCommitId: gitObjectIdSchema,
+  path: repositoryHistoricalFilePathSchema,
+  revisions: z.array(repositoryFileHistoryRevisionSchema).max(2_000),
+  truncated: z.boolean(),
+});
+
+export const repositoryFileHistoryContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryHistoricalFilePathSchema,
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
+export const repositoryBlameRequestSchema = repositoryFileHistoryRequestSchema;
+
+export const repositoryBlameOpenRequestSchema = repositoryBlameRequestSchema.extend({
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
+export const repositoryBlameLineSchema = z.strictObject({
+  line: z.number().int().positive().max(1_000_000),
+  commitId: gitObjectIdSchema,
+  content: z.string().max(262_144),
+});
+
+export const repositoryBlameSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryHistoricalFilePathSchema,
+  state: z.enum(['text', 'binary', 'too-large']),
+  byteLength: z.number().int().nonnegative().max(1_000_000_000_000).nullable(),
+  commits: z.array(repositoryHistoryCommitSchema).max(2_000),
+  lines: z.array(repositoryBlameLineSchema).max(100_000),
+  truncated: z.boolean(),
+  message: z.string().max(512).nullable(),
+});
+
+export const repositoryBlameContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  commitId: gitObjectIdSchema,
+  path: repositoryHistoricalFilePathSchema,
+  theme: z.enum(['system', 'light', 'dark']),
+});
+
 export const repositoryCommitDetailsRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
@@ -1819,6 +1889,28 @@ export const requests = {
     repositoryRevisionBlobRequestSchema,
     repositoryRevisionBlobSchema,
   ),
+  openRepositoryFileHistory: request(
+    'repository:open-file-history',
+    repositoryFileHistoryOpenRequestSchema,
+    z.null(),
+  ),
+  getRepositoryFileHistoryContext: request(
+    'repository:get-file-history-context',
+    z.undefined(),
+    repositoryFileHistoryContextSchema,
+  ),
+  getRepositoryFileHistory: request(
+    'repository:get-file-history',
+    repositoryFileHistoryRequestSchema,
+    repositoryFileHistorySchema,
+  ),
+  openRepositoryBlame: request('repository:open-blame', repositoryBlameOpenRequestSchema, z.null()),
+  getRepositoryBlameContext: request(
+    'repository:get-blame-context',
+    z.undefined(),
+    repositoryBlameContextSchema,
+  ),
+  getRepositoryBlame: request('repository:get-blame', repositoryBlameRequestSchema, repositoryBlameSchema),
   openRepositoryInFileManager: request('repository:open-in-file-manager', repositoryLocationSchema, z.null()),
 } as const;
 
@@ -1979,3 +2071,13 @@ export type RepositoryRevisionTreeEntry = z.infer<typeof repositoryRevisionTreeE
 export type RepositoryRevisionTree = z.infer<typeof repositoryRevisionTreeSchema>;
 export type RepositoryRevisionBlobRequest = z.infer<typeof repositoryRevisionBlobRequestSchema>;
 export type RepositoryRevisionBlob = z.infer<typeof repositoryRevisionBlobSchema>;
+export type RepositoryFileHistoryRequest = z.infer<typeof repositoryFileHistoryRequestSchema>;
+export type RepositoryFileHistoryOpenRequest = z.infer<typeof repositoryFileHistoryOpenRequestSchema>;
+export type RepositoryFileHistoryRevision = z.infer<typeof repositoryFileHistoryRevisionSchema>;
+export type RepositoryFileHistory = z.infer<typeof repositoryFileHistorySchema>;
+export type RepositoryFileHistoryContext = z.infer<typeof repositoryFileHistoryContextSchema>;
+export type RepositoryBlameRequest = z.infer<typeof repositoryBlameRequestSchema>;
+export type RepositoryBlameOpenRequest = z.infer<typeof repositoryBlameOpenRequestSchema>;
+export type RepositoryBlameLine = z.infer<typeof repositoryBlameLineSchema>;
+export type RepositoryBlame = z.infer<typeof repositoryBlameSchema>;
+export type RepositoryBlameContext = z.infer<typeof repositoryBlameContextSchema>;

@@ -4,10 +4,10 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper and F19 history-operation slices, a branch PR browser handoff, and the initial F34 workspace-chrome slice implemented.
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
-## Catalogue-driven corrections (F01–F19 bounded slices verified, 2026-09-20)
+## Catalogue-driven corrections (F01–F21 bounded slices verified, 2026-09-20)
 
 The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
 target without changing the Electron/TypeScript boundaries. C01–C06 in the
@@ -17,9 +17,9 @@ tests and remaining limits. The [F19 history-operation handoff](reviews/f19-hist
 the bounded cherry-pick/revert/reset slice. Additive repository navigation, annotated empty-message tags, scoped search,
 diff controls/discard, merge modes, clone/authentication and lifecycle corrections are now implemented.
 The later initial-slice descriptions are historical where superseded here. Commit details now support a
-separate read-only native window; file-history/blame inspectors and full conflict-family variants remain
-future work. The bounded F17 conflict helper and F18 interactive-rebase workflow are recorded in their
-dated handoffs.
+separate read-only native window; directory/selected-code history and full conflict-family variants remain
+future work. The bounded F17 conflict helper, F18 interactive-rebase workflow, F20 reflog mode, and F21
+file-history/Blame inspectors are recorded in their dated handoffs.
 
 - **Navigation and command state:** one repository-session/order model feeds horizontal tabs and the
   optional workspace repository list simultaneously. Keep repository-list visibility separate from
@@ -39,7 +39,9 @@ dated handoffs.
   independent of main-window selection, with parent navigation inside the inspector. At most eight
   inspectors per owner can be opening/open. Parent-window close releases children, sessions, reads and
   listeners; closing the repository tab alone leaves its inspector usable. No renderer-selected URL,
-  filesystem access or generic window creation is exposed. File-history/blame windows remain future work.
+  filesystem access or generic window creation is exposed. File-history and Blame windows use the same
+  fixed-document and owned-session policy, allow only committed reads plus a named commit-details handoff,
+  and cap eight inspectors per owner. Directory/selected-code history remains future work.
 - **Diff interaction geometry:** plain `@@` lines participate in horizontal text scrolling. Changed-row
   groups own an out-of-flow highlight layer; its outline and buttons stay within the viewport on hover
   or keyboard focus. Unified hunks share a document width so gutters and actions remain aligned even
@@ -444,6 +446,15 @@ and pages it before the ordinary reachable graph. Full commit IDs—not `HEAD@{n
 the existing reference, patch, and F19 history-operation services perform any selected recovery. The
 renderer owns only the mode/session/banner state, and Exit returns to the normal history request.
 
+The bounded F21 inspection service reads one normalized relative file path at an exact commit. File History
+uses `git log --follow --find-renames --name-status -z` with backend-owned arguments to retain the path at
+each revision and rename metadata; Blame uses `git blame --line-porcelain -M -C -C` against the committed
+blob and resolves attribution IDs to full commit DTOs. Output is capped before schema validation, binary
+and oversized blame states remain opaque, and no working-tree content or mutation capability is exposed to
+the inspector. History and Blame are separate child windows with bounded owner sessions; their revision
+cards reuse the committed diff reader, while attribution buttons use the existing commit-details window.
+Directory and selected-code requests do not cross IPC.
+
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
@@ -458,7 +469,9 @@ soft/mixed/hard reset with preview/CAS and Recovery safeguards. There is still n
 hash-search extension, commit signing or commit-and-push, multiple-reference selection, application-managed
 credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
-integration, automatic updater or final branding.
+integration, automatic updater or final branding. The bounded F21 slice adds rename-aware file History and
+Blame inspectors; directory/selected-code history, copy traversal, restart persistence, and general
+main-graph Back/Forward remain unimplemented or unverified.
 Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager

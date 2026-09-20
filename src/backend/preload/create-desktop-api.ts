@@ -75,6 +75,12 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
     repository: {
       openCommitDetails: (request) => invoke(requests.openRepositoryCommitDetails, request),
       getCommitDetailsContext: () => invoke(requests.getRepositoryCommitDetailsContext, undefined),
+      openFileHistory: (request) => invoke(requests.openRepositoryFileHistory, request),
+      getFileHistoryContext: () => invoke(requests.getRepositoryFileHistoryContext, undefined),
+      getFileHistory: (request) => invoke(requests.getRepositoryFileHistory, request),
+      openBlame: (request) => invoke(requests.openRepositoryBlame, request),
+      getBlameContext: () => invoke(requests.getRepositoryBlameContext, undefined),
+      getBlame: (request) => invoke(requests.getRepositoryBlame, request),
       onActivated: (listener) => subscribe(events.repositoryActivated, listener),
       getGitInfo: () => invoke(requests.getGitInfo, undefined),
       pickDirectory: () => invoke(requests.pickRepositoryDirectory, undefined),

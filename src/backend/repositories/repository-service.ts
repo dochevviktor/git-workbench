@@ -60,6 +60,8 @@ import type {
   RepositoryTabPreferences,
   RepositoryRevisionBlob,
   RepositoryRevisionTree,
+  RepositoryBlame,
+  RepositoryFileHistory,
   RepositorySummary,
   RepositoryStashActionRequest,
   RepositoryStashDetails,
@@ -94,6 +96,12 @@ import {
   RevisionNotFoundError,
   RevisionPathError,
 } from './revision-service';
+import {
+  FileHistoryNotFoundError,
+  FileHistoryPathError,
+  readBlame,
+  readFileHistory,
+} from './file-history-service';
 import { readWorkingChanges } from './working-tree-service';
 import {
   AmendUnavailableError,
@@ -2067,6 +2075,39 @@ export class RepositoryService {
     }
   }
 
+  async getFileHistory(
+    ownerId: number,
+    id: string,
+    commitId: string,
+    path: string,
+  ): Promise<RepositoryFileHistory> {
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    try {
+      return await readFileHistory(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commitId,
+        path,
+      });
+    } catch (error) {
+      throw this.mapFileHistoryFailure(error, 'Git could not read the selected file history.');
+    }
+  }
+
+  async getBlame(ownerId: number, id: string, commitId: string, path: string): Promise<RepositoryBlame> {
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    try {
+      return await readBlame(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath ?? summary.commonDir,
+        commitId,
+        path,
+      });
+    } catch (error) {
+      throw this.mapFileHistoryFailure(error, 'Git could not read blame for the selected file.');
+    }
+  }
+
   async removeRecent(id: string): Promise<void> {
     await this.store.remove(id);
   }
@@ -2548,6 +2589,16 @@ export class RepositoryService {
       );
     }
     if (error instanceof RevisionPathError) {
+      return new ExpectedBackendError('OPERATION_FAILED', error.message);
+    }
+    return this.mapGitFailure(error, fallback);
+  }
+
+  private mapFileHistoryFailure(error: unknown, fallback: string): ExpectedBackendError {
+    if (error instanceof FileHistoryNotFoundError) {
+      return new ExpectedBackendError('OPERATION_FAILED', 'That historical revision is no longer available.');
+    }
+    if (error instanceof FileHistoryPathError) {
       return new ExpectedBackendError('OPERATION_FAILED', error.message);
     }
     return this.mapGitFailure(error, fallback);

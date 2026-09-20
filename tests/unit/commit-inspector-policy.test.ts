@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { canInvokeCommitInspector } from '../../src/backend/electron/commit-inspector-policy';
+import {
+  canInvokeCommitInspector,
+  canInvokeInspector,
+} from '../../src/backend/electron/commit-inspector-policy';
 import { requests, repositoryCommitDetailsRequestSchema } from '../../src/common/ipc/contracts';
 
 describe('commit inspector capabilities', () => {
@@ -41,5 +44,19 @@ describe('commit inspector capabilities', () => {
     expect(repositoryCommitDetailsRequestSchema.safeParse({ ...valid, commitId: 'HEAD~1' }).success).toBe(
       false,
     );
+  });
+
+  it('keeps file-history and blame inspectors read-only while allowing their named handoffs', () => {
+    expect(
+      canInvokeInspector('file-history', requests.getRepositoryFileHistoryContext.channel, undefined),
+    ).toBe(true);
+    expect(canInvokeInspector('file-history', requests.getRepositoryFileHistory.channel, {})).toBe(true);
+    expect(canInvokeInspector('file-history', requests.openRepositoryBlame.channel, {})).toBe(true);
+    expect(canInvokeInspector('file-history', requests.openRepositoryFileHistory.channel, {})).toBe(false);
+    expect(canInvokeInspector('blame', requests.getRepositoryBlameContext.channel, undefined)).toBe(true);
+    expect(canInvokeInspector('blame', requests.getRepositoryBlame.channel, {})).toBe(true);
+    expect(canInvokeInspector('blame', requests.openRepositoryCommitDetails.channel, {})).toBe(true);
+    expect(canInvokeInspector('blame', requests.applyRepositoryReferenceAction.channel, {})).toBe(false);
+    expect(canInvokeInspector('blame', requests.windowCommand.channel, { action: 'quit' })).toBe(false);
   });
 });

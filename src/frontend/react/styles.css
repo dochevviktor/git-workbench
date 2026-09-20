@@ -1524,6 +1524,297 @@ p {
   color: var(--text);
 }
 
+/* File history and blame inspectors ---------------------------------------------------------- */
+
+.file-history-inspector,
+.blame-inspector {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--list-bg);
+  color: var(--text);
+}
+
+.file-inspector-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.file-inspector-title,
+.file-inspector-actions,
+.blame-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-inspector-title strong {
+  flex: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.file-inspector-path {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-inspector-actions {
+  flex: none;
+}
+
+.file-history-body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.file-history-revisions {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+
+.file-history-timeline {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.file-history-card {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.file-history-card:hover {
+  background: var(--row-hover);
+}
+
+.file-history-card.selected {
+  background: var(--row-selected);
+  color: var(--row-selected-text);
+}
+
+.file-history-card-topline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.file-history-card.selected .file-history-card-topline,
+.file-history-card.selected .file-history-card-path {
+  color: inherit;
+}
+
+.file-history-card-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-card-topline time {
+  flex: none;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-history-card-subject {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-card-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-diff {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.file-history-diff-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.file-history-diff-path {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-diff > .diff-viewer {
+  flex: 1;
+  min-height: 0;
+}
+
+.blame-navigation {
+  flex: none;
+}
+
+.blame-navigation select {
+  width: min(480px, 42vw);
+  height: 26px;
+  border: 1px solid var(--button-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.blame-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--list-bg);
+}
+
+.blame-group {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  min-width: 680px;
+  border-bottom: 1px solid var(--border);
+}
+
+.blame-attribution {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.blame-attribution-person {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.blame-attribution-person span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blame-attribution time,
+.blame-range {
+  font-variant-numeric: tabular-nums;
+}
+
+.blame-commit-button {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blame-commit-button:hover {
+  text-decoration: underline;
+}
+
+.blame-lines {
+  min-width: 0;
+}
+
+.blame-line {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  min-height: 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.blame-line:hover {
+  background: var(--row-hover);
+}
+
+.blame-line-number {
+  padding-right: 8px;
+  color: var(--text-dim);
+  text-align: right;
+  user-select: none;
+}
+
+.blame-line pre {
+  min-width: 0;
+  margin: 0;
+  padding: 0 10px;
+  overflow: visible;
+  white-space: pre;
+}
+
 .details-tab {
   padding: 0 14px;
   border: 0;

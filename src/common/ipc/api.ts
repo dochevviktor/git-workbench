@@ -63,6 +63,14 @@ import type {
   RepositorySummary,
   RepositoryCommitDetailsRequest,
   RepositoryCommitDetailsContext,
+  RepositoryFileHistoryOpenRequest,
+  RepositoryFileHistoryRequest,
+  RepositoryFileHistory,
+  RepositoryFileHistoryContext,
+  RepositoryBlameOpenRequest,
+  RepositoryBlameRequest,
+  RepositoryBlame,
+  RepositoryBlameContext,
   RepositoryWorkingChanges,
   RepositoryWorkingChangeActionRequest,
   RepositoryWorkingChangeActionResult,
@@ -95,6 +103,12 @@ export interface DesktopApi {
   readonly repository: {
     openCommitDetails(request: RepositoryCommitDetailsRequest): Promise<IpcResult<null>>;
     getCommitDetailsContext(): Promise<IpcResult<RepositoryCommitDetailsContext>>;
+    openFileHistory(request: RepositoryFileHistoryOpenRequest): Promise<IpcResult<null>>;
+    getFileHistoryContext(): Promise<IpcResult<RepositoryFileHistoryContext>>;
+    getFileHistory(request: RepositoryFileHistoryRequest): Promise<IpcResult<RepositoryFileHistory>>;
+    openBlame(request: RepositoryBlameOpenRequest): Promise<IpcResult<null>>;
+    getBlameContext(): Promise<IpcResult<RepositoryBlameContext>>;
+    getBlame(request: RepositoryBlameRequest): Promise<IpcResult<RepositoryBlame>>;
     onActivated(listener: (repository: RepositorySummary) => void): Unsubscribe;
     getGitInfo(): Promise<IpcResult<GitInfo>>;
     pickDirectory(): Promise<IpcResult<string | null>>;

@@ -30,6 +30,14 @@ Git service, existing operation/CAS reset path, and Electron verification. Reflo
 branch/tag recovery variants remain explicit limits; the catalogue's Fork capture status and case-level
 unknowns remain unchanged.
 
+Subsequent implementation: the bounded F21 file-history/Blame slice is recorded in the
+[file-history and Blame handoff](../reviews/f21-file-history-blame.md). It maps P1-030's separate
+timeline, revision cards and rename traversal, P1-031's blame groups and linked commit details, and
+P1-033's Blame revision navigation to named committed-read IPC, separate owned inspector windows, and
+disposable-repository/Electron verification. Directory/selected-code history, copies, restart persistence,
+and general main-graph Back/Forward remain explicit limits; the catalogue's Fork capture status and
+case-level unknowns remain unchanged.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the

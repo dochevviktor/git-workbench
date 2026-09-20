@@ -7,13 +7,16 @@ import type {
   WindowState,
   RepositorySummary,
   RepositoryCommitDetailsContext,
+  RepositoryFileHistoryContext,
+  RepositoryBlameContext,
 } from '../../../common/ipc/contracts';
 import { ExpectedBackendError } from '../../errors';
 import type { RepositoryService } from '../../repositories/repository-service';
 import { isTrustedDocument } from '../security';
 import { executeRequest } from './execute-request';
 import { createCommitDetailsWindow } from '../commit-details-window';
-import { canInvokeCommitInspector } from '../commit-inspector-policy';
+import { canInvokeInspector } from '../commit-inspector-policy';
+import { createFileHistoryWindow } from '../file-history-window';
 
 const minimumZoomLevel = -3;
 const maximumZoomLevel = 5;
@@ -34,6 +37,21 @@ function changeZoom(window: BrowserWindow, delta: number): void {
   window.webContents.setZoomLevel(Math.min(maximumZoomLevel, Math.max(minimumZoomLevel, level)));
 }
 
+type InspectorEntry =
+  | {
+      readonly kind: 'commit-details';
+      readonly parentId: number;
+      readonly context: RepositoryCommitDetailsContext;
+    }
+  | {
+      readonly kind: 'file-history';
+      readonly parentId: number;
+      readonly context: RepositoryFileHistoryContext;
+    }
+  | { readonly kind: 'blame'; readonly parentId: number; readonly context: RepositoryBlameContext };
+type InspectorAttachment =
+  InspectorEntry | { readonly parentId: number; readonly context: RepositoryCommitDetailsContext };
+
 export function registerAppIpc(repositoryService?: RepositoryService) {
   const windows = new Map<
     number,
@@ -41,17 +59,13 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       window: BrowserWindow;
       url: string;
       cleanup: () => void;
-      inspector?: { parentId: number; context: RepositoryCommitDetailsContext } | undefined;
+      inspector?: InspectorEntry | undefined;
     }
   >();
   const openingInspectors = new Map<number, number>();
   const channels: string[] = [];
 
-  const attachWindow = (
-    window: BrowserWindow,
-    url: string,
-    inspector?: { parentId: number; context: RepositoryCommitDetailsContext },
-  ) => {
+  const attachWindow = (window: BrowserWindow, url: string, inspector?: InspectorAttachment) => {
     const id = window.webContents.id;
     windows.get(id)?.cleanup();
     const publishState = () => {
@@ -79,7 +93,13 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
       window.removeListener('leave-full-screen', publishState);
       window.removeListener('closed', cleanup);
     };
-    windows.set(id, { window, url, cleanup, inspector });
+    const normalizedInspector: InspectorEntry | undefined =
+      inspector && 'kind' in inspector
+        ? inspector
+        : inspector
+          ? { ...inspector, kind: 'commit-details' }
+          : undefined;
+    windows.set(id, { window, url, cleanup, inspector: normalizedInspector });
     window.once('closed', cleanup);
   };
 
@@ -109,7 +129,11 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
         payload,
         window !== undefined &&
           (!windows.get(window.webContents.id)?.inspector ||
-            canInvokeCommitInspector(contract.channel, payload)),
+            canInvokeInspector(
+              windows.get(window.webContents.id)?.inspector?.kind ?? 'commit-details',
+              contract.channel,
+              payload,
+            )),
         (input) => {
           if (!window) throw new Error('Missing IPC window');
           return handler(window, input);
@@ -207,9 +231,10 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
 
   if (repositoryService) {
     register(requests.getRepositoryCommitDetailsContext, (window) => {
-      const context = windows.get(window.webContents.id)?.inspector?.context;
-      if (!context) throw new ExpectedBackendError('FORBIDDEN', 'This window is not a commit inspector.');
-      return context;
+      const inspector = windows.get(window.webContents.id)?.inspector;
+      if (!inspector || inspector.kind !== 'commit-details')
+        throw new ExpectedBackendError('FORBIDDEN', 'This window is not a commit inspector.');
+      return inspector.context;
     });
     register(requests.openRepositoryCommitDetails, async (parent, request) => {
       const ownerId = parent.webContents.id;
@@ -239,7 +264,81 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
           theme: request.theme,
         };
         await createCommitDetailsWindow(parent, async (child, url) => {
-          attachWindow(child, url, { parentId: ownerId, context });
+          attachWindow(child, url, { kind: 'commit-details', parentId: ownerId, context });
+          await repositoryService.attachInspectionSession(child.webContents.id, ownerId, request.id);
+        });
+        return null;
+      } finally {
+        const remaining = (openingInspectors.get(ownerId) ?? 1) - 1;
+        if (remaining > 0) openingInspectors.set(ownerId, remaining);
+        else openingInspectors.delete(ownerId);
+      }
+    });
+    register(requests.getRepositoryFileHistoryContext, (window) => {
+      const inspector = windows.get(window.webContents.id)?.inspector;
+      if (!inspector || inspector.kind !== 'file-history')
+        throw new ExpectedBackendError('FORBIDDEN', 'This window is not a file-history inspector.');
+      return inspector.context;
+    });
+    register(requests.getRepositoryBlameContext, (window) => {
+      const inspector = windows.get(window.webContents.id)?.inspector;
+      if (!inspector || inspector.kind !== 'blame')
+        throw new ExpectedBackendError('FORBIDDEN', 'This window is not a blame inspector.');
+      return inspector.context;
+    });
+    register(requests.openRepositoryFileHistory, async (parent, request) => {
+      const ownerId = parent.webContents.id;
+      const pending = openingInspectors.get(ownerId) ?? 0;
+      const openCount = [...windows.values()].filter((entry) => entry.inspector?.parentId === ownerId).length;
+      if (pending + openCount >= 8)
+        throw new ExpectedBackendError(
+          'OPERATION_FAILED',
+          'Close an inspection window before opening another one.',
+        );
+      openingInspectors.set(ownerId, pending + 1);
+      try {
+        await repositoryService.getFileHistory(ownerId, request.id, request.commitId, request.path);
+        if (parent.isDestroyed())
+          throw new ExpectedBackendError('UNAVAILABLE', 'The source window was closed.');
+        const context: RepositoryFileHistoryContext = {
+          repositoryId: request.id,
+          commitId: request.commitId,
+          path: request.path,
+          theme: request.theme,
+        };
+        await createFileHistoryWindow(parent, 'file-history', async (child, url) => {
+          attachWindow(child, url, { kind: 'file-history', parentId: ownerId, context });
+          await repositoryService.attachInspectionSession(child.webContents.id, ownerId, request.id);
+        });
+        return null;
+      } finally {
+        const remaining = (openingInspectors.get(ownerId) ?? 1) - 1;
+        if (remaining > 0) openingInspectors.set(ownerId, remaining);
+        else openingInspectors.delete(ownerId);
+      }
+    });
+    register(requests.openRepositoryBlame, async (parent, request) => {
+      const ownerId = parent.webContents.id;
+      const pending = openingInspectors.get(ownerId) ?? 0;
+      const openCount = [...windows.values()].filter((entry) => entry.inspector?.parentId === ownerId).length;
+      if (pending + openCount >= 8)
+        throw new ExpectedBackendError(
+          'OPERATION_FAILED',
+          'Close an inspection window before opening another one.',
+        );
+      openingInspectors.set(ownerId, pending + 1);
+      try {
+        await repositoryService.getBlame(ownerId, request.id, request.commitId, request.path);
+        if (parent.isDestroyed())
+          throw new ExpectedBackendError('UNAVAILABLE', 'The source window was closed.');
+        const context: RepositoryBlameContext = {
+          repositoryId: request.id,
+          commitId: request.commitId,
+          path: request.path,
+          theme: request.theme,
+        };
+        await createFileHistoryWindow(parent, 'blame', async (child, url) => {
+          attachWindow(child, url, { kind: 'blame', parentId: ownerId, context });
           await repositoryService.attachInspectionSession(child.webContents.id, ownerId, request.id);
         });
         return null;
@@ -433,6 +532,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     );
     register(requests.getRepositoryRevisionBlob, (window, { id, commitId, path }) =>
       repositoryService.getRevisionBlob(window.webContents.id, id, commitId, path),
+    );
+    register(requests.getRepositoryFileHistory, (window, { id, commitId, path }) =>
+      repositoryService.getFileHistory(window.webContents.id, id, commitId, path),
+    );
+    register(requests.getRepositoryBlame, (window, { id, commitId, path }) =>
+      repositoryService.getBlame(window.webContents.id, id, commitId, path),
     );
     register(requests.openRepositoryInFileManager, async (window, location) => {
       const path = await repositoryService.resolveLocation(window.webContents.id, location);
