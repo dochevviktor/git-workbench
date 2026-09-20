@@ -31,7 +31,7 @@ search with graph highlights and direct distant navigation, full-file/context/wr
 explicit bounded Load Diff, confirmed tracked-file discard with recovery, a global automatic-fetch
 preference, native authentication helper policy, captured stash-new-file semantics, and all four merge
 modes. The corrected workflows are verified together; the broader feature families remain partial.
-The full conflict editor (F17), interactive rebase (F18), hunk/line stashes and patch import, syntax/rich
+Conflict-editor parity beyond the bounded F17 text slice, interactive rebase (F18), hunk/line stashes and patch import, syntax/rich
 image viewers, custom manager folders and filesystem watchers remain later work.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
@@ -175,8 +175,9 @@ Both directories are ignored. Application dependencies are currently fully bundl
 
 The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
 Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
-not completed Git Workbench features. The F01–F16 correction pass is verified with the limits in its
-review record; the next incremental feature is F17 in P06. Fork binaries, private source, and bundled product assets
+not completed Git Workbench features. The F01–F16 correction pass and bounded F17 conflict-helper slice are
+verified with the limits in their review records; the next incremental feature is F18 in P07. Fork binaries,
+private source, and bundled product assets
 are excluded; reference screenshots stay private/local and are never application assets.
 
 ## Migration notes

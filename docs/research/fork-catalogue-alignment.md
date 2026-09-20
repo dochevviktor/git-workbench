@@ -9,6 +9,12 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+Subsequent implementation: the bounded F17 text conflict slice is recorded in the
+[conflict-helper handoff](../reviews/f17-conflict-helper.md). It maps P1-015–020 and P1-022 findings to
+the current IPC, conflict service, Local Changes helper and disposable-repository tests. This updates
+Git Workbench implementation coverage only; the catalogue's Fork capture status and case-level unknowns
+remain unchanged.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the
@@ -222,7 +228,9 @@ index stages, refs/parents and sequencer state independently of application DTOs
 unrelated-state preservation, not just the successful screenshot.
 
 Keep a row per accepted correction: **case/finding → component/service → implemented states → test/manual
-evidence → deviation/unknown**. The correction table above seeds ownership, not completion.
+evidence → deviation/unknown**. The correction table above seeds ownership, not completion. F17's row is
+the [dated handoff](../reviews/f17-conflict-helper.md), including the independent multi-region and
+non-text tests and the retained stash/delete/rename/submodule limits.
 For the remaining record see [GAPS.md](fork-reference-new/reference/catalogue/GAPS.md): first launch,
 pristine empty manager, graph columns, exclusive vertical tabs, full menu/focus/default matrices,
 lightweight-tag creation, explicit GUI rebase Skip, general graph Back/Forward and 125% DPI remain

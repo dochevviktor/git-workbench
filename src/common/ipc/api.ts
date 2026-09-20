@@ -11,6 +11,8 @@ import type {
   RepositoryCommitContext,
   RepositoryCommitContextRequest,
   RepositoryCommitRequest,
+  RepositoryConflictRequest,
+  RepositoryConflictState,
   RepositoryDiff,
   RepositoryDiffRequest,
   RepositoryDiffCancel,
@@ -27,6 +29,7 @@ import type {
   RepositoryMergeRebaseRequest,
   RepositoryRecoveryState,
   RepositoryRecoveryRequest,
+  RepositoryResolveConflictRequest,
   RepositoryPatchExportRequest,
   RepositoryPatchExportResult,
   RepositoryPullRequestHandoff,
@@ -116,6 +119,8 @@ export interface DesktopApi {
     cancelDiff(request: RepositoryDiffCancel): Promise<IpcResult<null>>;
     previewDiscard(request: RepositoryDiscardPreviewRequest): Promise<IpcResult<RepositoryDiscardPreview>>;
     getWorkingChanges(request: RepositoryWorkingChangesRequest): Promise<IpcResult<RepositoryWorkingChanges>>;
+    getConflicts(request: RepositoryConflictRequest): Promise<IpcResult<RepositoryConflictState>>;
+    resolveConflict(request: RepositoryResolveConflictRequest): Promise<IpcResult<RepositoryConflictState>>;
     applyWorkingChange(
       request: RepositoryWorkingChangeActionRequest,
     ): Promise<IpcResult<RepositoryWorkingChangeActionResult>>;

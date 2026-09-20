@@ -34,6 +34,7 @@ import type { MenuEntry } from './menu/menu-model';
 import { copyText } from '../lib/clipboard';
 import { DiscardDialog } from './DiscardDialog';
 import type { DiscardRequest } from './DiscardDialog';
+import { ConflictResolver } from './ConflictResolver';
 
 const sessionSelections = new Map<string, ListSelection>();
 
@@ -200,6 +201,7 @@ interface ChangePreviewProps {
   readonly busy: boolean;
   readonly positionKey: string;
   readonly onPopup: () => void;
+  readonly onOpenConflict: () => void;
   readonly onWorkingAction: (
     action: RepositoryWorkingChangeAction,
     selection: RepositoryWorkingChangeSelection,
@@ -219,6 +221,7 @@ function ChangePreview({
   busy,
   positionKey,
   onPopup,
+  onOpenConflict,
   onWorkingAction,
 }: ChangePreviewProps) {
   const change = entry.change;
@@ -251,6 +254,16 @@ function ChangePreview({
           {change.path}
         </span>
         {changeDetail(change) && <span className="preview-detail">{changeDetail(change)}</span>}
+        {entry.kind === 'working' && change.status === 'unmerged' && (
+          <button
+            type="button"
+            className="button button-small"
+            data-testid="open-conflict-resolver"
+            onClick={onOpenConflict}
+          >
+            Resolve conflict
+          </button>
+        )}
         <button
           type="button"
           className="pane-icon-button"
@@ -343,6 +356,7 @@ export function ChangesView({
   );
   const [popup, setPopup] = useState(false);
   const [popupMode, setPopupMode] = useState<DiffDisplayMode>('split');
+  const [conflictPath, setConflictPath] = useState<string>();
   const [discard, setDiscard] = useState<DiscardRequest>();
   const viewRef = useRef<HTMLElement>(null);
   const [amend, setAmend] = usePersistentState(
@@ -926,6 +940,7 @@ export function ChangesView({
               busy={actionBusy || operationBusy}
               positionKey={`${repository.id}:${selected.key}:main`}
               onPopup={() => setPopup(true)}
+              onOpenConflict={() => setConflictPath(selected.path)}
               onWorkingAction={(action, lines, snapshot) => {
                 const target = workingTarget(selected, stagedByPath);
                 if (action === 'discard' && target) {
@@ -1036,6 +1051,20 @@ export function ChangesView({
             <footer>Space bar: close, Up/Down: move file selection</footer>
           </div>
         </dialog>
+      )}
+      {conflictPath && (
+        <ConflictResolver
+          repositoryId={repository.id}
+          path={conflictPath}
+          busy={operationBusy || actionBusy}
+          onClose={() => setConflictPath(undefined)}
+          onResolved={() => {
+            setConflictPath(undefined);
+            void refresh();
+            refreshDiff();
+            onCommitted();
+          }}
+        />
       )}
     </section>
   );

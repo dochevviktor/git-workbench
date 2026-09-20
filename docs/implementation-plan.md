@@ -8,11 +8,12 @@ captured Windows workflows and the separately documented public feature families
 [architecture](architecture.md) defines the boundaries. Capture IDs such as P0-022 are research topics,
 not project phases P00–P14.
 
-**Next incremental implementation: F17 in P06 — conflict-state inspection and the built-in conflict
-helper.** The user-authorized single F01–F16 correction pass is implemented and verified in the
-[correction record](reviews/f01-f16-catalogue-corrections.md). It covers the relevant C01–C03 work,
-F16 merge modes/recovery from C04, and F06 search from C05. Broader feature-family scope and unobserved
-variants remain partial; F17/F18 and later features have not been silently included or completed.
+**F17 in P06 — conflict-state inspection and the built-in conflict helper — is implemented and verified
+within the bounded text-conflict scope in the [F17 handoff](reviews/f17-conflict-helper.md).** The
+user-authorized single F01–F16 correction pass is also implemented and verified in the
+[correction record](reviews/f01-f16-catalogue-corrections.md). Broader feature-family scope and
+unobserved variants remain partial; F18, F19 and later features have not been silently included or
+completed.
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -46,7 +47,8 @@ bounded vertical details resizing with hide/restore and a separate read-only com
 and split the Branch/Stash toolbar buttons into primary and menu actions. The
 [follow-up record](reviews/f01-f16-catalogue-corrections.md#interaction-follow-up) links the observations,
 implementation and verification. `npm run check` passes 301 tests; production build and all ten
-headless Electron scenarios pass. F17 remains the next incremental feature.
+headless Electron scenarios pass. F17 is now verified within the bounded scope in its handoff; F18
+remains the next incremental feature.
 
 ## Progress ledger
 
@@ -58,7 +60,7 @@ headless Electron scenarios pass. F17 remains the next incremental feature.
 | P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                   | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                      | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics and four merge modes/recovery verified (2026-09-20); F17/F19 remain planned                                      | P01/P04/P05 capabilities              |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, and bounded F17 text conflict editing verified (2026-09-20); F19 remains planned     | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Planned                                                                                                                                   | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Started early; F06 scoped search verified (2026-09-20); inspectors/reflog/bisect/patch import planned                                     | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                   | P02/P05, common-repo queue            |
@@ -77,7 +79,8 @@ captured core without blocking unrelated work. Keep implementation and research 
 ## Catalogue correction sequence
 
 The **F01–F16 corrections are verified** as of 2026-09-20 within the scope and adaptations in their
-record. C04's F17/F18/F19 and advanced C05/C06 work remain planned. A completed correction does not
+record. C04's bounded F17 slice is verified in its handoff; F18/F19 and advanced C05/C06 work remain
+planned. A completed correction does not
 complete all of its owning phases. Each implementation handoff records case/finding IDs, original image paths, changed
 components/services, validation, and deliberate deviations in the alignment record. Use the catalogue's
 current dossiers to find later subcases that resolve earlier capture failures.
@@ -698,7 +701,7 @@ bundles and passes three headless scenarios, including a real 16-second checkout
 Git tests use disposable repositories/remotes and compare index, worktree, refs, and sequencer state.
 Light/dark UI captures were compared with the restored Fork references. The synthetic graph projection
 improved from about 694 to 7 ms at 4,001 commits; this does not satisfy P03's real large-history baseline.
-The full conflict editor, hunk-level stash selection and patch import, clone/authentication, the global
+Full conflict-editor parity beyond the bounded F17 text slice, hunk-level stash selection and patch import, clone/authentication, the global
 automatic-fetch preference, full hosting accounts, cross-platform runtime behavior, and remaining phase
 criteria are still unimplemented or unverified. The review record documents the exact scope and
 recovery-copy retention policy.
@@ -725,8 +728,8 @@ between branch rows: a source onto the current branch opens Merge, while the cur
 branch opens ordinary Rebase. Recovery now supports editor-safe continue, rebase skip, and abort after a
 fresh app launch. Disposable repositories verify divergent merge parents, rebased history, conflict
 continuation, rebase skip, and staged/unstaged/untracked restoration around a merge. Interactive rebase,
-three-way conflict editing, delete/modify/rename/binary/submodule conflict views, and drag/drop parity with
-Fork remain unverified or deferred to F17/P07.
+Fork's unverified multi-region/manual presentation, delete/modify/rename/binary/submodule built-in views,
+and drag/drop parity remain unverified or deferred to P07/F19.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 
@@ -977,10 +980,9 @@ and screenshot coordinates are provenance, not implementation constants.
 
 ## Suggested next request
 
-> Implement F17 in P06 from docs/implementation-plan.md. Read the F01–F16 correction record and catalogue
-> P1-015–020/P1-022 cases before changing the conflict UI. Add operation-aware conflict inspection and
-> two visible source panes above an editable result, resolution counts, validated write-and-stage and
-> subsequent Commit/Continue. Preserve the existing merge-mode, recovery, snapshot and job boundaries.
-> Test single/multiple-region and non-text states in disposable repositories, including interruption,
-> Cancel and Abort, then run npm run check, npm run build and the headless Electron suite. Leave F18
-> interactive rebase and unverified parity variants explicitly planned.
+> Implement F18 in P07 from docs/implementation-plan.md. Read the F17 handoff and catalogue P1-022–024
+> cases before changing rebase recovery. Add a reviewed interactive rebase plan with bounded action/message
+> editing, controlled sequence-editor integration, pause/resume and operation-aware conflict recovery.
+> Preserve F17's conflict snapshots, Commit/Continue and Abort boundaries. Test root, empty, interrupted,
+> changing-upstream and amend states in disposable repositories, then run npm run check, npm run build and
+> the headless Electron suite. Leave F19 cherry-pick/revert/reset and unverified Fork Skip parity planned.

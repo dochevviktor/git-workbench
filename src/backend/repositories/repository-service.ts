@@ -13,6 +13,8 @@ import type {
   RepositoryCommitContext,
   RepositoryCommitRequest,
   RepositoryCommitResult,
+  RepositoryConflictRequest,
+  RepositoryConflictState,
   RepositoryDiff,
   RepositoryDiffOptions,
   RepositoryDiffCancel,
@@ -40,6 +42,7 @@ import type {
   RepositoryRecoveryRequest,
   RepositoryRecoveryState,
   RepositoryPullRequestHandoff,
+  RepositoryResolveConflictRequest,
   RepositoryRemote,
   RepositoryRemoteActionRequest,
   RepositoryRemoteActionResult,
@@ -124,6 +127,12 @@ import {
   WorkingChangeActionError,
 } from './staging-service';
 import { previewLocalChanges, readRecovery, recover, withLocalChanges } from './recovery-service';
+import {
+  ConflictRequestError,
+  readConflictState,
+  resolveConflict,
+  StaleConflictSnapshotError,
+} from './conflict-service';
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
 import { MergeRebaseRequestError, runMergeRebase } from './merge-rebase-service';
@@ -676,6 +685,50 @@ export class RepositoryService {
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the working tree changes.');
     }
+  }
+
+  async getConflicts(ownerId: number, request: RepositoryConflictRequest): Promise<RepositoryConflictState> {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    try {
+      return await readConflictState(
+        this.runner,
+        { repositoryId: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir },
+        request,
+      );
+    } catch (error) {
+      if (error instanceof ConflictRequestError) {
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      }
+      throw this.mapGitFailure(error, 'Git could not inspect the conflicted files.');
+    }
+  }
+
+  async resolveConflict(
+    request: RepositoryResolveConflictRequest,
+    ownerId: number,
+  ): Promise<RepositoryConflictState> {
+    const cached = await this.requireWorktree(ownerId, request.id);
+    if (this.operations.isBusyForRepository(request.id))
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Wait for the current Git operation to finish before staging a conflict resolution.',
+      );
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.requireWorktree(ownerId, request.id);
+      try {
+        return await resolveConflict(
+          this.runner,
+          { repositoryId: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir },
+          request,
+        );
+      } catch (error) {
+        if (error instanceof StaleConflictSnapshotError)
+          throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+        if (error instanceof ConflictRequestError)
+          throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+        throw this.mapGitFailure(error, 'Git could not stage the conflict resolution.');
+      }
+    });
   }
 
   async applyWorkingChange(

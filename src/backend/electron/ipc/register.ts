@@ -329,6 +329,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryWorkingChanges, (window, { id, includeUntracked, includeIgnored }) =>
       repositoryService.getWorkingChanges(window.webContents.id, id, includeUntracked, includeIgnored),
     );
+    register(requests.getRepositoryConflicts, (window, request) =>
+      repositoryService.getConflicts(window.webContents.id, request),
+    );
+    register(requests.resolveRepositoryConflict, (window, request) =>
+      repositoryService.resolveConflict(request, window.webContents.id),
+    );
     register(requests.applyRepositoryWorkingChange, (window, request) =>
       repositoryService.applyWorkingChange(window.webContents.id, request),
     );

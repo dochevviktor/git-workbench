@@ -469,6 +469,93 @@ export const repositoryWorkingChangesSchema = z.strictObject({
   truncated: z.boolean(),
 });
 
+/** A bounded, inert view of one side of a conflict. Binary and oversized blobs never cross IPC. */
+export const repositoryConflictContentSchema = z.strictObject({
+  state: z.enum(['text', 'binary', 'too-large', 'unavailable']),
+  content: z.string().max(2 * 1024 * 1024),
+  byteLength: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(8 * 1024 * 1024)
+    .nullable(),
+  message: z.string().max(512).nullable(),
+});
+
+export const repositoryConflictStageSchema = z.strictObject({
+  mode: repositoryGitModeSchema.nullable(),
+  objectId: gitObjectIdSchema.nullable(),
+});
+
+export const repositoryConflictRegionSchema = z.strictObject({
+  id: z.number().int().nonnegative().max(100_000),
+  startLine: z.number().int().nonnegative().max(100_000),
+  endLine: z.number().int().positive().max(100_000),
+  base: z
+    .string()
+    .max(2 * 1024 * 1024)
+    .nullable(),
+  ours: z.string().max(2 * 1024 * 1024),
+  theirs: z.string().max(2 * 1024 * 1024),
+});
+
+export const repositoryConflictKindSchema = z.enum(['text', 'binary', 'submodule', 'unsupported']);
+
+export const repositoryConflictFileSummarySchema = z.strictObject({
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A conflict path is required.'),
+  previousPath: repositoryRevisionPathSchema.nullable(),
+  kind: repositoryConflictKindSchema,
+  unresolvedRegions: z.number().int().nonnegative().max(100_000).nullable(),
+});
+
+export const repositoryConflictFileSchema = repositoryConflictFileSummarySchema.extend({
+  stages: z.strictObject({
+    base: repositoryConflictStageSchema,
+    ours: repositoryConflictStageSchema,
+    theirs: repositoryConflictStageSchema,
+  }),
+  base: repositoryConflictContentSchema,
+  ours: repositoryConflictContentSchema,
+  theirs: repositoryConflictContentSchema,
+  result: repositoryConflictContentSchema,
+  regions: z.array(repositoryConflictRegionSchema).max(1_000),
+});
+
+export const repositoryConflictOperationSchema = z.enum([
+  'merge',
+  'rebase',
+  'cherry-pick',
+  'revert',
+  'stash',
+  'unknown',
+]);
+
+export const repositoryConflictRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  path: repositoryRevisionPathSchema.optional(),
+});
+
+export const repositoryConflictStateSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  operation: repositoryConflictOperationSchema,
+  operationLabel: z.string().min(1).max(512),
+  oursLabel: z.string().min(1).max(512),
+  theirsLabel: z.string().min(1).max(512),
+  files: z.array(repositoryConflictFileSummarySchema).max(1_000),
+  selected: repositoryConflictFileSchema.nullable(),
+  conflictedCount: z.number().int().nonnegative().max(100_000),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryResolveConflictRequestSchema = z
+  .strictObject({
+    id: repositoryIdSchema,
+    path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A conflict path is required.'),
+    snapshot: repositoryDiffSnapshotSchema,
+    content: z.string().max(2 * 1024 * 1024),
+  })
+  .refine((request) => !request.content.includes('\0'), 'A text conflict result cannot contain NUL bytes.');
+
 export const repositoryWorkingChangeActionSchema = z.enum(['stage', 'unstage', 'discard']);
 
 export const repositoryWorkingChangeTargetSchema = z.strictObject({
@@ -1437,6 +1524,16 @@ export const requests = {
     repositoryWorkingChangesRequestSchema,
     repositoryWorkingChangesSchema,
   ),
+  getRepositoryConflicts: request(
+    'repository:get-conflicts',
+    repositoryConflictRequestSchema,
+    repositoryConflictStateSchema,
+  ),
+  resolveRepositoryConflict: request(
+    'repository:resolve-conflict',
+    repositoryResolveConflictRequestSchema,
+    repositoryConflictStateSchema,
+  ),
   applyRepositoryWorkingChange: request(
     'repository:apply-working-change',
     repositoryWorkingChangeActionRequestSchema,
@@ -1617,6 +1714,16 @@ export type RepositoryWorkingChange = z.infer<typeof repositoryWorkingChangeSche
 export type RepositoryWorkingChangeCounts = z.infer<typeof repositoryWorkingChangeCountsSchema>;
 export type RepositoryWorkingChangesRequest = z.infer<typeof repositoryWorkingChangesRequestSchema>;
 export type RepositoryWorkingChanges = z.infer<typeof repositoryWorkingChangesSchema>;
+export type RepositoryConflictContent = z.infer<typeof repositoryConflictContentSchema>;
+export type RepositoryConflictStage = z.infer<typeof repositoryConflictStageSchema>;
+export type RepositoryConflictRegion = z.infer<typeof repositoryConflictRegionSchema>;
+export type RepositoryConflictKind = z.infer<typeof repositoryConflictKindSchema>;
+export type RepositoryConflictFileSummary = z.infer<typeof repositoryConflictFileSummarySchema>;
+export type RepositoryConflictFile = z.infer<typeof repositoryConflictFileSchema>;
+export type RepositoryConflictOperation = z.infer<typeof repositoryConflictOperationSchema>;
+export type RepositoryConflictRequest = z.infer<typeof repositoryConflictRequestSchema>;
+export type RepositoryConflictState = z.infer<typeof repositoryConflictStateSchema>;
+export type RepositoryResolveConflictRequest = z.infer<typeof repositoryResolveConflictRequestSchema>;
 export type RepositoryWorkingChangeAction = z.infer<typeof repositoryWorkingChangeActionSchema>;
 export type RepositoryWorkingChangeTarget = z.infer<typeof repositoryWorkingChangeTargetSchema>;
 export type RepositoryWorkingChangeSelection = z.infer<typeof repositoryWorkingChangeSelectionSchema>;
