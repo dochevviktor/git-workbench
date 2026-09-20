@@ -15,6 +15,13 @@ the current IPC, conflict service, Local Changes helper and disposable-repositor
 Git Workbench implementation coverage only; the catalogue's Fork capture status and case-level unknowns
 remain unchanged.
 
+Subsequent implementation: the bounded F18 interactive-rebase slice is recorded in the
+[interactive-rebase handoff](../reviews/f18-interactive-rebase.md). It maps P1-023/P1-024 plan,
+message and Edit/amend/continue findings to the typed plan IPC, controlled sequence-editor service,
+history menu, plan dialog, Commit/Recovery state and disposable-repository/Electron tests. Merge
+preservation, dependent-reference updates and captured option effects remain explicit limits; the
+catalogue's Fork capture status and case-level unknowns remain unchanged.
+
 ## Baseline, provenance and review limits
 
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the
@@ -230,7 +237,10 @@ unrelated-state preservation, not just the successful screenshot.
 Keep a row per accepted correction: **case/finding → component/service → implemented states → test/manual
 evidence → deviation/unknown**. The correction table above seeds ownership, not completion. F17's row is
 the [dated handoff](../reviews/f17-conflict-helper.md), including the independent multi-region and
-non-text tests and the retained stash/delete/rename/submodule limits.
+non-text tests and the retained stash/delete/rename/submodule limits. F18's row is the
+[interactive-rebase handoff](../reviews/f18-interactive-rebase.md), including plan/action/message,
+Edit/amend/continue, root, empty-commit, conflict-abort and local-recovery tests with merge-preservation
+and dependent-reference limits retained.
 For the remaining record see [GAPS.md](fork-reference-new/reference/catalogue/GAPS.md): first launch,
 pristine empty manager, graph columns, exclusive vertical tabs, full menu/focus/default matrices,
 lightweight-tag creation, explicit GUI rebase Skip, general graph Back/Forward and 125% DPI remain

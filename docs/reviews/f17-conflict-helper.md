@@ -35,7 +35,8 @@ claim the captured Windows window geometry. Stash/pop provenance has no durable 
 reliably distinguished from another externally-created unmerged state, so it is presented with generic
 current/incoming labels until a source hint is available. Delete/modify, rename, binary, submodule and
 external-tool flows are inspected and kept safe but are not claimed as built-in text editing parity.
-F18 interactive rebase plan editing and F19 cherry-pick/revert/reset remain separate planned work.
+F18 interactive rebase plan editing is implemented in the separate [F18 handoff](f18-interactive-rebase.md);
+F19 cherry-pick/revert/reset remains separate planned work.
 
 ## Verification
 

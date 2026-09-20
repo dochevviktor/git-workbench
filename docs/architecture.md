@@ -8,7 +8,7 @@ with its F14 operation registry, background-fetch scheduler, and activity views,
 PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
-## Catalogue-driven corrections (F01–F16 verified, 2026-09-20)
+## Catalogue-driven corrections (F01–F18 bounded slices verified, 2026-09-20)
 
 The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
 target without changing the Electron/TypeScript boundaries. C01–C06 in the
@@ -17,8 +17,9 @@ target without changing the Electron/TypeScript boundaries. C01–C06 in the
 tests and remaining limits. Additive repository navigation, annotated empty-message tags, scoped search,
 diff controls/discard, merge modes, clone/authentication and lifecycle corrections are now implemented.
 The later initial-slice descriptions are historical where superseded here. Commit details now support a
-separate read-only native window; file-history/blame inspectors, the full conflict helper and interactive
-rebase remain future work.
+separate read-only native window; file-history/blame inspectors and full conflict-family variants remain
+future work. The bounded F17 conflict helper and F18 interactive-rebase workflow are recorded in their
+dated handoffs.
 
 - **Navigation and command state:** one repository-session/order model feeds horizontal tabs and the
   optional workspace repository list simultaneously. Keep repository-list visibility separate from
@@ -55,10 +56,10 @@ rebase remain future work.
   with include-untracked: represent the intended policy explicitly and verify stash parent/index shape.
   Preserve existing recovery, identity validation and operation queues while revising contracts/tests.
 - **Merge/conflict/rebase:** add an explicit merge mode, not raw flags. Backend data includes base/ours/
-  theirs, index stages and the sequencer; F16's four merge modes and paused squash recovery are implemented.
-  The planned F17 helper presents two inputs above an editable result.
-  Resolve writes/stages; Commit/Continue advances history. Interactive Edit pause, amend and replay are
-  distinct operation states. Model squash pending state independently of MERGE_HEAD presence.
+  theirs, index stages and the sequencer; F16's four merge modes and paused squash recovery, F17's bounded
+  text helper, and F18's reviewed interactive plan are implemented within their handoffs. Resolve
+  writes/stages; Commit/Continue advances history. Interactive Edit pause, amend and replay are distinct
+  operation states. Model squash pending state independently of MERGE_HEAD presence.
 - **Activity:** keep process/job outcome separate from repository sequencer state. Cancel-requested is
   not proof of termination or remote rollback; a finished process can leave a conflict requiring recovery.
   Preserve structured errors and do not reproduce misleading captured Activity success labels.
@@ -423,8 +424,10 @@ commit ID before constructing the Git argument array, and revalidates the refere
 common-repository mutation queue. It refuses a detached or unborn current branch, an existing sequencer,
 and unreviewed local changes; the optional named Recovery stash is created before the operation and
 reapplied only after success. A conflict is a failed job with Git's sequencer left in place, so a fresh
-window can continue, skip a rebase commit, or abort through the Recovery capability. Branch menus and
-drag/drop are renderer entry points only; they never receive a command executor.
+window can continue, skip a rebase commit, or abort through the Recovery capability. F18 extends the same
+boundary with a newest-first, backend-reviewed plan, generated sequence-editor artifacts, temporary
+backup refs and operation-aware Edit/amend/continue state. Branch menus and drag/drop are renderer entry
+points only; they never receive a command executor.
 
 ## Current limitations
 
@@ -437,15 +440,16 @@ The F01–F16 pass adds clone/Test Connection, installed native authentication h
 fetch, durable closed-tab/order/window state, author/path/diff-content search, tracked-file discard,
 tag push/details and merge modes. There is still no filesystem watcher, custom manager folder editor,
 hash-search extension, commit signing or commit-and-push, multiple-reference selection, application-managed
-credential/password dialog or secret store, full conflict editor, hunk-level stash selection and patch
-import, syntax/image viewers, full hosting integration, automatic updater or final branding.
+credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
+interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
+integration, automatic updater or final branding.
 Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager
 behavior, history ancestry/metadata, changed-path/tree/blob inspection, working-tree status categories,
 merge collapse, commit and amend behavior, branch/tag creation, checkout, and deletion with their
 refusals, fetch/pull/push against local bare remotes including divergence and lease refusals, ordinary
-merge/rebase and sequencer recovery against disposable histories, and the Electron bridge; later Git
+and interactive merge/rebase and sequencer recovery against disposable histories, and the Electron bridge; later Git
 correctness will continue to be checked against independent CLI assertions as each workflow is added.
 Signing and the full conflict editor remain future work. The reviewed
 checkout/pull/fast-forward/push workflows, recovery controls, and PR browser handoff are verified within

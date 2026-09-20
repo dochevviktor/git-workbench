@@ -50,7 +50,11 @@ function pendingOperationNotice(context: RepositoryCommitContext): string | unde
     case 'revert':
       return 'A revert is in progress. Committing finishes it with the staged result.';
     case 'rebase':
-      return 'A rebase is in progress. Resolve and stage the files, then Continue or Abort from Recovery.';
+      return context.rebaseEdit === 'needs-amend'
+        ? 'Interactive rebase is paused for Edit. Amend this commit, then continue the rebase.'
+        : context.rebaseEdit === 'ready-to-continue'
+          ? 'The edited interactive-rebase commit is ready. Continue the rebase when the message is correct.'
+          : 'A rebase is in progress. Resolve and stage the files, then Continue or Abort from Recovery.';
     case null:
       return undefined;
   }
@@ -152,6 +156,10 @@ export function CommitComposer({
   }, [body, prefillKey, setBody, setSubject, subject, value]);
 
   useEffect(() => {
+    if (value?.rebaseEdit === 'needs-amend' && value.amend && !amend) {
+      setAmend(true);
+      return;
+    }
     if (amend && value && !value.amend) setAmend(false);
   }, [amend, setAmend, value]);
 
@@ -193,6 +201,23 @@ export function CommitComposer({
       setFailure(undefined);
       setError(undefined);
       try {
+        if (value.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend) {
+          const recovery = unwrapResult(await api.repository.getRecovery({ id: repository.id }));
+          const operation = await waitForOperation(
+            api,
+            unwrapResult(
+              await api.repository.recover({
+                id: repository.id,
+                action: 'continue',
+                snapshot: recovery.snapshot,
+              }),
+            ),
+          );
+          if (operation.status !== 'succeeded') throw new Error(operation.message);
+          refreshContext();
+          onCommitted();
+          return;
+        }
         const accepted = unwrapResult(
           await api.repository.commit({
             id: repository.id,
@@ -250,8 +275,10 @@ export function CommitComposer({
       return 'Configure user.name and user.email before committing.';
     }
     if (conflictedCount > 0) return 'Resolve the conflicted files before committing.';
+    if (value.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend)
+      return undefined;
     if (!subject.trim()) return 'Enter a commit subject.';
-    if (value.pendingOperation === 'rebase')
+    if (value.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend')
       return 'Continue the rebase from Recovery after staging the resolution.';
     if (amend) return value.amend ? undefined : (value.amendBlockedReason ?? 'There is no commit to amend.');
     if (stagedCount === 0 && !value.pendingOperation) return 'Stage at least one change to commit.';
@@ -263,11 +290,13 @@ export function CommitComposer({
   const amendAvailable = Boolean(value?.amend);
   const commitLabel = committing
     ? 'Committing…'
-    : amend
-      ? 'Amend Last Commit'
-      : stagedCount > 0
-        ? `Commit ${fileCountLabel(stagedCount)}`
-        : 'Commit';
+    : value?.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend
+      ? 'Continue Rebase'
+      : amend
+        ? 'Amend Last Commit'
+        : stagedCount > 0
+          ? `Commit ${fileCountLabel(stagedCount)}`
+          : 'Commit';
 
   const recentItems = useMemo<MenuEntry[]>(() => {
     const messages = value?.recentMessages ?? [];

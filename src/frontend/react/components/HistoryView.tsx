@@ -31,6 +31,8 @@ export interface HistoryReferenceCommands {
   readonly newTag: (commit: RepositoryHistoryCommit) => void;
   readonly checkoutCommit: (commit: RepositoryHistoryCommit) => void;
   readonly savePatch: (commit: RepositoryHistoryCommit) => void;
+  readonly interactiveRebase: (commit: RepositoryHistoryCommit) => void;
+  readonly interactiveRebaseFromRoot: () => void;
 }
 
 interface HistoryViewProps {
@@ -429,8 +431,33 @@ export function HistoryView({
         {
           id: 'interactive-rebase',
           label: 'Interactive Rebase',
-          submenu: [],
-          ...planned('Interactive rebase', 'P07'),
+          submenu: [
+            {
+              id: 'interactive-rebase-to-here',
+              label: `Rebase '${currentBranch?.name ?? 'current branch'}' to Here…`,
+              disabled:
+                !referenceCommands.ready || currentBranch === undefined || currentBranch.target === commit.id,
+              disabledReason: !referenceCommands.ready
+                ? 'The branches and tags of this repository are still loading.'
+                : currentBranch === undefined
+                  ? 'Check out a branch before editing its history.'
+                  : currentBranch.target === commit.id
+                    ? 'Choose an earlier commit so there is a plan to edit.'
+                    : undefined,
+              run: () => referenceCommands.interactiveRebase(commit),
+            },
+            {
+              id: 'interactive-rebase-from-root',
+              label: `Rebase '${currentBranch?.name ?? 'current branch'}' from Root…`,
+              disabled: !referenceCommands.ready || currentBranch === undefined,
+              disabledReason: !referenceCommands.ready
+                ? 'The branches and tags of this repository are still loading.'
+                : currentBranch === undefined
+                  ? 'Check out a branch before editing its history.'
+                  : undefined,
+              run: referenceCommands.interactiveRebaseFromRoot,
+            },
+          ],
         },
         menuSeparator,
         {
@@ -466,7 +493,7 @@ export function HistoryView({
         menuSeparator,
         ...graphMenu(commit, row),
       ]),
-    [currentBranch?.name, graphMenu, referenceCommands, unavailable],
+    [currentBranch, graphMenu, referenceCommands, unavailable],
   );
 
   const openCommitMenu = useCallback(

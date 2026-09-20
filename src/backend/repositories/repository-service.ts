@@ -26,6 +26,9 @@ import type {
   RepositoryHistoryPage,
   RepositoryHistoryFilter,
   RepositoryHistoryAnchor,
+  RepositoryInteractiveRebasePlan,
+  RepositoryInteractiveRebasePlanRequest,
+  RepositoryInteractiveRebaseRequest,
   RepositoryLocation,
   RepositoryManagerFolder,
   RepositoryManagerRepository,
@@ -136,6 +139,12 @@ import {
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
 import { MergeRebaseRequestError, runMergeRebase } from './merge-rebase-service';
+import {
+  InteractiveRebaseRequestError,
+  StaleInteractiveRebasePlanError,
+  readInteractiveRebasePlan,
+  runInteractiveRebase,
+} from './interactive-rebase-service';
 
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
@@ -1201,6 +1210,58 @@ export class RepositoryService {
     );
   }
 
+  async getInteractiveRebasePlan(
+    ownerId: number,
+    request: RepositoryInteractiveRebasePlanRequest,
+  ): Promise<RepositoryInteractiveRebasePlan> {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    try {
+      return await readInteractiveRebasePlan(
+        this.runner,
+        { repositoryId: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir },
+        request,
+      );
+    } catch (error) {
+      if (error instanceof InteractiveRebaseRequestError)
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      throw this.mapGitFailure(error, 'Git could not read the interactive rebase plan.');
+    }
+  }
+
+  startInteractiveRebase(ownerId: number, request: RepositoryInteractiveRebaseRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const target = request.ontoCommitId ? ` to ${request.ontoCommitId.slice(0, 7)}` : ' from root';
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'rebase',
+        title: `Interactive rebase${target}`,
+        command: 'git rebase --interactive',
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            return await runInteractiveRebase(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              gitDir: summary.gitDir,
+              request,
+              signal: handle.signal,
+              handle,
+            });
+          } catch (error) {
+            if (error instanceof StaleInteractiveRebasePlanError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            if (error instanceof InteractiveRebaseRequestError)
+              throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+            throw this.mapGitFailure(error, 'Git could not start the interactive rebase.');
+          }
+        }),
+    );
+  }
+
   cancelOperation(ownerId: number, operationId: string): RepositoryOperation | null {
     return this.operations.cancel(ownerId, operationId);
   }
@@ -1481,7 +1542,7 @@ export class RepositoryService {
   }
 
   async getRecovery(ownerId: number, id: string): Promise<RepositoryRecoveryState> {
-    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    const summary = await this.refreshOpenRepository(ownerId, id);
     if (!summary.worktreePath)
       throw new ExpectedBackendError('UNAVAILABLE', 'This repository has no working tree.');
     return readRecovery(this.runner, {

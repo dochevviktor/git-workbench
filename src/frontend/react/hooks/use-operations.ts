@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   RepositoryNetworkRequest,
+  RepositoryInteractiveRebaseRequest,
   RepositoryMergeRebaseAction,
   RepositoryOperation,
   RepositoryStashAction,
@@ -80,6 +81,17 @@ export function useOperations() {
     [],
   );
 
+  const startInteractiveRebase = useCallback(
+    async (request: RepositoryInteractiveRebaseRequest): Promise<RepositoryOperation> => {
+      const api = window.desktop;
+      if (!api) throw new Error('Open this application in Electron to edit repository history.');
+      const accepted = unwrapResult(await api.repository.startInteractiveRebase(request));
+      if (mounted.current) setOperations((current) => mergeOperation(current, accepted));
+      return accepted;
+    },
+    [],
+  );
+
   const cancel = useCallback((operationId: string) => {
     const api = window.desktop;
     if (!api) return;
@@ -98,7 +110,16 @@ export function useOperations() {
 
   const clearError = useCallback(() => setError(undefined), []);
 
-  return { operations, error, start, startStash, startMergeRebase, cancel, clearError };
+  return {
+    operations,
+    error,
+    start,
+    startStash,
+    startMergeRebase,
+    startInteractiveRebase,
+    cancel,
+    clearError,
+  };
 }
 
 export function runningOperation(

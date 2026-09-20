@@ -9,11 +9,12 @@ captured Windows workflows and the separately documented public feature families
 not project phases P00–P14.
 
 **F17 in P06 — conflict-state inspection and the built-in conflict helper — is implemented and verified
-within the bounded text-conflict scope in the [F17 handoff](reviews/f17-conflict-helper.md).** The
-user-authorized single F01–F16 correction pass is also implemented and verified in the
-[correction record](reviews/f01-f16-catalogue-corrections.md). Broader feature-family scope and
-unobserved variants remain partial; F18, F19 and later features have not been silently included or
-completed.
+within the bounded text-conflict scope in the [F17 handoff](reviews/f17-conflict-helper.md). F18 in P07
+is now implemented and verified within the bounded interactive-rebase scope in the
+[F18 handoff](reviews/f18-interactive-rebase.md).** The user-authorized single F01–F16 correction pass
+is also implemented and verified in the [correction record](reviews/f01-f16-catalogue-corrections.md).
+Broader feature-family scope and unobserved variants remain partial; F19 and later features have not
+been silently included or completed.
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -47,8 +48,16 @@ bounded vertical details resizing with hide/restore and a separate read-only com
 and split the Branch/Stash toolbar buttons into primary and menu actions. The
 [follow-up record](reviews/f01-f16-catalogue-corrections.md#interaction-follow-up) links the observations,
 implementation and verification. `npm run check` passes 301 tests; production build and all ten
-headless Electron scenarios pass. F17 is now verified within the bounded scope in its handoff; F18
-remains the next incremental feature.
+headless Electron scenarios pass. F17 is verified within the bounded scope in its handoff.
+
+F18 implementation checkpoint (2026-09-20): added a typed newest-first interactive-rebase plan,
+reorder/action/message editing, autosquash, root and empty-commit handling, controlled sequence-editor
+execution, backup artifacts, explicit local-change recovery, conflict abort, and Edit → Amend → Continue
+state. The [F18 handoff](reviews/f18-interactive-rebase.md) records P1-023/P1-024 traceability and
+the deliberate merge-preservation/dependent-reference limits. `npm run check` passes with 312 tests and
+one existing skip, `npm run build` passes, and the headless Electron suite passes 12 scenarios. P07
+remains partial because the handoff deliberately excludes merge preservation and dependent-reference
+updates.
 
 ## Progress ledger
 
@@ -61,7 +70,7 @@ remains the next incremental feature.
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                      | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, and bounded F17 text conflict editing verified (2026-09-20); F19 remains planned     | P01/P04/P05 capabilities              |
-| P07   | Interactive rebase and history editing                               | Planned                                                                                                                                   | P06                                   |
+| P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain     | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Started early; F06 scoped search verified (2026-09-20); inspectors/reflog/bisect/patch import planned                                     | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                   | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                   | P04, safe assets; P05 transfers       |
@@ -79,8 +88,8 @@ captured core without blocking unrelated work. Keep implementation and research 
 ## Catalogue correction sequence
 
 The **F01–F16 corrections are verified** as of 2026-09-20 within the scope and adaptations in their
-record. C04's bounded F17 slice is verified in its handoff; F18/F19 and advanced C05/C06 work remain
-planned. A completed correction does not
+record. C04's bounded F17 slice and F18 interactive-rebase slice are verified in their handoffs; F19
+and advanced C05/C06 work remain planned. A completed correction does not
 complete all of its owning phases. Each implementation handoff records case/finding IDs, original image paths, changed
 components/services, validation, and deliberate deviations in the alignment record. Use the catalogue's
 current dossiers to find later subcases that resolve earlier capture failures.
@@ -588,7 +597,8 @@ Catalogue anchors: P1-001–012; C03 corrects existing semantic differences befo
    branch/tag selection, Test Connection, and clear authentication/network errors. Clone reviews URL,
    parent folder and name, then opens the completed repository. Avoid duplicate background operations.
 4. Add fast-forward-only pull first. The stabilization slice below brings forward the recovery subset
-   needed for merge/rebase pull options. Interactive rebase remains P07. Support lease-based force push
+   needed for merge/rebase pull options. Interactive rebase is implemented in P07 within the bounded F18
+   scope. Support lease-based force push
    only with explicit preview and confirmation.
 
 Acceptance:
@@ -727,9 +737,10 @@ states. The dialog offers named Recovery stash-and-reapply, branch context-menu 
 between branch rows: a source onto the current branch opens Merge, while the current branch onto another
 branch opens ordinary Rebase. Recovery now supports editor-safe continue, rebase skip, and abort after a
 fresh app launch. Disposable repositories verify divergent merge parents, rebased history, conflict
-continuation, rebase skip, and staged/unstaged/untracked restoration around a merge. Interactive rebase,
-Fork's unverified multi-region/manual presentation, delete/modify/rename/binary/submodule built-in views,
-and drag/drop parity remain unverified or deferred to P07/F19.
+continuation, rebase skip, and staged/unstaged/untracked restoration around a merge. Interactive rebase is
+now covered by the bounded F18 handoff; Fork's unverified multi-region/manual presentation,
+delete/modify/rename/binary/submodule built-in views, and drag/drop parity remain unverified or deferred
+to F19.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 
@@ -980,9 +991,8 @@ and screenshot coordinates are provenance, not implementation constants.
 
 ## Suggested next request
 
-> Implement F18 in P07 from docs/implementation-plan.md. Read the F17 handoff and catalogue P1-022–024
-> cases before changing rebase recovery. Add a reviewed interactive rebase plan with bounded action/message
-> editing, controlled sequence-editor integration, pause/resume and operation-aware conflict recovery.
-> Preserve F17's conflict snapshots, Commit/Continue and Abort boundaries. Test root, empty, interrupted,
-> changing-upstream and amend states in disposable repositories, then run npm run check, npm run build and
-> the headless Electron suite. Leave F19 cherry-pick/revert/reset and unverified Fork Skip parity planned.
+> Implement F19 in P06 from docs/implementation-plan.md. Read the F17/F18 handoffs and catalogue
+> P1-022/P1-025–027 cases before changing recovery. Add cherry-pick, revert and safe reset variants with
+> operation-specific conflict continuation, previews and aborts. Preserve the verified conflict snapshots,
+> interactive Edit/amend/continue state and common-repository queue. Leave unverified Fork GUI Skip parity
+> and merge-preserving/dependent-reference interactive rebase variants distinct.

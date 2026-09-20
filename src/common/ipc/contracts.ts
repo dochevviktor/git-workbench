@@ -668,6 +668,8 @@ export const repositoryCommitContextSchema = z.strictObject({
   /** `commit.template` contents with comment lines removed, when configured and readable. */
   template: z.string().max(65_536).nullable(),
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  /** An interactive rebase Edit pause has a distinct amend/continue transition. */
+  rebaseEdit: z.enum(['none', 'needs-amend', 'ready-to-continue']),
   /** A message Git prepared for the pending operation, such as `MERGE_MSG`. */
   pendingMessage: z.string().max(262_144).nullable(),
   recentMessages: z.array(repositoryCommitMessageSchema).max(20),
@@ -1231,6 +1233,69 @@ export const repositoryLocalChangesPreviewSchema = z.strictObject({
   untrackedPaths: z.array(z.string().max(32_768)).max(10_000),
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
 });
+
+export const repositoryInteractiveRebaseCommandSchema = z.enum([
+  'pick',
+  'reword',
+  'edit',
+  'squash',
+  'fixup',
+  'drop',
+]);
+
+export const repositoryInteractiveRebaseCommitSchema = z.strictObject({
+  commitId: gitObjectIdSchema,
+  subject: z.string().max(16_384),
+  body: z.string().max(262_144),
+  author: repositoryHistoryPersonSchema,
+  committer: repositoryHistoryPersonSchema,
+  action: repositoryInteractiveRebaseCommandSchema,
+});
+
+/** A newest-first, backend-reviewed plan. The renderer may reorder and edit only these rows. */
+export const repositoryInteractiveRebasePlanSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  branchName: z.string().min(1).max(4_096),
+  headCommit: gitObjectIdSchema,
+  ontoCommitId: gitObjectIdSchema.nullable(),
+  ontoSubject: z.string().max(16_384).nullable(),
+  root: z.boolean(),
+  commits: z.array(repositoryInteractiveRebaseCommitSchema).min(1).max(500),
+  workingChanges: repositoryLocalChangesPreviewSchema,
+  mergeCommitCount: z.number().int().nonnegative().max(500),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+
+export const repositoryInteractiveRebasePlanRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  ontoCommitId: gitObjectIdSchema.nullable(),
+});
+
+export const repositoryInteractiveRebaseActionSchema = z
+  .strictObject({
+    id: repositoryIdSchema,
+    ontoCommitId: gitObjectIdSchema.nullable(),
+    snapshot: repositoryDiffSnapshotSchema,
+    actions: z
+      .array(
+        z.strictObject({
+          commitId: gitObjectIdSchema,
+          action: repositoryInteractiveRebaseCommandSchema,
+          subject: z.string().max(16_384),
+          body: z.string().max(262_144),
+        }),
+      )
+      .min(1)
+      .max(500),
+    autosquash: z.boolean(),
+    autostash: z.boolean(),
+    changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+  })
+  .refine(
+    (action) => !action.autostash || action.changesSnapshot !== undefined,
+    'Stashing local changes requires a working-tree snapshot.',
+  );
+
 export const repositoryRecoveryCopySchema = z.strictObject({
   id: z.uuid(),
   commitId: gitObjectIdSchema.nullable(),
@@ -1243,6 +1308,7 @@ export const repositoryRecoveryStateSchema = z.strictObject({
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
   copies: z.array(repositoryRecoveryCopySchema).max(100),
   conflictedCount: z.number().int().nonnegative().max(100_000).optional(),
+  rebaseEdit: z.enum(['none', 'needs-amend', 'ready-to-continue']),
 });
 export const repositoryRecoveryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
@@ -1569,6 +1635,16 @@ export const requests = {
     repositoryMergeRebaseRequestSchema,
     repositoryOperationSchema,
   ),
+  getRepositoryInteractiveRebasePlan: request(
+    'repository:get-interactive-rebase-plan',
+    repositoryInteractiveRebasePlanRequestSchema,
+    repositoryInteractiveRebasePlanSchema,
+  ),
+  startRepositoryInteractiveRebase: request(
+    'repository:start-interactive-rebase',
+    repositoryInteractiveRebaseActionSchema,
+    repositoryOperationSchema,
+  ),
   listRepositoryRemotes: request(
     'repository:list-remotes',
     repositorySessionSchema,
@@ -1753,6 +1829,13 @@ export type RepositoryReferenceFailureReason = z.infer<typeof repositoryReferenc
 export type RepositoryReferenceActionResult = z.infer<typeof repositoryReferenceActionResultSchema>;
 export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
 export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
+export type RepositoryInteractiveRebaseCommand = z.infer<typeof repositoryInteractiveRebaseCommandSchema>;
+export type RepositoryInteractiveRebaseCommit = z.infer<typeof repositoryInteractiveRebaseCommitSchema>;
+export type RepositoryInteractiveRebasePlan = z.infer<typeof repositoryInteractiveRebasePlanSchema>;
+export type RepositoryInteractiveRebasePlanRequest = z.infer<
+  typeof repositoryInteractiveRebasePlanRequestSchema
+>;
+export type RepositoryInteractiveRebaseRequest = z.infer<typeof repositoryInteractiveRebaseActionSchema>;
 export type RepositoryRemote = z.infer<typeof repositoryRemoteSchema>;
 export type RepositoryRemoteAction = z.infer<typeof repositoryRemoteActionSchema>;
 export type RepositoryRemoteActionRequest = z.infer<typeof repositoryRemoteActionRequestSchema>;

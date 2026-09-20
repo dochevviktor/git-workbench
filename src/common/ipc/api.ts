@@ -21,6 +21,9 @@ import type {
   RepositoryInitializeRequest,
   RepositoryHistoryPage,
   RepositoryHistoryRequest,
+  RepositoryInteractiveRebasePlan,
+  RepositoryInteractiveRebasePlanRequest,
+  RepositoryInteractiveRebaseRequest,
   RepositoryLocation,
   RepositoryManagerSnapshot,
   RepositoryNetworkRequestEnvelope,
@@ -132,6 +135,12 @@ export interface DesktopApi {
     ): Promise<IpcResult<RepositoryReferenceContext>>;
     applyReferenceAction(request: RepositoryReferenceActionRequest): Promise<IpcResult<RepositoryOperation>>;
     startMergeRebase(request: RepositoryMergeRebaseRequest): Promise<IpcResult<RepositoryOperation>>;
+    getInteractiveRebasePlan(
+      request: RepositoryInteractiveRebasePlanRequest,
+    ): Promise<IpcResult<RepositoryInteractiveRebasePlan>>;
+    startInteractiveRebase(
+      request: RepositoryInteractiveRebaseRequest,
+    ): Promise<IpcResult<RepositoryOperation>>;
     listRemotes(request: RepositorySession): Promise<IpcResult<RepositoryRemote[]>>;
     applyRemoteAction(
       request: RepositoryRemoteActionRequest,

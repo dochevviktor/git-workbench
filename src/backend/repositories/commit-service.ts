@@ -89,6 +89,10 @@ export async function readCommitContext(
     includeIgnored: false,
   });
   const pending = await readPendingOperation(input.gitDir);
+  const rebaseEdit =
+    pending.operation === 'rebase'
+      ? await readRebaseEditState(runner, input.cwd, input.gitDir, input.head.commit)
+      : ('none' as const);
   const [identity, amend, template, recentMessages, signing, hooks] = await Promise.all([
     readIdentity(runner, input.cwd),
     readAmendTarget(runner, input.cwd, input.head),
@@ -102,12 +106,14 @@ export async function readCommitContext(
     repositoryId: input.repositoryId,
     head: input.head,
     identity,
-    amend: pending.operation ? null : amend.target,
-    amendBlockedReason: pending.operation
-      ? `${pendingOperationLabel(pending.operation)} is in progress, so the previous commit cannot be amended.`
-      : amend.blockedReason,
+    amend: !pending.operation || rebaseEdit === 'needs-amend' ? amend.target : null,
+    amendBlockedReason:
+      pending.operation && rebaseEdit !== 'needs-amend'
+        ? `${pendingOperationLabel(pending.operation)} is in progress, so the previous commit cannot be amended.`
+        : amend.blockedReason,
     template,
     pendingOperation: pending.operation,
+    rebaseEdit,
     pendingMessage: pending.message,
     recentMessages,
     stagedCount: changes.counts.staged,
@@ -515,6 +521,33 @@ export async function detectPendingOperation(
   }
   if (await pathExists(join(gitDir, 'SQUASH_MSG'))) return 'squash';
   return null;
+}
+
+/** Identifies the captured interactive-Edit pause without treating an ordinary rebase as amendable. */
+export async function readRebaseEditState(
+  runner: CommitRunner,
+  cwd: string,
+  gitDir: string,
+  headCommit: string | null,
+): Promise<'none' | 'needs-amend' | 'ready-to-continue'> {
+  if (!headCommit) return 'none';
+  const stopped =
+    (await readGitDirText(gitDir, 'rebase-merge/stopped-sha')) ??
+    (await readGitDirText(gitDir, 'rebase-apply/stopped-sha'));
+  if (!stopped || !objectIdPattern.test(stopped)) return 'none';
+  if (stopped === headCommit) return 'needs-amend';
+  const [original, current] = await Promise.all([
+    optionalOutput(runner, cwd, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%B', stopped]),
+    optionalOutput(runner, cwd, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%B', headCommit]),
+  ]);
+  if (!original || !current) return 'needs-amend';
+  return normalizeEditSignature(original) === normalizeEditSignature(current)
+    ? 'needs-amend'
+    : 'ready-to-continue';
+}
+
+function normalizeEditSignature(value: string): string {
+  return value.replace(/\r\n?/gu, '\n').replace(/\n+$/u, '');
 }
 
 function pendingOperationLabel(operation: RepositoryCommitPendingOperation): string {

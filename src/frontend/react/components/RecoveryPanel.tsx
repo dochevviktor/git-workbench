@@ -89,15 +89,17 @@ export function RecoveryPanel({
         {state?.pendingOperation && (
           <div>
             <p>
-              {state.pendingOperation === 'squash'
-                ? 'Squashing commits. Review the staged changes and generated message in Local Changes, then choose Squash.'
-                : state.conflictedCount
-                  ? `Resolve ${state.conflictedCount} conflicted file${state.conflictedCount === 1 ? '' : 's'} and stage them in Local Changes, then continue ${state.pendingOperation}.`
-                  : `All conflicts fixed. Continue ${state.pendingOperation} or review the staged changes before completing it.`}
+              {state.pendingOperation === 'rebase' && state.rebaseEdit === 'needs-amend'
+                ? 'Interactive rebase is paused for Edit. Amend the current commit in Local Changes before continuing.'
+                : state.pendingOperation === 'squash'
+                  ? 'Squashing commits. Review the staged changes and generated message in Local Changes, then choose Squash.'
+                  : state.conflictedCount
+                    ? `Resolve ${state.conflictedCount} conflicted file${state.conflictedCount === 1 ? '' : 's'} and stage them in Local Changes, then continue ${state.pendingOperation}.`
+                    : `All conflicts fixed. Continue ${state.pendingOperation} or review the staged changes before completing it.`}
             </p>
             <button
               className="button button-small"
-              disabled={disabled || Boolean(state.conflictedCount)}
+              disabled={disabled || Boolean(state.conflictedCount) || state.rebaseEdit === 'needs-amend'}
               onClick={() => void run('continue')}
             >
               {state.pendingOperation === 'squash'

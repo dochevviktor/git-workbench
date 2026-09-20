@@ -14,10 +14,11 @@ import { repositoryRecoveryCopySchema } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { GitCancelledError, GitCommandError } from '../git/runner';
-import { detectPendingOperation } from './commit-service';
+import { detectPendingOperation, readRebaseEditState } from './commit-service';
 import { displayOutput } from './network-service';
 import { readWorkingChanges } from './working-tree-service';
 import { createWorkingSnapshot } from './working-snapshot';
+import { cleanupInteractiveRebaseArtifacts } from './interactive-rebase-artifacts';
 
 interface RecoveryRunner {
   run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult>;
@@ -75,7 +76,7 @@ export async function readRecovery(
   runner: RecoveryRunner,
   context: Context,
 ): Promise<RepositoryRecoveryState> {
-  const [copies, pendingOperation, changes] = await Promise.all([
+  const [copies, pendingOperation, changes, rebaseEdit] = await Promise.all([
     load(runner, context),
     detectPendingOperation(context.gitDir),
     readWorkingChanges(runner, {
@@ -84,6 +85,7 @@ export async function readRecovery(
       includeUntracked: false,
       includeIgnored: false,
     }),
+    readRebaseEditState(runner, context.cwd, context.gitDir, context.head.commit),
   ]);
   const anchors = await Promise.all(
     [
@@ -120,8 +122,9 @@ export async function readRecovery(
     copies,
     pendingOperation,
     conflictedCount: changes.counts.conflicted,
+    rebaseEdit,
     snapshot: createHash('sha256')
-      .update(JSON.stringify([copies, pendingOperation, anchors]))
+      .update(JSON.stringify([copies, pendingOperation, rebaseEdit, anchors]))
       .digest('hex'),
   };
 }
@@ -333,6 +336,11 @@ export async function recover(
         'OPERATION_FAILED',
         'Resolve and stage all conflicted files before continuing.',
       );
+    if (request.action === 'continue' && state.rebaseEdit === 'needs-amend')
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Amend the paused interactive-rebase commit in Local Changes before continuing.',
+      );
     const args =
       state.pendingOperation === 'squash'
         ? request.action === 'abort'
@@ -351,6 +359,7 @@ export async function recover(
     if (!(await detectPendingOperation(context.gitDir))) {
       const pending = state.copies.find((item) => item.pending);
       if (pending) await reapply(runner, context, pending);
+      await cleanupInteractiveRebaseArtifacts(runner, context.cwd, context.gitDir);
     }
     return;
   }

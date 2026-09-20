@@ -3277,6 +3277,124 @@ textarea.reference-message {
   margin-top: 0;
 }
 
+.reference-dialog:has(.interactive-rebase-plan) {
+  width: min(1020px, calc(100vw - 32px));
+}
+
+/* Interactive rebase --------------------------------------------------------------------------- */
+
+.interactive-rebase-label {
+  align-self: start;
+  padding-top: 6px;
+}
+
+.interactive-rebase-plan {
+  display: grid;
+  gap: 4px;
+  max-height: min(480px, 52vh);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  background: var(--list-bg);
+}
+
+.interactive-rebase-row {
+  display: grid;
+  grid-template-columns: 8px 88px minmax(0, 1fr) 54px auto;
+  gap: 6px;
+  align-items: start;
+  min-height: 34px;
+  padding: 4px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+.interactive-rebase-row:last-child {
+  border-bottom: 0;
+}
+
+.interactive-rebase-connector {
+  align-self: stretch;
+  width: 2px;
+  margin: 2px auto;
+  background: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.interactive-rebase-squash .interactive-rebase-connector,
+.interactive-rebase-fixup .interactive-rebase-connector {
+  background: var(--warning);
+}
+
+.interactive-rebase-drop .interactive-rebase-connector {
+  background: var(--danger);
+}
+
+.interactive-rebase-action,
+.interactive-rebase-message input,
+.interactive-rebase-message textarea {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--window);
+  color: var(--text);
+  font: inherit;
+}
+
+.interactive-rebase-action {
+  height: 28px;
+  padding: 2px 4px;
+}
+
+.interactive-rebase-message {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.interactive-rebase-message strong,
+.interactive-rebase-message span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interactive-rebase-message input,
+.interactive-rebase-message textarea {
+  width: 100%;
+  padding: 4px 6px;
+}
+
+.interactive-rebase-message textarea {
+  min-height: 44px;
+  resize: vertical;
+}
+
+.interactive-rebase-row.is-dropped .interactive-rebase-message strong {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.interactive-rebase-edit-message {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.interactive-rebase-hash {
+  padding-top: 6px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.interactive-rebase-move {
+  display: flex;
+  gap: 3px;
+}
+
+.interactive-rebase-options {
+  display: grid;
+  gap: 6px;
+}
+
 /* Stash dialogs ------------------------------------------------------------------------------- */
 
 .stash-dialog {

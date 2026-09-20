@@ -339,6 +339,56 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
   }
 });
 
+test('F18 opens and executes the reviewed interactive rebase plan', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'git-workbench-interactive-rebase-ui-'));
+  const cwd = join(root, 'work');
+  const git = new GitRunner();
+  const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
+  let application: ElectronApplication | undefined;
+  try {
+    await mkdir(cwd);
+    await run('init', '--quiet', '--initial-branch=main');
+    await run('config', 'user.name', 'Interactive Rebase UI');
+    await run('config', 'user.email', 'interactive-rebase-ui@example.test');
+    await run('config', 'commit.gpgsign', 'false');
+    await writeFile(join(cwd, 'base.txt'), 'base\n');
+    await run('add', '--all');
+    await run('commit', '--quiet', '-m', 'Base');
+    const base = await run('rev-parse', 'HEAD');
+    for (const name of ['Alpha', 'Beta', 'Gamma']) {
+      await writeFile(join(cwd, `${name.toLowerCase()}.txt`), `${name}\n`);
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', `Add ${name}`);
+    }
+
+    application = await electron.launch({
+      chromiumSandbox: true,
+      args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
+      env: environment(),
+    });
+    const page = await open(application, cwd);
+    const baseRow = page.locator(`[data-testid="history-commit"][data-commit-id="${base}"]`);
+    await baseRow.click({ button: 'right' });
+    const menu = page.getByRole('menu').last();
+    await menu.getByRole('menuitem', { name: 'Interactive Rebase', exact: true }).hover();
+    const rebaseMenu = page.getByRole('menu', { name: 'Interactive Rebase', exact: true });
+    await rebaseMenu.getByRole('menuitem', { name: "Rebase 'main' to Here…", exact: true }).click();
+    const dialog = page.getByTestId('reference-dialog');
+    await expect(dialog.getByRole('heading', { name: 'Interactive Rebase', exact: true })).toBeVisible();
+    await expect(dialog.getByTestId('interactive-rebase-row')).toHaveCount(3);
+    await expect(dialog.getByTestId('interactive-rebase-plan')).toContainText('Add Gamma');
+    await dialog.getByTestId('reference-dialog-submit').click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => run('branch', '--show-current')).toBe('main');
+    expect(await run('log', '--format=%s', '--reverse', `${base}..HEAD`)).toBe(
+      'Add Alpha\nAdd Beta\nAdd Gamma',
+    );
+  } finally {
+    await application?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a checkout hook outlives the control deadline without overwriting another tab or dialog', async () => {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-review-slow-'));
   const first = join(root, 'first');

@@ -4,6 +4,7 @@ import type {
   RepositoryBranch,
   RepositoryHistoryCommit,
   RepositoryHistoryReference,
+  RepositoryInteractiveRebaseRequest,
   RepositoryLocation,
   RepositoryMergeRebaseAction,
   RepositoryNetworkRequest,
@@ -24,6 +25,8 @@ import { NetworkDialog } from '../components/NetworkDialogs';
 import type { NetworkDialogRequest } from '../components/NetworkDialogs';
 import { MergeRebaseDialog } from '../components/MergeRebaseDialog';
 import type { MergeRebaseDialogRequest } from '../components/MergeRebaseDialog';
+import { InteractiveRebaseDialog } from '../components/InteractiveRebaseDialog';
+import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRebaseDialog';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { StashDialogs } from '../components/StashDialogs';
@@ -196,6 +199,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     start: startOperation,
     startStash: startStashOperation,
     startMergeRebase: startMergeRebaseOperation,
+    startInteractiveRebase: startInteractiveRebaseOperation,
     cancel: cancelOperation,
   } = useOperations();
   const openedClones = useRef(new Set<string>());
@@ -564,6 +568,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       ? undefined
       : 'This repository has no commit to start from yet.';
 
+  const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogRequest>();
+  const [interactiveRebaseFailure, setInteractiveRebaseFailure] = useState<string>();
+  const openInteractiveRebase = useCallback((ontoCommitId: string | null) => {
+    setInteractiveRebaseFailure(undefined);
+    setInteractiveRebaseDialog({ ontoCommitId });
+  }, []);
+
   const historyReferences = useMemo<HistoryReferenceCommands>(
     () => ({
       ready: referencesReady && !referenceBusy,
@@ -572,8 +583,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       checkoutCommit: (commit) =>
         openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
       savePatch: (commit) => savePatch({ kind: 'commit', commitId: commit.id }),
+      interactiveRebase: (commit) => openInteractiveRebase(commit.id),
+      interactiveRebaseFromRoot: () => openInteractiveRebase(null),
     }),
-    [commitTarget, openReferenceDialog, referenceBusy, referencesReady, savePatch],
+    [commitTarget, openInteractiveRebase, openReferenceDialog, referenceBusy, referencesReady, savePatch],
   );
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
@@ -681,6 +694,27 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         });
     },
     [active, startMergeRebaseOperation],
+  );
+
+  const startInteractiveRebase = useCallback(
+    (request: RepositoryInteractiveRebaseRequest) => {
+      const owner = active?.id;
+      if (!owner) return;
+      setInteractiveRebaseFailure(undefined);
+      void startInteractiveRebaseOperation(request)
+        .then(() => {
+          if (activeRepositoryId.current !== owner) return;
+          setInteractiveRebaseDialog(undefined);
+          setActivityOpen(true);
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
+          setInteractiveRebaseFailure(
+            reason instanceof Error ? reason.message : 'The interactive rebase could not be started.',
+          );
+        });
+    },
+    [active?.id, startInteractiveRebaseOperation],
   );
 
   const runRemoteAction = useCallback(
@@ -920,7 +954,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
-      if (aboutOpen || cloneOpen || referenceDialog || networkDialog || mergeRebaseDialog || stashDialog)
+      if (
+        aboutOpen ||
+        cloneOpen ||
+        referenceDialog ||
+        networkDialog ||
+        mergeRebaseDialog ||
+        interactiveRebaseDialog ||
+        stashDialog
+      )
         return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (is('Mod+T')) openManagerTab();
@@ -984,6 +1026,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     platform,
     networkDialog,
     mergeRebaseDialog,
+    interactiveRebaseDialog,
     referenceDialog,
     referenceBusy,
     remotes.length,
@@ -2037,6 +2080,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           failure={mergeRebaseFailure ?? previewError}
           onSubmit={startMergeRebase}
           onClose={closeMergeRebaseDialog}
+        />
+      )}
+      {interactiveRebaseDialog && active && (
+        <InteractiveRebaseDialog
+          repositoryId={active.id}
+          request={interactiveRebaseDialog}
+          platform={platform}
+          busy={referenceBusy}
+          failure={interactiveRebaseFailure}
+          onSubmit={startInteractiveRebase}
+          onClose={() => {
+            setInteractiveRebaseDialog(undefined);
+            setInteractiveRebaseFailure(undefined);
+          }}
         />
       )}
       {referenceDialog && (
