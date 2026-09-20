@@ -4,6 +4,7 @@ import type {
   RepositoryBranch,
   RepositoryHistoryCommit,
   RepositoryHistoryReference,
+  RepositoryHistoryOperationAction,
   RepositoryInteractiveRebaseRequest,
   RepositoryLocation,
   RepositoryMergeRebaseAction,
@@ -20,6 +21,8 @@ import { CloneDialog } from '../components/CloneDialog';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
 import type { HistoryReferenceCommands } from '../components/HistoryView';
+import { HistoryOperationDialog } from '../components/HistoryOperationDialog';
+import type { HistoryOperationDialogRequest } from '../components/HistoryOperationDialog';
 import { CheckIcon, WarningIcon } from '../components/Icons';
 import { NetworkDialog } from '../components/NetworkDialogs';
 import type { NetworkDialogRequest } from '../components/NetworkDialogs';
@@ -199,6 +202,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     start: startOperation,
     startStash: startStashOperation,
     startMergeRebase: startMergeRebaseOperation,
+    startHistoryOperation: startHistoryOperationOperation,
     startInteractiveRebase: startInteractiveRebaseOperation,
     cancel: cancelOperation,
   } = useOperations();
@@ -574,6 +578,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setInteractiveRebaseFailure(undefined);
     setInteractiveRebaseDialog({ ontoCommitId });
   }, []);
+  const [historyOperationDialog, setHistoryOperationDialog] = useState<HistoryOperationDialogRequest>();
+  const [historyOperationFailure, setHistoryOperationFailure] = useState<string>();
+  const openHistoryOperation = useCallback(
+    (kind: HistoryOperationDialogRequest['kind'], commit: RepositoryHistoryCommit) => {
+      setHistoryOperationFailure(undefined);
+      setHistoryOperationDialog({ kind, commit });
+    },
+    [],
+  );
 
   const historyReferences = useMemo<HistoryReferenceCommands>(
     () => ({
@@ -583,10 +596,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       checkoutCommit: (commit) =>
         openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
       savePatch: (commit) => savePatch({ kind: 'commit', commitId: commit.id }),
+      cherryPick: (commit) => openHistoryOperation('cherry-pick', commit),
+      revert: (commit) => openHistoryOperation('revert', commit),
+      reset: (commit) => openHistoryOperation('reset', commit),
       interactiveRebase: (commit) => openInteractiveRebase(commit.id),
       interactiveRebaseFromRoot: () => openInteractiveRebase(null),
     }),
-    [commitTarget, openInteractiveRebase, openReferenceDialog, referenceBusy, referencesReady, savePatch],
+    [
+      commitTarget,
+      openHistoryOperation,
+      openInteractiveRebase,
+      openReferenceDialog,
+      referenceBusy,
+      referencesReady,
+      savePatch,
+    ],
   );
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
@@ -717,6 +741,27 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [active?.id, startInteractiveRebaseOperation],
   );
 
+  const startHistoryOperation = useCallback(
+    (action: RepositoryHistoryOperationAction) => {
+      const owner = active?.id;
+      if (!owner) return;
+      setHistoryOperationFailure(undefined);
+      void startHistoryOperationOperation({ id: owner, action })
+        .then(() => {
+          if (activeRepositoryId.current !== owner) return;
+          setHistoryOperationDialog(undefined);
+          setActivityOpen(true);
+        })
+        .catch((reason: unknown) => {
+          if (activeRepositoryId.current !== owner) return;
+          setHistoryOperationFailure(
+            reason instanceof Error ? reason.message : 'The history operation could not be started.',
+          );
+        });
+    },
+    [active?.id, startHistoryOperationOperation],
+  );
+
   const runRemoteAction = useCallback(
     (action: RepositoryRemoteAction) => {
       const owner = active?.id;
@@ -762,7 +807,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       message: `${completed.title}: ${completed.message}`,
       blocked: completed.status !== 'succeeded',
     });
-    if (active && ['merge', 'rebase', 'pull', 'stash', 'recovery'].includes(completed.kind)) {
+    if (
+      active &&
+      ['merge', 'rebase', 'cherry-pick', 'revert', 'pull', 'stash', 'recovery', 'reset'].includes(
+        completed.kind,
+      )
+    ) {
       const id = active.id;
       void window.desktop?.repository.getRecovery({ id }).then((result) => {
         if (
@@ -960,6 +1010,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         referenceDialog ||
         networkDialog ||
         mergeRebaseDialog ||
+        historyOperationDialog ||
         interactiveRebaseDialog ||
         stashDialog
       )
@@ -1026,6 +1077,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     platform,
     networkDialog,
     mergeRebaseDialog,
+    historyOperationDialog,
     interactiveRebaseDialog,
     referenceDialog,
     referenceBusy,
@@ -2080,6 +2132,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           failure={mergeRebaseFailure ?? previewError}
           onSubmit={startMergeRebase}
           onClose={closeMergeRebaseDialog}
+        />
+      )}
+      {historyOperationDialog && active && (
+        <HistoryOperationDialog
+          key={`${active.id}:${historyOperationDialog.kind}:${historyOperationDialog.commit.id}`}
+          repositoryId={active.id}
+          request={historyOperationDialog}
+          platform={platform}
+          busy={referenceBusy}
+          failure={historyOperationFailure}
+          onSubmit={startHistoryOperation}
+          onClose={() => {
+            setHistoryOperationDialog(undefined);
+            setHistoryOperationFailure(undefined);
+          }}
         />
       )}
       {interactiveRebaseDialog && active && (

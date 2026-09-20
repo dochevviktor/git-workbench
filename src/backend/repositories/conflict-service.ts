@@ -463,19 +463,33 @@ async function readOperationInfo(runner: ConflictRunner, context: ConflictContex
     };
   }
   if (pending === 'cherry-pick') {
+    const picked = await gitDirText(context.gitDir, 'CHERRY_PICK_HEAD');
+    const pickedLabel = picked
+      ? (await optionalOutput(runner, context.cwd, ['name-rev', '--name-only', '--no-undefined', picked])) ||
+        picked.slice(0, 7)
+      : 'selected commit';
     return {
       operation: 'cherry-pick',
       operationLabel: `Cherry-pick conflict on '${current}'`,
       oursLabel: `Current '${current}'`,
-      theirsLabel: 'Cherry-picked commit',
+      theirsLabel: `Cherry-picked '${shortReference(pickedLabel)}'`,
     };
   }
   if (pending === 'revert') {
+    const reverted = await gitDirText(context.gitDir, 'REVERT_HEAD');
+    const revertedLabel = reverted
+      ? (await optionalOutput(runner, context.cwd, [
+          'name-rev',
+          '--name-only',
+          '--no-undefined',
+          reverted,
+        ])) || reverted.slice(0, 7)
+      : 'selected commit';
     return {
       operation: 'revert',
       operationLabel: `Revert conflict on '${current}'`,
       oursLabel: `Current '${current}'`,
-      theirsLabel: 'Reverted commit',
+      theirsLabel: `Reverted '${shortReference(revertedLabel)}'`,
     };
   }
   return {

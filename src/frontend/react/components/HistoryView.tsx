@@ -21,7 +21,7 @@ import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { SearchMatch } from './SearchMatch';
 import { useContextMenu } from './menu/context-menu';
-import { compactMenu, contextMenuAnchor, menuSeparator, planned } from './menu/menu-model';
+import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 /** The branch and tag commands the commit menu offers, owned by the workspace that renders them. */
@@ -31,6 +31,9 @@ export interface HistoryReferenceCommands {
   readonly newTag: (commit: RepositoryHistoryCommit) => void;
   readonly checkoutCommit: (commit: RepositoryHistoryCommit) => void;
   readonly savePatch: (commit: RepositoryHistoryCommit) => void;
+  readonly cherryPick: (commit: RepositoryHistoryCommit) => void;
+  readonly revert: (commit: RepositoryHistoryCommit) => void;
+  readonly reset: (commit: RepositoryHistoryCommit) => void;
   readonly interactiveRebase: (commit: RepositoryHistoryCommit) => void;
   readonly interactiveRebaseFromRoot: () => void;
 }
@@ -463,7 +466,16 @@ export function HistoryView({
         {
           id: 'reset',
           label: `Reset '${currentBranch?.name ?? 'HEAD'}' to Here…`,
-          ...planned('Resetting', 'P06'),
+          disabled:
+            !referenceCommands.ready || currentBranch === undefined || currentBranch.target === commit.id,
+          disabledReason: !referenceCommands.ready
+            ? 'The branches and tags of this repository are still loading.'
+            : currentBranch === undefined
+              ? 'Check out a branch before resetting its history.'
+              : currentBranch.target === commit.id
+                ? 'The current branch already points at this commit.'
+                : undefined,
+          run: () => referenceCommands.reset(commit),
         },
         menuSeparator,
         {
@@ -472,8 +484,28 @@ export function HistoryView({
           ...unavailable,
           run: () => referenceCommands.checkoutCommit(commit),
         },
-        { id: 'cherry-pick', label: 'Cherry-pick Commit…', ...planned('Cherry-picking', 'P06') },
-        { id: 'revert', label: 'Revert Commit…', ...planned('Reverting commits', 'P06') },
+        {
+          id: 'cherry-pick',
+          label: 'Cherry-pick Commit…',
+          disabled: !referenceCommands.ready || currentBranch === undefined,
+          disabledReason: !referenceCommands.ready
+            ? 'The branches and tags of this repository are still loading.'
+            : currentBranch === undefined
+              ? 'Check out a branch before cherry-picking.'
+              : undefined,
+          run: () => referenceCommands.cherryPick(commit),
+        },
+        {
+          id: 'revert',
+          label: 'Revert Commit…',
+          disabled: !referenceCommands.ready || currentBranch === undefined,
+          disabledReason: !referenceCommands.ready
+            ? 'The branches and tags of this repository are still loading.'
+            : currentBranch === undefined
+              ? 'Check out a branch before reverting.'
+              : undefined,
+          run: () => referenceCommands.revert(commit),
+        },
         {
           id: 'save-patch',
           label: 'Save as Patch…',

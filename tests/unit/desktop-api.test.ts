@@ -147,6 +147,89 @@ describe('preload capability API', () => {
     });
   });
 
+  it('validates and routes cherry-pick, revert, and reset previews/actions', async () => {
+    const { api, invoke } = fixture();
+    const repositoryId = `repo-${'a'.repeat(64)}`;
+    const commitId = 'b'.repeat(40);
+    const snapshot = 'c'.repeat(64);
+    const preview = {
+      repositoryId,
+      kind: 'reset' as const,
+      currentHead: { state: 'branch' as const, name: 'main', commit: 'd'.repeat(40) },
+      currentBranch: 'main',
+      targetCommitId: commitId,
+      targetSubject: 'Base',
+      targetParents: [],
+      mode: 'mixed' as const,
+      workingChanges: {
+        snapshot,
+        paths: [],
+        untrackedPaths: [],
+        pendingOperation: null,
+        conflictedCount: 0,
+      },
+      snapshot,
+      canStart: true,
+      message: 'Ready to review and start.',
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value: preview });
+    await expect(
+      api.repository.getHistoryOperationPreview({
+        kind: 'reset',
+        id: repositoryId,
+        targetCommitId: commitId,
+        mode: 'mixed',
+      }),
+    ).resolves.toEqual({ ok: true, value: preview });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryHistoryOperationPreview.channel, {
+      kind: 'reset',
+      id: repositoryId,
+      targetCommitId: commitId,
+      mode: 'mixed',
+    });
+
+    const accepted = {
+      id: `op-${'e'.repeat(32)}`,
+      repositoryId,
+      source: 'user' as const,
+      kind: 'reset' as const,
+      title: "Reset 'main' (mixed)",
+      status: 'running' as const,
+      revision: 0,
+      startedAt: '2026-09-19T12:00:00.000Z',
+      finishedAt: null,
+      progress: null,
+      command: 'git reset',
+      output: '',
+      message: 'Running…',
+      failureReason: null,
+      canForceWithLease: false,
+    };
+    const action = {
+      kind: 'reset' as const,
+      targetCommitId: commitId,
+      mode: 'mixed' as const,
+      snapshot,
+      changesSnapshot: snapshot,
+      confirmDiscard: false,
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value: accepted });
+    await expect(api.repository.startHistoryOperation({ id: repositoryId, action })).resolves.toEqual({
+      ok: true,
+      value: accepted,
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.startRepositoryHistoryOperation.channel, {
+      id: repositoryId,
+      action,
+    });
+    expect(
+      await api.repository.startHistoryOperation({
+        id: repositoryId,
+        action: { ...action, targetCommitId: 'HEAD' } as never,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  });
+
   it('validates and routes committed revision inspection capabilities', async () => {
     const { api, invoke } = fixture();
     const repositoryId = `repo-${'c'.repeat(64)}`;

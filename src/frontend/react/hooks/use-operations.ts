@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   RepositoryNetworkRequest,
   RepositoryInteractiveRebaseRequest,
+  RepositoryHistoryOperationAction,
   RepositoryMergeRebaseAction,
   RepositoryOperation,
   RepositoryStashAction,
@@ -81,6 +82,20 @@ export function useOperations() {
     [],
   );
 
+  const startHistoryOperation = useCallback(
+    async (request: {
+      readonly id: string;
+      readonly action: RepositoryHistoryOperationAction;
+    }): Promise<RepositoryOperation> => {
+      const api = window.desktop;
+      if (!api) throw new Error('Open this application in Electron to edit repository history.');
+      const accepted = unwrapResult(await api.repository.startHistoryOperation(request));
+      if (mounted.current) setOperations((current) => mergeOperation(current, accepted));
+      return accepted;
+    },
+    [],
+  );
+
   const startInteractiveRebase = useCallback(
     async (request: RepositoryInteractiveRebaseRequest): Promise<RepositoryOperation> => {
       const api = window.desktop;
@@ -116,6 +131,7 @@ export function useOperations() {
     start,
     startStash,
     startMergeRebase,
+    startHistoryOperation,
     startInteractiveRebase,
     cancel,
     clearError,

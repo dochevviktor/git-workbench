@@ -505,7 +505,11 @@ async function readPendingOperation(gitDir: string): Promise<{
 }> {
   const operation = await detectPendingOperation(gitDir);
   const message =
-    (await readGitDirText(gitDir, 'MERGE_MSG')) ?? (await readGitDirText(gitDir, 'SQUASH_MSG')) ?? null;
+    (await readGitDirText(gitDir, 'MERGE_MSG')) ??
+    (await readGitDirText(gitDir, 'CHERRY_PICK_MSG')) ??
+    (await readGitDirText(gitDir, 'REVERT_MSG')) ??
+    (await readGitDirText(gitDir, 'SQUASH_MSG')) ??
+    null;
   return { operation, message: operation ? message : null };
 }
 

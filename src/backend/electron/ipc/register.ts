@@ -416,6 +416,12 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.startRepositoryMergeRebase, (window, request) =>
       repositoryService.startMergeRebase(window.webContents.id, request),
     );
+    register(requests.getRepositoryHistoryOperationPreview, (window, request) =>
+      repositoryService.getHistoryOperationPreview(window.webContents.id, request),
+    );
+    register(requests.startRepositoryHistoryOperation, (window, request) =>
+      repositoryService.startHistoryOperation(window.webContents.id, request),
+    );
     register(requests.getRepositoryInteractiveRebasePlan, (window, request) =>
       repositoryService.getInteractiveRebasePlan(window.webContents.id, request),
     );

@@ -275,12 +275,12 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByTestId('history-commit').first().click({ button: 'right' });
     const commitMenu = page.getByRole('menu', { name: /^Commit / });
     await expect(commitMenu).toBeVisible();
-    // F12 enables the branch, tag, and checkout entries; later phases stay disabled with their reason.
+    // F12 enables the branch, tag, and checkout entries; F19 history operations are available when a branch is checked out.
     await expect(commitMenu.getByRole('menuitem', { name: 'Checkout Commit…' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
-    await expect(commitMenu.getByRole('menuitem', { name: 'Cherry-pick Commit…' })).toHaveAttribute(
+    await expect(commitMenu.getByRole('menuitem', { name: 'Cherry-pick Commit…' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );

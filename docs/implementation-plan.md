@@ -10,11 +10,12 @@ not project phases P00–P14.
 
 **F17 in P06 — conflict-state inspection and the built-in conflict helper — is implemented and verified
 within the bounded text-conflict scope in the [F17 handoff](reviews/f17-conflict-helper.md). F18 in P07
-is now implemented and verified within the bounded interactive-rebase scope in the
-[F18 handoff](reviews/f18-interactive-rebase.md).** The user-authorized single F01–F16 correction pass
-is also implemented and verified in the [correction record](reviews/f01-f16-catalogue-corrections.md).
-Broader feature-family scope and unobserved variants remain partial; F19 and later features have not
-been silently included or completed.
+is implemented and verified within the bounded interactive-rebase scope in the
+[F18 handoff](reviews/f18-interactive-rebase.md), and F19 in P06 is implemented and verified within the
+bounded cherry-pick/revert/reset scope in the [F19 handoff](reviews/f19-history-operations.md).** The
+user-authorized single F01–F16 correction pass is also implemented and verified in the
+[correction record](reviews/f01-f16-catalogue-corrections.md). Broader feature-family scope and
+unobserved variants remain partial; later features have not been silently included or completed.
 
 This is a staged product plan. The foundation and initial local F01/F02/F03 slices are complete enough
 to exercise the shell, without declaring those features complete. A usable daily Git client is the P06
@@ -59,25 +60,33 @@ one existing skip, `npm run build` passes, and the headless Electron suite passe
 remains partial because the handoff deliberately excludes merge preservation and dependent-reference
 updates.
 
+F19 implementation checkpoint (2026-09-20): added typed preview/CAS plans, single-commit cherry-pick and
+revert with merge-parent selection and no-commit options, operation-specific conflict labels, durable
+Recovery Continue/Abort, and Soft/Mixed/Hard reset with a retained tracked-change Recovery copy for Hard.
+The [F19 handoff](reviews/f19-history-operations.md) records P1-022/P1-025–027 traceability and the
+deliberate single-commit, untracked-reset, and broader Fork-variant limits. `npm run check` passes with
+320 tests and one existing skip, `npm run build` passes, and all 13 headless Electron scenarios pass.
+P06 remains partial because the broader conflict-family and platform matrices are not verified.
+
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                                                                                                                    | Depends on                            |
-| ----- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                     | —                                     |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; F01–F16 jobs/auth/cancellation corrections verified (2026-09-20); broad trust policy remains                                     | P00                                   |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; clone, additive tabs/reorder/reopen, CLI and window persistence verified (2026-09-20); manager/watcher scope remains             | P01 runner/jobs                       |
-| P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                   | P02 sessions                          |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                      | P01 writes, P02/P03 views             |
-| P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, and bounded F17 text conflict editing verified (2026-09-20); F19 remains planned     | P01/P04/P05 capabilities              |
-| P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain     | P06                                   |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Started early; F06 scoped search verified (2026-09-20); inspectors/reflog/bisect/patch import planned                                     | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                   | P02/P05, common-repo queue            |
-| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                   | P04, safe assets; P05 transfers       |
-| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                               | P02/P03 plus relevant domain services |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                   | P03 history; P12 tools for AI         |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                   | Every claimed workflow                |
+| Phase | Deliverable                                                          | Status                                                                                                                                                                         | Depends on                            |
+| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                          | —                                     |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; F01–F16 jobs/auth/cancellation corrections verified (2026-09-20); broad trust policy remains                                                                          | P00                                   |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; clone, additive tabs/reorder/reopen, CLI and window persistence verified (2026-09-20); manager/watcher scope remains                                                  | P01 runner/jobs                       |
+| P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                                                        | P02 sessions                          |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                                                           | P01 writes, P02/P03 views             |
+| P05   | Branches/tags/remotes, authentication, network operations            | Partial; annotated tags, native auth, clone/Test Connection and global fetch verified (2026-09-20); live provider/platform matrix remains                                      | P01 jobs, P02/P04, P06 recovery       |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains | P01/P04/P05 capabilities              |
+| P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                          | P06                                   |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Started early; F06 scoped search verified (2026-09-20); inspectors/reflog/bisect/patch import planned                                                                          | P03/P04; recovery for mutations       |
+| P09   | Worktrees, submodules, Git-flow                                      | Planned                                                                                                                                                                        | P02/P05, common-repo queue            |
+| P10   | Binary/image diffs, LFS, signing                                     | Planned                                                                                                                                                                        | P04, safe assets; P05 transfers       |
+| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                     | P05 auth; browser handoff independent |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                    | P02/P03 plus relevant domain services |
+| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                        | P03 history; P12 tools for AI         |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                        | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
 strict P00→P14 execution chain: shell/workspace foundations from P12 and large-diff handling from P10
@@ -88,8 +97,8 @@ captured core without blocking unrelated work. Keep implementation and research 
 ## Catalogue correction sequence
 
 The **F01–F16 corrections are verified** as of 2026-09-20 within the scope and adaptations in their
-record. C04's bounded F17 slice and F18 interactive-rebase slice are verified in their handoffs; F19
-and advanced C05/C06 work remain planned. A completed correction does not
+record. C04's bounded F17, F18, and F19 slices are verified in their handoffs; advanced C05/C06 work
+remains planned. A completed correction does not
 complete all of its owning phases. Each implementation handoff records case/finding IDs, original image paths, changed
 components/services, validation, and deliberate deviations in the alignment record. Use the catalogue's
 current dossiers to find later subcases that resolve earlier capture failures.
@@ -738,9 +747,9 @@ between branch rows: a source onto the current branch opens Merge, while the cur
 branch opens ordinary Rebase. Recovery now supports editor-safe continue, rebase skip, and abort after a
 fresh app launch. Disposable repositories verify divergent merge parents, rebased history, conflict
 continuation, rebase skip, and staged/unstaged/untracked restoration around a merge. Interactive rebase is
-now covered by the bounded F18 handoff; Fork's unverified multi-region/manual presentation,
-delete/modify/rename/binary/submodule built-in views, and drag/drop parity remain unverified or deferred
-to F19.
+now covered by the bounded F18 handoff, and cherry-pick/revert/reset are covered by the bounded F19
+handoff; Fork's unverified multi-region/manual presentation, delete/modify/rename/binary/submodule
+built-in views, and drag/drop parity remain unverified or deferred to later conflict-family work.
 
 ## P06 — Merge, conflicts, stashes, and recovery
 
@@ -991,8 +1000,8 @@ and screenshot coordinates are provenance, not implementation constants.
 
 ## Suggested next request
 
-> Implement F19 in P06 from docs/implementation-plan.md. Read the F17/F18 handoffs and catalogue
-> P1-022/P1-025–027 cases before changing recovery. Add cherry-pick, revert and safe reset variants with
-> operation-specific conflict continuation, previews and aborts. Preserve the verified conflict snapshots,
-> interactive Edit/amend/continue state and common-repository queue. Leave unverified Fork GUI Skip parity
-> and merge-preserving/dependent-reference interactive rebase variants distinct.
+> Implement F20 in P08 from docs/implementation-plan.md. Read the F19 handoff and catalogue P1-028 before
+> changing recovery. Add bounded lost-commit/reflog inspection and explicit recovery references while
+> preserving the verified F17 conflict, F18 interactive-rebase, and F19 history-operation state machines.
+> Leave unverified Fork GUI Skip parity, merge-preserving/dependent-reference rebase variants, and
+> public-only feature families distinct.

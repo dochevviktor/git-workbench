@@ -26,6 +26,9 @@ import type {
   RepositoryHistoryPage,
   RepositoryHistoryFilter,
   RepositoryHistoryAnchor,
+  RepositoryHistoryOperationAction,
+  RepositoryHistoryOperationPreview,
+  RepositoryHistoryOperationPreviewRequest,
   RepositoryInteractiveRebasePlan,
   RepositoryInteractiveRebasePlanRequest,
   RepositoryInteractiveRebaseRequest,
@@ -139,6 +142,12 @@ import {
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
 import { MergeRebaseRequestError, runMergeRebase } from './merge-rebase-service';
+import {
+  HistoryOperationRequestError,
+  StaleHistoryOperationError,
+  readHistoryOperationPreview,
+  runHistoryOperation,
+} from './history-operation-service';
 import {
   InteractiveRebaseRequestError,
   StaleInteractiveRebasePlanError,
@@ -1205,6 +1214,70 @@ export class RepositoryService {
               throw new ExpectedBackendError('OPERATION_FAILED', error.message);
             }
             throw this.mapGitFailure(error, 'Git could not start the merge or rebase.');
+          }
+        }),
+    );
+  }
+
+  async getHistoryOperationPreview(
+    ownerId: number,
+    request: RepositoryHistoryOperationPreviewRequest,
+  ): Promise<RepositoryHistoryOperationPreview> {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    try {
+      return await readHistoryOperationPreview(this.runner, request, {
+        repositoryId: request.id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        worktreePath: summary.worktreePath,
+        head: summary.head,
+      });
+    } catch (error) {
+      if (error instanceof HistoryOperationRequestError)
+        throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+      throw this.mapGitFailure(error, 'Git could not prepare that history operation.');
+    }
+  }
+
+  startHistoryOperation(
+    ownerId: number,
+    request: { readonly id: string; readonly action: RepositoryHistoryOperationAction },
+  ): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    const action = request.action;
+    const target = action.kind === 'reset' ? action.targetCommitId : action.commitId;
+    const title =
+      action.kind === 'reset'
+        ? `Reset '${cached.head.name ?? 'HEAD'}' (${action.mode})`
+        : `${action.kind === 'cherry-pick' ? 'Cherry-pick' : 'Revert'} '${target.slice(0, 7)}'`;
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: action.kind,
+        title,
+        command: `git ${action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            return await runHistoryOperation(this.runner, {
+              repositoryId: request.id,
+              cwd: summary.worktreePath,
+              gitDir: summary.gitDir,
+              worktreePath: summary.worktreePath,
+              head: summary.head,
+              action,
+              signal: handle.signal,
+              handle,
+            });
+          } catch (error) {
+            if (error instanceof StaleHistoryOperationError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            if (error instanceof HistoryOperationRequestError)
+              throw new ExpectedBackendError('OPERATION_FAILED', error.message);
+            throw this.mapGitFailure(error, 'Git could not complete that history operation.');
           }
         }),
     );

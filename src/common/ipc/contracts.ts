@@ -1104,6 +1104,9 @@ export const repositoryOperationKindSchema = z.enum([
   'fast-forward',
   'merge',
   'rebase',
+  'cherry-pick',
+  'revert',
+  'reset',
   'recovery',
   'stash',
 ]);
@@ -1233,6 +1236,88 @@ export const repositoryLocalChangesPreviewSchema = z.strictObject({
   untrackedPaths: z.array(z.string().max(32_768)).max(10_000),
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
 });
+
+export const repositoryHistoryOperationKindSchema = z.enum(['cherry-pick', 'revert', 'reset']);
+export const repositoryHistoryResetModeSchema = z.enum(['soft', 'mixed', 'hard']);
+
+export const repositoryHistoryOperationPreviewRequestSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('cherry-pick'),
+    id: repositoryIdSchema,
+    commitId: gitObjectIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('revert'),
+    id: repositoryIdSchema,
+    commitId: gitObjectIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('reset'),
+    id: repositoryIdSchema,
+    targetCommitId: gitObjectIdSchema,
+    mode: repositoryHistoryResetModeSchema,
+  }),
+]);
+
+export const repositoryHistoryOperationChangesSchema = z.strictObject({
+  snapshot: repositoryDiffSnapshotSchema,
+  paths: z.array(z.string().max(32_768)).max(10_000),
+  untrackedPaths: z.array(z.string().max(32_768)).max(10_000),
+  pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
+  conflictedCount: z.number().int().nonnegative().max(100_000),
+});
+
+/** A fresh, read-only plan for one selected commit operation. The renderer sends this token back. */
+export const repositoryHistoryOperationPreviewSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  kind: repositoryHistoryOperationKindSchema,
+  currentHead: repositoryHeadSchema,
+  currentBranch: z.string().max(4_096).nullable(),
+  targetCommitId: gitObjectIdSchema,
+  targetSubject: z.string().max(16_384),
+  targetParents: z.array(gitObjectIdSchema).max(128),
+  mode: repositoryHistoryResetModeSchema.nullable(),
+  workingChanges: repositoryHistoryOperationChangesSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+  canStart: z.boolean(),
+  message: z.string().min(1).max(512),
+});
+
+export const repositoryHistoryOperationActionSchema = z
+  .discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('cherry-pick'),
+      commitId: gitObjectIdSchema,
+      snapshot: repositoryDiffSnapshotSchema,
+      commitChanges: z.boolean(),
+      appendOrigin: z.boolean(),
+      mainlineParent: z.number().int().positive().max(128).optional(),
+      autostash: z.boolean(),
+      changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('revert'),
+      commitId: gitObjectIdSchema,
+      snapshot: repositoryDiffSnapshotSchema,
+      commitChanges: z.boolean(),
+      mainlineParent: z.number().int().positive().max(128).optional(),
+      autostash: z.boolean(),
+      changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('reset'),
+      targetCommitId: gitObjectIdSchema,
+      mode: repositoryHistoryResetModeSchema,
+      snapshot: repositoryDiffSnapshotSchema,
+      changesSnapshot: repositoryDiffSnapshotSchema.optional(),
+      /** Hard reset is destructive to tracked local files and must be confirmed explicitly. */
+      confirmDiscard: z.boolean(),
+    }),
+  ])
+  .refine(
+    (action) => !('autostash' in action) || !action.autostash || action.changesSnapshot !== undefined,
+    'Stashing local changes requires a working-tree snapshot.',
+  );
 
 export const repositoryInteractiveRebaseCommandSchema = z.enum([
   'pick',
@@ -1635,6 +1720,16 @@ export const requests = {
     repositoryMergeRebaseRequestSchema,
     repositoryOperationSchema,
   ),
+  getRepositoryHistoryOperationPreview: request(
+    'repository:get-history-operation-preview',
+    repositoryHistoryOperationPreviewRequestSchema,
+    repositoryHistoryOperationPreviewSchema,
+  ),
+  startRepositoryHistoryOperation: request(
+    'repository:start-history-operation',
+    z.strictObject({ id: repositoryIdSchema, action: repositoryHistoryOperationActionSchema }),
+    repositoryOperationSchema,
+  ),
   getRepositoryInteractiveRebasePlan: request(
     'repository:get-interactive-rebase-plan',
     repositoryInteractiveRebasePlanRequestSchema,
@@ -1851,6 +1946,14 @@ export type RepositoryOperationSession = z.infer<typeof repositoryOperationSessi
 export type RepositoryNetworkRequest = z.infer<typeof repositoryNetworkRequestSchema>;
 export type RepositoryLocalChangesPolicy = z.infer<typeof repositoryLocalChangesPolicySchema>;
 export type RepositoryLocalChangesPreview = z.infer<typeof repositoryLocalChangesPreviewSchema>;
+export type RepositoryHistoryOperationKind = z.infer<typeof repositoryHistoryOperationKindSchema>;
+export type RepositoryHistoryResetMode = z.infer<typeof repositoryHistoryResetModeSchema>;
+export type RepositoryHistoryOperationPreviewRequest = z.infer<
+  typeof repositoryHistoryOperationPreviewRequestSchema
+>;
+export type RepositoryHistoryOperationChanges = z.infer<typeof repositoryHistoryOperationChangesSchema>;
+export type RepositoryHistoryOperationPreview = z.infer<typeof repositoryHistoryOperationPreviewSchema>;
+export type RepositoryHistoryOperationAction = z.infer<typeof repositoryHistoryOperationActionSchema>;
 export type RepositoryRecoveryCopy = z.infer<typeof repositoryRecoveryCopySchema>;
 export type RepositoryRecoveryState = z.infer<typeof repositoryRecoveryStateSchema>;
 export type RepositoryRecoveryRequest = z.infer<typeof repositoryRecoveryRequestSchema>;

@@ -4,17 +4,17 @@ Status: foundation, the local F01 repository slice, the first F02 manager scan s
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
-with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, a branch
-PR browser handoff, and the initial F34 workspace-chrome slice implemented.
+with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper and F19 history-operation slices, a branch PR browser handoff, and the initial F34 workspace-chrome slice implemented.
 Remaining Git services and manager workflows described below are design decisions, not existing code.
 
-## Catalogue-driven corrections (F01–F18 bounded slices verified, 2026-09-20)
+## Catalogue-driven corrections (F01–F19 bounded slices verified, 2026-09-20)
 
 The [Windows 2.22.0.0 catalogue alignment](research/fork-catalogue-alignment.md) changes the observable
 target without changing the Electron/TypeScript boundaries. C01–C06 in the
 [implementation plan](implementation-plan.md#catalogue-correction-sequence) own the work below. The
 [F01–F16 correction record](reviews/f01-f16-catalogue-corrections.md) identifies implemented behavior,
-tests and remaining limits. Additive repository navigation, annotated empty-message tags, scoped search,
+tests and remaining limits. The [F19 history-operation handoff](reviews/f19-history-operations.md) records
+the bounded cherry-pick/revert/reset slice. Additive repository navigation, annotated empty-message tags, scoped search,
 diff controls/discard, merge modes, clone/authentication and lifecycle corrections are now implemented.
 The later initial-slice descriptions are historical where superseded here. Commit details now support a
 separate read-only native window; file-history/blame inspectors and full conflict-family variants remain
@@ -429,6 +429,15 @@ boundary with a newest-first, backend-reviewed plan, generated sequence-editor a
 backup refs and operation-aware Edit/amend/continue state. Branch menus and drag/drop are renderer entry
 points only; they never receive a command executor.
 
+The bounded F19 history-operation service extends that queue without widening the renderer capability. A
+preview resolves one exact commit ID, reads operation-aware local changes and pending state, and creates a
+compare-and-swap token. Cherry-pick and revert run one backend-built command, retain Git's
+`CHERRY_PICK_HEAD`/`REVERT_HEAD` on conflict, and reuse the F17 resolver plus Recovery Continue/Abort.
+Reset accepts only soft, mixed, or hard modes; hard reset requires explicit confirmation and creates a
+retained Recovery ref for tracked local changes before invoking Git. Untracked files are left to native
+Git reset semantics. Merge-parent selection is a bounded numeric choice derived from the selected commit's
+parents; no revision expressions or arbitrary command strings cross IPC.
+
 ## Current limitations
 
 Git discovery, local repository access, recent-repository persistence, the first source-directory
@@ -438,7 +447,8 @@ working-changes listing, the initial F09 text-diff viewer, the initial F10 stagi
 and context menus are implemented.
 The F01–F16 pass adds clone/Test Connection, installed native authentication helpers, global automatic
 fetch, durable closed-tab/order/window state, author/path/diff-content search, tracked-file discard,
-tag push/details and merge modes. There is still no filesystem watcher, custom manager folder editor,
+tag push/details and merge modes. The bounded F19 slice adds single-commit cherry-pick/revert and
+soft/mixed/hard reset with preview/CAS and Recovery safeguards. There is still no filesystem watcher, custom manager folder editor,
 hash-search extension, commit signing or commit-and-push, multiple-reference selection, application-managed
 credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting

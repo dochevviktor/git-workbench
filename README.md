@@ -24,6 +24,8 @@ commits, and reference actions run as queryable background operations in the act
 offers preserve, stash/reapply, or discard, with recovery copies of changed tracked and untracked files.
 F15 adds stash history, named all-file or selected whole-file stashes, staged-state-preserving
 inspect/apply/pop/delete/rename actions, and bounded commit/stash/working-tree patch export.
+The bounded F17/F18/F19 slices add text conflict resolution, interactive rebase editing, and
+single-commit cherry-pick/revert plus Soft/Mixed/Hard reset with Recovery safeguards.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history
@@ -31,8 +33,9 @@ search with graph highlights and direct distant navigation, full-file/context/wr
 explicit bounded Load Diff, confirmed tracked-file discard with recovery, a global automatic-fetch
 preference, native authentication helper policy, captured stash-new-file semantics, and all four merge
 modes. The corrected workflows are verified together; the broader feature families remain partial.
-Conflict-editor parity beyond the bounded F17 text slice, interactive rebase (F18), hunk/line stashes and patch import, syntax/rich
-image viewers, custom manager folders and filesystem watchers remain later work.
+Conflict-editor parity beyond the bounded F17 text slice, F18 merge-preserving/dependent-reference
+variants, F19 batch/edge history operations, hunk/line stashes and patch import, syntax/rich image viewers,
+custom manager folders and filesystem watchers remain later work.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.
@@ -175,8 +178,8 @@ Both directories are ignored. Application dependencies are currently fully bundl
 
 The public research began on 2026-09-16; the plan was realigned on 2026-09-20 against the supplied
 Windows capture catalogue. Its 70 observed, 11 partial, and one blocked topic describe research coverage,
-not completed Git Workbench features. The F01–F16 correction pass and bounded F17 conflict-helper slice are
-verified with the limits in their review records; the next incremental feature is F18 in P07. Fork binaries,
+not completed Git Workbench features. The F01–F16 correction pass and bounded F17/F18/F19 slices are
+verified with the limits in their review records; the next incremental feature is F20 in P08. Fork binaries,
 private source, and bundled product assets
 are excluded; reference screenshots stay private/local and are never application assets.
 
