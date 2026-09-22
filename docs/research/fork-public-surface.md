@@ -944,6 +944,35 @@ Recent release notes also describe conflict previews, rebase-dependent-reference
 navigation, and tab ergonomics. These are refinements within F03/F16/F18/F22, not reasons to declare the
 basic workflows complete early. Source: [Mac releases][mac].
 
+## Application and repository settings
+
+Scope audit: **2026-09-22**. Both surfaces belong to **F34 / P12**, with persistence prerequisites in
+P02. Global preferences were broadly listed; repository settings were not an explicit deliverable.
+Both settings surfaces are **planned, not implemented**; existing appearance/fetch controls and stored
+preferences do not constitute complete settings pages. The
+[explicit plan](../implementation-plan.md#f34-application-settings-and-repository-settings--planned-not-implemented)
+now tracks each surface and its acceptance criteria separately.
+
+- **Global application settings — B, high confidence for visible inventory:**
+  [P0-013 dossier](fork-reference-new/reference/catalogue/features/P0-013.md), original case
+  `P0-013-general-git-subcase:F1–F4`, captured **2026-09-19**, Windows **2.22.0.0**.
+  File → Preferences exposes General, Commit, Git, Integration, Custom Commands and Updates.
+  General presentation controls and Git instance/verbose-output/global-user fields are observed.
+  The linked Git-page screenshot and batch02 Git verification support the visible global scope and
+  unchanged repository state after a no-edit visit. Other pages' detailed controls, write behavior,
+  defaults and persistence remain untested.
+- **Repository settings — D, high confidence for existence, detailed behavior unresolved:**
+  [Windows release notes](https://git-fork.com/releasenoteswin), **1.30, 2019-03-22**, explicitly add
+  a Repository Settings dialog. [Mac release notes](https://git-fork.com/releasenotes),
+  **1.0.75, 2019-03-14**, document repository bugtracker configuration. Sources checked **2026-09-22**.
+  These establish a Windows dialog and a Mac capability respectively, not the full Windows 2.22 field
+  inventory or global/local precedence, save/cancel semantics, or worktree behavior.
+- **Linux/product specification:** provide separate application and selected-repository settings,
+  explicit scope/origin/inheritance, global and local identity editing, isolated persistence and tested
+  error handling. Repository identity and issue-link editing are planned requirements; their exact
+  Windows presentation remains unverified. Use installed Linux Git/tools, independently authored UI,
+  and project defaults rather than the captured bundled Windows Git instance or assumed factory defaults.
+
 ## Layout observations
 
 The current Windows reference is the catalogue's P0-003/P0-005/P0-014 shell, P0-027 diff states,

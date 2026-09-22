@@ -1017,7 +1017,8 @@ Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
 4. Finish repository grouping/scanning, additive repository-list navigation, tab reopening/reordering/colors,
    workspaces, multiwindow ownership, explicitly scoped saved layouts, preference migrations, issue-link
    rules, avatars, and accessible focus/shortcut customization. Preferences pages have their own captured
-   inventory; visible current settings do not prove defaults.
+   inventory; visible current settings do not prove defaults. The two explicit settings deliverables
+   below are required for F34/P12 completion; persisted preferences alone do not satisfy them.
 5. Specify F38 Lean Branching Start/Sync/Finish separately from Git-flow. Its entries and a disabled Finish
    state are captured, but outcomes are not. Research the remaining behavior or document an independent
    specification before enabling operations; use P06's validated services.
@@ -1032,6 +1033,47 @@ Acceptance:
 - External tools receive the selected historical blob, not the current checkout. Custom commands stay
   main-owned with validated definitions/variables; a captured Bash Command editor does not authorize a
   generic renderer command API. Forms, variable expansion and failures need independent specifications.
+
+### F34 application settings and repository settings — planned, not implemented
+
+Scope clarification (2026-09-22): global preferences were previously implicit in P12 item 4 and F34;
+repository settings lacked an explicit deliverable. Track both independently within F34. P02 supplies
+persistence prerequisites, not completed settings UI. See the
+[settings evidence and limits](research/fork-public-surface.md#application-and-repository-settings).
+
+1. **Global application settings:** provide a discoverable application-menu Preferences/Settings entry
+   that also works with no repository open. Inventory General, Commit, Git, Integration, Custom Commands,
+   and Updates against the captured Windows tabs; implement controls as their owning capabilities arrive.
+   Cover appearance/diff/commit presentation, global Git identity, Git executable selection and diagnostics,
+   background fetch, and external-tool configuration. Reuse existing preference values and services.
+   Coordinate signing with P10, accounts with P11, commands/tools with P12, and updates with P14;
+   unsupported sections remain explicitly deferred, not placeholder implementations.
+2. **Repository settings:** provide a discoverable Repository-menu/sidebar entry scoped to the selected
+   repository, with its name/path visible. Include repository-local author identity and an explicit
+   inherit/remove-override action, plus repository issue-link rules and links to existing remote and
+   Git-flow configuration where supported. Field inventory beyond public evidence is an independent
+   product specification pending further research, not observed Windows 2.22 behavior. Define which
+   settings are repository-wide versus worktree-specific before implementing linked-worktree editing.
+3. **Scope and persistence:** distinguish application-profile preferences, global Git configuration,
+   repository-local Git configuration, and effective inherited values. Show value origin and write scope;
+   removing a local override must preserve the global value. Keep Git reads/writes in backend services
+   behind named, runtime-validated IPC/preload capabilities. Preserve unrelated configuration, handle
+   externally changed/unwritable configuration, and migrate existing preferences without data loss.
+   Specify Save/Cancel or immediate-apply behavior per control; captured close-only trials do not prove it.
+
+Acceptance for these two deliverables:
+
+- Verify keyboard access, focus restoration, validation and error states for both entry points; global
+  settings work without a repository, and repository settings cannot silently retarget after a tab switch.
+- Use temporary repositories and an isolated global Git configuration to verify global/local identity,
+  effective inheritance, removing overrides, isolation between two repositories, and linked-worktree scope.
+  Opening/closing without edits and canceling unapplied edits must leave configuration and Git state intact.
+- Verify persistence after restart, migration of existing preferences, and propagation to affected open
+  repositories/windows. Settings must affect their advertised operation, not only save a UI value.
+- Test invalid values, missing Git/tools, write failures and external configuration changes without
+  losing unrelated settings. Credentials stay outside renderer state and ordinary preference storage.
+- Compare implemented pages with matching reference states and record remaining field-level unknowns.
+  Neither settings surface is complete until its supported controls and scope behavior are verified.
 
 ## P13 — Statistics and optional AI integrations
 

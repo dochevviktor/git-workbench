@@ -175,6 +175,25 @@ design process, internal widgets or architecture.
   accounts/PRs/notifications, LFS locks/authenticated transfers, richer custom commands and AI adapters.
   They remain planned and individually sourced; the catalogue neither proves nor removes them.
 
+## Settings scope clarification — 2026-09-22
+
+F34/P12 now explicitly requires **global application settings** and **repository settings**, each still
+planned, not implemented. P0-013's crosswalk entry covers the captured global Preferences inventory;
+it must not be treated as evidence for a repository settings dialog or completion of either surface.
+
+Evidence: `P0-013-general-git-subcase:F1–F4` (Windows 2.22.0.0, 2026-09-19; high confidence for the
+visible tabs/global-user fields and no-edit Git invariance). The
+[Windows 1.30 release notes](https://git-fork.com/releasenoteswin) (2019-03-22) establish Repository
+Settings; [Mac 1.0.75 notes](https://git-fork.com/releasenotes) (2019-03-14) establish repository
+bugtracker configuration. Public sources checked 2026-09-22; high confidence for those bounded claims,
+not the Windows 2.22 repository field inventory. No new catalogue capture topic is invented.
+
+The [surface record](fork-public-surface.md#application-and-repository-settings) retains unknowns.
+The [P12 settings deliverables](../implementation-plan.md#f34-application-settings-and-repository-settings--planned-not-implemented)
+specify Linux scope/inheritance, persistence, validation, configuration isolation and worktree tests
+as independent requirements. Save/cancel behavior, exact repository fields and pristine defaults need
+further evidence or an explicit product decision. No phase or feature completion status is promoted.
+
 ## Complete topic-to-implementation crosswalk
 
 Capture IDs `P0-…/P1-…/P2-…` are **research topics**, distinct from project phases `P00–P14`.
