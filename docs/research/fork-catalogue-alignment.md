@@ -330,3 +330,20 @@ keeps neutral independently authored reference chips, and reports first-bad as a
 Repeated-skip ambiguity and restart restoration are independent verified additions; captured
 ambiguity remains unknown. [Git documentation](https://git-scm.com/docs/git-bisect), accessed
 2026-09-22, supports their semantics. See the [F26 handoff](../reviews/f26-bisect.md) for tests and limits.
+
+## F28 alignment checkpoint — 2026-09-22
+
+F28 remains public-only signing scope. High-confidence captured anchors `P0-030:F1` and
+`P1-004-empty-message-tag-subcase:F1–F3` (Windows 2.22.0.0, 2026-09-19/20) establish the existing
+composer and annotated-tag form, including an empty annotation. Screens 0185 and 0232 and their
+original cases/Git verification records were compared with the new Linux composer and tag screenshots.
+The signing selector, repository key dialog and explicit verification row are independent additions;
+the comparison does not turn them into observed Fork behavior.
+
+[Fork Mac release notes](https://git-fork.com/releasenotes), accessed 2026-09-22, document GPG commit
+signing in 1.0.58 (2017-10-23) and signed tags in 1.0.82 (2019-07-22). Confidence is high for these
+Mac features, while exact Windows signing configuration and native prompts remain unknown.
+[Git verification](https://git-scm.com/docs/git-verify-commit) and
+[configuration](https://git-scm.com/docs/git-config) support the independent backend semantics.
+The public image index was refreshed and consulted; no signing screenshot supplies stronger layout
+evidence. No reference images were added to application assets. See the [F28 handoff](../reviews/f28-signing.md).

@@ -1,4 +1,6 @@
 import { useId, useMemo, useState } from 'react';
+import { SignatureCheck, SigningControls } from './SigningControls';
+import type { RepositorySigningMode } from '../../../common/ipc/contracts';
 import type { ReactNode } from 'react';
 import type {
   RepositoryBranch,
@@ -97,7 +99,13 @@ export function ReferenceDialog(props: ReferenceDialogProps) {
     case 'delete-tag':
       return <DeleteTagDialog {...props} tag={props.request.tag} />;
     case 'tag-details':
-      return <TagDetailsDialog tag={props.request.tag} onClose={props.onClose} />;
+      return (
+        <TagDetailsDialog
+          tag={props.request.tag}
+          repositoryId={props.context?.repositoryId}
+          onClose={props.onClose}
+        />
+      );
     case 'push-tag':
       return <PushTagDialog {...props} tag={props.request.tag} />;
     case 'checkout-detached':
@@ -268,6 +276,7 @@ function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogP
 function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarget) {
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [signing, setSigning] = useState<RepositorySigningMode>('inherit');
   const [push, setPush] = useState(false);
   const [remote, setRemote] = useState(context?.remotes[0] ?? '');
   const taken = useMemo(() => tagNames(context), [context]);
@@ -294,6 +303,7 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
       onSubmit={() =>
         rest.onSubmit({
           kind: 'create-tag',
+          signing,
           name: trimmed,
           startPoint: target.startPoint,
           message,
@@ -302,6 +312,17 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
       }
     >
       <TargetRow label="Create tag at:" target={target} />
+      <dt />
+      <dd>
+        {context && (
+          <SigningControls
+            repositoryId={context.repositoryId}
+            value={signing}
+            onChange={setSigning}
+            disabled={rest.busy}
+          />
+        )}
+      </dd>
       <NameField label="Tag Name:" value={name} placeholder="Enter tag name" onChange={setName} />
       <dt className="reference-label-top">
         <label htmlFor={messageId}>Message:</label>
@@ -623,7 +644,15 @@ function DeleteTagDialog({
   );
 }
 
-function TagDetailsDialog({ tag, onClose }: { readonly tag: RepositoryTag; readonly onClose: () => void }) {
+function TagDetailsDialog({
+  tag,
+  repositoryId,
+  onClose,
+}: {
+  readonly tag: RepositoryTag;
+  readonly repositoryId: string | undefined;
+  readonly onClose: () => void;
+}) {
   return (
     <dialog
       className="dialog reference-dialog"
@@ -642,6 +671,11 @@ function TagDetailsDialog({ tag, onClose }: { readonly tag: RepositoryTag; reado
           <strong>{tag.name}</strong> · {tag.annotated ? 'Annotated tag' : 'Lightweight tag'} ·{' '}
           {tag.target.slice(0, 12)}
         </p>
+        {repositoryId && tag.annotated && tag.objectId ? (
+          <SignatureCheck key={tag.objectId} repositoryId={repositoryId} objectId={tag.objectId} kind="tag" />
+        ) : !tag.annotated ? (
+          <p>Unsigned lightweight tag</p>
+        ) : null}
         <textarea
           aria-label="Tag message"
           className="reference-input reference-message"

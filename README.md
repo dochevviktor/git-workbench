@@ -43,6 +43,10 @@ a separate F38 family.
 F26 adds manual Bisect start/Bad/Good/Skip/Abort, visible range and results, and restoration of active
 sessions after restart. First-bad and ambiguous skipped-candidate results stay visible until Abort
 restores the original checkout; local changes must be committed or stashed before advancing.
+F28 adds GPG signing for commits/amends and annotated tags, repository-local signing-key configuration,
+Git-default/Unsigned choices, and explicit commit/tag verification with separate trust and failure states.
+The installed GPG agent handles passphrases. Key generation/import, global settings UI and SSH/X.509
+verification remain outside this workflow; see the [F28 handoff](docs/reviews/f28-signing.md).
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history

@@ -10,6 +10,7 @@ const readChannels = new Set<string>([
   requests.getRepositoryCommitDetailsContext.channel,
   requests.getRepositoryHistory.channel,
   requests.getRepositoryCommitChanges.channel,
+  requests.verifyRepositorySignature.channel,
   requests.getRepositoryRevisionTree.channel,
   requests.getRepositoryRevisionBlob.channel,
   requests.getRepositoryLfsFile.channel,

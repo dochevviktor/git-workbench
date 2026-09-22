@@ -10,6 +10,12 @@ capabilities and serializes start/mark/skip/reset through the common-directory o
 snapshot covers HEAD, bisect files/refs, status and pending sequencers. First-bad and ambiguous skipped
 candidates are outcomes, and app restart reconstructs the banner without duplicating Git state.
 See the [F26 handoff](reviews/f26-bisect.md) for verified behavior and limits.
+F28 adds named signing-settings reads, a repository-local signing-key write with snapshot validation
+inside the common-directory queue, and exact-object GPG verification. Commit/tag requests have an
+optional Git-default/GPG/Unsigned choice. Signing stays with Git and its native GPG agent; signer
+output is suppressed in signed commit and tag results, and verification exposes only validated status
+and public fingerprint. Inspector windows may verify but cannot change signing configuration.
+See the [F28 handoff](reviews/f28-signing.md) for the bounded OpenPGP workflow and platform limits.
 F22 topology reads and create/open/remove/prune operations use backend-issued worktree IDs, common-directory
 serialization, linked-tab sessions, and explicit current/main/occupied/dirty/locked/stale guards. F23
 submodule reads and actions use backend-issued submodule IDs, parent/index/child gitlink comparison,
@@ -502,7 +508,7 @@ The F01–F16 pass adds clone/Test Connection, installed native authentication h
 fetch, durable closed-tab/order/window state, author/path/diff-content search, tracked-file discard,
 tag push/details and merge modes. The bounded F19 slice adds single-commit cherry-pick/revert and
 soft/mixed/hard reset with preview/CAS and Recovery safeguards. There is still no filesystem watcher, custom manager folder editor,
-hash-search extension, commit signing or commit-and-push, multiple-reference selection, application-managed
+hash-search extension, commit-and-push, multiple-reference selection, application-managed
 credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
 integration, automatic updater or final branding. The bounded F21 slice adds rename-aware file History and

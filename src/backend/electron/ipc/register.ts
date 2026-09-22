@@ -522,6 +522,15 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
     register(requests.getRepositoryBisect, (window, { id }) =>
       repositoryService.getBisect(window.webContents.id, id),
     );
+    register(requests.getRepositorySigningSettings, (window, { id }) =>
+      repositoryService.getSigningSettings(window.webContents.id, id),
+    );
+    register(requests.setRepositorySigningKey, (window, request) =>
+      repositoryService.setSigningKey(window.webContents.id, request),
+    );
+    register(requests.verifyRepositorySignature, (window, request) =>
+      repositoryService.verifySignature(window.webContents.id, request),
+    );
     register(requests.startRepositoryBisectOperation, (window, request) =>
       repositoryService.startBisectOperation(window.webContents.id, request),
     );

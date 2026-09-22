@@ -1,4 +1,8 @@
 import type {
+  RepositorySigningSettings,
+  RepositorySigningSettingsRequest,
+  RepositoryVerifySignatureRequest,
+  RepositorySignature,
   AppInfo,
   ClipboardText,
   EditCommand,
@@ -167,6 +171,9 @@ export interface DesktopApi {
     getWorktrees(request: RepositorySession): Promise<IpcResult<RepositoryWorktreeContext>>;
     startWorktreeOperation(request: RepositoryWorktreeActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getBisect(request: RepositorySession): Promise<IpcResult<RepositoryBisectContext>>;
+    getSigningSettings(request: RepositorySession): Promise<IpcResult<RepositorySigningSettings>>;
+    setSigningKey(request: RepositorySigningSettingsRequest): Promise<IpcResult<RepositorySigningSettings>>;
+    verifySignature(request: RepositoryVerifySignatureRequest): Promise<IpcResult<RepositorySignature>>;
     startBisectOperation(request: RepositoryBisectActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getGitFlow(request: RepositorySession): Promise<IpcResult<RepositoryGitFlowContext>>;
     startGitFlowOperation(request: RepositoryGitFlowActionRequest): Promise<IpcResult<RepositoryOperation>>;

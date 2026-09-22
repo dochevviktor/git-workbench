@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { ReadCoordinator } from '../git/read-coordinator';
 import type {
+  RepositorySigningSettingsRequest,
+  RepositoryVerifySignatureRequest,
   GitInfo,
   RepositoryCloneRequest,
   RepositoryConnectionRequest,
@@ -152,6 +154,7 @@ import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError
 import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
 import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
 import { readBisectContext, applyBisectAction } from './bisect-service';
+import { readSigningSettings, setSigningKey, verifySignature } from './signing-service';
 import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
 import {
   applyWorkingChange,
@@ -894,6 +897,7 @@ export class RepositoryService {
           amend: request.amend,
           snapshot: request.snapshot,
           skipHooks: request.skipHooks,
+          signing: request.signing,
         });
       } catch (error) {
         if (error instanceof StaleCommitSnapshotError) {
@@ -1010,6 +1014,24 @@ export class RepositoryService {
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the bisect state.');
     }
+  }
+
+  async getSigningSettings(ownerId: number, id: string) {
+    const summary = await this.requireWorktree(ownerId, id);
+    return readSigningSettings(this.runner, summary.worktreePath, id);
+  }
+
+  async setSigningKey(ownerId: number, request: RepositorySigningSettingsRequest) {
+    const cached = await this.requireWorktree(ownerId, request.id);
+    return this.withRepositoryMutation(cached.commonDir, async () => {
+      const summary = await this.requireWorktree(ownerId, request.id);
+      return setSigningKey(this.runner, summary.worktreePath, request);
+    });
+  }
+
+  async verifySignature(ownerId: number, request: RepositoryVerifySignatureRequest) {
+    const summary = this.operationRepository(ownerId, request.id);
+    return verifySignature(this.runner, summary.worktreePath ?? summary.commonDir, request);
   }
 
   startBisectOperation(ownerId: number, request: RepositoryBisectActionRequest): RepositoryOperation {

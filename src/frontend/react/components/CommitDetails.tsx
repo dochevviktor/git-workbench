@@ -30,6 +30,7 @@ import { FileChangeList } from './FileChangeList';
 import type { FileChangeEntry, FileListMode } from './FileChangeList';
 import { FileIcon, FolderIcon, ListOptionsIcon, SearchIcon, PopOutIcon, DetailsPanelIcon } from './Icons';
 import { unwrapResult } from '../../../common/ipc/result';
+import { SignatureCheck } from './SigningControls';
 import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { SearchMatch } from './SearchMatch';
@@ -656,6 +657,17 @@ export function CommitDetails({
           <dt>SHA</dt>
           <dd>
             <code className="history-full-hash">{commit.id}</code>
+          </dd>
+          <dt>GPG</dt>
+          <dd>
+            {repositoryId && (
+              <SignatureCheck
+                key={`${repositoryId}:${commit.id}`}
+                repositoryId={repositoryId}
+                objectId={commit.id}
+                kind="commit"
+              />
+            )}
           </dd>
           <dt>Parents</dt>
           <dd className="details-parents">

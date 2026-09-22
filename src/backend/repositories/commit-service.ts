@@ -12,6 +12,7 @@ import type {
   RepositoryCommitResult,
   RepositoryHead,
   RepositoryWorkingChange,
+  RepositorySigningMode,
 } from '../../common/ipc/contracts';
 import {
   repositoryAmendChangesSchema,
@@ -50,6 +51,7 @@ export interface CommitContextInput {
 }
 
 export interface CommitChangesInput extends CommitContextInput {
+  readonly signing?: RepositorySigningMode | undefined;
   readonly onCommand?: ((args: readonly string[]) => void) | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly subject: string;
@@ -185,7 +187,15 @@ export async function commitChanges(
   const refusal = refuseCommit(context, input.amend, message);
   if (refusal) return failed(input.repositoryId, refusal.reason, refusal.message, '', false);
 
-  const args = ['commit', '--cleanup=whitespace', '--file=-'];
+  const args = [
+    ...(input.signing === 'gpg' ? ['-c', 'gpg.format=openpgp'] : []),
+    'commit',
+    '--cleanup=whitespace',
+    '--file=-',
+  ];
+  if (input.signing === 'gpg') args.push('--gpg-sign');
+  if (input.signing === 'unsigned') args.push('--no-gpg-sign');
+  const signing = input.signing === 'gpg' || (input.signing !== 'unsigned' && context.signing);
   if (input.amend) args.push('--amend');
   if (input.skipHooks) args.push('--no-verify');
   input.onCommand?.(args);
@@ -211,12 +221,14 @@ export async function commitChanges(
     }
     if (!(error instanceof GitCommandError)) throw error;
     const output = displayOutput(error.stdout, error.stderr);
-    const reason = classifyFailure(output, context, input.skipHooks);
+    const reason = /gpg failed|failed to sign|signing failed/iu.test(output)
+      ? 'signing'
+      : classifyFailure(output, context, input.skipHooks);
     return failed(
       input.repositoryId,
       reason,
       failureMessage(reason, context),
-      output,
+      signing ? '' : output,
       reason === 'hook' && !input.skipHooks,
     );
   }
@@ -228,7 +240,7 @@ export async function commitChanges(
     commitId,
     amended: input.amend,
     subject: message.split('\n', 1)[0] ?? '',
-    output: displayOutput(result.stdout, result.stderr),
+    output: signing ? '' : displayOutput(result.stdout, result.stderr),
   } satisfies RepositoryCommitResult);
 }
 
@@ -309,6 +321,8 @@ function classifyFailure(
 
 function failureMessage(reason: RepositoryCommitFailureReason, context: RepositoryCommitContext): string {
   switch (reason) {
+    case 'signing':
+      return 'Signing failed or was cancelled. Check the configured key and native GPG agent before retrying.';
     case 'hook':
       return 'A commit hook stopped the commit. Its output is shown below.';
     case 'identity':
@@ -321,7 +335,7 @@ function failureMessage(reason: RepositoryCommitFailureReason, context: Reposito
       return 'Git cannot commit while the repository has unmerged files.';
     case 'other':
       return context.signing
-        ? 'Git could not complete the commit. Commit signing is configured; signing prompts are not handled yet.'
+        ? 'Git could not complete the signed commit. Check the configured key and native GPG agent, then retry.'
         : 'Git could not complete the commit.';
   }
 }

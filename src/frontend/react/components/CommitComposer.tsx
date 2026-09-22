@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SigningControls } from './SigningControls';
+import type { RepositorySigningMode } from '../../../common/ipc/contracts';
 import type { KeyboardEvent } from 'react';
 import type {
   RepositoryCommitContext,
@@ -121,6 +123,7 @@ export function CommitComposer({
   const [body, setBody] = usePersistentState(`repository.${repository.id}.commit.body`, '', isString);
   const setAmend = onAmendChange;
   const [committing, setCommitting] = useState(false);
+  const [signing, setSigning] = useState<RepositorySigningMode>('inherit');
   const mounted = useRef(true);
   const currentDraft = useRef({ subject, body });
   currentDraft.current = { subject, body };
@@ -226,6 +229,7 @@ export function CommitComposer({
             amend,
             snapshot: value.snapshot,
             skipHooks,
+            signing,
           }),
         );
         const operation = await waitForOperation(api, accepted);
@@ -265,6 +269,7 @@ export function CommitComposer({
       setSubject,
       subject,
       value,
+      signing,
     ],
   );
 
@@ -348,7 +353,7 @@ export function CommitComposer({
     value ? pendingOperationNotice(value) : undefined,
     amend && value ? amendNotice(value) : undefined,
     value?.signing
-      ? 'Commit signing is configured. Signing prompts are not handled yet (planned for P10).'
+      ? 'Git signs commits by default. Passphrase prompts are handled by the native signing agent.'
       : undefined,
   ].filter((notice): notice is string => notice !== undefined);
 
@@ -450,12 +455,18 @@ export function CommitComposer({
           <input
             type="checkbox"
             checked={amend}
-            disabled={!amendAvailable || committing}
+            disabled={!amendAvailable || committing || context.loading}
             data-testid="commit-amend"
             onChange={(event) => toggleAmend(event.target.checked)}
           />
           Amend
         </label>
+        <SigningControls
+          repositoryId={repository.id}
+          value={signing}
+          onChange={setSigning}
+          disabled={committing}
+        />
         <div className="composer-commit">
           <button
             type="button"

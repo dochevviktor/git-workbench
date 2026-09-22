@@ -169,7 +169,8 @@ export async function applyReferenceAction(
   try {
     result = await runner.run(plan.args, {
       cwd: input.cwd,
-      timeoutMs: plan.write ? referenceWriteTimeoutMs : referenceReadTimeoutMs,
+      timeoutMs:
+        plan.write || action.kind === 'create-tag' ? referenceWriteTimeoutMs : referenceReadTimeoutMs,
       maxOutputBytes: referenceWriteOutputLimit,
       signal: input.signal,
       authentication: action.kind === 'push-tag' ? 'prompt' : 'silent',
@@ -186,8 +187,8 @@ export async function applyReferenceAction(
       );
     }
     if (!(error instanceof GitCommandError)) throw error;
-    const output = displayOutput(error.stdout, error.stderr);
-    const failure = classifyFailure(action, output);
+    const output = action.kind === 'create-tag' ? '' : displayOutput(error.stdout, error.stderr);
+    const failure = classifyFailure(action, displayOutput(error.stdout, error.stderr));
     return repositoryReferenceActionResultSchema.parse({
       status: 'blocked',
       repositoryId: input.repositoryId,
@@ -253,7 +254,7 @@ export async function applyReferenceAction(
     repositoryId: input.repositoryId,
     kind: action.kind,
     message: boundedMessage(plan.message),
-    output: displayOutput(result.stdout, result.stderr),
+    output: action.kind === 'create-tag' ? '' : displayOutput(result.stdout, result.stderr),
     head: await readHead(runner, input.cwd),
   } satisfies RepositoryReferenceActionResult);
 }
@@ -365,7 +366,16 @@ function planAction(
       if (!start) return notFound('That starting point is no longer in this repository.');
       const message = action.message.replace(/\r\n?/gu, '\n').trim();
       return {
-        args: ['tag', '--annotate', '--cleanup=whitespace', '--file=-', action.name, start.revision],
+        args: [
+          ...(action.signing === 'gpg' ? ['-c', 'gpg.format=openpgp'] : []),
+          'tag',
+          '--annotate',
+          ...(action.signing === 'gpg' ? ['--sign'] : action.signing === 'unsigned' ? ['--no-sign'] : []),
+          '--cleanup=whitespace',
+          '--file=-',
+          action.name,
+          start.revision,
+        ],
         message: `Created annotated tag '${action.name}'.`,
         write: false,
         stdin: `${message}\n`,
@@ -552,6 +562,14 @@ function classifyFailure(
   readonly message: string;
   readonly canForce: boolean;
 } {
+  if (/gpg failed|failed to sign|signing failed/iu.test(output)) {
+    return {
+      reason: 'other',
+      message:
+        'Signing failed or was cancelled. Check the configured key and native GPG agent before retrying.',
+      canForce: false,
+    };
+  }
   if (/already exists|cannot lock ref|exists; cannot create/iu.test(output)) {
     return {
       reason: 'exists',

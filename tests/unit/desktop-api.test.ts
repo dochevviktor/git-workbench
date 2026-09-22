@@ -26,6 +26,26 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates signature results and signing settings requests on named channels', async () => {
+    const { api, invoke } = fixture();
+    const request = { id: 'repo-' + 'b'.repeat(64), objectId: 'a'.repeat(40), kind: 'commit' as const };
+    invoke.mockResolvedValueOnce({ ok: true, value: { status: 'unsigned', fingerprint: null } });
+    expect(await api.repository.verifySignature(request)).toMatchObject({
+      ok: true,
+      value: { status: 'unsigned' },
+    });
+    expect(invoke).toHaveBeenLastCalledWith(requests.verifyRepositorySignature.channel, request);
+    invoke.mockResolvedValueOnce({ ok: true, value: { status: 'verified', passphrase: 'never' } });
+    expect(await api.repository.verifySignature(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    invoke.mockClear();
+    expect(
+      await api.repository.setSigningKey({ id: request.id, key: '../private.key', snapshot: 'a'.repeat(64) }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+  });
   it('validates named bisect requests and rejects malformed responses', async () => {
     const { api, invoke } = fixture();
     const request = { id: 'repo-' + 'b'.repeat(64), action: 'start' as const, snapshot: 'a'.repeat(64) };

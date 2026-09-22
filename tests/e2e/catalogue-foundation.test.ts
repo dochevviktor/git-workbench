@@ -91,7 +91,10 @@ test('catalogue clone, additive repository list, reorder/reopen, view shortcuts 
     await tagDialog.getByTestId('reference-dialog-submit').click();
     await expect(tagDialog).toHaveCount(0);
     expect(await run(other, 'cat-file', '-t', 'refs/tags/empty-annotation')).toBe('tag');
-    await page.getByRole('treeitem', { name: 'Tags', exact: true }).click();
+    const tags = page.getByRole('treeitem', { name: 'Tags', exact: true });
+    // The tag operation finishes before the asynchronous reference refresh makes the section expandable.
+    await expect(tags).toHaveAttribute('aria-expanded', /^(?:true|false)$/u);
+    if ((await tags.getAttribute('aria-expanded')) === 'false') await tags.click();
     await page.getByRole('treeitem', { name: 'empty-annotation', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Show Tag Details…', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Tag Details', exact: true })).toContainText(

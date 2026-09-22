@@ -671,6 +671,52 @@ export const repositoryCommitPendingOperationSchema = z.enum([
   'rebase',
 ]);
 
+export const repositorySigningModeSchema = z.enum(['inherit', 'gpg', 'unsigned']);
+export const repositorySigningSettingsSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  key: z.string().max(4096).nullable(),
+  localKey: z.string().max(4096).nullable(),
+  format: z.string().max(128),
+  commits: z.boolean(),
+  tags: z.boolean(),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+export const repositorySigningSettingsRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  snapshot: repositoryDiffSnapshotSchema,
+  key: z
+    .string()
+    .regex(/^(?:[0-9a-fA-F]{16}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64})!?$/u)
+    .nullable(),
+});
+export const repositoryVerifySignatureRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  objectId: gitObjectIdSchema,
+  kind: z.enum(['commit', 'tag']),
+});
+export const repositorySignatureSchema = z.strictObject({
+  status: z.enum([
+    'valid',
+    'untrusted',
+    'invalid',
+    'missing-key',
+    'expired',
+    'revoked',
+    'unsigned',
+    'unsupported',
+    'unavailable',
+  ]),
+  fingerprint: z
+    .string()
+    .regex(/^[0-9A-Fa-f]{40,64}$/u)
+    .nullable(),
+});
+export type RepositorySigningMode = z.infer<typeof repositorySigningModeSchema>;
+export type RepositorySigningSettings = z.infer<typeof repositorySigningSettingsSchema>;
+export type RepositorySigningSettingsRequest = z.infer<typeof repositorySigningSettingsRequestSchema>;
+export type RepositoryVerifySignatureRequest = z.infer<typeof repositoryVerifySignatureRequestSchema>;
+export type RepositorySignature = z.infer<typeof repositorySignatureSchema>;
+
 export const repositoryCommitContextRequestSchema = z.strictObject({ id: repositoryIdSchema });
 
 export const repositoryCommitContextSchema = z.strictObject({
@@ -690,7 +736,7 @@ export const repositoryCommitContextSchema = z.strictObject({
   recentMessages: z.array(repositoryCommitMessageSchema).max(20),
   stagedCount: z.number().int().nonnegative().max(100_000),
   conflictedCount: z.number().int().nonnegative().max(100_000),
-  /** `commit.gpgsign` is enabled; signing itself is a later phase. */
+  /** Effective Git default; explicit per-operation choices override it. */
   signing: z.boolean(),
   hooks: z.array(z.string().min(1).max(64)).max(8),
   /** Compare-and-swap token over HEAD, the pending operation, and the staged entries. */
@@ -713,6 +759,7 @@ export const repositoryAmendChangesSchema = z.strictObject({
 
 export const repositoryCommitRequestSchema = z.strictObject({
   id: repositoryIdSchema,
+  signing: repositorySigningModeSchema.optional(),
   subject: z.string().max(16_384),
   body: z.string().max(262_144),
   amend: z.boolean(),
@@ -722,6 +769,7 @@ export const repositoryCommitRequestSchema = z.strictObject({
 });
 
 export const repositoryCommitFailureReasonSchema = z.enum([
+  'signing',
   'hook',
   'identity',
   'empty-message',
@@ -892,6 +940,7 @@ export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('checkout-commit'), commitId: gitObjectIdSchema, ...localChangesOptions }),
   z.strictObject({
     kind: z.literal('create-tag'),
+    signing: repositorySigningModeSchema.optional(),
     name: repositoryReferenceNameSchema,
     startPoint: repositoryReferenceStartPointSchema,
     /** This route always creates an annotated tag, including an empty annotation. */
@@ -2297,6 +2346,21 @@ export const requests = {
     'repository:get-bisect',
     repositorySessionSchema,
     repositoryBisectContextSchema,
+  ),
+  getRepositorySigningSettings: request(
+    'repository:get-signing-settings',
+    repositorySessionSchema,
+    repositorySigningSettingsSchema,
+  ),
+  setRepositorySigningKey: request(
+    'repository:set-signing-key',
+    repositorySigningSettingsRequestSchema,
+    repositorySigningSettingsSchema,
+  ),
+  verifyRepositorySignature: request(
+    'repository:verify-signature',
+    repositoryVerifySignatureRequestSchema,
+    repositorySignatureSchema,
   ),
   startRepositoryBisectOperation: request(
     'repository:start-bisect-operation',

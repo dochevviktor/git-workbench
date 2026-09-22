@@ -47,6 +47,8 @@ describe('commit inspector capabilities', () => {
   });
 
   it('keeps file-history and blame inspectors read-only while allowing their named handoffs', () => {
+    expect(canInvokeInspector('commit-details', requests.verifyRepositorySignature.channel, {})).toBe(true);
+    expect(canInvokeInspector('commit-details', requests.setRepositorySigningKey.channel, {})).toBe(false);
     expect(
       canInvokeInspector('file-history', requests.getRepositoryFileHistoryContext.channel, undefined),
     ).toBe(true);

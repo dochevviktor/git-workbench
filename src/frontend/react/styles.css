@@ -4378,3 +4378,22 @@ svg.spinning {
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
+
+.signing-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.signing-controls select {
+  background: var(--window);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font: inherit;
+}
+.signature-check {
+  overflow-wrap: anywhere;
+}
