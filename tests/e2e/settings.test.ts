@@ -69,6 +69,7 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
     expect(await run('config', '--global', 'user.name')).toBe('Global Changed');
     await page.evaluate(async (path) => {
       const result = await window.desktop!.repository.open({ path });
+      if (result.ok) await window.desktop!.repository.setTrust({ id: result.value.id, trusted: true });
       if (!result.ok) throw new Error(result.error.message);
     }, cwd);
     await page.reload();

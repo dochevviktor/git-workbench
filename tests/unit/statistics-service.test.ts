@@ -34,6 +34,7 @@ describe('F35 independently defined statistics', () => {
     await f.populate();
     const service = new RepositoryService({ storagePath: join(f.root, 'recent.json') });
     const opened = await service.open(1, f.cwd);
+    await service.setTrust(1, opened.id, true);
     const req = { ...request(), id: opened.id };
     await expect(service.getStatistics(2, req)).rejects.toMatchObject({ code: 'REPOSITORY_NOT_OPEN' });
     const read = vi

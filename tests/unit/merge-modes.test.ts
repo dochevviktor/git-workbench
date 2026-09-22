@@ -38,6 +38,7 @@ async function fixture(divergent = false) {
   const service = new RepositoryService({ storagePath, runner: git });
   services.push(service);
   const { id } = await service.open(1, cwd);
+  await service.setTrust(1, id, true);
   return { root, cwd, run, git, service, id, before, source, storagePath };
 }
 async function terminal(service: RepositoryService, operation: RepositoryOperation) {

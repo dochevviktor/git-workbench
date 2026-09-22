@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,7 +44,7 @@ test('F23 reads submodule state, shows revision cards, opens the child tab, and 
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(async (path) => window.desktop!.repository.open({ path }), parent);
+    const opened = await page.evaluate(openTrustedFixture, parent);
     expect(opened).toMatchObject({ ok: true, value: { name: 'parent' } });
     if (!opened.ok) throw new Error(opened.error.message);
     await page.reload();

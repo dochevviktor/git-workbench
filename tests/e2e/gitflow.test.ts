@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -54,7 +55,7 @@ test('F25 initializes and completes feature, release, and hotfix workflows', asy
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(async (path) => window.desktop!.repository.open({ path }), repository);
+    const opened = await page.evaluate(openTrustedFixture, repository);
     expect(opened).toMatchObject({ ok: true, value: { name: 'repository' } });
     if (!opened.ok) throw new Error(opened.error.message);
     const repositoryId = opened.value.id;

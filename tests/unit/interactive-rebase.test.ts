@@ -48,6 +48,7 @@ async function fixture() {
   const service = new RepositoryService({ storagePath: join(root, 'recent.json'), runner: git });
   services.push(service);
   const { id } = await service.open(1, cwd);
+  await service.setTrust(1, id, true);
   return { root, cwd, git, run, service, id, base };
 }
 

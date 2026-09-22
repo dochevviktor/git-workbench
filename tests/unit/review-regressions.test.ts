@@ -53,6 +53,7 @@ async function fixture(wrap?: (git: GitRunner) => GitRunnerLike) {
   const service = new RepositoryService({ storagePath, runner: wrap?.(git) ?? git });
   services.push(service);
   const summary = await service.open(1, cwd);
+  await service.setTrust(1, summary.id, true);
   const id = summary.id;
   const apply = async (action: RepositoryReferenceAction) =>
     service.applyReferenceAction(1, {

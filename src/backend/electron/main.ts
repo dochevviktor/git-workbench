@@ -125,6 +125,19 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         repositories.dispose();
         ipc.dispose();
       });
+      let quitting = false;
+      let drained = false;
+      app.on('before-quit', (event) => {
+        if (drained) return;
+        event.preventDefault();
+        if (quitting) return;
+        quitting = true;
+        repositories.dispose();
+        void repositories.settled().finally(() => {
+          drained = true;
+          app.quit();
+        });
+      });
     })
     .catch((error: unknown) => {
       console.error('Application startup failed', error);

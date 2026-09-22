@@ -45,7 +45,7 @@ test('opens CLI and second-instance repositories without reload and restores win
     let page = await application.firstWindow();
     const launch = await application.evaluate(() => ({ argv: process.argv, defaultApp: process.defaultApp }));
     await expect(
-      page.getByRole('tab', { name: /first, Clean working tree/u }),
+      page.getByRole('tab', { name: /first, Working-tree status unavailable/u }),
       JSON.stringify(launch),
     ).toBeVisible();
     await page.evaluate(() => {
@@ -74,10 +74,9 @@ test('opens CLI and second-instance repositories without reload and restores win
         else reject(new Error(`Second instance exited with ${code}.`));
       });
     });
-    await expect(page.getByRole('tab', { name: /-second, Clean working tree/u })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(
+      page.getByRole('tab', { name: /-second, Working-tree status unavailable/u }),
+    ).toHaveAttribute('aria-selected', 'true');
     expect(
       await page.evaluate(() => (window as unknown as { launchTestMarker: string }).launchTestMarker),
     ).toBe('retained');
@@ -109,10 +108,9 @@ test('opens CLI and second-instance repositories without reload and restores win
       env: launchEnvironment(),
     });
     page = await application.firstWindow();
-    await expect(page.getByRole('tab', { name: /-second, Clean working tree/u })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(
+      page.getByRole('tab', { name: /-second, Working-tree status unavailable/u }),
+    ).toHaveAttribute('aria-selected', 'true');
     const restoredGeometry = await application.evaluate(({ BrowserWindow, screen }) => ({
       bounds: BrowserWindow.getAllWindows()[0]!.getNormalBounds(),
       displays: screen.getAllDisplays().map((display) => display.workArea),

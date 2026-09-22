@@ -9,6 +9,18 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P01 implementation (2026-09-22): the [infrastructure handoff](../reviews/p01-infrastructure.md) closes
+the phase's Git discovery/capabilities, runner, operation registry, cancellation, common-directory queues,
+trust policy and fixture requirements for the Linux baseline. Activity was compared before/after with
+`P1-011:F1` (`screen-0291/0292`) and `P1-011-delayed-local-cancel-subcase:F1–F5`
+(`screen-0288/0290`, original case and Git verification). High-confidence Windows 2.22.0.0 observations
+support the two-pane composition, scopes, timestamps and command/output presentation. Independent Linux
+adaptations retain truthful terminal states, keyboard navigation, bounded geometry and conflict recovery.
+Repository trust prompts have no captured Fork equivalent. Native Windows/macOS and live provider
+verification remain P14/P05 work; accepting-remote cancellation remains unknown. No private evidence was
+modified or copied into the application. The handoff also records three unrelated Electron failures
+reproduced against unchanged baseline `27e403c`.
+
 Subsequent implementation: the bounded F17 text conflict slice is recorded in the
 [conflict-helper handoff](../reviews/f17-conflict-helper.md). It maps P1-015–020 and P1-022 findings to
 the current IPC, conflict service, Local Changes helper and disposable-repository tests. This updates

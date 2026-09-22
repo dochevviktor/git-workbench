@@ -74,6 +74,7 @@ test('catalogue Local Changes selection, full-file hunk focus, popup, discard an
     await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([1800, 1200]);
     await page.evaluate(async (path) => {
       const result = await window.desktop!.repository.open({ path });
+      if (result.ok) await window.desktop!.repository.setTrust({ id: result.value.id, trusted: true });
       if (!result.ok) throw new Error(result.error.message);
     }, repository);
     await page.reload();
@@ -124,6 +125,7 @@ test('catalogue Local Changes selection, full-file hunk focus, popup, discard an
     await git.run(['init', '--quiet'], { cwd: secondRepository });
     await page.evaluate(async (path) => {
       const result = await window.desktop!.repository.open({ path });
+      if (result.ok) await window.desktop!.repository.setTrust({ id: result.value.id, trusted: true });
       if (!result.ok) throw new Error(result.error.message);
     }, secondRepository);
     await page.keyboard.press('F5');

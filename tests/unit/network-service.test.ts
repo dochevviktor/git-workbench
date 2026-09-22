@@ -52,6 +52,7 @@ async function fixture(backgroundFetchIntervalMs = 20 * 60 * 1_000): Promise<Fix
     backgroundFetchIntervalMs,
   });
   const summary = await service.open(1, worktree);
+  await service.setTrust(1, summary.id, true);
   return { root, worktree, remote, git, service, repositoryId: summary.id };
 }
 
@@ -492,6 +493,7 @@ describe('network operations against a local remote', () => {
       runner: delayedRunner(context.git, (args) => args[0] === 'fetch', 300),
     });
     const summary = await slow.open(2, context.worktree);
+    await slow.setTrust(2, summary.id, true);
     const settled = new Promise<void>((resolve) => {
       const release = slow.subscribeOperations((_ownerId, operation) => {
         if (operation.status !== 'running') {
@@ -523,6 +525,7 @@ describe('network operations against a local remote', () => {
       runner: delayedRunner(context.git, (args) => args[0] === 'fetch', 2_000),
     });
     const summary = await slow.open(3, context.worktree);
+    await slow.setTrust(3, summary.id, true);
     const settled = new Promise<RepositoryOperation>((resolve) => {
       const release = slow.subscribeOperations((_ownerId, operation) => {
         if (operation.status !== 'running') {

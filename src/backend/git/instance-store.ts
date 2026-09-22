@@ -6,6 +6,7 @@ import { gitInstanceSchema } from '../../common/ipc/settings';
 import type { GitInstance } from '../../common/ipc/settings';
 import { ExpectedBackendError } from '../errors';
 import { GitRunner } from './runner';
+import { gitCapabilities, minimumGitVersion } from './capabilities';
 
 const schema = gitInstanceSchema.extend({ version: z.literal(1) }).strict();
 /** A selected executable applies at next startup so running operations retain their Git instance. */
@@ -42,11 +43,12 @@ export class GitInstanceStore {
           if (!isAbsolute(request.executable))
             throw new ExpectedBackendError('INVALID_REQUEST', 'Choose an absolute Git executable path.');
           try {
-            await new GitRunner({ executable: request.executable }).version();
+            const version = await new GitRunner({ executable: request.executable }).version();
+            if (!gitCapabilities(version.version).supported) throw new Error('Unsupported Git');
           } catch {
             throw new ExpectedBackendError(
               'GIT_UNAVAILABLE',
-              'The selected executable cannot report a valid Git version.',
+              `The selected executable must report Git ${minimumGitVersion} or newer.`,
             );
           }
         }

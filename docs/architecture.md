@@ -108,8 +108,8 @@ display workareas, with a fallback for Ozone's 1×1 virtual display.
 
 Authentication remains between Git and installed helpers/agents. Silent runner calls suppress askpass
 and standard credential-manager dialogs; explicit network work may prompt through those tools. Secrets
-never enter DTOs or renderer state. The broad trust policy for arbitrary configured programs is still
-unresolved. Long reads and mutations preserve owner/generation guards, bounded output and job cancellation;
+never enter DTOs or renderer state. P01 now defines explicit repository trust in the
+[infrastructure handoff](reviews/p01-infrastructure.md). Long reads and mutations preserve owner/generation guards, bounded output and job cancellation;
 cancellation requested is distinct from terminal status. No automatic rollback or retry is inferred.
 
 ## Process boundaries
@@ -474,6 +474,22 @@ available. Startup failure exits with an error rather than leaving a hidden brok
 
 ## Git service direction (P01 onward)
 
+P01 completion adds a main-owned `RepositoryGitRunner` policy boundary and atomic trust store.
+Existing repositories start with object/history reads; working-tree reads and configured programs
+require an explicit grant tied to the canonical common directory and filesystem identity. Linked
+worktrees share grants. Restricted reads disable external programs and transports, including lazy
+fetches; malformed trust data fails closed. Named `repository:set-trust` extends the contracts,
+preload and sender/owner-checked handler together; inspectors cannot change trust. New init/clone
+destinations use explicit application authority, while reinitializing an existing repository does not
+grant trust. Revocation serializes with writes and stops automatic fetch across shared worktrees.
+
+Git diagnostics enforce the tested 2.43.0 minimum. All bounded reads, including those with cancellation
+signals, use the read coordinator; mutation entry/exit invalidate read generations. Queued cancellation
+does not start a callback or release the preceding write's barrier. Operation records retain terminal
+results after cancellation and survive renderer reload. POSIX groups receive TERM/KILL even if their
+parent exits first; Windows uses native taskkill /T /F. Application quit drains cancelled work before
+exiting. Activity presentation and platform verification limits are in the handoff.
+
 Use the installed Git CLI behind a typed service interface. This avoids committing to native bindings
 before functional coverage is understood and can support existing credential helpers and Git extensions.
 The UI sends domain operations and repository IDs, not shell strings or unrestricted argument lists.
@@ -501,9 +517,9 @@ of invalid data. The initial F03 slice uses a separate versioned tab store for c
 active selection, and orientation; its status probe uses bounded NUL-delimited porcelain output and
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
-directory symlinks, or descend into a found repository. Remote clone, watcher invalidation, and the trust
-policy for commands that can run repository programs are still future work. Background fetches use the
-runner’s non-interactive terminal policy; credential and passphrase prompting remains a later explicit workflow.
+directory symlinks, or descend into a found repository. Remote clone and trust were added by later
+slices and P01; filesystem watcher invalidation remains later work. Background fetches require repository
+trust and the runner's silent authentication policy; explicit network work may invoke native helpers.
 The initial F04 history service uses bounded `git log`, `for-each-ref`, and `show-ref --dereference` reads;
 the F06 slice adds only validated reference-target and literal commit-message filters to that same
 backend-owned argument builder. The initial F07 revision service uses bounded `diff-tree`, `ls-tree`, and
@@ -536,7 +552,7 @@ with conflicting writes in the common-repository mutation queue, cancellation th
 `AbortSignal` that terminates the child's process group so the transport helper and ssh stop with it, and
 a closed window cancelling its own work. The remote service validates names with Git's own
 `check-ref-format` and declines an `ext::` URL, which would let a remote definition run a local command,
-until the repository trust model exists. The F12 reference service reads branches, tags, remotes, and worktree assignments with
+as a retained transport restriction even for trusted repositories. The F12 reference service reads branches, tags, remotes, and worktree assignments with
 bounded `for-each-ref`, `remote`, and `worktree list --porcelain` calls, asks Git's own
 `check-ref-format` whether a name is acceptable, and runs a backend-built `branch`, `checkout`, or `tag`
 action with any explicitly requested save/reapply steps inside the same mutation queue. A tag message crosses IPC as text

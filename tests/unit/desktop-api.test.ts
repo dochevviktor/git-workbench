@@ -345,6 +345,23 @@ describe('preload capability API', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('validates repository trust requests and results through the explicit bridge', async () => {
+    const { api, invoke } = fixture();
+    const request = { id: `repo-${'a'.repeat(64)}`, trusted: true };
+    invoke.mockResolvedValueOnce({ ok: true, value: null });
+    expect(await api.repository.setTrust(request)).toEqual({ ok: true, value: null });
+    expect(invoke).toHaveBeenCalledWith(requests.setRepositoryTrust.channel, request);
+    expect(await api.repository.setTrust({ id: 'not-owned', trusted: true })).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    invoke.mockResolvedValueOnce({ ok: true, value: { trusted: true } });
+    expect(await api.repository.setTrust(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
+
   it('validates source-directory paths before crossing IPC', async () => {
     const { api, invoke } = fixture();
     const result = await api.repository.addSourceDirectory({ path: '' });

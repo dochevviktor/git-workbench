@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -46,7 +47,7 @@ test('catalogue history navigation, search scopes, highlights and session state 
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(async (path) => window.desktop!.repository.open({ path }), directory);
+    const opened = await page.evaluate(openTrustedFixture, directory);
     expect(opened.ok).toBe(true);
     await page.reload();
     await expect(page.locator('.history-full-hash')).toHaveText(head);

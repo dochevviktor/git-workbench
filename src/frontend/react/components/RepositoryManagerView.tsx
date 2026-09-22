@@ -347,9 +347,11 @@ export function RepositoryManagerView(props: RepositoryManagerViewProps) {
           ? `Git ${gitInfo.version ?? ''} · ${gitInfo.executable ?? ''}`
           : gitInfo?.status === 'missing'
             ? 'Git is not installed or not on PATH'
-            : gitInfo?.status === 'error'
-              ? 'Git could not be checked'
-              : 'Checking Git…'}
+            : gitInfo?.status === 'unsupported'
+              ? `Git ${gitInfo.version ?? ''} is unsupported. Git ${gitInfo.minimumVersion ?? ''} or newer is required; choose an instance in Preferences.`
+              : gitInfo?.status === 'error'
+                ? 'Git could not be checked'
+                : 'Checking Git…'}
       </footer>
     </section>
   );

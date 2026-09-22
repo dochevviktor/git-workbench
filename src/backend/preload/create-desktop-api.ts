@@ -131,6 +131,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       getBlame: (request) => invoke(requests.getRepositoryBlame, request),
       onActivated: (listener) => subscribe(events.repositoryActivated, listener),
       getGitInfo: () => invoke(requests.getGitInfo, undefined),
+      setTrust: (request) => invoke(requests.setRepositoryTrust, request),
       pickDirectory: () => invoke(requests.pickRepositoryDirectory, undefined),
       listRecent: () => invoke(requests.listRecentRepositories, undefined),
       listOpen: () => invoke(requests.listOpenRepositories, undefined),

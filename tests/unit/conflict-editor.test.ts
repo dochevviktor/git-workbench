@@ -116,6 +116,7 @@ async function fixture(options: { readonly binary?: boolean; readonly multiple?:
   const service = new RepositoryService({ storagePath: join(root, 'recent.json'), runner: git });
   services.push(service);
   const { id } = await service.open(1, cwd);
+  await service.setTrust(1, id, true);
   return {
     root,
     cwd,
@@ -288,6 +289,7 @@ describe('F17 built-in conflict helper', () => {
     const reopened = new RepositoryService({ storagePath: join(f.root, 'reopened.json'), runner: f.git });
     services.push(reopened);
     await reopened.open(1, f.cwd);
+    await reopened.setTrust(1, f.id, true);
     expect((await reopened.getConflicts(1, { id: f.id, path: f.path })).conflictedCount).toBe(1);
     expect(await abort({ ...f, service: reopened })).toMatchObject({ status: 'succeeded' });
     expect(await f.run('rev-parse', 'HEAD')).toBe(f.before);
@@ -322,6 +324,7 @@ describe('F17 built-in conflict helper', () => {
     });
     services.push(service);
     await service.open(1, f.cwd);
+    await service.setTrust(1, f.id, true);
     const action: RepositoryMergeRebaseAction = {
       kind: 'merge',
       mode: 'default',

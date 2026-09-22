@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import type { ChildProcessWithoutNullStreams, SpawnOptions } from 'node:child_process';
 import { resolveGitExecutable } from './executable';
 import { applyAuthenticationPolicy } from './authentication-policy';
@@ -98,7 +100,26 @@ export class GitOutputLimitError extends Error {
 export function redactUrlCredentials(value: string): string {
   return value
     .replace(/(\b[a-z][a-z\d+.-]*:\/\/)([^\s/]+)@/giu, '$1<redacted>@')
-    .replace(/([?&](?:access_token|private_token|token|password|api_key)=)[^&#\s]+/giu, '$1<redacted>');
+    .replace(/([?&](?:access_token|private_token|token|password|api_key)=)[^&#\s]+/giu, '$1<redacted>')
+    .replace(
+      /(\b(?:authorization|proxy-authorization)\s*[:=]\s*)(?:(?:basic|bearer)\s+)?[^\r\n"']+/giu,
+      '$1<redacted>',
+    )
+    .replace(
+      /(\b(?:password|passwd|access_token|private_token|api_key|client_secret)\s*[:=]\s*)[^\s"']+/giu,
+      '$1<redacted>',
+    );
+}
+
+/** One final display boundary, including output produced by hooks and extensions. */
+export function sanitizeGitOutput(value: string): string {
+  return redactUrlCredentials(
+    value
+      // eslint-disable-next-line no-control-regex -- terminal control sequences are untrusted output.
+      .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]/gu, '')
+      // eslint-disable-next-line no-control-regex -- retain only printable text, tabs and newlines.
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, ''),
+  );
 }
 
 function redactArgument(value: string): string {
@@ -114,6 +135,9 @@ function controlledEnvironment(
   authentication: GitAuthenticationPolicy = 'silent',
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+  for (const key of Object.keys(environment)) {
+    if (/^(?:GIT_TRACE|GCM_TRACE|GIT_CONFIG_(?:KEY|VALUE)_)/u.test(key)) delete environment[key];
+  }
   // These variables can silently redirect a repository operation away from the selected path.
   for (const key of [
     'GIT_DIR',
@@ -126,7 +150,12 @@ function controlledEnvironment(
     'GIT_CEILING_DIRECTORIES',
     'GIT_PREFIX',
     'GIT_CONFIG_COUNT',
+    'GIT_CONFIG',
     'GIT_CONFIG_PARAMETERS',
+    'GIT_NAMESPACE',
+    'GIT_SHALLOW_FILE',
+    'GIT_REPLACE_REF_BASE',
+    'GIT_EXEC_PATH',
   ]) {
     delete environment[key];
   }
@@ -138,6 +167,7 @@ function controlledEnvironment(
   delete environment.GIT_LITERAL_PATHSPECS;
   environment.GIT_PAGER = 'cat';
   environment.GIT_EDITOR = ':';
+  if (!overrides?.GIT_SEQUENCE_EDITOR) delete environment.GIT_SEQUENCE_EDITOR;
   environment.LC_ALL = 'C';
   return applyAuthenticationPolicy(environment, authentication);
 }
@@ -145,9 +175,23 @@ function controlledEnvironment(
 /**
  * Stops the child and, on POSIX, everything it started. `git fetch` runs a transport helper and may
  * run ssh; killing only the direct child would leave those connected. Windows has no equivalent
- * signal, so the direct child is terminated there and its children exit with the broken pipe.
+ * signal; taskkill /T /F terminates its tree without involving a shell.
  */
 function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32' && child.pid) {
+    const systemRoot = process.env.SystemRoot;
+    if (systemRoot) {
+      const killer = spawn(
+        join(systemRoot, 'System32', 'taskkill.exe'),
+        ['/PID', String(child.pid), '/T', '/F'],
+        { shell: false, windowsHide: true, stdio: 'ignore' },
+      );
+      killer.once('error', () => {
+        child.kill();
+      });
+      return;
+    }
+  }
   try {
     if (process.platform !== 'win32' && typeof child.pid === 'number') {
       process.kill(-child.pid, signal);
@@ -200,6 +244,7 @@ export class GitRunner {
   async run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult> {
     if (options.signal?.aborted) throw new GitCancelledError();
     const executable = await this.resolveExecutable();
+    if (options.signal?.aborted) throw new GitCancelledError();
     if (!executable) throw new GitExecutableError(this.configuredExecutable);
     const limit = options.maxOutputBytes ?? this.maxOutputBytes;
     const timeoutMs = options.timeoutMs ?? this.defaultTimeoutMs;
@@ -240,6 +285,7 @@ export class GitRunner {
       let termination: Error | undefined;
       let closed = false;
       let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+      const decoder = new StringDecoder('utf8');
       const timeoutTimer = setTimeout(() => terminate(new GitTimeoutError()), timeoutMs);
 
       const terminate = (reason: Error) => {
@@ -254,6 +300,7 @@ export class GitRunner {
 
       const onAbort = () => terminate(new GitCancelledError());
       options.signal?.addEventListener('abort', onAbort, { once: true });
+      if (options.signal?.aborted) onAbort();
       if (options.stdin !== undefined && child.stdin) {
         child.stdin.on('error', () => terminate(new GitSpawnError()));
         child.stdin.end(options.stdin);
@@ -271,20 +318,24 @@ export class GitRunner {
       child.stderr.on('data', (chunk: Buffer | string) => {
         if (termination) return;
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        options.onStderr?.(buffer.toString('utf8'));
         if (stderrBytes + buffer.byteLength > limit) {
           terminate(new GitOutputLimitError('stderr'));
         } else {
           stderr.push(buffer);
           stderrBytes += buffer.byteLength;
+          try {
+            options.onStderr?.(decoder.write(buffer));
+          } catch {
+            terminate(new GitSpawnError());
+          }
         }
       });
-      child.once('error', (error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') terminate(new GitExecutableError(executable));
-        else terminate(new GitSpawnError());
-      });
+      child.once('error', () => terminate(new GitSpawnError()));
       child.once('close', (exitCode, signal) => {
         closed = true;
+        // The parent can close its pipes and exit before a descendant that ignores SIGTERM.
+        // Finish cancellation only after sending the final signal to the original process group.
+        if (termination && process.platform !== 'win32') terminateProcess(child, 'SIGKILL');
         if (timeoutTimer) clearTimeout(timeoutTimer);
         if (forceKillTimer) clearTimeout(forceKillTimer);
         options.signal?.removeEventListener('abort', onAbort);

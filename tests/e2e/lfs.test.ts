@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,10 +61,7 @@ test('F24 identifies a historical LFS pointer and saves its local payload withou
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(
-      async (path) => window.desktop!.repository.open({ path }),
-      repositoryPath,
-    );
+    const opened = await page.evaluate(openTrustedFixture, repositoryPath);
     expect(opened).toMatchObject({ ok: true });
     await page.reload();
     await expect(page.locator('.history-full-hash')).toHaveText(head);

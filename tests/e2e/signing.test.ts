@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -22,7 +23,7 @@ test('F28 signing key, signed commit, verification and signed tag through Electr
     });
     const page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), f.cwd);
+    const opened = await page.evaluate(openTrustedFixture, f.cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     await page.reload();
     await page.getByRole('button', { name: /^Local Changes/ }).click();

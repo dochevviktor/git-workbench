@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,7 +70,7 @@ test('F27 image modes, alpha, fallback, historical switching and popup share a b
     page.on('pageerror', (error) => errors.push(error.message));
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1400, 900));
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), repository);
+    const opened = await page.evaluate(openTrustedFixture, repository);
     expect(opened.ok).toBe(true);
     await page.reload();
     await page.getByRole('button', { name: /^Local Changes/u }).click();

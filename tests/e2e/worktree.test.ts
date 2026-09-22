@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,7 +37,7 @@ test('F22 creates, opens, labels, and removes a linked worktree', async () => {
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(async (path) => window.desktop!.repository.open({ path }), repository);
+    const opened = await page.evaluate(openTrustedFixture, repository);
     expect(opened.ok).toBe(true);
     await page.reload();
     await expect(page.getByTestId('history-commit').first()).toBeVisible();

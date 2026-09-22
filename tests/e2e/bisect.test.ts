@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,7 +40,7 @@ test('F26 start, mark, skip, restart, abort and first bad outcome', async () => 
     app = await launch();
     let page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), cwd);
+    const opened = await page.evaluate(openTrustedFixture, cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     await page.reload();
     const start = async () => {

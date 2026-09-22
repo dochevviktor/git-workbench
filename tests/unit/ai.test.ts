@@ -167,6 +167,7 @@ describe('F37 explicit AI requests', () => {
     const repositories = new RepositoryService({ storagePath: join(f.root, 'recent.json') });
     try {
       const opened = await repositories.open(1, f.cwd);
+      await repositories.setTrust(1, opened.id, true);
       await repositories.ai.configure(1, 'model', async () => f.keyPath);
       const request = { ...staged, id: opened.id };
       expect(() => repositories.previewAi(2, request)).toThrow('not open');

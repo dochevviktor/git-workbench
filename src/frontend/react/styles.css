@@ -4119,9 +4119,9 @@ svg.spinning {
   top: calc(100% + 6px);
   left: 0;
   display: grid;
-  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-  width: min(720px, calc(100vw - 16px));
-  height: 280px;
+  grid-template-columns: minmax(210px, 31%) minmax(0, 1fr);
+  width: min(1044px, calc(100vw - 32px));
+  height: min(455px, calc(100vh - 100px));
   overflow: hidden;
   border: 1px solid var(--menu-border);
   border-radius: 6px;
@@ -4188,17 +4188,18 @@ svg.spinning {
 .activity-tabs {
   display: flex;
   gap: 2px;
-  padding: 4px 6px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  background: var(--menu-bg);
 }
 
 .activity-tab {
   flex: 1 1 0;
   min-width: 0;
-  padding: 4px 6px;
+  padding: 6px 4px 4px;
   border: 0;
-  border-radius: 4px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
@@ -4213,8 +4214,8 @@ svg.spinning {
 }
 
 .activity-tab.active {
-  background: var(--accent);
-  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+  color: var(--accent);
 }
 
 .activity-empty {
@@ -4227,7 +4228,8 @@ svg.spinning {
   display: flex;
   gap: 6px;
   align-items: center;
-  padding: 6px 8px 6px 12px;
+  margin: 0 4px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -4236,8 +4238,9 @@ svg.spinning {
 }
 
 .activity-row.selected {
-  background: var(--row-selected);
-  color: var(--row-selected-text);
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .activity-row-copy {
@@ -4263,7 +4266,7 @@ svg.spinning {
 }
 
 .activity-row.selected .activity-status {
-  color: color-mix(in srgb, var(--row-selected-text) 80%, transparent);
+  color: var(--accent-text);
 }
 
 .activity-mark.succeeded {
@@ -4276,10 +4279,8 @@ svg.spinning {
 }
 
 .activity-detail {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   user-select: text;
 }
@@ -4290,6 +4291,63 @@ svg.spinning {
   align-items: baseline;
   justify-content: space-between;
   font-size: 12.5px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-detail-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-detail-header .muted {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+.activity-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 10px;
+  user-select: text;
+}
+.activity-time {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.activity-row.selected .activity-mark {
+  color: inherit;
+}
+.activity-row.selected .icon-button {
+  color: inherit;
+}
+.repository-trust {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.repository-trust > span {
+  flex: 1;
+}
+@media (max-width: 700px) {
+  .activity-panel {
+    grid-template-columns: minmax(170px, 36%) minmax(0, 1fr);
+  }
+  .activity-tabs {
+    padding-inline: 2px;
+  }
+  .activity-detail-header {
+    align-items: start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 
 .activity-command,
@@ -4304,7 +4362,9 @@ svg.spinning {
 }
 
 .activity-command {
-  color: var(--text-muted);
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 16px;
 }
 
 .activity-progress {

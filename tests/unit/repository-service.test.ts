@@ -99,6 +99,7 @@ describe('repository service', () => {
     const nestedPath = join(unusual, 'nested');
     await mkdir(nestedPath);
     const openedFromNestedPath = await service.open(7, nestedPath);
+    await service.setTrust(7, openedFromNestedPath.id, true);
     expect(openedFromNestedPath.id).toBe(initialized.id);
     await expect(service.listOpen(7)).resolves.toHaveLength(1);
     expect((await service.listRecent(7))[0]).toMatchObject({
@@ -117,6 +118,7 @@ describe('repository service', () => {
       open: false,
     });
     const reopened = await reopenedService.open(8, unusual);
+    await reopenedService.setTrust(8, reopened.id, true);
     expect(reopened.id).toBe(initialized.id);
   });
 
@@ -339,6 +341,7 @@ describe('repository service', () => {
       runner,
     });
     const repository = await service.open(1, worktree);
+    await service.setTrust(1, repository.id, true);
     expect(await readFile(join(worktree, '.git'), 'utf8')).toContain('gitdir:');
     expect(repository.gitDir).toBe(await realpath(gitDirectory));
     expect(repository.commonDir).toBe(await realpath(gitDirectory));
@@ -355,6 +358,7 @@ describe('repository service', () => {
     await service.initialize(1, repositoryPath, false);
 
     const opened = await service.open(1, aliasPath);
+    await service.setTrust(1, opened.id, true);
     expect(opened.path).toBe(repositoryPath);
   });
 

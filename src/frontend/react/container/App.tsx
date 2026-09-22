@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RepositoryTrustControl } from '../components/RepositoryTrustControl';
 import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import type {
   RepositoryBranch,
@@ -241,6 +242,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const matchingCommitIds = useMemo(() => new Set(searchMatches.ids), [searchMatches.ids]);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const trustedRepositoryId = lastActive?.trusted === false ? undefined : lastActive?.id;
   const stashes = useRepositoryStashes(lastActive?.id, refreshSignal);
   const activeRepositoryId = useRef(active?.id);
   activeRepositoryId.current = active?.id;
@@ -259,7 +261,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     apply: applyReference,
     applyRemote,
     reload: reloadReferences,
-  } = useReferences(lastActive?.id, refreshSignal);
+  } = useReferences(trustedRepositoryId, refreshSignal);
   const {
     context: worktreeContext,
     loading: worktreesLoading,
@@ -273,14 +275,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     busy: submoduleRequestBusy,
     apply: applySubmodule,
     reload: reloadSubmodules,
-  } = useSubmodules(lastActive?.id, refreshSignal);
+  } = useSubmodules(trustedRepositoryId, refreshSignal);
   const {
     context: gitFlowContext,
     loading: gitFlowLoading,
     busy: gitFlowRequestBusy,
     apply: applyGitFlow,
     reload: reloadGitFlow,
-  } = useGitFlow(lastActive?.id, refreshSignal);
+  } = useGitFlow(trustedRepositoryId, refreshSignal);
   const {
     operations,
     error: operationError,
@@ -794,7 +796,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     },
     [refresh, revealSearchResult],
   );
-  const bisect = useBisect(active && !active.bare ? active.id : undefined, refreshSignal, bisectChanged);
+  const bisect = useBisect(
+    active && !active.bare && active.trusted !== false ? active.id : undefined,
+    refreshSignal,
+    bisectChanged,
+  );
   const [leanBases, setLeanBases] = useState<Record<string, string>>({});
   const [leanDialog, setLeanDialog] = useState<{ id: string; kind: 'start' | 'sync' | 'finish' }>();
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
@@ -1066,6 +1072,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           result.ok &&
           (result.value.pendingOperation || result.value.conflictedCount)
         ) {
+          setActivityOpen(false);
           setViews((current) => ({ ...current, [id]: 'changes' }));
         }
       });
@@ -2739,6 +2746,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onCancelOperation={cancelOperation}
       />
       {tabStrip('horizontal')}
+      {active && active.trusted === false && (
+        <RepositoryTrustControl key={active.id} repository={active} onChanged={refresh} />
+      )}
       {active && bisect.context?.active && (
         <BisectBanner
           context={bisect.context}
@@ -2782,7 +2792,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               view={view}
               references={references}
               branches={referenceContext?.branches ?? []}
-              worktrees={worktreeContext?.worktrees ?? []}
+              worktrees={worktreesReady ? worktreeContext.worktrees : []}
               submodules={submoduleContext?.submodules ?? []}
               referencesLoading={history.loading}
               worktreesLoading={worktreesLoading}
@@ -2876,7 +2886,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           </button>
         </div>
       )}
-      {active && !active.bare && (
+      {active && !active.bare && active.trusted !== false && (
         <RecoveryPanel
           key={active.id}
           repositoryId={active.id}

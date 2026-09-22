@@ -45,6 +45,15 @@ export function AboutDialog({ info, gitInfo, onClose }: AboutDialogProps) {
                 ? 'Not found'
                 : 'Unavailable'}
           </dd>
+          {gitInfo?.minimumVersion && (
+            <>
+              <dt>Minimum Git</dt>
+              <dd>
+                {gitInfo.minimumVersion}
+                {gitInfo.status === 'unsupported' ? ' · select a newer Git in Preferences' : ''}
+              </dd>
+            </>
+          )}
           <dt>Electron</dt>
           <dd>{info?.versions.electron ?? 'Unknown'}</dd>
           <dt>Chromium</dt>

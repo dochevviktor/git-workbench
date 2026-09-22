@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,9 +46,7 @@ test('F17 opens the two-input conflict helper, stages the result, and commits th
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    expect((await page.evaluate(async (path) => window.desktop!.repository.open({ path }), cwd)).ok).toBe(
-      true,
-    );
+    expect((await page.evaluate(openTrustedFixture, cwd)).ok).toBe(true);
     await page.reload();
     await expect(page.getByTestId('history-commit').first()).toBeVisible();
 

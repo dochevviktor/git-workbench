@@ -7,7 +7,7 @@ import type {
   RepositoryOperationSource,
 } from '../../common/ipc/contracts';
 import { repositoryOperationSchema } from '../../common/ipc/contracts';
-import { redactUrlCredentials } from '../git/runner';
+import { sanitizeGitOutput } from '../git/runner';
 
 /** Operations kept per window after they finish, so a reopened activity list still shows them. */
 const historyLimit = 50;
@@ -55,6 +55,7 @@ interface OperationEntry {
   operation: RepositoryOperation;
   /** Set when a cancel arrives, so the outcome is reported as cancelled rather than failed. */
   cancelled: boolean;
+  pendingOutput: string;
 }
 
 /**
@@ -67,6 +68,8 @@ export class OperationRegistry {
   private readonly entries = new Map<string, OperationEntry>();
   private readonly listeners = new Set<OperationListener>();
   private readonly clock: () => Date;
+  private readonly pending = new Set<Promise<void>>();
+  private disposed = false;
 
   constructor(options: { readonly clock?: () => Date } = {}) {
     this.clock = options.clock ?? (() => new Date());
@@ -118,6 +121,7 @@ export class OperationRegistry {
     descriptor: OperationDescriptor,
     work: (handle: OperationHandle) => Promise<OperationOutcome>,
   ): RepositoryOperation {
+    if (this.disposed) throw new Error('The operation service has shut down.');
     // The check lives inside the synchronous acceptance boundary as well as in the service's
     // user-facing validation. This closes the race between a manual request and a scheduler tick
     // that both finish their asynchronous planning at the same time.
@@ -128,18 +132,19 @@ export class OperationRegistry {
       ownerId: descriptor.ownerId,
       controller,
       cancelled: false,
+      pendingOutput: '',
       operation: repositoryOperationSchema.parse({
         id,
         repositoryId: descriptor.repositoryId,
         kind: descriptor.kind,
         source: descriptor.source ?? 'user',
-        title: descriptor.title.slice(0, 512),
+        title: sanitizeGitOutput(descriptor.title).slice(0, 512),
         status: 'running',
         revision: 0,
         startedAt: this.clock().toISOString(),
         finishedAt: null,
         progress: null,
-        command: redactUrlCredentials(descriptor.command).slice(0, 4096),
+        command: sanitizeGitOutput(descriptor.command).slice(0, 4096),
         output: '',
         message: 'Running…',
         failureReason: null,
@@ -151,31 +156,52 @@ export class OperationRegistry {
 
     const handle: OperationHandle = {
       signal: controller.signal,
-      setCommand: (command) => this.update(entry, { command: redactUrlCredentials(command).slice(0, 4096) }),
+      setCommand: (command) => this.update(entry, { command: sanitizeGitOutput(command).slice(0, 4096) }),
       setProgress: (progress) => {
         if (entry.operation.status !== 'running') return;
-        this.update(entry, { progress });
+        this.update(entry, {
+          progress: progress ? { ...progress, phase: sanitizeGitOutput(progress.phase).slice(0, 128) } : null,
+        });
       },
       appendOutput: (text) => {
         if (!text) return;
-        this.update(entry, { output: boundedOutput(entry.operation.output + text) });
+        // Redact complete lines, so a credential split across process chunks is never published raw.
+        entry.pendingOutput += text;
+        const end = entry.pendingOutput.lastIndexOf('\n');
+        if (end >= 0) {
+          this.update(entry, {
+            output: boundedOutput(entry.operation.output + entry.pendingOutput.slice(0, end + 1)),
+          });
+          entry.pendingOutput = entry.pendingOutput.slice(end + 1);
+        }
+        if (entry.pendingOutput.length > outputLimit) entry.pendingOutput = '[Long output line omitted]';
       },
     };
 
-    void work(handle)
+    // Preserve synchronous acceptance while also catching a callback that throws before returning.
+    let task: Promise<OperationOutcome>;
+    try {
+      task = work(handle);
+    } catch (error) {
+      task = Promise.reject(error);
+    }
+    const completion = task
       .then((outcome) => {
         this.finish(entry, entry.cancelled ? cancelledOutcome(outcome) : outcome);
       })
       .catch((error: unknown) => {
         this.finish(entry, {
           status: 'failed',
-          message: redactUrlCredentials(
-            error instanceof Error ? error.message : 'The operation failed.',
-          ).slice(0, 512),
+          message: sanitizeGitOutput(error instanceof Error ? error.message : 'The operation failed.').slice(
+            0,
+            512,
+          ),
           output: entry.operation.output,
           failureReason: 'other',
         });
-      });
+      })
+      .finally(() => this.pending.delete(completion));
+    this.pending.add(completion);
 
     this.publish(entry);
     return entry.operation;
@@ -189,6 +215,7 @@ export class OperationRegistry {
     const entry = this.entries.get(operationId);
     if (!entry || entry.ownerId !== ownerId) return null;
     if (entry.operation.status !== 'running') return entry.operation;
+    if (entry.cancelled) return entry.operation;
     entry.cancelled = true;
     entry.controller.abort();
     this.update(entry, { message: 'Cancelling…', cancelRequested: true });
@@ -208,11 +235,16 @@ export class OperationRegistry {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const entry of this.entries.values()) {
       if (entry.operation.status === 'running') entry.controller.abort();
     }
     this.entries.clear();
     this.listeners.clear();
+  }
+
+  async settled(): Promise<void> {
+    await Promise.allSettled([...this.pending]);
   }
 
   private finish(entry: OperationEntry, outcome: OperationOutcome): void {
@@ -221,7 +253,11 @@ export class OperationRegistry {
       status: entry.cancelled ? 'cancelled' : outcome.status,
       finishedAt: this.clock().toISOString(),
       progress: null,
-      message: outcome.message.slice(0, 512),
+      message: sanitizeGitOutput(
+        entry.cancelled
+          ? 'Cancellation completed. Refresh to inspect any changes already made; remote changes may have completed.'
+          : outcome.message,
+      ).slice(0, 512),
       output: boundedOutput(outcome.output),
       failureReason: entry.cancelled ? 'cancelled' : (outcome.failureReason ?? null),
       canForceWithLease: !entry.cancelled && (outcome.canForceWithLease ?? false),
@@ -230,6 +266,7 @@ export class OperationRegistry {
   }
 
   private update(entry: OperationEntry, patch: Partial<RepositoryOperation>): void {
+    if (!this.entries.has(entry.operation.id)) return;
     entry.operation = repositoryOperationSchema.parse({
       ...entry.operation,
       ...patch,
@@ -239,7 +276,14 @@ export class OperationRegistry {
   }
 
   private publish(entry: OperationEntry): void {
-    for (const listener of this.listeners) listener(entry.ownerId, entry.operation);
+    if (!this.entries.has(entry.operation.id)) return;
+    for (const listener of this.listeners) {
+      try {
+        listener(entry.ownerId, entry.operation);
+      } catch {
+        /* A disconnected consumer cannot strand a job. */
+      }
+    }
   }
 
   /** Keeps the newest finished records for a window and drops the rest. */
@@ -257,9 +301,11 @@ function cancelledOutcome(outcome: OperationOutcome): OperationOutcome {
     message: 'The operation was cancelled. Refresh the repository to see what it had already done.',
     output: outcome.output,
     failureReason: 'cancelled',
+    result: outcome.result,
   };
 }
 
 function boundedOutput(text: string): string {
-  return text.length > outputLimit ? `…\n${text.slice(text.length - outputLimit + 2)}` : text;
+  const safe = sanitizeGitOutput(text);
+  return safe.length > outputLimit ? `…\n${safe.slice(safe.length - outputLimit + 2)}` : safe;
 }

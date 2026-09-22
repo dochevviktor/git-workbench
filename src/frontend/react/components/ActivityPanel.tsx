@@ -46,9 +46,9 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
       const panel = panelRef.current;
       if (!panel) return;
       const anchor = panel.parentElement?.getBoundingClientRect();
-      const width = Math.min(720, window.innerWidth - 16);
-      panel.style.left = `${Math.max(8, Math.min(anchor?.left ?? 8, window.innerWidth - width - 8))}px`;
-      panel.style.top = `${Math.max(8, Math.min((anchor?.bottom ?? 70) + 6, window.innerHeight - panel.offsetHeight - 8))}px`;
+      const width = panel.getBoundingClientRect().width;
+      panel.style.left = `${Math.max(16, Math.min((anchor?.left ?? window.innerWidth / 2) + (anchor?.width ?? 0) / 2 - width / 2, window.innerWidth - width - 16))}px`;
+      panel.style.top = `${Math.max(8, Math.min((anchor?.bottom ?? 70) + 2, window.innerHeight - panel.offsetHeight - 8))}px`;
     };
     place();
     window.addEventListener('resize', place);
@@ -57,7 +57,10 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
 
   useEffect(() => {
     const previous = document.activeElement;
-    panelRef.current?.querySelector<HTMLElement>('[role="option"]')?.focus();
+    (
+      panelRef.current?.querySelector<HTMLElement>('[role="option"]') ??
+      panelRef.current?.querySelector<HTMLElement>('[role="tab"]')
+    )?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
@@ -95,7 +98,25 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
               key={item.id}
               type="button"
               role="tab"
+              tabIndex={scope === item.id ? 0 : -1}
               aria-selected={scope === item.id}
+              onKeyDown={(event) => {
+                const index = activityScopes.findIndex((candidate) => candidate.id === item.id);
+                const next =
+                  event.key === 'ArrowRight'
+                    ? (index + 1) % 3
+                    : event.key === 'ArrowLeft'
+                      ? (index + 2) % 3
+                      : event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? 2
+                          : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                setScope(activityScopes[next]!.id);
+                panelRef.current?.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+              }}
               className={scope === item.id ? 'activity-tab active' : 'activity-tab'}
               data-testid={`activity-tab-${item.id}`}
               onClick={() => setScope(item.id)}
@@ -141,6 +162,13 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
                 <span className="activity-title">{operation.title}</span>
                 <span className="activity-status">{statusLabel(operation)}</span>
               </div>
+              <time
+                className="activity-time"
+                dateTime={operation.startedAt}
+                title={formatListDate(operation.startedAt)}
+              >
+                {new Date(operation.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </time>
               {operation.status === 'running' ? (
                 <button
                   type="button"
@@ -168,31 +196,40 @@ export function ActivityPanel({ operations, onCancel, onClose }: ActivityPanelPr
               <strong>{selected.title}</strong>
               <span className="muted">
                 {selected.status === 'running'
-                  ? 'running'
+                  ? selected.cancelRequested
+                    ? 'cancelling…'
+                    : 'running…'
                   : `${selected.status} ${selected.finishedAt ? formatListDate(selected.finishedAt) : ''}`}
               </span>
             </div>
-            <pre className="activity-command">
-              {selected.command ? `$ ${selected.command}` : 'Preparing operation…'}
-            </pre>
-            {selected.progress && (
-              <div
-                className="activity-progress"
-                role="progressbar"
-                aria-valuenow={selected.progress.percent ?? undefined}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={selected.progress.phase}
-              >
-                <span
-                  className="activity-progress-bar"
-                  style={{ width: `${selected.progress.percent ?? 0}%` }}
-                />
-              </div>
-            )}
-            <pre className="activity-output" data-testid="activity-output">
-              {selected.output || selected.message}
-            </pre>
+            <div className="activity-log" tabIndex={0} aria-label="Command and output">
+              <pre className="activity-command">
+                {selected.command ? `$ ${selected.command}` : 'Preparing operation…'}
+              </pre>
+              {selected.progress && (
+                <div
+                  className="activity-progress"
+                  role="progressbar"
+                  aria-valuenow={selected.progress.percent ?? undefined}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={selected.progress.phase}
+                >
+                  <span
+                    className="activity-progress-bar"
+                    style={{ width: `${selected.progress.percent ?? 0}%` }}
+                  />
+                </div>
+              )}
+              <pre className="activity-output" data-testid="activity-output">
+                {selected.output || selected.message}
+              </pre>
+              {selected.output && selected.status !== 'running' && (
+                <p className="muted" role="status">
+                  {selected.message}
+                </p>
+              )}
+            </div>
           </>
         ) : (
           <p className="muted">Fetch, pull, and push activity appears here.</p>

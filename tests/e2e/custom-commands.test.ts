@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -68,9 +69,7 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
     await page.emulateMedia({ colorScheme: 'light' });
     await manager.getByRole('button', { name: 'Save', exact: true }).click();
     await manager.getByRole('button', { name: 'Close', exact: true }).click();
-    expect((await page.evaluate(async (path) => window.desktop!.repository.open({ path }), cwd)).ok).toBe(
-      true,
-    );
+    expect((await page.evaluate(openTrustedFixture, cwd)).ok).toBe(true);
     await page.reload();
     await expect(page.getByRole('button', { name: 'Branch', exact: true })).not.toHaveAttribute(
       'aria-disabled',

@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { statisticsFixture } from '../statistics-fixture';
@@ -21,7 +22,7 @@ test('F35 statistics and treemap: totals, dates, selection, empty state, refresh
     });
     const page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), f.cwd);
+    const opened = await page.evaluate(openTrustedFixture, f.cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     await page.reload();
     await page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();

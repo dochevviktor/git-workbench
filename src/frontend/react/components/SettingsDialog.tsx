@@ -6,6 +6,7 @@ import { unwrapResult } from '../../../common/ipc/result';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
 import './settings.css';
 import { GitInstanceControl } from './GitInstanceControl';
+import { RepositoryTrustControl } from './RepositoryTrustControl';
 
 export function SettingsDialog({
   repository,
@@ -253,6 +254,9 @@ export function SettingsDialog({
               </p>
             )}
             {!repository && <GitInstanceControl />}
+            {repository && (
+              <RepositoryTrustControl key={repository.id} repository={repository} onChanged={onSaved} />
+            )}
             <h3>{repository ? 'Repository User Information' : 'Global User Information'}</h3>
             <p className="muted">
               {repository

@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,10 +50,7 @@ test('F21 opens rename-aware file history and blame inspectors without changing 
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate(
-      async (path) => window.desktop!.repository.open({ path }),
-      repositoryPath,
-    );
+    const opened = await page.evaluate(openTrustedFixture, repositoryPath);
     expect(opened).toMatchObject({ ok: true });
     if (!opened.ok) throw new Error(opened.error.message);
 

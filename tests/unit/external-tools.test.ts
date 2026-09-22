@@ -40,6 +40,7 @@ async function fixture(path = "-value ' $(touch injected);\n.txt") {
   const service = new RepositoryService({ storagePath: join(root, 'profile', 'recent.json') });
   services.push(service);
   const summary = await service.open(1, cwd);
+  await service.setTrust(1, summary.id, true);
   const store = service.externalTools.store;
   const finish = async (id: string) => {
     await expect

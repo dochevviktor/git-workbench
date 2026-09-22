@@ -42,6 +42,7 @@ it.runIf(process.env.HISTORY_BENCHMARK === '1')(
       const fixtureRss = process.memoryUsage().rss;
       service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner: git });
       const repository = await service.open(91, directory);
+      await service.setTrust(91, repository.id, true);
       const operationBaseline = process.memoryUsage();
       let sampledOperationPeakRss = operationBaseline.rss;
       const memoryStages: { stage: string; rssMiB: number; heapUsedMiB: number; externalMiB: number }[] = [];

@@ -208,6 +208,7 @@ export interface DesktopApi {
     getBlame(request: RepositoryBlameRequest): Promise<IpcResult<RepositoryBlame>>;
     onActivated(listener: (repository: RepositorySummary) => void): Unsubscribe;
     getGitInfo(): Promise<IpcResult<GitInfo>>;
+    setTrust(request: { readonly id: string; readonly trusted: boolean }): Promise<IpcResult<null>>;
     pickDirectory(): Promise<IpcResult<string | null>>;
     listRecent(): Promise<IpcResult<RecentRepository[]>>;
     listOpen(): Promise<IpcResult<RepositorySummary[]>>;

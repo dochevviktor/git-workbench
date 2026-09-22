@@ -12,6 +12,7 @@ export const ipcErrorSchema = z.strictObject({
     'NOT_A_DIRECTORY',
     'NOT_A_REPOSITORY',
     'REPOSITORY_NOT_OPEN',
+    'REPOSITORY_UNTRUSTED',
     'SOURCE_DIRECTORY_NOT_FOUND',
     'OPERATION_FAILED',
     'STALE_SNAPSHOT',

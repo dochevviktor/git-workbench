@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,7 +35,7 @@ test('F38 reviews, cancels, starts, syncs and finishes with independently checke
     });
     const page = await application.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), cwd);
+    const opened = await page.evaluate(openTrustedFixture, cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     const id = opened.value.id;
     await page.reload();

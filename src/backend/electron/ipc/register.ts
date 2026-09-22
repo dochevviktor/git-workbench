@@ -153,7 +153,7 @@ export function registerAppIpc(
           if (!window) throw new Error('Missing IPC window');
           return handler(window, input);
         },
-        (error) => console.error(`IPC handler failed: ${contract.channel}`, error),
+        () => console.error(`IPC handler failed: ${contract.channel}`),
       );
     });
     channels.push(contract.channel);
@@ -531,6 +531,9 @@ export function registerAppIpc(
       }
     });
     register(requests.getGitInfo, () => repositoryService.getGitInfo());
+    register(requests.setRepositoryTrust, (window, request) =>
+      repositoryService.setTrust(window.webContents.id, request.id, request.trusted),
+    );
     register(requests.pickRepositoryDirectory, (window) =>
       dialog
         .showOpenDialog(window, {

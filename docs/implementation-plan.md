@@ -139,7 +139,7 @@ outside this slice; F38 Lean Branching remains separate.
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                                  | Depends on                            |
 | ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                                                   | —                                     |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Partial; F01–F16 jobs/auth/cancellation corrections verified (2026-09-20); broad trust policy remains                                                                                                   | P00                                   |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                     | P00                                   |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; clone, additive tabs/reorder/reopen, CLI and window persistence verified (2026-09-20); manager/watcher scope remains                                                                           | P01 runner/jobs                       |
 | P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                                                                                 | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                                                                                    | P01 writes, P02/P03 views             |
@@ -363,9 +363,22 @@ Acceptance:
 - Arguments and private output never become shell code or unredacted credentials in the UI/log.
 - A backend job continues to have queryable state after a UI subscription is removed.
 
-F01 currently consumes the runner and discovery subset needed for local repository access. The P01
-operation registry, process-tree policy, repository trust model, and broader fixture catalog remain
-unverified and keep P01 partial.
+P01 completion (2026-09-22, Linux): the [infrastructure handoff](reviews/p01-infrastructure.md)
+records the tested Git 2.43.0 minimum, resolved executable/capability diagnostics, argv/environment/output
+boundary, queryable operation records, cancellation and shutdown cleanup, shared-worktree write queues,
+bounded cancellable reads, generation invalidation, repository trust and disposable TypeScript fixtures.
+Activity follows the original P1-011 Windows screenshots with documented Linux adaptations. Existing
+repositories start with history browsing; working-tree reads, background fetch and configured programs
+require a remembered trust grant. Ownership checks and existing locks remain intact.
+
+The handoff records the actual check/build/Electron matrix and three inspector/Quick Launch/settings
+automation failures reproduced on unchanged baseline `27e403c`. Native Windows/macOS runtime validation
+and live accepting-remote/provider behavior remain P14/P05 gates, without promoting those phases or the
+entire F14 feature family.
+
+Verification: `npm run check` passes 483 tests (one existing opt-in skip); production build passes;
+13 distinct targeted headless Electron scenarios pass, including shutdown during a real Git hook.
+The 95-test minimum-version matrix also passes against official Git 2.43.0 built locally.
 
 ## P02 — Repository sessions and persistence
 

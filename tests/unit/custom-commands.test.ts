@@ -40,6 +40,7 @@ async function fixture() {
   const service = new RepositoryService({ storagePath: join(root, 'profile', 'recent.json') });
   services.push(service);
   const summary = await service.open(1, cwd);
+  await service.setTrust(1, summary.id, true);
   const store = service.customCommands.store;
   const [command] = await store.save({ definition, enabled: true });
   const context = { repositoryId: summary.id, target: 'repository' as const, value: '' };
@@ -92,7 +93,7 @@ describe('F32 custom command definitions and execution', () => {
     const saved = await f.store.save({
       definition: {
         ...definition,
-        action: { kind: 'bash', script: 'printf started; sleep 0.3; printf finished' },
+        action: { kind: 'bash', script: 'printf "started\\n"; sleep 0.3; printf finished' },
       },
       enabled: true,
     });
@@ -107,10 +108,10 @@ describe('F32 custom command definitions and execution', () => {
     const next = f.service.startCustomCommand(2, b.token, async () => undefined);
     await expect
       .poll(() => f.service.listOperations(1).find((item) => item.id === first.id)?.output)
-      .toBe('started');
+      .toBe('started\n');
     expect(f.service.listOperations(2).find((item) => item.id === next.id)?.output).toBe('');
     f.service.disposeWindow(2);
-    expect((await f.finish(first.id)).output).toBe('startedfinished');
+    expect((await f.finish(first.id)).output).toBe('started\nfinished');
     expect(f.service.listOperations(2)).toEqual([]);
     expect(() => f.service.customCommands.repositoryFor(2, b.token)).toThrow('expired');
   });

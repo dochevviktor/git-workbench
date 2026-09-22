@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { join } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -85,7 +86,7 @@ test('F37 opt-in setup, exact preview, editable draft, range review, cancellatio
     await expect(settings).toContainText('Enabled for this session');
     await page.screenshot({ path: test.info().outputPath('f37-settings-light.png') });
     await settings.getByRole('button', { name: 'Close', exact: true }).click();
-    const opened = await page.evaluate((path) => window.desktop!.repository.open({ path }), f.cwd);
+    const opened = await page.evaluate(openTrustedFixture, f.cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     await page.reload();
     await page.getByRole('button', { name: /^Local Changes/u }).click();

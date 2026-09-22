@@ -163,6 +163,7 @@ export const repositoryTabPreferencesSchema = z.strictObject({
 });
 
 export const repositorySummarySchema = z.strictObject({
+  trusted: z.boolean().optional(),
   id: repositoryIdSchema,
   name: z.string().min(1).max(512),
   path: repositoryPathSchema,
@@ -229,9 +230,18 @@ export const repositoryManagerSnapshotSchema = z.strictObject({
 });
 
 export const gitInfoSchema = z.strictObject({
-  status: z.enum(['available', 'missing', 'error']),
+  status: z.enum(['available', 'missing', 'unsupported', 'error']),
   version: z.string().nullable(),
   executable: z.string().nullable(),
+  minimumVersion: z.string().optional(),
+  capabilities: z
+    .strictObject({
+      supported: z.boolean(),
+      porcelainV2: z.boolean(),
+      pathspecFromFile: z.boolean(),
+      rebaseUpdateRefs: z.boolean(),
+    })
+    .optional(),
 });
 
 export const repositoryOpenSchema = z.strictObject({ path: repositoryPathSchema });
@@ -2357,6 +2367,11 @@ export const requests = {
   editCommand: request('edit:command', editCommandSchema, z.null()),
   writeClipboardText: request('clipboard:write-text', clipboardTextSchema, z.null()),
   getGitInfo: request('git:get-info', z.undefined(), gitInfoSchema),
+  setRepositoryTrust: request(
+    'repository:set-trust',
+    z.strictObject({ id: repositoryIdSchema, trusted: z.boolean() }),
+    z.null(),
+  ),
   openRepositoryCommitDetails: request(
     'repository:open-commit-details',
     repositoryCommitDetailsRequestSchema,

@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { PatchPreviews, validatePatch } from './patch-service';
 import type { RepositoryPatchPreview, RepositoryPatchApplyRequest } from '../../common/ipc/contracts';
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { ReadCoordinator } from '../git/read-coordinator';
+import { RepositoryTrustStore } from '../git/trust-store';
+import { RepositoryGitRunner } from '../git/repository-runner';
+import { gitCapabilities, minimumGitVersion } from '../git/capabilities';
 import type {
   RepositorySigningSettingsRequest,
   RepositoryVerifySignatureRequest,
@@ -257,7 +261,9 @@ export class RepositoryService {
   private readonly store: RecentRepositoryStore;
   private readonly managerStore: RepositoryManagerStore;
   private readonly tabStore: RepositoryTabStore;
-  private readonly runner: GitRunnerLike;
+  private readonly runner: ReadCoordinator;
+  private readonly repositoryRunner: RepositoryGitRunner;
+  private readonly trust: RepositoryTrustStore;
   private readonly clock: () => Date;
   private readonly sourceScanOptions: SourceScanOptions;
   private readonly maxOpenTabs: number;
@@ -269,6 +275,7 @@ export class RepositoryService {
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
   private readonly mutationQueues = new Map<string, Promise<void>>();
+  private readonly operationScope = new AsyncLocalStorage<AbortSignal>();
   private readonly operations: OperationRegistry;
   private readonly backgroundFetch: BackgroundFetchScheduler;
   private readonly remoteFetchPreferences: RemoteFetchPreferenceStore;
@@ -291,7 +298,9 @@ export class RepositoryService {
       filePath: options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
       maxTabs: this.maxOpenTabs,
     });
-    this.runner = new ReadCoordinator(options.runner ?? new GitRunner());
+    this.trust = new RepositoryTrustStore(`${options.storagePath}.trust`);
+    this.repositoryRunner = new RepositoryGitRunner(options.runner ?? new GitRunner(), this.trust);
+    this.runner = new ReadCoordinator(this.repositoryRunner);
     this.externalTools = new ExternalToolService(
       new ExternalToolStore(`${options.storagePath}.external-tools`),
       this.runner,
@@ -331,6 +340,43 @@ export class RepositoryService {
     return this.gitInfoPromise;
   }
 
+  async setTrust(ownerId: number, id: string, trusted: boolean): Promise<null> {
+    if (!this.sessions.get(ownerId)?.has(id))
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'Open this repository before changing its trust.',
+      );
+    const summary = await this.refreshOpenRepository(ownerId, id, false);
+    if (
+      [...this.sessions.values()].some((sessions) =>
+        [...sessions.values()].some(
+          (repository) =>
+            repository.commonDir === summary.commonDir && this.operations.isBusyForRepository(repository.id),
+        ),
+      )
+    )
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Wait for repository operations to finish before changing trust.',
+      );
+    // Revocation waits for existing writes and prevents subsequent queued operations from starting.
+    await this.withRepositoryMutation(
+      summary.commonDir,
+      () => this.trust.set(summary.commonDir, trusted),
+      false,
+    );
+    this.runner.invalidate();
+    for (const [owner, sessions] of this.sessions) {
+      for (const [key, repository] of sessions) {
+        if (repository.commonDir !== summary.commonDir) continue;
+        const updated = { ...repository, trusted };
+        sessions.set(key, updated);
+        await this.refreshBackgroundFetch(owner, updated);
+      }
+    }
+    return null;
+  }
+
   async open(ownerId: number, inputPath: string, displayName?: string): Promise<RepositorySummary> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
@@ -357,16 +403,28 @@ export class RepositoryService {
     await this.requireGit();
     await this.ensureSessions(ownerId);
     const directory = await this.canonicalDirectory(inputPath);
+    const existing = await lstat(join(directory, bare ? 'HEAD' : '.git')).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      },
+    );
     try {
-      await this.runner.run(['init', '--quiet', ...(bare ? ['--bare'] : [])], {
-        cwd: directory,
-        timeoutMs: repositoryReadTimeoutMs,
-        maxOutputBytes: repositoryReadOutputLimit,
-      });
+      await this.repositoryRunner.applicationAction(() =>
+        this.runner.run(['init', '--quiet', ...(bare ? ['--bare'] : [])], {
+          cwd: directory,
+          timeoutMs: repositoryReadTimeoutMs,
+          maxOutputBytes: repositoryReadOutputLimit,
+        }),
+      );
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not initialize the selected directory.');
     }
     const summary = await this.discover(directory);
+    if (!existing) await this.trust.set(summary.commonDir, true);
+    summary.trusted = await this.trust.isTrusted(summary.commonDir);
+    summary.workingTree = await this.inspectWorkingTree(summary.worktreePath);
     if (
       !this.sessions.get(ownerId)?.has(summary.id) &&
       this.listOpenCached(ownerId).length >= this.maxOpenTabs
@@ -460,16 +518,18 @@ export class RepositoryService {
             failureReason: 'other',
           };
         }
-        const outcome = await runNetworkOperation(
-          this.runner,
-          {
-            kind: 'clone',
-            args,
-            title: `Clone '${request.name}'`,
-            command: `git clone --progress ${request.url} ${destination}`,
-          },
-          destination,
-          handle,
+        const outcome = await this.repositoryRunner.applicationAction(() =>
+          runNetworkOperation(
+            this.runner,
+            {
+              kind: 'clone',
+              args,
+              title: `Clone '${request.name}'`,
+              command: `git clone --progress ${request.url} ${destination}`,
+            },
+            destination,
+            handle,
+          ),
         );
         if (outcome.status !== 'succeeded' || handle.signal.aborted) {
           return {
@@ -490,6 +550,8 @@ export class RepositoryService {
         }
         try {
           const summary = await this.open(ownerId, destination);
+          await this.setTrust(ownerId, summary.id, true);
+          summary.trusted = true;
           return {
             ...outcome,
             message: 'Cloned and opened the repository.',
@@ -538,12 +600,20 @@ export class RepositoryService {
     return this.operations.start(
       { ownerId, repositoryId, kind: 'connection', title: 'Test Connection', command },
       async (handle) => {
-        const outcome = await runNetworkOperation(
-          this.runner,
-          { kind: 'connection', args, title: 'Test Connection', command },
-          cwd,
-          handle,
-        );
+        const run = () =>
+          runNetworkOperation(
+            this.runner,
+            { kind: 'connection', args, title: 'Test Connection', command },
+            cwd,
+            handle,
+          );
+        const outcome =
+          request.kind === 'remote'
+            ? await this.repositoryRunner.authorized(
+                this.sessions.get(ownerId)!.get(request.id)!.commonDir,
+                run,
+              )
+            : await this.repositoryRunner.applicationAction(run);
         return outcome.status === 'succeeded' ? { ...outcome, message: 'Connection succeeded.' } : outcome;
       },
     );
@@ -1118,7 +1188,11 @@ export class RepositoryService {
     const service = new GitSettingsService(this.runner);
     if (request.id === null) {
       const path = await globalConfigPath();
-      return this.withRepositoryMutation(path, () => service.save(tmpdir(), path, request));
+      return this.withRepositoryMutation(
+        path,
+        () => this.repositoryRunner.applicationAction(() => service.save(tmpdir(), path, request)),
+        false,
+      );
     }
     const repository = this.operationRepository(ownerId, request.id);
     return this.withRepositoryMutation(repository.commonDir, () => {
@@ -1296,10 +1370,12 @@ export class RepositoryService {
   async getSubmodules(ownerId: number, id: string): Promise<RepositorySubmoduleContext> {
     const summary = await this.requireWorktree(ownerId, id);
     try {
-      return await readSubmoduleContext(this.runner, {
-        repositoryId: id,
-        cwd: summary.worktreePath,
-      });
+      return await this.repositoryRunner.authorized(summary.commonDir, () =>
+        readSubmoduleContext(this.runner, {
+          repositoryId: id,
+          cwd: summary.worktreePath,
+        }),
+      );
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the repository submodules.');
     }
@@ -1539,7 +1615,7 @@ export class RepositoryService {
     const cancelled = this.backgroundFetch.configure(
       ownerId,
       repositoryId,
-      this.automaticFetchEnabled
+      this.automaticFetchEnabled && this.sessions.get(ownerId)?.get(repositoryId)?.trusted === true
         ? remotes.filter((remote) => remote.fetchAutomatically).map((remote) => remote.name)
         : [],
     );
@@ -1626,7 +1702,9 @@ export class RepositoryService {
     work: (handle: OperationHandle) => Promise<OperationOutcome>,
   ): RepositoryOperation {
     try {
-      return this.operations.start(descriptor, work);
+      return this.operations.start(descriptor, (handle) =>
+        this.operationScope.run(handle.signal, () => work(handle)),
+      );
     } catch (error) {
       if (error instanceof OperationBusyError)
         throw new ExpectedBackendError(
@@ -2974,6 +3052,7 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    this.runner.dispose();
     this.ai.disable();
     this.patches.clear();
     for (const controller of this.statisticsReads.values()) controller.abort();
@@ -2992,17 +3071,46 @@ export class RepositoryService {
     this.operations.dispose();
   }
 
-  private async withRepositoryMutation<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  async settled(): Promise<void> {
+    await Promise.all([this.operations.settled(), this.runner.settled()]);
+  }
+
+  private async withRepositoryMutation<T>(
+    key: string,
+    operation: () => Promise<T>,
+    requireTrust = true,
+  ): Promise<T> {
     const previous = this.mutationQueues.get(key) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
     this.mutationQueues.set(key, current);
-    await previous;
+    const signal = this.operationScope.getStore();
     try {
-      return await operation();
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => reject(new GitCancelledError());
+        signal?.addEventListener('abort', cancel, { once: true });
+        void previous.then(() => {
+          signal?.removeEventListener('abort', cancel);
+          resolve();
+        });
+        if (signal?.aborted) cancel();
+      });
+    } catch (error) {
+      // Keep the serial barrier until preceding work exits, even though this queued job is cancelled.
+      void previous.then(() => {
+        release();
+        if (this.mutationQueues.get(key) === current) this.mutationQueues.delete(key);
+      });
+      throw error;
+    }
+    try {
+      if (signal?.aborted) throw new GitCancelledError();
+      this.runner.invalidate();
+      return await (requireTrust ? this.repositoryRunner.authorized(key, operation) : operation());
     } finally {
+      this.runner.invalidate();
       release();
       if (this.mutationQueues.get(key) === current) this.mutationQueues.delete(key);
     }
@@ -3033,7 +3141,14 @@ export class RepositoryService {
   private async probeGit(): Promise<GitInfo> {
     try {
       const version = await this.runner.version();
-      return { status: 'available', version: version.version, executable: version.executable };
+      const capabilities = gitCapabilities(version.version);
+      return {
+        status: capabilities.supported ? 'available' : 'unsupported',
+        version: version.version,
+        executable: version.executable,
+        minimumVersion: minimumGitVersion,
+        capabilities,
+      };
     } catch (error) {
       if (error instanceof GitExecutableError) {
         return { status: 'missing', version: null, executable: null };
@@ -3045,7 +3160,12 @@ export class RepositoryService {
   private async requireGit(): Promise<void> {
     const info = await this.getGitInfo();
     if (info.status !== 'available') {
-      throw new ExpectedBackendError('GIT_UNAVAILABLE', 'Git is not available on this computer.');
+      throw new ExpectedBackendError(
+        'GIT_UNAVAILABLE',
+        info.status === 'unsupported'
+          ? `Git ${minimumGitVersion} or newer is required. Select a supported Git instance in Preferences.`
+          : 'Git is not available on this computer.',
+      );
     }
   }
 
@@ -3086,12 +3206,19 @@ export class RepositoryService {
           await this.requiredOutput(directory, ['rev-parse', '--show-toplevel']),
           directory,
         );
+    this.repositoryRunner.register(commonDir, [
+      directory,
+      absoluteGitDir,
+      commonDir,
+      ...(worktreePath ? [worktreePath] : []),
+    ]);
     const head = await this.discoverHead(directory);
     const workingTree = await this.inspectWorkingTree(bare ? null : worktreePath);
     const displayPath = worktreePath ?? commonDir;
     const id = this.repositoryId(worktreePath, commonDir);
 
     const summary: RepositorySummary = {
+      trusted: await this.trust.isTrusted(commonDir),
       id,
       name: (displayName ?? basename(displayPath)) || displayPath,
       path: displayPath,
@@ -3126,6 +3253,11 @@ export class RepositoryService {
       return removeFinalLineEnding(result.stdout);
     } catch (error) {
       if (error instanceof GitCommandError) {
+        if (error.stderr.includes('detected dubious ownership'))
+          throw new ExpectedBackendError(
+            'OPERATION_FAILED',
+            'Git refused this repository because of its ownership. Review its ownership and Git safe.directory settings outside the application.',
+          );
         throw new ExpectedBackendError('NOT_A_REPOSITORY', 'The selected directory is not a Git repository.');
       }
       throw this.mapGitFailure(error, 'Git could not inspect the selected directory.');
@@ -3197,7 +3329,11 @@ export class RepositoryService {
       const key = await this.topologyKey(cached);
       summary =
         key === this.topologyKeys.get(id)
-          ? { ...cached, head: refreshHead ? await this.discoverHead(cached.path) : cached.head }
+          ? {
+              ...cached,
+              trusted: await this.trust.isTrusted(cached.commonDir),
+              head: refreshHead ? await this.discoverHead(cached.path) : cached.head,
+            }
           : await this.discover(cached.path);
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
@@ -3213,6 +3349,13 @@ export class RepositoryService {
   }
 
   private async refreshSummary(summary: RepositorySummary): Promise<RepositorySummary> {
+    summary = { ...summary, trusted: await this.trust.isTrusted(summary.commonDir) };
+    if (!summary.trusted)
+      return {
+        ...summary,
+        head: await this.discoverHead(summary.path),
+        workingTree: { state: 'unknown', changedFileCount: null },
+      };
     if (summary.bare) return { ...summary, head: await this.discoverHead(summary.path) };
     try {
       const [status, refs] = await Promise.all([

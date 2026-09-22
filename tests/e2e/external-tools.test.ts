@@ -1,3 +1,4 @@
+import { openTrustedFixture } from './trusted-fixture';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,7 +96,7 @@ test('F33 settings, historical diff, terminal, merge review, removal and restart
     await settings().getByRole('button', { name: 'Save', exact: true }).click();
     await expect(settings().getByRole('button', { name: 'Review Merger', exact: true })).toBeVisible();
     await settings().getByRole('button', { name: 'Close', exact: true }).click();
-    expect((await page.evaluate((path) => window.desktop!.repository.open({ path }), cwd)).ok).toBe(true);
+    expect((await page.evaluate(openTrustedFixture, cwd)).ok).toBe(true);
     await page.reload();
     await page.getByTestId('history-commit').filter({ hasText: 'Middle' }).click();
     await page.locator('.commit-details').getByText('value.txt', { exact: true }).click({ button: 'right' });

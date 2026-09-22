@@ -627,6 +627,16 @@ remote branch, and fast-forwarding several branches at once are not implemented.
 
 ### F14 source refresh
 
+P01 completion checkpoint (2026-09-22): the [infrastructure handoff](../reviews/p01-infrastructure.md)
+records `P1-011:F1` and `P1-011-delayed-local-cancel-subcase:F1–F5`, original cases, screenshots and Git
+verification. Confidence is high for the captured Windows 2.22.0.0 Activity composition and bounded
+rejecting-remote trial. Linux now uses a wider list/output panel, underlined scopes, row times and a
+compact header, with truthful cancellation-requested/terminal states. Trust, version gating, process
+supervision and queue policies are independently specified and tested. F14's P01 infrastructure is
+complete; the broader P05 provider/native-helper and P14 platform matrices remain partial. This does
+not turn the catalogue's accepting-remote or real-network cancellation unknowns into observed outcomes.
+The following dated paragraphs retain the earlier slice's historical scope.
+
 Accessed **2026-09-19** from the official [Fork 1.0.67 article][activity], the official [Fork for
 Windows 1.48 article][operations], and the local activity screenshots listed in
 fork-references.json. The Mac article is **D**, dated **2018-05-28**, and says that Fork automatically
@@ -937,7 +947,7 @@ F38's dated handoff records an independently specified local workflow; Fork exec
 | F11 | Commit/amend, templates/messages/hooks and composer states                            | D: [releases][win]; B: P0-029–031                                                    | Partial; composer/draft/amend corrections verified; broader signing/assistance scope remains                                                                                                                                       | P04 / C02                     |
 | F12 | Branch/tag lifecycle, tag details, clean/dirty/detached checkout                      | D: [releases][win]; B: P1-001–005                                                    | Partial; annotated tags/details/push and checkout corrections verified; multi-ref polish remains                                                                                                                                   | P05 / C03                     |
 | F13 | Remotes/Test Connection, fetch/pull/push, clone/upstream                              | D: [operations][operations]; B: P1-007–012                                           | Partial; clone/Test Connection/native helpers verified; live provider/platform matrix remains                                                                                                                                      | P05, P06 / C03                |
-| F14 | Automatic fetch, operation activity/output and cancellation                           | D: [activity][activity]; B: P1-008/P1-011                                            | Partial; global fetch and cancellation states verified; arbitrary helper trust remains                                                                                                                                             | P01, P05 / C03                |
+| F14 | Automatic fetch, operation activity/output and cancellation                           | D: [activity][activity]; B: P1-008/P1-011                                            | Partial overall; P01 trust/jobs/cancellation/Activity complete (2026-09-22); P05 provider and P14 native platform coverage remain                                                                                                  | P01, P05 / C03                |
 | F15 | Stash history, partial stash, new-file policy, apply/pop/drop and patch export        | D: [operations][operations], [patches][patches]; B: P1-013–015, P2-005               | Partial; new-file policy/apply/rename/export verified; line stash/import remain                                                                                                                                                    | P06, P08 / C03–C05            |
 | F16 | Merge modes, ordinary rebase, recovery and branch drag entry points                   | D: [operations][operations]; B: P1-006/P1-019–022 (drag effects untested)            | Partial; four merge modes/pending recovery verified; bounded F17/F18 are separate; drag effects remain untested                                                                                                                    | P06, P07 / C04                |
 | F17 | Conflict cards and built-in two-input/editable-result helper                          | D: [merge][merge]; B: P1-015–020, P1-022/P1-025–026                                  | Partial; bounded text inspection/edit/stage/continue verified; non-text and stash provenance limits remain                                                                                                                         | P06 / C04                     |

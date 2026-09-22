@@ -57,6 +57,7 @@ test('hover hunk controls, resizable/hideable/popped-out details and split toolb
     );
     await page.evaluate(async (path) => {
       const result = await window.desktop!.repository.open({ path });
+      if (result.ok) await window.desktop!.repository.setTrust({ id: result.value.id, trusted: true });
       if (!result.ok) throw new Error(result.error.message);
     }, repository);
     await page.reload();

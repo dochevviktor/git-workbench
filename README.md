@@ -1,5 +1,13 @@
 # Git Workbench
 
+P01 completes the Git execution foundation and aligns Activity with the captured Fork layout.
+Git 2.43.0 or newer is required. Existing repositories open for history browsing; choose **Trust
+Repository…** to enable working changes, configured Git programs and network operations. The choice
+persists across restarts and linked worktrees and can be revoked in Repository Settings. New init/clone
+destinations are trusted as explicitly created repositories. Activity remains queryable after closing
+its panel or reloading the renderer; cancellation does not promise rollback. See the
+[P01 verification and policy](docs/reviews/p01-infrastructure.md).
+
 F37 adds optional AI messages and diff reviews. File → AI Integration (or Preferences → Integration)
 lets you enter an OpenAI API text model ID and select a text file containing your API key. Setup is
 session-only and makes no network request. In Local Changes, Generate Message previews staged changes;

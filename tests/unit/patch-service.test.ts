@@ -17,6 +17,7 @@ async function fixture() {
     await f.cleanup();
   });
   const { id } = await service.open(1, f.cwd);
+  await service.setTrust(1, id, true);
   const preview = (bytes: Buffer = f.bytes) => service.previewPatch(1, id, bytes, f.path);
   const apply = async (token: string) => {
     const accepted = service.applyPatch(1, { id, token });
