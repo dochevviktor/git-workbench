@@ -104,7 +104,7 @@ export function useRepositoryDiff(
             id: repositoryId,
             target: requestedTarget,
             whitespace,
-            options: { ...options, loadLarge: largeTarget === visit, readId },
+            options: { ...options, includeImages: true, loadLarge: largeTarget === visit, readId },
           }),
         );
         if (generation.current !== requestGeneration) return;
@@ -112,6 +112,11 @@ export function useRepositoryDiff(
           previous?.snapshot === next.snapshot &&
           previous?.content === next.content &&
           previous?.state === next.state &&
+          previous?.byteLength === next.byteLength &&
+          previous?.message === next.message &&
+          JSON.stringify(previous?.binaryMetadata) === JSON.stringify(next.binaryMetadata) &&
+          JSON.stringify(previous?.target) === JSON.stringify(next.target) &&
+          JSON.stringify(previous?.images) === JSON.stringify(next.images) &&
           previous?.repositoryId === next.repositoryId
             ? previous
             : next,

@@ -297,6 +297,28 @@ Existing implemented slices remain partial; new corrections require their own ve
 | [P2-016](fork-reference-new/reference/catalogue/features/P2-016.md) | observed | F08, F14       | P01, P02 / C02      | External file changes refresh; no watcher mechanism or latency inferred.                                                                                                                 |
 | [P2-017](fork-reference-new/reference/catalogue/features/P2-017.md) | observed | F04            | P03, P14 / C01, C06 | Home/End and scroll on 351 commits; retain larger independent performance gate.                                                                                                          |
 
+## F27 alignment checkpoint — 2026-09-22
+
+Implemented the bounded static PNG/JPEG image workflow against `P0-026:F1` and `P2-003:F1`
+(Windows 2.22.0.0, captures 2026-09-19, high confidence for sampled binary/160×120 PNG states).
+Original JSON, screenshots 0156/0455–0458 and linked Git manifests were reviewed before implementation;
+the generated light/dark Linux screenshots were compared afterward. Old/new columns, dimensions,
+byte counts, top-centered previews, centered overlays and bottom mode controls follow those captures.
+Contrast was adjusted after comparison. No private image or bundled asset was copied into the app.
+
+The [Windows 1.38 announcement](https://fork.dev/blog/posts/forkwin-1.38/) (2019-08-27) corroborates
+Side-by-Side/Swipe/Onion Skin. [Mac release notes](https://git-fork.com/releasenotes) 2.42 (2024-04-19)
+establish Pixel; 2.68 (2026-06-19) mentions 16-bit RGBA. Checked 2026-09-22, high confidence for
+Mac feature availability only. Pixel remains public-only relative to the Windows capture baseline.
+
+Deliberate adaptations: keyboard/range controls, bounded PNG/JPEG-only decode, inert SVG, explicit
+fallback messages, checkerboard alpha, top-left alignment of unequal sizes and magenta decoded-RGBA
+changes. Captured zoom/alpha/dimension unknowns remain unknown. More codecs, SVG rasterization,
+animation, zoom/pan, LFS previews and exact 16-bit/color-managed comparison remain outside the verified
+slice. Headless tests do not establish native Wayland frame behavior, fractional scaling or screen-reader
+parity. The [F27 handoff](../reviews/f27-image-diffs.md) records tests and local screenshot artifacts;
+P10 remains partial.
+
 ## Verification and remaining research
 
 F32 checkpoint (2026-09-22): `P2-008-create-execute-remove-subcase:F1–F5` and

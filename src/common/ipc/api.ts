@@ -193,6 +193,7 @@ export interface DesktopApi {
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;
     getHistory(request: RepositoryHistoryRequest): Promise<IpcResult<RepositoryHistoryPage>>;
     getCommitChanges(request: RepositoryCommitChangesRequest): Promise<IpcResult<RepositoryCommitChanges>>;
+    /** includeImages returns bounded raster bytes on this same authorized target, never file URLs. */
     getDiff(request: RepositoryDiffRequest): Promise<IpcResult<RepositoryDiff>>;
     cancelDiff(request: RepositoryDiffCancel): Promise<IpcResult<null>>;
     previewDiscard(request: RepositoryDiscardPreviewRequest): Promise<IpcResult<RepositoryDiscardPreview>>;

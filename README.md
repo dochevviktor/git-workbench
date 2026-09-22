@@ -48,6 +48,12 @@ Git-default/Unsigned choices, and explicit commit/tag verification with separate
 The installed GPG agent handles passphrases. Key generation/import, global settings UI and SSH/X.509
 verification remain outside this workflow; see the [F28 handoff](docs/reviews/f28-signing.md).
 
+F27 adds static PNG/JPEG comparison in working and committed diffs: Side-by-Side, draggable Swipe,
+Onion Skin and Pixel highlighting, with dimensions, byte sizes and transparency backgrounds.
+Previews are bounded to 4 MiB and 4 megapixels per side; other formats, corrupt and oversized files
+retain metadata/fallback states. SVG stays inert. See the [F27 handoff](docs/reviews/f27-image-diffs.md)
+for the independent comparison rules and remaining format/LFS limits.
+
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history
 search with graph highlights and direct distant navigation, full-file/context/wrap and popup diffs,

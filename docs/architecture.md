@@ -179,6 +179,16 @@ Electron, and backend imports from the shared and renderer directories.
 
 ## IPC contract
 
+F27 extends `getDiff` with optional `includeImages` and bounded raster sides. The existing preload
+and main handler validate the shared request/result schemas and retain owner/frame and inspector
+authorization. Main resolves patch blob IDs and bounded regular-file reads; it returns only static
+PNG/JPEG bytes with checked dimensions, after metadata removal. The renderer decodes raster Blobs
+inside its sandbox, closes replaced/late bitmaps and draws Side-by-Side/Swipe/Onion Skin/Pixel on
+bounded canvases. Repository URLs and SVG documents never enter the rendering path; no CSP changes
+or general asset protocol are required. Limits, alpha/pixel policy, and unsupported formats are
+specified in the [F27 handoff](reviews/f27-image-diffs.md). The diff hook compares target identity and
+image payloads when reusing results, preventing two empty-text binary revisions from sharing a view.
+
 | Concern                   | Location                                      | Rule                                                               |
 | ------------------------- | --------------------------------------------- | ------------------------------------------------------------------ |
 | Request names and schemas | `src/common/ipc/contracts.ts`                 | Stable names such as `app:get-info`; separate input/output schemas |

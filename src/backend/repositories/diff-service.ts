@@ -14,6 +14,7 @@ import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readWorkingChanges } from './working-tree-service';
 import { resolveAmendBase, RevisionNotFoundError, RevisionPathError } from './revision-service';
 import { createWorkingSnapshot } from './working-snapshot';
+import { readDiffImages } from './image-diff-service';
 
 const diffReadTimeoutMs = 15_000;
 const diffReadOutputLimit = 8 * 1024 * 1024;
@@ -58,6 +59,7 @@ export async function readRepositoryDiff(
       cwd: input.cwd,
       timeoutMs: diffReadTimeoutMs,
       maxOutputBytes: diffReadOutputLimit,
+      ...(input.options?.includeImages ? { env: { GIT_NO_LAZY_FETCH: '1' } } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
   } catch (error) {
@@ -99,6 +101,9 @@ export async function readRepositoryDiff(
     message: binary ? 'Binary changes do not have an inline text diff.' : null,
     snapshot,
     ...(binary ? { binaryMetadata: await binaryMetadata(runner, input, content) } : {}),
+    ...(binary && input.options?.includeImages
+      ? { images: await readDiffImages(runner, input, content) }
+      : {}),
   });
 }
 
@@ -220,7 +225,10 @@ async function binaryMetadata(
   input: ReadRepositoryDiffInput,
   content: string,
 ): Promise<{ beforeBytes: number | null; afterBytes: number | null }> {
-  const index = /^index ([a-f0-9]+)\.\.([a-f0-9]+)/mu.exec(content);
+  const indexes = [...content.matchAll(/^index ([a-f0-9]+)\.\.([a-f0-9]+)/gmu)];
+  if (indexes.length !== 1 || (content.match(/^diff --git /gmu)?.length ?? 0) !== 1)
+    return { beforeBytes: null, afterBytes: null };
+  const index = indexes[0];
   const size = async (id: string | undefined): Promise<number | null> => {
     if (!id) return null;
     if (/^0+$/u.test(id)) return 0;
@@ -229,6 +237,7 @@ async function binaryMetadata(
         cwd: input.cwd,
         timeoutMs: diffReadTimeoutMs,
         maxOutputBytes: 1024,
+        env: { GIT_NO_LAZY_FETCH: '1' },
         ...(input.signal ? { signal: input.signal } : {}),
       });
       const value = Number(result.stdout.trim());

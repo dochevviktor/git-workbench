@@ -26,6 +26,49 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('routes bounded image diffs through the existing validated capability', async () => {
+    const { api, invoke } = fixture();
+    const request = {
+      id: `repo-${'a'.repeat(64)}`,
+      target: { kind: 'commit' as const, commitId: 'b'.repeat(40), path: 'image.png', previousPath: null },
+      whitespace: 'normal' as const,
+      options: { includeImages: true },
+    };
+    const value = {
+      repositoryId: request.id,
+      target: request.target,
+      state: 'binary',
+      content: '',
+      byteLength: 0,
+      message: null,
+      snapshot: null,
+      images: {
+        before: { state: 'missing' },
+        after: { state: 'ready', mime: 'image/png', width: 1, height: 1, base64: 'AAAA' },
+      },
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value });
+    expect(await api.repository.getDiff(request)).toEqual({ ok: true, value });
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-diff', request);
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        ...value,
+        images: { ...value.images, after: { ...value.images.after, mime: 'image/svg+xml' } },
+      },
+    });
+    expect(await api.repository.getDiff(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(
+      await api.repository.getDiff({
+        ...request,
+        options: { includeImages: true, url: 'file:///secret' },
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
   it('validates activity requests, results and fixed browser selection channels', async () => {
     const { api, invoke } = fixture();
     const request = {

@@ -9,6 +9,7 @@ import type {
 import { diffHighlightRegions, parseUnifiedDiff } from '../lib/diff';
 import type { ParsedDiffLine, ParsedUnifiedDiff } from '../lib/diff';
 import { ListOptionsIcon } from './Icons';
+import { ImageDiffViewer } from './ImageDiffViewer';
 import { MenuButton } from './menu/MenuButton';
 import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
@@ -782,6 +783,13 @@ export function DiffViewer({
     );
   }
   const message = diffMessage(value);
+  if (value.state === 'binary' && value.images) {
+    return (
+      <div className="diff-viewer" data-testid="diff-viewer">
+        <ImageDiffViewer key={`${value.repositoryId}:${JSON.stringify(value.target)}`} value={value} />
+      </div>
+    );
+  }
   if (message) {
     return (
       <div className="diff-viewer" data-testid="diff-viewer">

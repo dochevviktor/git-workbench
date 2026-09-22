@@ -423,6 +423,7 @@ export const repositoryDiffTargetSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const repositoryDiffOptionsSchema = z.strictObject({
+  includeImages: z.boolean().optional(),
   contextLines: z.number().int().min(0).max(100).optional(),
   entireFile: z.boolean().optional(),
   loadLarge: z.boolean().optional(),
@@ -442,6 +443,26 @@ export const repositoryDiffRequestSchema = z.strictObject({
 });
 
 export const repositoryDiffSnapshotSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+
+export const repositoryImageSideSchema = z.discriminatedUnion('state', [
+  z
+    .strictObject({
+      state: z.literal('ready'),
+      mime: z.enum(['image/png', 'image/jpeg']),
+      width: z.number().int().min(1).max(8192),
+      height: z.number().int().min(1).max(8192),
+      base64: z
+        .string()
+        .max(5_592_408)
+        .regex(/^[A-Za-z0-9+/]+={0,2}$/u),
+    })
+    .refine((image) => image.width * image.height <= 4_194_304),
+  z.strictObject({
+    state: z.enum(['missing', 'unsupported', 'too-large', 'unavailable']),
+  }),
+]);
+
+export type RepositoryImageSide = z.infer<typeof repositoryImageSideSchema>;
 
 export const repositoryDiffSchema = z.strictObject({
   repositoryId: repositoryIdSchema,
@@ -463,6 +484,7 @@ export const repositoryDiffSchema = z.strictObject({
       afterBytes: z.number().int().nonnegative().nullable(),
     })
     .optional(),
+  images: z.strictObject({ before: repositoryImageSideSchema, after: repositoryImageSideSchema }).optional(),
 });
 
 const repositoryWorkingChangeCodeSchema = z.string().regex(/^[.ACDMRTUX?!]$/u);

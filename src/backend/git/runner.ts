@@ -9,6 +9,8 @@ const defaultOutputLimit = 2 * 1024 * 1024;
 const defaultTimeout = 30_000;
 
 export interface GitRunOptions {
+  /** Backend-only binary blob reads; limits still count raw bytes. */
+  readonly stdoutEncoding?: 'utf8' | 'base64';
   readonly cwd: string;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
@@ -287,7 +289,7 @@ export class GitRunner {
         if (forceKillTimer) clearTimeout(forceKillTimer);
         options.signal?.removeEventListener('abort', onAbort);
         const output = {
-          stdout: Buffer.concat(stdout, stdoutBytes).toString('utf8'),
+          stdout: Buffer.concat(stdout, stdoutBytes).toString(options.stdoutEncoding ?? 'utf8'),
           stderr: Buffer.concat(stderr, stderrBytes).toString('utf8'),
         };
         if (termination) {

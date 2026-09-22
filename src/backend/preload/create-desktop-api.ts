@@ -129,6 +129,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       rescanSourceDirectory: (request) => invoke(requests.rescanSourceDirectory, request),
       getHistory: (request) => invoke(requests.getRepositoryHistory, request),
       getCommitChanges: (request) => invoke(requests.getRepositoryCommitChanges, request),
+      // The shared contract validates opt-in raster payloads as well as text in both directions.
       getDiff: (request) => invoke(requests.getRepositoryDiff, request),
       cancelDiff: (request) => invoke(requests.cancelRepositoryDiff, request),
       previewDiscard: (request) => invoke(requests.previewRepositoryDiscard, request),

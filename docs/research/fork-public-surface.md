@@ -927,7 +927,7 @@ earlier slices; recording them here does not promote their full feature families
 | F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Partial; local pointer/materialized inspection, initialization, exact Save As and unchanged-pointer verification; remote/auth/locks/push open                                                                              | P10 / C05                     |
 | F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home], [git-flow docs][gitflow-presentation]; public-only    | Partial; native initialize/start/finish and all three disposable/Electron lifecycles verified; public defaults and broader variants remain open                                                                            | P09                           |
 | F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Bounded manual workflow verified 2026-09-22; see [F26 handoff](../reviews/f26-bisect.md)                                                                                                                                   | P08 / C05                     |
-| F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Planned rich viewers; pixel comparison public-only                                                                                                                                                                         | P04 fallback, P10 / C02, C05  |
+| F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Bounded PNG/JPEG four-mode workflow verified 2026-09-22; pixel policy independently specified from public-only evidence; other codecs/SVG/LFS previews remain ([handoff](../reviews/f27-image-diffs.md))                   | P04 fallback, P10 / C02, C05  |
 | F28 | GPG signing/verification and signed tags                                              | D: [product][home], [releases][mac]; public-only                          | Bounded GPG commit/amend/tag signing, repository key and explicit verification implemented; native pinentry/platform matrix unverified ([handoff](../reviews/f28-signing.md))                                              | P10                           |
 | F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                 | Partial; GitHub PAT accounts, repository pagination/clone selection and browser links; other providers/OAuth/self-hosting remain                                                                                           | P11                           |
 | F30 | Notifications and issue/PR lists/filters                                              | D: [product][home], [releases][win]; public-only                          | Verified GitHub explicit-refresh slice (2026-09-22): paged lists, state/author/assignee/title filters, recent session searches, notification inbox and safe links; automatic alerts and other providers remain             | P11                           |
@@ -1097,6 +1097,28 @@ the catalogue's unknown variants to observed Fork behavior.
   96-DPI geometry does not establish scaled layout. Lean Branching entry points lack exercised outcomes.
 - **U:** proprietary algorithms and hidden state are outside this research scope. Equivalence will be assessed
   against documented user outcomes and Git repository state, not against private implementation behavior.
+
+## F27 source and implementation checkpoint — 2026-09-22
+
+`P0-026:F1` and `P2-003:F1` establish paired binary metadata and Side-by-Side/Swipe/Onion Skin
+on Windows 2.22.0.0 (2026-09-19; high confidence within the captured trial). Original case JSON,
+screens 0156 and 0455–0458, and the linked before/after Git manifests were inspected. Image mode
+viewing preserved all 13 recorded Git command hashes. Zoom, alpha and differing dimensions remain
+catalogue unknowns; independent tests do not turn them into Fork observations.
+
+[Windows 1.38](https://fork.dev/blog/posts/forkwin-1.38/) (2019-08-27) corroborates the three modes.
+[Mac release notes](https://git-fork.com/releasenotes) 2.42 (2024-04-19) establish pixel highlighting,
+and 2.68 (2026-06-19) mentions 16-bit RGBA. Sources checked 2026-09-22; high confidence in the named
+platform capabilities, no claim of Windows 2.22 pixel UI or algorithm parity. Public references were
+restored and the image/diff index consulted; no new reference image or application asset was imported.
+
+The verified Linux workflow uses bounded static PNG/JPEG raster payloads, Side-by-Side default,
+draggable and keyboard Swipe, alpha-aware Onion Skin and decoded 8-bit RGBA Pixel highlighting.
+Top-left alignment for unequal dimensions, checkerboard transparency, magenta changes, accessible
+range controls and explicit decode/size/format failures are independent product choices. SVG stays
+inert; other codecs, animation, zoom/pan and LFS-image resolution remain unimplemented. Screenshots
+were compared before/after against the original cards and mode views; metadata contrast was corrected.
+See the [F27 handoff](../reviews/f27-image-diffs.md) for tests, limits and comparison artifacts.
 
 ## Maintaining this record
 

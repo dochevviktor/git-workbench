@@ -192,7 +192,7 @@ test('catalogue Local Changes selection, full-file hunk focus, popup, discard an
     await expect(page.locator('[data-diff-match-active="true"]')).toHaveText('new line 59999');
     await page.screenshot({ path: testInfo.outputPath('catalogue-large-diff.png') });
     await unstaged.getByTestId('working-change').filter({ hasText: 'binary.bin' }).click();
-    await expect(page.locator('.binary-diff-cards')).toContainText('4 bytes');
+    await expect(page.getByTestId('image-diff-viewer')).toContainText('4 bytes');
     await unstaged.getByTestId('working-change').filter({ hasText: 'large.txt' }).click();
     await expect(page.getByRole('button', { name: 'Load Diff', exact: true })).toBeVisible();
     await unstaged.getByTestId('working-change').filter({ hasText: 'wide.txt' }).click();

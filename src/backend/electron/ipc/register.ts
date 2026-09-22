@@ -522,6 +522,7 @@ export function registerAppIpc(repositoryService?: RepositoryService, hostingSer
     register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
       repositoryService.getCommitChanges(window.webContents.id, id, commitId),
     );
+    // Raster previews retain this capability's owner/frame and committed-only inspector checks.
     register(requests.getRepositoryDiff, (window, { id, target, whitespace, options }) =>
       repositoryService.getDiff(window.webContents.id, id, target, whitespace, options),
     );
