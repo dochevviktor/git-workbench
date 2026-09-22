@@ -51,7 +51,12 @@ class TestWindow extends EventEmitter {
 
   constructor(id: number, url = 'file:///app/index.html') {
     super();
+    const webEvents = new EventEmitter();
     this.webContents = {
+      on: webEvents.on.bind(webEvents),
+      removeListener: webEvents.removeListener.bind(webEvents),
+      emit: webEvents.emit.bind(webEvents),
+      listenerCount: webEvents.listenerCount.bind(webEvents),
       id,
       mainFrame: { url },
       getURL: () => this.webContents.mainFrame.url,
@@ -99,6 +104,36 @@ afterEach(() => {
 });
 
 describe('IPC sender and window lifecycle', () => {
+  it('authorizes AI settings only in main windows and releases its exact reload listener', async () => {
+    const service = {
+      ai: {
+        settings: vi.fn(() => ({ enabled: false, model: null, provider: 'openai', storage: 'session' })),
+        cancel: vi.fn(() => null),
+      },
+      disposeWindow: vi.fn(),
+      subscribeOperations: () => () => undefined,
+    } as unknown as RepositoryService;
+    const ipc = registerAppIpc(service);
+    const window = new TestWindow(50);
+    const inspector = new TestWindow(51);
+    ipc.attachWindow(window.asWindow(), window.webContents.getURL());
+    ipc.attachWindow(inspector.asWindow(), inspector.webContents.getURL(), {
+      parentId: 50,
+      context: {} as never,
+    });
+    const handler = handlers.get(requests.getAiSettings.channel)!;
+    expect(await handler(window.event())).toMatchObject({ ok: true });
+    expect(await handler(inspector.event())).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handler({ ...window.event(), senderFrame: { url: window.webContents.getURL() } } as never),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    window.webContents.emit('did-start-loading');
+    expect(service.ai.cancel).toHaveBeenCalledWith(50);
+    expect(window.webContents.listenerCount('did-start-loading')).toBe(1);
+    ipc.dispose();
+    expect(window.webContents.listenerCount('did-start-loading')).toBe(0);
+    expect(inspector.webContents.listenerCount('did-start-loading')).toBe(0);
+  });
   it('authorizes hosting only for the owner main frame and cancels on close', async () => {
     const hosting = {
       list: vi.fn(async () => ({ accounts: [], secureStorageAvailable: false })),

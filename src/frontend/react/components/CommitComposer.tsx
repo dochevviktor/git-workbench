@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SigningControls } from './SigningControls';
+import { AiRequestDialog } from './AiIntegration';
 import type { RepositorySigningMode } from '../../../common/ipc/contracts';
 import type { KeyboardEvent } from 'react';
 import type {
@@ -127,6 +128,7 @@ export function CommitComposer({
   const [body, setBody] = usePersistentState(`repository.${repository.id}.commit.body`, '', isString);
   const setAmend = onAmendChange;
   const [committing, setCommitting] = useState(false);
+  const [aiDraft, setAiDraft] = useState<{ subject: string; body: string; token: string; id: string }>();
   const [signing, setSigning] = useState<RepositorySigningMode>('inherit');
   const mounted = useRef(true);
   const currentDraft = useRef({ subject, body });
@@ -454,6 +456,19 @@ export function CommitComposer({
         />
       </div>
       <div className="composer-actions">
+        <button
+          type="button"
+          className="button button-small"
+          disabled={busy || committing || amend || stagedCount === 0 || conflictedCount > 0}
+          title={
+            amend
+              ? 'AI generation currently uses staged changes for a new commit.'
+              : 'Preview staged changes to generate an editable message'
+          }
+          onClick={() => setAiDraft({ subject, body, token: changeToken, id: repository.id })}
+        >
+          Generate Message…
+        </button>
         <label
           className="composer-amend"
           title={amendAvailable ? undefined : (value?.amendBlockedReason ?? undefined)}
@@ -495,6 +510,25 @@ export function CommitComposer({
           </MenuButton>
         </div>
       </div>
+      {aiDraft && aiDraft.id === repository.id && (
+        <AiRequestDialog
+          repository={repository}
+          mode="staged"
+          onClose={() => setAiDraft(undefined)}
+          draftAvailable={
+            aiDraft.subject === subject &&
+            aiDraft.body === body &&
+            aiDraft.token === changeToken &&
+            !amend &&
+            !committing
+          }
+          onUseDraft={(text) => {
+            const next = splitMessage(text);
+            setSubject(next.subject);
+            setBody(next.body);
+          }}
+        />
+      )}
     </form>
   );
 }

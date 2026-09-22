@@ -79,6 +79,8 @@ export function registerAppIpc(
   const attachWindow = (window: BrowserWindow, url: string, inspector?: InspectorAttachment) => {
     const id = window.webContents.id;
     windows.get(id)?.cleanup();
+    const cancelAi = () => repositoryService?.ai.cancel(id);
+    window.webContents.on('did-start-loading', cancelAi);
     const publishState = () => {
       if (!window.isDestroyed() && isTrustedDocument(window.webContents.getURL(), url)) {
         window.webContents.send(events.windowStateChanged.channel, windowState(window));
@@ -95,6 +97,7 @@ export function registerAppIpc(
         if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
       }
       repositoryService?.disposeWindow(id);
+      window.webContents.removeListener('did-start-loading', cancelAi);
       hostingService?.cancel(id);
       windows.delete(id);
       window.removeListener('maximize', publishState);
@@ -169,6 +172,26 @@ export function registerAppIpc(
   }));
 
   register(requests.getWindowState, (window) => windowState(window));
+  if (repositoryService) {
+    register(requests.getAiSettings, () => repositoryService.ai.settings());
+    register(requests.configureAi, (window, request) =>
+      repositoryService.ai.configure(window.webContents.id, request.model, async () => {
+        const selected = await dialog.showOpenDialog(window, {
+          title: 'Select OpenAI API key file (session only)',
+          properties: ['openFile'],
+        });
+        return selected.canceled ? null : (selected.filePaths[0] ?? null);
+      }),
+    );
+    register(requests.disableAi, () => repositoryService.ai.disable());
+    register(requests.previewAi, (window, request) =>
+      repositoryService.previewAi(window.webContents.id, request),
+    );
+    register(requests.sendAi, (window, request) => repositoryService.sendAi(window.webContents.id, request));
+    register(requests.cancelAi, (window, request) =>
+      repositoryService.ai.cancel(window.webContents.id, request.id),
+    );
+  }
   if (gitInstances) {
     register(requests.getGitInstance, () => gitInstances.read());
     register(requests.saveGitInstance, (_window, request) => gitInstances.save(request));

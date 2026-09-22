@@ -26,6 +26,22 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates AI input and results and exposes only fixed preview/send/cancel channels', async () => {
+    const { api, invoke } = fixture();
+    expect(await api.ai.configure({ model: '--invalid model' })).toMatchObject({ ok: false });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { text: 'Generated message', key: 'unexpected' } });
+    expect(await api.ai.send({ id: 'repo', token: 'f82f46b0-6fb3-4bcb-a22b-7b28e5a6ad4b' })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(invoke).toHaveBeenLastCalledWith('ai:send', {
+      id: 'repo',
+      token: 'f82f46b0-6fb3-4bcb-a22b-7b28e5a6ad4b',
+    });
+    expect(await api.ai.cancel({ id: 'repo' })).toMatchObject({ ok: true, value: null });
+    expect(invoke).toHaveBeenLastCalledWith('ai:cancel', { id: 'repo' });
+  });
   it('validates patch preview results and only exposes token-based application', async () => {
     const { api, invoke } = fixture();
     const id = 'repo-' + 'a'.repeat(64);
@@ -268,6 +284,7 @@ describe('preload capability API', () => {
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
     expect(Object.keys(api)).toEqual([
+      'ai',
       'customCommands',
       'settings',
       'externalTools',

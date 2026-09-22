@@ -1,4 +1,5 @@
 import type { Statistics, StatisticsRequest } from './statistics';
+import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
   RepositorySigningSettings,
   RepositorySigningSettingsRequest,
@@ -134,6 +135,14 @@ export type Unsubscribe = () => void;
 
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
+  readonly ai: {
+    getSettings(): Promise<IpcResult<AiSettings>>;
+    configure(request: { model: string }): Promise<IpcResult<AiSettings>>;
+    disable(): Promise<IpcResult<AiSettings>>;
+    preview(request: AiPreviewRequest): Promise<IpcResult<AiPreview>>;
+    send(request: AiSend): Promise<IpcResult<AiResult>>;
+    cancel(request: { id?: string }): Promise<IpcResult<null>>;
+  };
   readonly settings: {
     getGitInstance(): Promise<IpcResult<GitInstance>>;
     saveGitInstance(request: GitInstance): Promise<IpcResult<GitInstance>>;

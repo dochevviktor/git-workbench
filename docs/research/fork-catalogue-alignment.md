@@ -356,6 +356,26 @@ P10 remains partial.
 
 ## Verification and remaining research
 
+### F37 alignment checkpoint — 2026-09-22
+
+F37 remains public-only. The original P0-013-general-git-subcase:F1–F4 settings and P0-030:F1 composer
+records/screenshots/Git evidence were reviewed as surrounding context, alongside the restored public
+TrackerWin 2808 OpenAI preferences/login screenshot dated 2026-06-22 (version unstated). They establish
+no private AI invocation, prompt or result behavior. Source URLs, dates, platform support and confidence
+are recorded in the [F37 handoff](../reviews/f37-ai.md) and public-surface checkpoint.
+
+The implementation adds session-only OpenAI API setup, exact staged/range diff previews, explicit Send,
+editable message drafts and inert review output. Native key-file selection, model entry, retention
+disclosure, bounded preview, one-use tokens and the merge-base/endpoint distinction are independent
+product adaptations. Windows/Linux settings use the existing compact dialog presentation; previews
+expand to 760 px and scroll on narrow windows. Before/after light/dark/narrow comparison retains the
+catalogue's composer and existing Git behavior. No reference asset is shipped or modified.
+
+Claude (Windows/macOS), Codex (documented macOS), Cursor messages (documented macOS), custom agent
+prompts, local inference and full platform parity remain unimplemented/unverified; the API adapter must
+not be labeled as those external tools. F37/P13 remain partial. See the handoff for bounded acceptance
+coverage and current verification rather than treating the public inventory as completion.
+
 ### F36 alignment checkpoint — 2026-09-22
 
 `P2-005-mixed-patch-preflight-subcase:F1–F4` (2026-09-20, Windows 2.22.0.0, high-confidence UI/Git)

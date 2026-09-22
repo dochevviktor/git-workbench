@@ -149,7 +149,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                          | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31–F33 workflows and bounded F34 Preferences/repository settings verified (2026-09-22); full preference inventory, workspaces and native platform coverage remain                      | P02/P03 plus relevant domain services |
-| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics/treemap verified (2026-09-22); F37 AI remains planned                                                                                                                   | P03 history; P12 tools for AI         |
+| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                             | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                 | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
@@ -1231,7 +1231,7 @@ deliberate window/layout adaptations are specified in the [F35 handoff](reviews/
 `npm run check` passed (427 tests, one existing skip), `npm run build` passed through `test:e2e`,
 and both F35 Electron workflow and desktop/preload smoke tests passed. Original P2-010 screenshots
 were compared with light/dark/narrow Linux captures. No repository data leaves the machine through
-this feature. F37 remains planned; 100k-history performance and native/scaling/accessibility parity
+this feature. F37 is tracked in the checkpoint below; 100k-history performance and native/scaling/accessibility parity
 remain unverified P14 criteria. P13 stays partial.
 
 F35 follow-up: date filtering now precedes detailed activity reads and range limits. Standard/2×/5×/10×
@@ -1243,6 +1243,24 @@ and the F35, opt-in existing-repository and desktop/preload Electron checks pass
 
 Catalogue anchor: P2-010 for Statistics/Treemap (C05). AI integrations remain public-only and require
 their own tool/platform research; no account or provider behavior follows from this bundle.
+
+F37 bounded checkpoint (2026-09-22): File/Preferences → AI Integration supports an explicitly selected
+OpenAI API model and native key-file setup, disabled by default and session-only. Local Changes →
+Generate Message and Repository → AI Code Review provide backend-owned staged/branch/commit-range
+diff previews, one-use Send, cancellation, editable draft replacement and inert findings. Main owns
+credentials, fixed-origin HTTP and resource/lifetime limits. Opening a repository or diff sends nothing;
+Disable aborts work and forgets the key. The [F37 handoff](reviews/f37-ai.md) records independent
+semantics, fresh per-platform public findings, reference comparison and unsupported variants.
+
+Final `npm run check` passes 461 tests with one existing skip, including type, lint and formatting checks.
+The production build, desktop isolation/preload/commit/hooks smoke and F37 headless Electron workflow
+pass. The latter covers no-repository setup, zero requests before Send, staged-only material, editable
+draft use, newer-draft preservation, range review, inert output, cancellation, sanitized authentication
+failure, disable and unchanged refs/index/worktree. Light/dark/narrow captures were compared with the
+original settings/composer screenshots and public OpenAI preferences screenshot. Unit and contract
+checks cover ownership, cancellation, expiry, key isolation, bounds and provider failures. No live
+provider account was used. F37/P13 stay partial for Claude/Codex/Cursor CLI adapters, local inference,
+custom prompts, amend generation, persistent AI configuration and native-platform matrices.
 
 1. Statistics: cached aggregate activity, contributor/time summaries, and repository treemap.
    Match date-range/month chart/contributor table and donut plus file tiles with Commits/Authors views.

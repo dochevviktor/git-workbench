@@ -183,6 +183,28 @@ cases/screenshots are the first comparison source for captured Windows states.
 
 ## Baseline and confidence
 
+F37 checkpoint (2026-09-22): optional OpenAI API commit-message and branch/commit-range review is
+implemented as an independent, session-only integration. It requires native key-file setup, explicit
+model selection, local material preview and a separate Send. Messages become editable drafts only on
+request; review text has no execution or Git mutation capability. See the
+[F37 handoff](../reviews/f37-ai.md) for source/platform findings, request policy and verification limits.
+No AI behavior is established by the private catalogue. P0-013-general-git-subcase:F1–F4 and P0-030:F1
+only anchor surrounding settings/composer presentation and existing commit semantics.
+
+Public evidence, refreshed 2026-09-22: [TrackerWin 2808](https://github.com/fork-dev/TrackerWin/issues/2808)
+contains the Windows OpenAI token-login/Commit-preferences screenshot (2026-06-22, version unstated;
+**O**, high confidence for controls only). [Windows releases][win] document Claude integration in 2.14
+and revised branch review in 2.15. [Mac releases][mac] document Claude messages/review (2.59/2.60), SHA
+ranges (2.61), Codex messages/review and configurable agent requests (2.64), and Cursor messages (2.70)
+(**D**, high confidence for advertised support, not private invocation details). CLI adapters remain
+unimplemented. No matching Windows Codex/Cursor claim was found in these release notes.
+
+The direct [OpenAI Responses request](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)
+and [retention policy](https://developers.openai.com/api/docs/guides/your-data) were checked 2026-09-22.
+Our API adapter, immutable diff preview, fixed endpoint, session-only credential policy and range
+semantics are **I**, not observed Fork implementation. `store: false` does not remove all provider
+retention. Live provider behavior, native platform parity and the agent CLI families remain **U**.
+
 At the 2026-09-16 public-source review, the release pages listed **Mac 2.70 (2026-09-04)** and
 **Windows 2.22 (2026-08-28)**.
 Both list vertical repository tabs. The Mac page additionally names Cursor for generated commit messages;
@@ -937,7 +959,7 @@ earlier slices; F36's dated handoff now records the verified import and clipboar
 | F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell and bounded global/repository settings verified (2026-09-22): scoped identity, presentation, Git selection and issue links; full inventory/workspace/platform scope remains                                         | P03, P04, P12, P14 / C01, C06 |
 | F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Bounded slice verified; UTC/raw-author metrics, date chart/contributors and cancellable cached file activity; independent rules and limits in [F35 handoff](../reviews/f35-statistics.md)                                          | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [releases][win], [releases][mac]; B: P2-005                            | Bounded workflow verified (2026-09-22): file/clipboard preflight, staged three-way apply, conflict diagnostics and save/copy; mailbox, merge-parent and special-path variants remain partial. [Handoff](../reviews/f36-patches.md) | P08 / C05                     |
-| F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only                          | Planned; separate platform/provider evidence required                                                                                                                                                                              | P13                           |
+| F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only; O: TrackerWin 2808      | Partial; session-only OpenAI API messages and diff review verified; CLI adapters/platform matrix remain. [Handoff](../reviews/f37-ai.md)                                                                                           | P13                           |
 | F38 | Lean Branching Start/Sync/Finish                                                      | B-UI: P0-008-toolbar-dropdown-subcase:F1; effects U                       | Planned; menu inventory only, not Git-flow parity                                                                                                                                                                                  | P06 prerequisites, P12        |
 
 Recent release notes also describe conflict previews, rebase-dependent-reference updates, richer worktree

@@ -1,5 +1,14 @@
 # Git Workbench
 
+F37 adds optional AI messages and diff reviews. File → AI Integration (or Preferences → Integration)
+lets you enter an OpenAI API text model ID and select a text file containing your API key. Setup is
+session-only and makes no network request. In Local Changes, Generate Message previews staged changes;
+Repository → AI Code Review previews a branch or commit range. Review the exact material and explicitly
+Send before any code leaves the machine. Generated messages are editable drafts; reviews cannot execute
+commands or change Git state. Disable forgets the app's key and cancels pending work. Provider billing
+and retention still apply; Claude/Codex/Cursor CLI adapters are not implemented. See the
+[F37 scope and limits](docs/reviews/f37-ai.md).
+
 F35 adds Repository > Statistics… and Repository Treemap…: local monthly activity, contributor shares,
 date filtering and selectable file activity with Commits/Authors details. Reads are cached, cancellable
 and bounded; see the [metric rules and limits](docs/reviews/f35-statistics.md).

@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  aiSettingsSchema,
+  aiConfigureSchema,
+  aiPreviewRequestSchema,
+  aiPreviewSchema,
+  aiSendSchema,
+  aiCancelSchema,
+  aiResultSchema,
+} from './ai';
 import { statisticsRequestSchema, statisticsCancelSchema, statisticsSchema } from './statistics';
 import {
   settingsTargetSchema,
@@ -2245,6 +2254,12 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  getAiSettings: request('ai:get-settings', z.undefined(), aiSettingsSchema),
+  configureAi: request('ai:configure', aiConfigureSchema, aiSettingsSchema),
+  disableAi: request('ai:disable', z.undefined(), aiSettingsSchema),
+  previewAi: request('ai:preview', aiPreviewRequestSchema, aiPreviewSchema),
+  sendAi: request('ai:send', aiSendSchema, aiResultSchema),
+  cancelAi: request('ai:cancel', aiCancelSchema, z.null()),
   getRepositoryStatistics: request('repository:get-statistics', statisticsRequestSchema, statisticsSchema),
   cancelRepositoryStatistics: request('repository:cancel-statistics', statisticsCancelSchema, z.null()),
   getGitInstance: request('settings:get-git-instance', z.undefined(), gitInstanceSchema),

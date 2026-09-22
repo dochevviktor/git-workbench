@@ -114,6 +114,15 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F37 adds `desktop.ai` settings/configure/disable/preview/send/cancel capabilities. Main owns session-only
+OpenAI credentials selected through a native file chooser, fixed-origin HTTP, bounded Git diff reads,
+immutable window/repository preview tokens, expiry and cancellation. The renderer receives only public
+settings, reviewed material and inert output. A generated message replaces the existing editable draft
+only on explicit use and only while draft/staging context remains unchanged. No provider tool calls,
+shell executor, remote URLs, credential DTOs or automatic repository mutation are exposed. All AI
+channels are denied to inspectors; reload/tab/window disposal cancels work. See the
+[F37 handoff](reviews/f37-ai.md) for retention, resource limits, source evidence and unsupported agents.
+
 F36 adds named patch preview/apply/release/copy capabilities. Main owns bounded file and clipboard
 ingestion and immutable one-use preview tokens bound to owner, repository and checkout snapshot.
 Application revalidates inside the common-directory operation queue, stages through Git apply and

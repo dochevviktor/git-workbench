@@ -1,0 +1,60 @@
+.dialog.ai-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+}
+.dialog.ai-settings {
+  width: min(574px, calc(100vw - 32px));
+}
+.ai-dialog .dialog-content {
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+}
+.ai-dialog h2,
+.ai-dialog p {
+  margin: 0;
+}
+.ai-dialog label {
+  display: grid;
+  gap: 6px;
+}
+.ai-dialog input,
+.ai-dialog textarea {
+  width: 100%;
+  min-width: 0;
+}
+.ai-dialog textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+.ai-dialog .ai-check {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+}
+.ai-check input {
+  width: auto;
+}
+.ai-scope {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.ai-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  margin: 0;
+}
+.ai-dialog .ai-material {
+  max-height: 240px;
+  min-height: 80px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+}
+.ai-dialog .dialog-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

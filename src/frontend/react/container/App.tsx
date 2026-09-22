@@ -82,6 +82,7 @@ import { useWorktrees } from '../hooks/use-worktrees';
 import { useSubmodules } from '../hooks/use-submodules';
 import { BisectBanner } from '../components/BisectBanner';
 import { RepositoryStatistics } from '../components/RepositoryStatistics';
+import { AiSettingsDialog, AiRequestDialog } from '../components/AiIntegration';
 import { useBisect } from '../hooks/use-bisect';
 import { useGitFlow } from '../hooks/use-git-flow';
 import { copyText } from '../lib/clipboard';
@@ -795,6 +796,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const bisect = useBisect(active && !active.bare ? active.id : undefined, refreshSignal, bisectChanged);
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
   const [statisticsView, setStatisticsView] = useState<'statistics' | 'treemap'>();
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [aiReview, setAiReview] = useState<RepositorySummary>();
   const [gitFlowFailure, setGitFlowFailure] = useState<string>();
   const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
   const [mergeRebaseFailure, setMergeRebaseFailure] = useState<string>();
@@ -1478,6 +1481,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         },
         { id: 'custom-commands', label: 'Custom Commands…', run: () => setCustomCommandsOpen(true) },
         { id: 'external-tools', label: 'External Tools…', run: externalTools.settings },
+        { id: 'ai-integration', label: 'AI Integration…', run: () => setAiSettingsOpen(true) },
         menuSeparator,
         {
           id: 'open-recent',
@@ -1701,6 +1705,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 label: 'Statistics…',
                 run: () => setStatisticsView('statistics'),
               },
+              { id: 'ai-review', label: 'AI Code Review…', run: () => setAiReview(active) },
               {
                 id: 'apply-patch',
                 label: 'Apply Patch…',
@@ -2856,6 +2861,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           tools={externalTools.settings}
           commands={() => setCustomCommandsOpen(true)}
           accounts={() => setHostingOpen(true)}
+          ai={() => setAiSettingsOpen(true)}
           remotes={() => openNetworkDialog({ kind: 'remotes' })}
           gitFlow={() => openGitFlowDialog({ kind: 'initialize' })}
         />
@@ -2951,6 +2957,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           name={active.name}
           initialView={statisticsView}
           onClose={() => setStatisticsView(undefined)}
+        />
+      )}
+      {aiSettingsOpen && <AiSettingsDialog onClose={() => setAiSettingsOpen(false)} />}
+      {aiReview && active?.id === aiReview.id && (
+        <AiRequestDialog
+          key={aiReview.id}
+          repository={aiReview}
+          mode="range"
+          onClose={() => setAiReview(undefined)}
         />
       )}
       {gitFlowDialog && gitFlowContext && (

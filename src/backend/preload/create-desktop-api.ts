@@ -66,6 +66,14 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
   };
 
   return {
+    ai: {
+      getSettings: () => invoke(requests.getAiSettings, undefined),
+      configure: (request) => invoke(requests.configureAi, request, 310000),
+      disable: () => invoke(requests.disableAi, undefined),
+      preview: (request) => invoke(requests.previewAi, request, 15000),
+      send: (request) => invoke(requests.sendAi, request, 130000),
+      cancel: (request) => invoke(requests.cancelAi, request),
+    },
     customCommands: {
       list: () => invoke(requests.listCustomCommands, undefined),
       save: (request) => invoke(requests.saveCustomCommand, request),

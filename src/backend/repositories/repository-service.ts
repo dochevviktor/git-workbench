@@ -200,6 +200,8 @@ import {
 } from './lfs-service';
 
 import { CustomCommandStore } from '../commands/custom-command-store';
+import { AiService } from '../ai/ai-service';
+import type { AiPreviewRequest, AiSend } from '../../common/ipc/ai';
 import { ExternalToolStore } from '../tools/external-tool-store';
 import { ExternalToolService } from '../tools/external-tool-service';
 import type { ExternalToolRun } from '../../common/ipc/external-tools';
@@ -233,6 +235,19 @@ export interface RepositoryServiceOptions {
 
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
+  readonly ai = new AiService();
+
+  previewAi(owner: number, request: AiPreviewRequest) {
+    const repository = this.operationRepository(owner, request.id);
+    if (request.target.kind === 'staged' && !repository.worktreePath)
+      throw new ExpectedBackendError('UNAVAILABLE', 'Staged AI messages require a working tree.');
+    return this.ai.preview(this.runner, owner, repository.worktreePath ?? repository.commonDir, request);
+  }
+
+  sendAi(owner: number, request: AiSend) {
+    this.operationRepository(owner, request.id);
+    return this.ai.send(owner, request);
+  }
   private readonly patches = new PatchPreviews();
   readonly externalTools: ExternalToolService;
   readonly customCommands: CustomCommandService;
@@ -545,6 +560,7 @@ export class RepositoryService {
   }
 
   async close(ownerId: number, id: string): Promise<void> {
+    this.ai.cancel(ownerId, id);
     this.patches.release(ownerId, id);
     for (const [key, controller] of this.statisticsReads)
       if (key.startsWith(`${ownerId}:${id}:`)) {
@@ -2880,6 +2896,7 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.ai.cancel(ownerId);
     this.patches.release(ownerId);
     for (const [key, controller] of this.statisticsReads)
       if (key.startsWith(`${ownerId}:`)) {
@@ -2901,6 +2918,7 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    this.ai.disable();
     this.patches.clear();
     for (const controller of this.statisticsReads.values()) controller.abort();
     this.statisticsReads.clear();

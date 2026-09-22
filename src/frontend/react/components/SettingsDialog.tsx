@@ -16,6 +16,7 @@ export function SettingsDialog({
   tools,
   commands,
   accounts,
+  ai,
   remotes,
   gitFlow,
 }: {
@@ -27,6 +28,7 @@ export function SettingsDialog({
   tools(): void;
   commands(): void;
   accounts(): void;
+  ai(): void;
   remotes(): void;
   gitFlow(): void;
 }) {
@@ -364,6 +366,9 @@ export function SettingsDialog({
             </button>
             <button className="button" disabled={Boolean(dirty)} onClick={() => handoff(accounts)}>
               Accounts…
+            </button>
+            <button className="button" disabled={Boolean(dirty)} onClick={() => handoff(ai)}>
+              AI Integration…
             </button>
           </section>
         )}
