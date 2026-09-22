@@ -4397,3 +4397,98 @@ svg.spinning {
 .signature-check {
   overflow-wrap: anywhere;
 }
+/* F29: independent account browser; public Windows Accounts supplies the two-pane organization. */
+.hosting-dialog {
+  width: min(850px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  padding: 18px;
+}
+.hosting-header,
+.hosting-actions,
+.hosting-tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hosting-header {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.hosting-header h2,
+.hosting-detail h3 {
+  margin: 0;
+}
+.hosting-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+}
+.hosting-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hosting-account {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.hosting-account[aria-pressed='true'] {
+  background: var(--row-selected);
+  color: var(--row-selected-text);
+}
+.hosting-detail {
+  min-width: 0;
+}
+.hosting-detail p {
+  line-height: 1.5;
+}
+.hosting-detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+}
+.hosting-detail dd {
+  margin: 0;
+}
+.hosting-detail dt,
+.hosting-error {
+  font-weight: 600;
+}
+.hosting-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hosting-repositories {
+  list-style: none;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.hosting-repositories li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.hosting-tabs {
+  margin-bottom: 15px;
+}
+.hosting-tabs [aria-pressed='true'] {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.hosting-actions {
+  margin: 10px 0;
+}

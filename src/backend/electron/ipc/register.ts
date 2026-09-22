@@ -18,6 +18,7 @@ import { executeRequest } from './execute-request';
 import { createCommitDetailsWindow } from '../commit-details-window';
 import { canInvokeInspector } from '../commit-inspector-policy';
 import { createFileHistoryWindow } from '../file-history-window';
+import type { HostingService } from '../../hosting/hosting-service';
 
 const minimumZoomLevel = -3;
 const maximumZoomLevel = 5;
@@ -53,7 +54,7 @@ type InspectorEntry =
 type InspectorAttachment =
   InspectorEntry | { readonly parentId: number; readonly context: RepositoryCommitDetailsContext };
 
-export function registerAppIpc(repositoryService?: RepositoryService) {
+export function registerAppIpc(repositoryService?: RepositoryService, hostingService?: HostingService) {
   const windows = new Map<
     number,
     {
@@ -85,6 +86,7 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
         if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
       }
       repositoryService?.disposeWindow(id);
+      hostingService?.cancel(id);
       windows.delete(id);
       window.removeListener('maximize', publishState);
       window.removeListener('unmaximize', publishState);
@@ -158,6 +160,38 @@ export function registerAppIpc(repositoryService?: RepositoryService) {
   }));
 
   register(requests.getWindowState, (window) => windowState(window));
+  if (hostingService) {
+    register(requests.listHostingAccounts, () => hostingService.list());
+    register(requests.connectHostingAccount, (window, request) =>
+      hostingService.connect(window.webContents.id, request, async () => {
+        const selection = await dialog.showOpenDialog(window, {
+          title: 'Select GitHub token file',
+          properties: ['openFile', 'showHiddenFiles'],
+          buttonLabel: 'Connect',
+        });
+        return selection.canceled || window.isDestroyed() ? null : (selection.filePaths[0] ?? null);
+      }),
+    );
+    register(requests.disconnectHostingAccount, (_window, { accountId }) =>
+      hostingService.disconnect(accountId),
+    );
+    register(requests.listHostedRepositories, (window, request) =>
+      hostingService.listRepositories(window.webContents.id, request),
+    );
+    register(requests.getHostedCloneTarget, (window, request) =>
+      hostingService.cloneTarget(window.webContents.id, request),
+    );
+    register(requests.openHostedRepository, async (window, request) => {
+      const url = hostingService.repositoryUrl(window.webContents.id, request);
+      try {
+        await shell.openExternal(url);
+      } catch {
+        throw new ExpectedBackendError('UNAVAILABLE', 'The system browser could not be opened.');
+      }
+      return null;
+    });
+    register(requests.cancelHostingRequests, (window) => hostingService.cancel(window.webContents.id));
+  }
   register(requests.windowCommand, (window, { action }) => {
     switch (action) {
       case 'minimize':

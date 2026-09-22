@@ -929,7 +929,7 @@ earlier slices; recording them here does not promote their full feature families
 | F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Bounded manual workflow verified 2026-09-22; see [F26 handoff](../reviews/f26-bisect.md)                                                                                      | P08 / C05                     |
 | F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Planned rich viewers; pixel comparison public-only                                                                                                                            | P04 fallback, P10 / C02, C05  |
 | F28 | GPG signing/verification and signed tags                                              | D: [product][home], [releases][mac]; public-only                          | Bounded GPG commit/amend/tag signing, repository key and explicit verification implemented; native pinentry/platform matrix unverified ([handoff](../reviews/f28-signing.md)) | P10                           |
-| F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                 | Partial; PR browser handoff only                                                                                                                                              | P11                           |
+| F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                 | Partial; GitHub PAT accounts, repository pagination/clone selection and browser links; other providers/OAuth/self-hosting remain                                              | P11                           |
 | F30 | Notifications and issue/PR lists/filters                                              | D: [product][home], [releases][win]; public-only                          | Planned                                                                                                                                                                       | P11                           |
 | F31 | Quick Launch commands and parameter selection; fuzzy lookup                           | D: [Quick Launch][quick]; B: P1-032                                       | Planned; fuzzy rules untested in capture                                                                                                                                      | P12 / C05                     |
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                       | Planned; forms/variables/sharing public-only or unresolved                                                                                                                    | P12 / C05                     |
@@ -1149,3 +1149,40 @@ and [verify-tag](https://git-scm.com/docs/git-verify-tag), accessed 2026-09-22, 
 semantics. Trusted, untrusted, unsigned, invalid and unavailable-key results remain distinct.
 Other signing backends and native protected-key/platform trials are not claimed. See the
 [F28 handoff](../reviews/f28-signing.md) for independent tests, screenshots and explicit limits.
+
+## F29 GitHub account and repository browser — 2026-09-22
+
+The supplied Windows 2.22.0.0 catalogue contains no authenticated hosting case. Its
+`P1-012-local-clone-subcase:F1–F3` (2026-09-19, high confidence), original case, screen-0295 and Git
+after-manifest establish only the existing clone form and local clone semantics. They do not establish
+token handling, hosted enumeration, OAuth or private Git transport behavior.
+
+Fresh public evidence, accessed 2026-09-22:
+
+| Provider     | Public target evidence                                                                                                                                                       | Implementation and remaining scope                                                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub       | [Windows release notes](https://git-fork.com/releasenoteswin), 1.56 (2020-11-20) integration and 1.87 (2023-08-08) OAuth naming; high confidence for documented availability | GitHub.com PAT identity, accounts, paginated repositories, clone selection and browser links implemented; OAuth/Enterprise and automatic refresh not implemented |
+| GitLab       | Same Windows 1.56 notes include integration/private servers; high confidence                                                                                                 | Existing gitlab.com PR creation browser handoff only; accounts/enumeration/private servers remain planned                                                        |
+| Bitbucket    | Same Windows 1.56 notes; high confidence                                                                                                                                     | Existing bitbucket.org PR creation browser handoff only; account/token variants remain planned                                                                   |
+| Azure DevOps | [Fork release-note blog index](https://www.git-fork.com/blog/tags/release-notes/) documents PR creation; high confidence for that narrow behavior                            | Existing Azure PR form handoff; account/repository enumeration not established by this evidence or implemented                                                   |
+| Gitea        | [Mac release notes](https://git-fork.com/releasenotes), 2.15 (2022-01-07); high confidence for Mac integration, Windows details unknown                                      | Account integration remains planned; no inferred Windows field-level parity                                                                                      |
+
+The already-indexed Windows Accounts screenshot in
+[TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826) (2026-07-31; version unstated,
+dark theme) shows account navigation, Account/Repositories tabs, token update and notifications.
+Confidence is medium for that public visual state, not proof of successful enterprise authorization.
+The issue reports misleading online status; this implementation does not show an unverified Online badge.
+The restored public index and original screenshot were inspected. No new images or bundled assets were added.
+
+[GitHub repositories API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user)
+and [authenticated identity API](https://docs.github.com/en/rest/users/users#get-the-authenticated-user)
+supply the independent GET and pagination contracts. Results are limited by token permissions and
+organization authorization. [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
+documents the OS protection and Linux `basic_text` fallback; that fallback is refused. These are high
+confidence API/platform sources, not observations of Fork internals.
+
+Linux adaptations: native token-file selection keeps credentials outside React/IPC; session-only is the
+default, persistence requires a secure keyring, PAT replacement is manual, and clone authentication stays
+with installed Git helpers/agents. Only fixed GitHub.com origins are supported, so self-hosted URLs are
+not silently accepted. F30 lists/filters/notifications remain separate. See the
+[F29 handoff](../reviews/f29-hosting.md) for verification and limitations.

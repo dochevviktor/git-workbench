@@ -1,4 +1,4 @@
-import { app, dialog, session } from 'electron';
+import { app, dialog, session, safeStorage } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { registerAppIpc } from './ipc/register';
@@ -7,6 +7,8 @@ import { RepositoryService } from '../repositories/repository-service';
 import { createMainWindow } from './window';
 import { forwardedRepositoryPaths, repositoryPathsFromArguments } from './launch-paths';
 import { ExpectedBackendError } from '../errors';
+import { HostingAccountStore } from '../hosting/account-store';
+import { HostingService } from '../hosting/hosting-service';
 
 app.setName('Git Workbench');
 const launchPaths = repositoryPathsFromArguments(process.argv, process.cwd(), process.defaultApp === true);
@@ -48,7 +50,19 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         managerStoragePath: join(app.getPath('userData'), 'repository-manager.json'),
         workspaceStoragePath: join(app.getPath('userData'), 'repository-workspace.json'),
       });
-      const ipc = registerAppIpc(repositories);
+      const hosting = new HostingService(
+        new HostingAccountStore(join(app.getPath('userData'), 'hosting-credentials.json'), {
+          available: () =>
+            safeStorage.isEncryptionAvailable() &&
+            (process.platform !== 'linux' ||
+              ['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6'].includes(
+                safeStorage.getSelectedStorageBackend(),
+              )),
+          encrypt: (value) => safeStorage.encryptString(value),
+          decrypt: (value) => safeStorage.decryptString(value),
+        }),
+      );
+      const ipc = registerAppIpc(repositories, hosting);
       installApplicationMenu();
       const loadedWindows = new Set<number>();
       let openQueue = Promise.resolve();
@@ -85,6 +99,7 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
       const openWindow = () => {
         mainWindow = createMainWindow(ipc.attachWindow);
         const windowId = mainWindow.webContents.id;
+        mainWindow.webContents.on('did-start-loading', () => hosting.cancel(windowId));
         mainWindow.webContents.once('did-finish-load', () => {
           loadedWindows.add(windowId);
           if (launchPaths.length) openRequestedPaths(launchPaths.splice(0, 20));

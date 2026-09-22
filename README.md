@@ -75,6 +75,20 @@ retains its saved copy for explicit Recovery Apply.
 Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
 browser. It does not submit the form or require storing hosting credentials in this application.
 
+File → Accounts adds GitHub.com account browsing. Select a text file containing a personal access
+token, then open Repositories to page through accessible repositories, filter the current page, open
+repository/PR/issue pages, or select an HTTPS/SSH URL for the existing Clone dialog. Fine-grained tokens
+need access to the intended repositories; enumeration uses read-only repository metadata. Organization
+policies and SSO can further restrict access. The account token is used only for API browsing; Git clone,
+fetch and push continue to use installed Git credential helpers or SSH agents.
+
+Accounts default to session-only storage. Remembering a token requires a secure OS keyring; Linux's
+plaintext fallback is refused. Tokens never enter the renderer, IPC, repository configuration or logs.
+Replace token selects another file and verifies that it belongs to the same account. Sign out removes
+the app's saved credential and cancels its pending reads; it does not delete the original file or revoke
+the token on GitHub. There is no background hosting polling. Other providers, self-hosted accounts,
+OAuth, and F30 in-app PR/issue lists and notifications remain unimplemented.
+
 ## Start
 
 Use Node.js 24.13+ within the Node 24 LTS line and npm 11+. The source, tests, and executable

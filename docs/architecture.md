@@ -499,6 +499,36 @@ Directory and selected-code requests do not cross IPC.
 
 ## Current limitations
 
+### F29 GitHub account boundary
+
+`desktop.hosting` exposes named account/list/selection/browser/cancel capabilities. A native main-process
+file chooser supplies token files; neither file paths nor credential bytes are accepted from the renderer.
+The provider interface owns authenticated identity and repository reads. The GitHub implementation fixes
+the origin to `https://api.github.com`, denies redirects, builds pagination queries locally, streams at
+most 4 MiB, times out requests, and maps failures without forwarding provider bodies or exceptions.
+Repository IDs must belong to the requesting window's last loaded page before main derives a clone URL
+or browser destination. Inspector windows cannot use hosting capabilities. Window close, renderer reload,
+and dialog cancellation abort pending hosting reads; sign-out aborts requests for that account.
+
+Session accounts exist only in main memory. Remembered accounts use a separate versioned atomic
+`hosting-credentials.json` with mode 0600, containing account metadata and OS-keyring-encrypted token
+blobs. Main alone encrypts/decrypts. The synchronous Electron safeStorage adapter checks encryption
+availability and an explicit Linux backend allowlist; `basic_text` and `unknown` are rejected. No secret
+appears in ordinary settings, Git configuration or DTOs. Store writes serialize, corrupt stores remain
+untouched, token replacement verifies account identity, and a failed replacement preserves the old
+credential. Sign-out works with a locked keyring because deletion does not require decryption. The
+original token file is never copied, modified or deleted by session-only connection; Remember explicitly
+creates an encrypted credential copy. A credential save already committing is not rolled back by closing
+the dialog; reopening Accounts shows the authoritative state.
+
+This extends the earlier no-secret-store limitation for hosting API credentials only. Git authentication
+remains delegated to installed helpers/agents. PAT renewal is explicit replacement, and remote revocation
+remains a GitHub account action. There is no OAuth client registration, custom-origin/self-hosted policy,
+provider background polling, or F30 implementation in this slice. Linux keyring integration beyond the
+tested fail-closed adapter and injected-encryption persistence remains a platform verification gate.
+
+### Earlier implementation inventory
+
 Git discovery, local repository access, recent-repository persistence, the first source-directory
 manager slice, the initial persisted tab/status workflow, the first paged history/graph/selection
 workflow, the F05 merge-collapse projection, the F07 changed-path/tree/blob slice, the initial F08

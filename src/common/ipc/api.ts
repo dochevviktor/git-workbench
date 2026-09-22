@@ -98,11 +98,30 @@ import type {
   WindowState,
 } from './contracts';
 import type { IpcResult } from './result';
+import type {
+  HostingAccount,
+  HostingAccounts,
+  HostingConnectRequest,
+  HostingRepositoriesRequest,
+  HostedRepositories,
+  HostingRepositoryRequest,
+  HostingCloneSelection,
+  HostingCloneTarget,
+} from './hosting';
 
 export type Unsubscribe = () => void;
 
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
+  readonly hosting: {
+    listAccounts(): Promise<IpcResult<HostingAccounts>>;
+    connect(request: HostingConnectRequest): Promise<IpcResult<HostingAccount | null>>;
+    disconnect(request: { accountId: string }): Promise<IpcResult<null>>;
+    listRepositories(request: HostingRepositoriesRequest): Promise<IpcResult<HostedRepositories>>;
+    getCloneTarget(request: HostingCloneSelection): Promise<IpcResult<HostingCloneTarget>>;
+    openRepository(request: HostingRepositoryRequest): Promise<IpcResult<null>>;
+    cancel(): Promise<IpcResult<null>>;
+  };
   readonly app: {
     getInfo(): Promise<IpcResult<AppInfo>>;
   };

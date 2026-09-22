@@ -96,7 +96,7 @@ test('production build loads its isolated preload and renderer', async () => {
     });
     expect(bridge.requireAvailable).toBe(false);
     expect(bridge.ipcAvailable).toBe(false);
-    expect(bridge.keys).toEqual(['app', 'window', 'edit', 'clipboard', 'repository']);
+    expect(bridge.keys).toEqual(['hosting', 'app', 'window', 'edit', 'clipboard', 'repository']);
     expect(bridge.info).toMatchObject({ ok: true, value: { name: 'Git Workbench' } });
     const gitInfo = await page.evaluate(async () => {
       if (!window.desktop) throw new Error('Desktop API missing');

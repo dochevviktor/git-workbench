@@ -347,3 +347,27 @@ Mac features, while exact Windows signing configuration and native prompts remai
 [configuration](https://git-scm.com/docs/git-config) support the independent backend semantics.
 The public image index was refreshed and consulted; no signing screenshot supplies stronger layout
 evidence. No reference images were added to application assets. See the [F28 handoff](../reviews/f28-signing.md).
+
+## F29 alignment checkpoint — 2026-09-22
+
+No authenticated hosting workflow is captured in the supplied catalogue. The relevant original
+`P1-012-local-clone-subcase` JSON, screen-0295 (`clone-ready_e769d0`) and Git after-manifest were read
+before implementation. Findings F1–F3 have high confidence for Windows 2.22.0.0 local clone only.
+The existing URL/Parent Folder/Name/Test Connection/Clone form remains the final destination review;
+the independently authored hosting browser supplies a credential-free URL and name.
+
+For the public gap, `npm run research:references` restored/checked the 226-image index. The existing
+`win-2026-07-31-trackerwin2826-1-preferences-dark.png` shows the account sidebar and separate
+Account/Repositories tabs. Its source is [TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826),
+accessed 2026-09-22, Windows version unstated, medium confidence for layout. The new Linux account and
+repository screens use that organization with independent styling and no copied icons or avatars.
+Token-file import, storage choices and explicit Git-helper text are deliberate Linux adaptations;
+the public screenshot does not establish them. No inaccurate green Online indicator or F30 notification
+placeholder is reproduced. New screenshot comparisons are recorded in the [F29 handoff](../reviews/f29-hosting.md).
+
+[Windows](https://git-fork.com/releasenoteswin) and [Mac](https://git-fork.com/releasenotes) release notes
+(accessed 2026-09-22) provide the provider-specific availability evidence summarized in the
+[public research](fork-public-surface.md#f29-github-account-and-repository-browser--2026-09-22).
+GitHub REST and Electron safeStorage documentation supply independent implementation semantics.
+OAuth, non-GitHub account setup and self-hosted servers remain explicit unknown/unimplemented scope;
+neither this comparison nor the earlier PR browser handoff completes F29/P11.

@@ -4,19 +4,24 @@ import { unwrapResult } from '../../../common/ipc/result';
 import { RepositoryIcon } from './Icons';
 import { DialogShell } from './DialogShell';
 import type { Platform } from '../lib/platform';
+import type { HostingCloneTarget } from '../../../common/ipc/hosting';
 
 export function CloneDialog({
   platform,
   operations,
   onClose,
+  initialTarget,
+  onBrowseHosted,
 }: {
   readonly platform: Platform;
   readonly operations: readonly RepositoryOperation[];
   readonly onClose: () => void;
+  readonly initialTarget?: HostingCloneTarget | undefined;
+  readonly onBrowseHosted: () => void;
 }) {
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(initialTarget?.url ?? '');
   const [parentPath, setParentPath] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialTarget?.name ?? '');
   const nameEdited = useRef(false);
   const [accepted, setAccepted] = useState<RepositoryOperation>();
   const [checking, setChecking] = useState(false);
@@ -100,6 +105,12 @@ export function CloneDialog({
       onSubmit={() => void submit()}
       onClose={close}
     >
+      <dt />
+      <dd>
+        <button type="button" className="link-button" disabled={interactionBusy} onClick={onBrowseHosted}>
+          Browse hosted repositories…
+        </button>
+      </dd>
       <dt>
         <label htmlFor="clone-url">Repository URL:</label>
       </dt>

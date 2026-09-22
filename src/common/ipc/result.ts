@@ -15,6 +15,8 @@ export const ipcErrorSchema = z.strictObject({
     'SOURCE_DIRECTORY_NOT_FOUND',
     'OPERATION_FAILED',
     'STALE_SNAPSHOT',
+    'HOSTING_AUTH',
+    'HOSTING_RATE_LIMIT',
   ]),
   message: z.string(),
 });

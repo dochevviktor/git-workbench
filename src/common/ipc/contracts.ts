@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import {
+  hostingAccountSchema,
+  hostingAccountsSchema,
+  hostingAccountRequestSchema,
+  hostingConnectRequestSchema,
+  hostingRepositoriesRequestSchema,
+  hostedRepositoriesSchema,
+  hostingRepositoryRequestSchema,
+  hostingCloneSelectionSchema,
+  hostingCloneTargetSchema,
+} from './hosting';
 
 export interface RequestContract<Input, Output> {
   readonly channel: string;
@@ -2163,6 +2174,25 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  listHostingAccounts: request('hosting:list-accounts', z.undefined(), hostingAccountsSchema),
+  connectHostingAccount: request(
+    'hosting:connect-account',
+    hostingConnectRequestSchema,
+    hostingAccountSchema.nullable(),
+  ),
+  disconnectHostingAccount: request('hosting:disconnect-account', hostingAccountRequestSchema, z.null()),
+  listHostedRepositories: request(
+    'hosting:list-repositories',
+    hostingRepositoriesRequestSchema,
+    hostedRepositoriesSchema,
+  ),
+  getHostedCloneTarget: request(
+    'hosting:get-clone-target',
+    hostingCloneSelectionSchema,
+    hostingCloneTargetSchema,
+  ),
+  openHostedRepository: request('hosting:open-repository', hostingRepositoryRequestSchema, z.null()),
+  cancelHostingRequests: request('hosting:cancel-requests', z.undefined(), z.null()),
   getAppInfo: request('app:get-info', z.undefined(), appInfoSchema),
   getWindowState: request('window:get-state', z.undefined(), windowStateSchema),
   windowCommand: request('window:command', windowCommandSchema, z.null()),

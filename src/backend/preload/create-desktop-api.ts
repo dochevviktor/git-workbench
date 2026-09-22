@@ -17,6 +17,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
   const invoke = <Input, Output>(
     contract: RequestContract<Input, Output>,
     input: Input,
+    deadlineMs = timeoutMs,
   ): Promise<IpcResult<Output>> => {
     const parsedInput = contract.input.safeParse(input);
     if (!parsedInput.success) {
@@ -26,7 +27,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
     return new Promise((resolve) => {
       const timer = setTimeout(
         () => resolve(failure('TIMEOUT', 'The application did not respond in time.')),
-        timeoutMs,
+        deadlineMs,
       );
 
       // Also catch a synchronous transport failure (for example a destroyed renderer).
@@ -64,6 +65,16 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
   };
 
   return {
+    hosting: {
+      listAccounts: () => invoke(requests.listHostingAccounts, undefined),
+      // Native file selection can take longer than a short control request. Main also bounds its lifetime.
+      connect: (request) => invoke(requests.connectHostingAccount, request, 310_000),
+      disconnect: (request) => invoke(requests.disconnectHostingAccount, request),
+      listRepositories: (request) => invoke(requests.listHostedRepositories, request),
+      getCloneTarget: (request) => invoke(requests.getHostedCloneTarget, request),
+      openRepository: (request) => invoke(requests.openHostedRepository, request),
+      cancel: () => invoke(requests.cancelHostingRequests, undefined),
+    },
     app: { getInfo: () => invoke(requests.getAppInfo, undefined) },
     window: {
       getState: () => invoke(requests.getWindowState, undefined),

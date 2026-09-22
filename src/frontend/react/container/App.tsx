@@ -24,6 +24,8 @@ import type {
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
 import { CloneDialog } from '../components/CloneDialog';
+import { HostingAccountsDialog } from '../components/HostingAccountsDialog';
+import type { HostingCloneTarget } from '../../../common/ipc/hosting';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
 import type { HistoryReferenceCommands } from '../components/HistoryView';
@@ -154,6 +156,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
+  const [hostingOpen, setHostingOpen] = useState(false);
+  const [hostedCloneTarget, setHostedCloneTarget] = useState<HostingCloneTarget>();
   const [automaticFetch, setAutomaticFetch] = useState(true);
   useEffect(() => {
     let disposed = false;
@@ -266,6 +270,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     if (latest?.result?.kind !== 'clone') return;
     setCloneOpen(false);
     void openRecent(latest.result.value.path);
+    setHostedCloneTarget(undefined);
   }, [operations, openRecent]);
   const referenceBusy =
     referenceRequestBusy ||
@@ -1269,6 +1274,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       if (
         aboutOpen ||
         cloneOpen ||
+        hostingOpen ||
         referenceDialog ||
         networkDialog ||
         mergeRebaseDialog ||
@@ -1326,6 +1332,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   }, [
     aboutOpen,
     cloneOpen,
+    hostingOpen,
     active,
     activeOperation,
     closeActiveTab,
@@ -1404,6 +1411,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: repositoryBusy,
           run: () => setCloneOpen(true),
         },
+        { id: 'hosting-accounts', label: 'Accounts…', run: () => setHostingOpen(true) },
         menuSeparator,
         {
           id: 'open-recent',
@@ -2637,7 +2645,30 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
       {cloneOpen && (
-        <CloneDialog platform={platform} operations={operations} onClose={() => setCloneOpen(false)} />
+        <CloneDialog
+          platform={platform}
+          operations={operations}
+          initialTarget={hostedCloneTarget}
+          onClose={() => {
+            setCloneOpen(false);
+            setHostedCloneTarget(undefined);
+          }}
+          onBrowseHosted={() => {
+            setCloneOpen(false);
+            setHostedCloneTarget(undefined);
+            setHostingOpen(true);
+          }}
+        />
+      )}
+      {hostingOpen && (
+        <HostingAccountsDialog
+          onClose={() => setHostingOpen(false)}
+          onClone={(target) => {
+            setHostedCloneTarget(target);
+            setHostingOpen(false);
+            setCloneOpen(true);
+          }}
+        />
       )}
       {networkDialog && (
         <NetworkDialog

@@ -147,7 +147,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); F26 manual Bisect verified (2026-09-22); directory/code history and patch import remain planned    | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                              | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS verified (2026-09-20); F28 GPG commit/amend/tag signing, repository key and explicit verification verified (2026-09-22); native pinentry matrix, images, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
-| P11   | Hosting providers, issues/PRs, notifications                         | Started early; branch PR browser handoff only (2026-09-19)                                                                                                                                                                       | P05 auth; browser handoff independent |
+| P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub PAT accounts, paged repositories/clone selection, browser links and read-only live API check verified (2026-09-22); other providers, OAuth/self-hosting and F30 remain                                           | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                                                      | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                          | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                          | Every claimed workflow                |
@@ -996,6 +996,27 @@ Acceptance:
 ## P11 — Hosting integrations
 
 Coverage: F29–F30.
+
+F29 GitHub checkpoint (2026-09-22): implemented File → Accounts, native token-file selection,
+session-only accounts and opt-in OS-keyring-encrypted storage, same-account token replacement, sign-out,
+paged accessible repositories, current-page filtering, HTTPS/SSH clone selection, and fixed repository,
+PR and issue browser destinations. Existing branch PR creation handoffs remain available. Git transport
+continues to use installed credential helpers/SSH agents; account tokens are used only for API reads.
+No secrets cross shared DTOs/preload/renderer, and Linux plaintext keyring fallback is refused.
+
+`npm run check` passes 367 tests with one existing skip; production build and the hosting/desktop
+headless Electron scenarios pass. Mock contracts cover pagination, expired/revoked credentials,
+permission/rate-limit/service/offline errors, malformed/oversized responses, cancellation and sign-out
+races. Injected encryption tests verify restart, private atomic storage, replacement invariants and
+credential removal. The user-supplied token exists only in `.idea/.githubtoken`: the opt-in read-only
+verification uses it in memory, saves no credential copy, and suppresses identity/repository details.
+Live identity and repository enumeration succeeded; no second page was needed, so live pagination is
+not claimed. See [F29 hosting](reviews/f29-hosting.md) for evidence and exact commands.
+
+F29/P11 remain partial: GitLab/Bitbucket/Azure/Gitea account setup and enumeration, self-hosted instances,
+OAuth and automatic token renewal, remote revocation, account-token-backed Git transport, and the real
+Linux keyring/platform matrix are not implemented or verified. F30 in-app lists/filters/notifications
+remain separate; browser links do not complete F30. No hosting background polling is introduced.
 
 No authenticated hosting workflow is exercised in the supplied catalogue. Keep public sources and the
 verified browser handoff distinct from captured local Git coverage; missing captures do not drop this phase.

@@ -4,6 +4,7 @@ import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { registerAppIpc } from '../../src/backend/electron/ipc/register';
 import type { RepositoryService } from '../../src/backend/repositories/repository-service';
 import { events, requests } from '../../src/common/ipc/contracts';
+import type { HostingService } from '../../src/backend/hosting/hosting-service';
 
 const { handlers, removeHandler, writeText, openPath, packaged } = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, payload?: unknown) => Promise<unknown>>(),
@@ -98,6 +99,36 @@ afterEach(() => {
 });
 
 describe('IPC sender and window lifecycle', () => {
+  it('authorizes hosting only for the owner main frame and cancels on close', async () => {
+    const hosting = {
+      list: vi.fn(async () => ({ accounts: [], secureStorageAvailable: false })),
+      cancel: vi.fn(),
+    } as unknown as HostingService;
+    const ipc = registerAppIpc(undefined, hosting);
+    const window = new TestWindow(20);
+    const inspector = new TestWindow(21);
+    ipc.attachWindow(window.asWindow(), window.webContents.getURL());
+    ipc.attachWindow(inspector.asWindow(), inspector.webContents.getURL(), {
+      parentId: 20,
+      context: {} as never,
+    });
+    const handler = handlers.get(requests.listHostingAccounts.channel)!;
+    expect(await handler(window.event())).toMatchObject({ ok: true });
+    expect(await handler(inspector.event())).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handler({ ...window.event(), senderFrame: { url: window.webContents.getURL() } } as never),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handlers.get(requests.connectHostingAccount.channel)!(window.event(), {
+        remember: false,
+        token: 'forbidden',
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(hosting.list).toHaveBeenCalledOnce();
+    window.emit('closed');
+    expect(hosting.cancel).toHaveBeenCalledWith(20);
+    ipc.dispose();
+  });
   it('rejects inspector mutations even from its registered top frame', async () => {
     const service = {
       disposeWindow: vi.fn(),

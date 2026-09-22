@@ -26,6 +26,29 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('keeps hosting secrets and arbitrary URLs out of the bridge in both directions', async () => {
+    const { api, invoke } = fixture();
+    expect(await api.hosting.connect({ remember: false, token: 'not-allowed' } as never)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(await api.hosting.openRepository({ url: 'https://example.com' } as never)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { accounts: [], secureStorageAvailable: false } });
+    expect(await api.hosting.listAccounts()).toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenLastCalledWith('hosting:list-accounts', undefined);
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { id: 'github-1', provider: 'github', login: 'test', storage: 'session', token: 'not-allowed' },
+    });
+    expect(await api.hosting.connect({ remember: false })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates signature results and signing settings requests on named channels', async () => {
     const { api, invoke } = fixture();
     const request = { id: 'repo-' + 'b'.repeat(64), objectId: 'a'.repeat(40), kind: 'commit' as const };
@@ -98,7 +121,7 @@ describe('preload capability API', () => {
     const { api, invoke } = fixture();
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
-    expect(Object.keys(api)).toEqual(['app', 'window', 'edit', 'clipboard', 'repository']);
+    expect(Object.keys(api)).toEqual(['hosting', 'app', 'window', 'edit', 'clipboard', 'repository']);
   });
 
   it('blocks malformed input before crossing IPC', async () => {
