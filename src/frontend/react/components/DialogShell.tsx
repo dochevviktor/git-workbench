@@ -17,6 +17,7 @@ export function DialogShell({
   onSubmit,
   onClose,
   children,
+  className,
 }: {
   readonly title: string;
   readonly subtitle: string;
@@ -30,6 +31,7 @@ export function DialogShell({
   readonly onSubmit: () => void;
   readonly onClose: () => void;
   readonly children: ReactNode;
+  readonly className?: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -64,7 +66,7 @@ export function DialogShell({
   return (
     <dialog
       ref={dialogRef}
-      className="dialog reference-dialog"
+      className={`dialog reference-dialog${className ? ` ${className}` : ''}`}
       aria-labelledby={titleId}
       aria-busy={busy}
       data-testid="reference-dialog"

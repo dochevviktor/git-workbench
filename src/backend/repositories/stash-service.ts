@@ -1,4 +1,5 @@
 import { devNull } from 'node:os';
+import { ExpectedBackendError } from '../errors';
 import type {
   RepositoryPatchTarget,
   RepositoryStashDetails,
@@ -144,13 +145,27 @@ export interface ReadPatchInput {
 }
 
 /** Creates a bounded patch for a commit, stash, or selected working-tree paths. */
-export async function readPatch(runner: StashRunner, input: ReadPatchInput): Promise<string> {
+export async function readPatch(runner: StashRunner, input: ReadPatchInput): Promise<Buffer> {
   switch (input.target.kind) {
-    case 'commit':
+    case 'commit': {
       await ensureCommit(runner, input.cwd, input.target.commitId);
+      const parents = await runner.run(
+        ['show', '-s', '--format=%P', input.target.commitId],
+        readOptions(input.cwd),
+      );
+      if (parents.stdout.trim().split(/\s+/u).filter(Boolean).length > 1)
+        throw new ExpectedBackendError(
+          'UNAVAILABLE',
+          'Merge commit patch export requires choosing a parent and is not supported.',
+        );
       return runPatch(runner, input.cwd, [
         'format-patch',
+        '--root',
         '--stdout',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--src-prefix=a/',
+        '--dst-prefix=b/',
         '--binary',
         '--no-signature',
         '--no-stat',
@@ -158,11 +173,16 @@ export async function readPatch(runner: StashRunner, input: ReadPatchInput): Pro
         input.target.commitId,
         '--',
       ]);
+    }
     case 'stash': {
       const entry = await findStash(runner, input.cwd, input.target.stashId);
       return runPatch(runner, input.cwd, [
         'stash',
         'show',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--src-prefix=a/',
+        '--dst-prefix=b/',
         '--patch',
         '--binary',
         '--include-untracked',
@@ -186,12 +206,15 @@ async function ensureCommit(runner: StashRunner, cwd: string, commitId: string):
   }
 }
 
-async function runPatch(runner: StashRunner, cwd: string, args: readonly string[]): Promise<string> {
+async function runPatch(runner: StashRunner, cwd: string, args: readonly string[]): Promise<Buffer> {
   try {
-    const result = await runner.run(args, readOptions(cwd, patchOutputLimit));
-    const bytes = Buffer.byteLength(result.stdout, 'utf8');
-    if (bytes > patchOutputLimit) throw new GitOutputLimitError('stdout');
-    return result.stdout;
+    const result = await runner.run(args, {
+      ...readOptions(cwd, patchOutputLimit),
+      stdoutEncoding: 'base64',
+    });
+    const bytes = Buffer.from(result.stdout, 'base64');
+    if (bytes.length > patchOutputLimit) throw new GitOutputLimitError('stdout');
+    return bytes;
   } catch (error) {
     if (error instanceof GitOutputLimitError) {
       throw new Error('The patch is too large to save safely.', { cause: error });
@@ -205,7 +228,7 @@ async function readWorkingPatch(
   cwd: string,
   paths: readonly string[],
   includeUntracked: boolean,
-): Promise<string> {
+): Promise<Buffer> {
   const changes = await readWorkingChanges(runner, {
     repositoryId: 'repo-0000000000000000000000000000000000000000000000000000000000000000',
     cwd,
@@ -222,12 +245,21 @@ async function readWorkingPatch(
     throw new Error('The selected patch includes untracked files, but untracked files were excluded.');
   }
   const trackedPaths = [...selected].filter((path) => !untracked.has(path));
-  const pieces: string[] = [];
+  const pieces: Buffer[] = [];
+  let totalBytes = 0;
+  const append = (bytes: Buffer) => {
+    totalBytes += bytes.length;
+    if (totalBytes > patchOutputLimit)
+      throw new ExpectedBackendError('UNAVAILABLE', 'The patch exceeds the 8 MiB export limit.');
+    pieces.push(bytes);
+  };
   if (trackedPaths.length > 0) {
     const hasHead = await hasHeadCommit(runner, cwd);
     const args = [
       'diff',
       '--no-ext-diff',
+      '--src-prefix=a/',
+      '--dst-prefix=b/',
       '--no-textconv',
       '--no-color',
       '--full-index',
@@ -240,7 +272,7 @@ async function readWorkingPatch(
       '--',
       ...trackedPaths,
     ];
-    pieces.push(await runPatch(runner, cwd, args));
+    append(await runPatch(runner, cwd, args));
   }
   if (includeUntracked) {
     for (const path of [...selected].filter((candidate) => untracked.has(candidate))) {
@@ -250,6 +282,8 @@ async function readWorkingPatch(
           [
             'diff',
             '--no-ext-diff',
+            '--src-prefix=a/',
+            '--dst-prefix=b/',
             '--no-color',
             '--full-index',
             '--binary',
@@ -258,7 +292,7 @@ async function readWorkingPatch(
             devNull,
             path,
           ],
-          readOptions(cwd, patchOutputLimit),
+          { ...readOptions(cwd, patchOutputLimit), stdoutEncoding: 'base64' },
         );
       } catch (error) {
         if (!(error instanceof GitCommandError) || error.exitCode !== 1) throw error;
@@ -269,12 +303,11 @@ async function readWorkingPatch(
           signal: error.signal,
         };
       }
-      pieces.push(result.stdout);
+      append(Buffer.from(result.stdout, 'base64'));
     }
   }
-  const patch = pieces.filter((piece) => piece.length > 0).join(pieces.length > 1 ? '\n' : '');
-  if (Buffer.byteLength(patch, 'utf8') > patchOutputLimit)
-    throw new Error('The patch is too large to save safely.');
+  const patch = Buffer.concat(pieces);
+  if (patch.length > patchOutputLimit) throw new Error('The patch is too large to save safely.');
   return patch;
 }
 

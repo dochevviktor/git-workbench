@@ -42,6 +42,9 @@ import type {
   RepositoryRecoveryRequest,
   RepositoryResolveConflictRequest,
   RepositoryPatchExportRequest,
+  RepositoryPatchImportRequest,
+  RepositoryPatchPreview,
+  RepositoryPatchApplyRequest,
   RepositoryPatchExportResult,
   RepositoryPullRequestHandoff,
   RepositoryOperationSession,
@@ -279,6 +282,10 @@ export interface DesktopApi {
     getStashDetails(request: RepositoryStashDetailsRequest): Promise<IpcResult<RepositoryStashDetails>>;
     startStashOperation(request: RepositoryStashActionRequest): Promise<IpcResult<RepositoryOperation>>;
     savePatch(request: RepositoryPatchExportRequest): Promise<IpcResult<RepositoryPatchExportResult>>;
+    copyPatch(request: RepositoryPatchExportRequest): Promise<IpcResult<null>>;
+    previewPatch(request: RepositoryPatchImportRequest): Promise<IpcResult<RepositoryPatchPreview | null>>;
+    applyPatch(request: RepositoryPatchApplyRequest): Promise<IpcResult<RepositoryOperation>>;
+    releasePatch(request: RepositoryPatchApplyRequest): Promise<IpcResult<null>>;
     openPullRequest(request: RepositoryPullRequestHandoff): Promise<IpcResult<null>>;
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;

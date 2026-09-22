@@ -356,6 +356,22 @@ P10 remains partial.
 
 ## Verification and remaining research
 
+### F36 alignment checkpoint — 2026-09-22
+
+`P2-005-mixed-patch-preflight-subcase:F1–F4` (2026-09-20, Windows 2.22.0.0, high-confidence UI/Git)
+maps to `PatchDialogs`, `PatchPreviews`, the typed bridge and queued repository application. Original
+case, preflight/export screenshots and mixed-patch Git verification were inspected; clean/Cancel and
+exact staged outcomes are tested using independent fixtures. `P2-005-import-subcase:F1` and
+`P2-005-export-subcase:F1` retain their warning/malformed/export boundaries. The [F36 handoff](../reviews/f36-patches.md)
+records before/after image paths and verification. The private bundle is unchanged.
+
+[Windows 2.17/1.85 release notes](https://fork.dev/releasenoteswin) and
+[Mac 2.64 notes](https://fork.dev/releasenotes), accessed 2026-09-22, document clipboard routes
+(high confidence D, not new B observations). Linux keeps Windows button order with independent dialog
+chrome, clipboard controls and diagnostic expansion. Malformed/unsafe input disables Apply; conflicts
+remain real failed jobs. No content-browser preview, mailbox/merge-parent export, symlink/submodule
+application or binary-conflict parity is claimed. Broader P08 remains partial.
+
 F35 checkpoint (2026-09-22): `P2-010:F1` (Windows 2.22.0.0, 2026-09-19) maps to the independently
 implemented Statistics/Treemap workflow. Confidence is high for the sampled composition only. Original
 case, screens 0515–0517, manifests and graphs were inspected before styling and compared with Linux

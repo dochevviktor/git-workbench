@@ -1633,6 +1633,7 @@ export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSche
 export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
 
 export const repositoryOperationKindSchema = z.enum([
+  'patch',
   'external-tool',
   'custom-command',
   'clone',
@@ -2036,6 +2037,25 @@ export const repositoryPatchTargetSchema = z.discriminatedUnion('kind', [
 export const repositoryPatchExportRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   target: repositoryPatchTargetSchema,
+});
+export const repositoryPatchImportRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  source: z.enum(['file', 'clipboard']),
+});
+export const repositoryPatchPreviewSchema = z.strictObject({
+  token: z.string().uuid(),
+  location: z.string().max(32_768),
+  state: z.enum(['clean', 'warning', 'invalid']),
+  message: z.string().max(4096),
+  byteLength: z
+    .number()
+    .int()
+    .min(1)
+    .max(8 * 1024 * 1024),
+});
+export const repositoryPatchApplyRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  token: z.string().uuid(),
 });
 export const repositoryPatchExportResultSchema = z.strictObject({
   status: z.enum(['saved', 'cancelled']),
@@ -2574,6 +2594,18 @@ export const requests = {
     repositoryPatchExportRequestSchema,
     repositoryPatchExportResultSchema,
   ),
+  copyRepositoryPatch: request('repository:copy-patch', repositoryPatchExportRequestSchema, z.null()),
+  previewRepositoryPatch: request(
+    'repository:preview-patch',
+    repositoryPatchImportRequestSchema,
+    repositoryPatchPreviewSchema.nullable(),
+  ),
+  applyRepositoryPatch: request(
+    'repository:apply-patch',
+    repositoryPatchApplyRequestSchema,
+    repositoryOperationSchema,
+  ),
+  releaseRepositoryPatch: request('repository:release-patch', repositoryPatchApplyRequestSchema, z.null()),
   recoverRepository: request(
     'repository:recover',
     repositoryRecoveryRequestSchema,
@@ -2813,6 +2845,9 @@ export type RepositoryStashDetails = z.infer<typeof repositoryStashDetailsSchema
 export type RepositoryStashAction = z.infer<typeof repositoryStashActionSchema>;
 export type RepositoryStashActionRequest = z.infer<typeof repositoryStashActionRequestSchema>;
 export type RepositoryPatchTarget = z.infer<typeof repositoryPatchTargetSchema>;
+export type RepositoryPatchImportRequest = z.infer<typeof repositoryPatchImportRequestSchema>;
+export type RepositoryPatchPreview = z.infer<typeof repositoryPatchPreviewSchema>;
+export type RepositoryPatchApplyRequest = z.infer<typeof repositoryPatchApplyRequestSchema>;
 export type RepositoryPatchExportRequest = z.infer<typeof repositoryPatchExportRequestSchema>;
 export type RepositoryPatchExportResult = z.infer<typeof repositoryPatchExportResultSchema>;
 export type RepositoryPullRequestHandoff = z.infer<typeof repositoryPullRequestHandoffSchema>;

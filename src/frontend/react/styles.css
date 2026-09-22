@@ -3628,6 +3628,31 @@ p {
   width: min(560px, calc(100vw - 32px));
 }
 
+.patch-dialog {
+  width: min(590px, calc(100vw - 32px));
+}
+.patch-location {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.patch-location input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.patch-clean {
+  color: var(--success, #248044);
+}
+.patch-dialog .reference-dialog-warning {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+}
+.patch-dialog .reference-dialog-actions {
+  align-items: flex-end;
+}
+
 .reference-dialog .dialog-content {
   display: grid;
   gap: 16px;

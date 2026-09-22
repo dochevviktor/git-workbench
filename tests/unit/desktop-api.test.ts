@@ -26,6 +26,31 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates patch preview results and only exposes token-based application', async () => {
+    const { api, invoke } = fixture();
+    const id = 'repo-' + 'a'.repeat(64);
+    const token = 'f82f46b0-6fb3-4bcb-a22b-7b28e5a6ad4b';
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { token, location: 'Clipboard', state: 'clean', message: 'Ready', byteLength: 10 },
+    });
+    expect(await api.repository.previewPatch({ id, source: 'clipboard' })).toMatchObject({
+      ok: true,
+      value: { token },
+    });
+    expect(invoke).toHaveBeenLastCalledWith('repository:preview-patch', { id, source: 'clipboard' });
+    invoke.mockResolvedValueOnce({ ok: true, value: { token, state: 'invented' } });
+    expect(await api.repository.previewPatch({ id, source: 'file' })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(await api.repository.applyPatch({ id, token, content: 'raw patch' } as never)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(await api.repository.releasePatch({ id, token })).toEqual({ ok: true, value: null });
+  });
   it('validates settings in both directions and releases the exact change listener', async () => {
     const { api, emitter, invoke } = fixture();
     expect(await api.settings.getGit({ id: null })).toMatchObject({

@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { basename } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { readCommandFile } from '../../commands/custom-command-store';
+import { readPatchFile, checkedPatch } from '../../repositories/patch-service';
 import { events, requests } from '../../../common/ipc/contracts';
 import type {
   AppInfo,
@@ -631,6 +632,45 @@ export function registerAppIpc(
     );
     register(requests.startRepositoryStashOperation, (window, request) =>
       repositoryService.startStashOperation(window.webContents.id, request),
+    );
+    register(requests.copyRepositoryPatch, async (window, request) => {
+      const content = await repositoryService.patchExportContent(window.webContents.id, request);
+      await clipboard.writeText(content);
+      return null;
+    });
+    register(requests.previewRepositoryPatch, async (window, request) => {
+      // Authorize the repository before opening a native picker or reading the clipboard.
+      await repositoryService.getWorkingChanges(window.webContents.id, request.id, false, false);
+      if (request.source === 'clipboard') {
+        return repositoryService.previewPatch(
+          window.webContents.id,
+          request.id,
+          checkedPatch(Buffer.from(await clipboard.readText(), 'utf8')),
+          'Clipboard',
+        );
+      }
+      const chosen = await dialog.showOpenDialog(window, {
+        title: 'Apply Patch',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Git patches', extensions: ['patch', 'diff'] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+      });
+      const path = chosen.filePaths[0];
+      if (chosen.canceled || !path) return null;
+      return repositoryService.previewPatch(
+        window.webContents.id,
+        request.id,
+        await readPatchFile(path),
+        path,
+      );
+    });
+    register(requests.applyRepositoryPatch, (window, request) =>
+      repositoryService.applyPatch(window.webContents.id, request),
+    );
+    register(requests.releaseRepositoryPatch, (window, request) =>
+      repositoryService.releasePatch(window.webContents.id, request),
     );
     register(requests.saveRepositoryPatch, async (window, request) => {
       const defaultName =

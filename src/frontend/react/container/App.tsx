@@ -23,6 +23,7 @@ import type {
   RepositoryWorktreeAction,
 } from '../../../common/ipc/contracts';
 import { AboutDialog } from '../components/AboutDialog';
+import { PatchImportDialog, PatchExportDialog } from '../components/PatchDialogs';
 import { CloneDialog } from '../components/CloneDialog';
 import { HostingAccountsDialog } from '../components/HostingAccountsDialog';
 import { CustomCommandsDialog, CustomCommandRunDialog } from '../components/CustomCommandsDialog';
@@ -615,22 +616,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [active],
   );
 
+  const [patchImport, setPatchImport] = useState<{ id: string; source: 'file' | 'clipboard' }>();
+  const [patchExport, setPatchExport] = useState<{ id: string; target: RepositoryPatchTarget }>();
+  const closePatchImport = useCallback(() => setPatchImport(undefined), []);
+  const patchApplied = useCallback(() => setRefreshSignal((value) => value + 1), []);
   const savePatch = useCallback(
     (target: RepositoryPatchTarget) => {
       const repositoryId = active?.id;
       if (!repositoryId) return;
-      void window.desktop?.repository.savePatch({ id: repositoryId, target }).then((result) => {
-        if (activeRepositoryId.current !== repositoryId) return;
-        if (!result.ok) {
-          reportError(result.error.message);
-          return;
-        }
-        if (result.value.status === 'saved') {
-          setReferenceStatus({ message: result.value.message, blocked: false });
-        }
-      });
+      setPatchExport({ id: repositoryId, target });
     },
-    [active?.id, reportError],
+    [active?.id],
   );
 
   /**
@@ -1052,7 +1048,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     });
     if (
       active &&
-      ['merge', 'rebase', 'cherry-pick', 'revert', 'pull', 'stash', 'recovery', 'reset'].includes(
+      ['merge', 'rebase', 'cherry-pick', 'revert', 'pull', 'stash', 'recovery', 'reset', 'patch'].includes(
         completed.kind,
       )
     ) {
@@ -1327,7 +1323,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (event.isComposing || document.querySelector('dialog[open]')) return;
       if (is('Mod+P')) setQuickLaunchOpen(true);
-      else if (is('Mod+,')) setSettingsTarget({ repository: null });
+      else if (is('Mod+V')) {
+        if (
+          (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]')) ||
+          !active ||
+          active.bare ||
+          referenceBusy
+        )
+          return;
+        setPatchImport({ id: active.id, source: 'clipboard' });
+      } else if (is('Mod+,')) setSettingsTarget({ repository: null });
       else if (is('Mod+T')) openManagerTab();
       else if (is('Mod+N')) setCloneOpen(true);
       else if (is('Mod+O')) {
@@ -1695,6 +1700,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 id: 'repository-statistics',
                 label: 'Statistics…',
                 run: () => setStatisticsView('statistics'),
+              },
+              {
+                id: 'apply-patch',
+                label: 'Apply Patch…',
+                disabled: active.bare || referenceBusy,
+                run: () => setPatchImport({ id: active.id, source: 'file' }),
+              },
+              {
+                id: 'apply-clipboard-patch',
+                label: 'Apply Patch from Clipboard…',
+                disabled: active.bare || referenceBusy,
+                run: () => setPatchImport({ id: active.id, source: 'clipboard' }),
               },
               {
                 id: 'repository-treemap',
@@ -2905,6 +2922,26 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onRemoteAction={runRemoteAction}
           onOpen={openNetworkDialog}
           onClose={closeNetworkDialog}
+        />
+      )}
+      {patchImport && active?.id === patchImport.id && (
+        <PatchImportDialog
+          key={patchImport.id}
+          repositoryId={patchImport.id}
+          source={patchImport.source}
+          platform={platform}
+          onClose={closePatchImport}
+          onApplied={patchApplied}
+        />
+      )}
+      {patchExport && active?.id === patchExport.id && (
+        <PatchExportDialog
+          key={patchExport.id}
+          repositoryId={patchExport.id}
+          target={patchExport.target}
+          platform={platform}
+          onClose={() => setPatchExport(undefined)}
+          onSaved={(message) => setReferenceStatus({ message, blocked: false })}
         />
       )}
       {statisticsView && active && (

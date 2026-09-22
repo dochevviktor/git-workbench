@@ -114,6 +114,14 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F36 adds named patch preview/apply/release/copy capabilities. Main owns bounded file and clipboard
+ingestion and immutable one-use preview tokens bound to owner, repository and checkout snapshot.
+Application revalidates inside the common-directory operation queue, stages through Git apply and
+reports conflicts through the existing operation/Local Changes surfaces. The renderer receives no
+patch-file bytes or filesystem capability; inspectors are denied these channels. Existing export
+generation now preserves raw bytes, while clipboard export rejects lossy text conversion. See the
+[F36 handoff](reviews/f36-patches.md) for source validation, resource limits and deliberate adaptations.
+
 F35 adds named `getStatistics`/`cancelStatistics` repository reads with strict range/result schemas,
 the existing sender/frame/owner checks and inspector denial. Main pins HEAD, computes UTC author and
 exact-path activity, and caches bounded source snapshots; the renderer draws charts and weighted file

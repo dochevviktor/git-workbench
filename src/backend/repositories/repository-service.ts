@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { PatchPreviews, validatePatch } from './patch-service';
+import type { RepositoryPatchPreview, RepositoryPatchApplyRequest } from '../../common/ipc/contracts';
 import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -231,6 +233,7 @@ export interface RepositoryServiceOptions {
 
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
+  private readonly patches = new PatchPreviews();
   readonly externalTools: ExternalToolService;
   readonly customCommands: CustomCommandService;
   private readonly store: RecentRepositoryStore;
@@ -542,6 +545,7 @@ export class RepositoryService {
   }
 
   async close(ownerId: number, id: string): Promise<void> {
+    this.patches.release(ownerId, id);
     for (const [key, controller] of this.statisticsReads)
       if (key.startsWith(`${ownerId}:${id}:`)) {
         controller.abort();
@@ -2117,6 +2121,108 @@ export class RepositoryService {
     );
   }
 
+  async patchExportContent(ownerId: number, request: RepositoryPatchExportRequest): Promise<string> {
+    const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+    if (
+      request.target.kind === 'working' &&
+      request.target.changesSnapshot &&
+      (await this.previewLocalChanges(ownerId, request.id)).snapshot !== request.target.changesSnapshot
+    )
+      throw new ExpectedBackendError(
+        'STALE_SNAPSHOT',
+        'Working changes changed before export. Review them again.',
+      );
+    const bytes = await readPatch(this.runner, {
+      repositoryId: request.id,
+      cwd: summary.worktreePath ?? summary.commonDir,
+      target: request.target,
+    });
+    const content = bytes.toString('utf8');
+    if (!Buffer.from(content, 'utf8').equals(bytes))
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        'This patch is not UTF-8 text. Save it to a file to preserve its bytes.',
+      );
+    return content;
+  }
+
+  async previewPatch(
+    ownerId: number,
+    id: string,
+    bytes: Buffer,
+    location: string,
+  ): Promise<RepositoryPatchPreview> {
+    const summary = await this.requireWorktree(ownerId, id);
+    const preview = await this.previewLocalChanges(ownerId, id);
+    const changes = await this.getWorkingChanges(ownerId, id, true, false);
+    if (preview.pendingOperation || changes.counts.conflicted)
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        'Resolve the current conflicts or finish the pending operation before applying a patch.',
+      );
+    return this.patches.prepare(
+      this.runner,
+      ownerId,
+      id,
+      summary.worktreePath,
+      bytes,
+      location,
+      preview.snapshot,
+    );
+  }
+
+  releasePatch(ownerId: number, request: RepositoryPatchApplyRequest): null {
+    this.patches.release(ownerId, request.id, request.token);
+    return null;
+  }
+
+  applyPatch(ownerId: number, request: RepositoryPatchApplyRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'patch',
+        title: 'Apply Patch',
+        command: 'git apply --3way --whitespace=nowarn',
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const entry = this.patches.take(ownerId, request.id, request.token);
+          const summary = await this.requireWorktree(ownerId, request.id);
+          const current = await this.previewLocalChanges(ownerId, request.id);
+          if (current.snapshot !== entry.snapshot)
+            throw new ExpectedBackendError(
+              'STALE_SNAPSHOT',
+              'The repository changed after patch preflight. Select the patch again.',
+            );
+          await validatePatch(this.runner, summary.worktreePath, entry.bytes);
+          try {
+            const applied = await this.runner.run(['apply', '--3way', '--whitespace=nowarn', '-'], {
+              cwd: summary.worktreePath,
+              stdin: entry.bytes,
+              signal: handle.signal,
+              timeoutMs: 120000,
+              maxOutputBytes: 64 * 1024,
+            });
+            return {
+              status: 'succeeded',
+              message: 'Patch applied and staged. No commit was created.',
+              output: applied.stderr,
+            };
+          } catch (error) {
+            if (!(error instanceof GitCommandError)) throw error;
+            return {
+              status: 'failed',
+              message:
+                'Patch application did not complete cleanly. Review Local Changes and resolve any conflicts before committing.',
+              output: error.stderr,
+            };
+          }
+        }),
+    );
+  }
+
   async savePatch(
     ownerId: number,
     request: RepositoryPatchExportRequest,
@@ -2774,6 +2880,7 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.patches.release(ownerId);
     for (const [key, controller] of this.statisticsReads)
       if (key.startsWith(`${ownerId}:`)) {
         controller.abort();
@@ -2794,6 +2901,7 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    this.patches.clear();
     for (const controller of this.statisticsReads.values()) controller.abort();
     this.statisticsReads.clear();
     this.statistics.clear();

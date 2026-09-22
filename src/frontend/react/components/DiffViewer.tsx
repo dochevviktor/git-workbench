@@ -11,6 +11,7 @@ import type { ParsedDiffLine, ParsedUnifiedDiff } from '../lib/diff';
 import { ListOptionsIcon } from './Icons';
 import { ImageDiffViewer } from './ImageDiffViewer';
 import { MenuButton } from './menu/MenuButton';
+import { useContextMenu } from './menu/context-menu';
 import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 import type { DiffControls } from '../hooks/use-repository-diff';
@@ -520,6 +521,8 @@ export function DiffViewer({
   controls,
   positionKey,
 }: DiffViewerProps) {
+  const showContextMenu = useContextMenu();
+  const [copyStatus, setCopyStatus] = useState<string>();
   const [fontSize] = usePersistentState('diff.fontSize', 12, isNumberBetween(10, 20));
   const [showMarks] = usePersistentState(
     'diff.showMarks',
@@ -853,8 +856,54 @@ export function DiffViewer({
   }
 
   return (
-    <div className="diff-viewer" data-testid="diff-viewer" data-show-marks={showMarks} aria-label={label}>
+    <div
+      className="diff-viewer"
+      data-testid="diff-viewer"
+      data-show-marks={showMarks}
+      aria-label={label}
+      onContextMenu={(event) => {
+        if ((event.target as Element).closest('input, textarea, button')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const text = value?.state === 'text' ? value.content : '';
+        const available =
+          !loading && !error && !!text && text.length <= 1_048_576 && !text.includes('\uFFFD');
+        showContextMenu({
+          label: 'Diff',
+          anchor: { type: 'point', x: event.clientX, y: event.clientY },
+          items: [
+            {
+              id: 'copy-diff-selection',
+              label: 'Copy',
+              run: () => {
+                void window.desktop?.edit.command({ action: 'copy' });
+              },
+            },
+            {
+              id: 'copy-as-patch',
+              label: 'Copy as Patch',
+              disabled: !available,
+              disabledReason: available
+                ? undefined
+                : 'Load a text diff up to 1 MiB without decoding errors to copy it.',
+              run: () => {
+                void window.desktop?.clipboard
+                  .writeText({ text })
+                  .then((result) =>
+                    setCopyStatus(result.ok ? 'Patch copied to clipboard.' : result.error.message),
+                  );
+              },
+            },
+          ],
+        });
+      }}
+    >
       {toolbar}
+      {copyStatus && (
+        <p className="diff-status" role="status">
+          {copyStatus}
+        </p>
+      )}
       <div
         className={`diff-body ${mode}${wrap && mode === 'unified' && !large ? ' wrap' : ''}`}
         tabIndex={0}
