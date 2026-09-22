@@ -192,6 +192,10 @@ import {
   saveLfsPayload,
 } from './lfs-service';
 
+import { CustomCommandStore } from '../commands/custom-command-store';
+import { CustomCommandService, runCustomCommand } from '../commands/custom-command-service';
+import type { CustomPreviewRequest, CustomPreview } from '../../common/ipc/custom-commands';
+
 const repositoryReadTimeoutMs = 10_000;
 const repositoryReadOutputLimit = 128 * 1024;
 const managerMaxRepositories = 5_000;
@@ -219,6 +223,7 @@ export interface RepositoryServiceOptions {
 
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
+  readonly customCommands: CustomCommandService;
   private readonly store: RecentRepositoryStore;
   private readonly managerStore: RepositoryManagerStore;
   private readonly tabStore: RepositoryTabStore;
@@ -255,6 +260,10 @@ export class RepositoryService {
       maxTabs: this.maxOpenTabs,
     });
     this.runner = new ReadCoordinator(options.runner ?? new GitRunner());
+    this.customCommands = new CustomCommandService(
+      new CustomCommandStore(`${options.storagePath}.custom-commands`),
+      this.runner,
+    );
     this.clock = options.clock ?? (() => new Date());
     this.sourceScanOptions = options.sourceScanOptions ?? {};
     this.operations = new OperationRegistry({ clock: this.clock });
@@ -1398,6 +1407,38 @@ export class RepositoryService {
 
   listOperations(ownerId: number): RepositoryOperation[] {
     return this.operations.list(ownerId);
+  }
+
+  async previewCustomCommand(ownerId: number, request: CustomPreviewRequest): Promise<CustomPreview> {
+    const generation = this.ownerGenerations.get(ownerId) ?? 0;
+    const summary = await this.refreshOpenRepository(ownerId, request.context.repositoryId);
+    const preview = await this.customCommands.preview(ownerId, summary, request);
+    if ((this.ownerGenerations.get(ownerId) ?? 0) !== generation) {
+      this.customCommands.disposeOwner(ownerId);
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The owning window has closed.');
+    }
+    return preview;
+  }
+
+  startCustomCommand(
+    ownerId: number,
+    token: string,
+    openUrl: (url: string) => Promise<void>,
+  ): RepositoryOperation {
+    const id = this.customCommands.repositoryFor(ownerId, token);
+    const cached = this.operationRepository(ownerId, id);
+    return this.startOperation(
+      { ownerId, repositoryId: id, kind: 'custom-command', title: 'Custom command', command: '' },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          if (handle.signal.aborted)
+            return { status: 'failed', message: 'Cancelled before execution.', output: '' };
+          const summary = await this.refreshOpenRepository(ownerId, id);
+          const preview = await this.customCommands.consume(ownerId, token, summary);
+          handle.setCommand?.(preview.name);
+          return runCustomCommand(preview, handle, openUrl);
+        }),
+    );
   }
 
   private operationRepository(ownerId: number, id: string): RepositorySummary {
@@ -2641,6 +2682,7 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.customCommands.disposeOwner(ownerId);
     for (const [key, controller] of this.diffReads)
       if (key.startsWith(`${ownerId}:`)) {
         controller.abort();

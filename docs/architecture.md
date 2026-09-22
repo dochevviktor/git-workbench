@@ -114,6 +114,18 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F32 adds `desktop.customCommands` definition CRUD, native import/export/file selection, preview and
+token-only run capabilities. Profile definitions are main-owned, versioned, bounded and atomically
+saved; imported definitions are disabled. Preview resolves context and inputs in the backend and binds
+a one-use window-owned token to the saved revision and repository/ref state. Execution revalidates
+inside the common-directory mutation queue and uses the existing operation registry/events/cancellation.
+Start Process uses direct argv, Bash uses environment values rather than template insertion into code,
+and URL actions are limited to reviewed HTTP(S) destinations. Processes have bounded output and lifetime;
+inspector windows are denied every custom capability. No repository-provided definition auto-loads or
+auto-executes. This is an explicitly enabled user-program feature, not a generic renderer execution API
+or a sandbox for untrusted programs. See [F32](reviews/f32-custom-commands.md) for the independent
+format, variable conventions, process supervision and remaining parity limits.
+
 F31 Quick Launch is a renderer-only projection of menu actions plus typed parameter choosers.
 It reuses existing reference context, committed-tree reads, merge/rebase/checkout operations,
 repository opening and owned file-history inspectors. No new IPC, generic execution capability,

@@ -99,6 +99,13 @@ import type {
 } from './contracts';
 import type { IpcResult } from './result';
 import type {
+  CustomCommand,
+  CustomSave,
+  CustomSelection,
+  CustomPreviewRequest,
+  CustomPreview,
+} from './custom-commands';
+import type {
   HostingAccount,
   HostingAccounts,
   HostingConnectRequest,
@@ -116,6 +123,16 @@ export type Unsubscribe = () => void;
 
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
+  readonly customCommands: {
+    list(): Promise<IpcResult<CustomCommand[]>>;
+    save(request: CustomSave): Promise<IpcResult<CustomCommand[]>>;
+    remove(request: CustomSelection): Promise<IpcResult<CustomCommand[]>>;
+    import(): Promise<IpcResult<CustomCommand[] | null>>;
+    export(request: CustomSelection): Promise<IpcResult<null>>;
+    pickFile(): Promise<IpcResult<string | null>>;
+    preview(request: CustomPreviewRequest): Promise<IpcResult<CustomPreview>>;
+    run(request: { token: string }): Promise<IpcResult<RepositoryOperation>>;
+  };
   readonly hosting: {
     listActivity(request: HostingActivityRequest): Promise<IpcResult<HostingActivityPage>>;
     openActivity(request: HostingActivitySelection): Promise<IpcResult<null>>;

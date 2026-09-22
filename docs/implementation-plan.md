@@ -148,7 +148,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                              | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS verified (2026-09-20); F28 GPG commit/amend/tag signing, repository key and explicit verification verified (2026-09-22); native pinentry matrix, images, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                   | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell interactions verified (2026-09-20); bounded F31 Quick Launch verified (2026-09-22); custom commands, tools and workspace completion remain                                                                        | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell interactions verified (2026-09-20); bounded F31 Quick Launch and F32 contextual commands/forms/sharing verified (2026-09-22); command parity variants, tools and workspace completion remain                      | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                          | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                          | Every claimed workflow                |
 
@@ -1064,7 +1064,19 @@ lookup limits and stale repository context are covered by independent tests; Git
 reuse existing backend validation and recovery. See [F31 handoff](reviews/f31-quick-launch.md)
 for catalogue/public provenance, verification, screenshots and limits. Exact Fork ranking,
 complete command inventory and the platform/performance matrix remain unverified. Custom
-commands remain F33, and the broader P12 acceptance criteria remain partial.
+commands are owned by F32, and the broader P12 acceptance criteria remain partial.
+
+F32 checkpoint (2026-09-22): File → Custom Commands manages saved/disabled definitions and input forms;
+Repository, commit, branch, Local Changes file and submodule menus expose enabled actions. Main owns
+preview tokens, target resolution, direct process argv, Bash environment variables, validated HTTP(S)
+destinations, native sharing dialogs and common-directory serialization. All runs require review;
+imports never enable or execute themselves. Output, cancellation and owner cleanup reuse Activity.
+The independent JSON/variable conventions, synchronous-only execution policy and remaining parity
+limits are in [F32 custom commands](reviews/f32-custom-commands.md). `npm run check` passes 394 tests
+with one existing skip; production build, F32 headless Electron workflow and desktop isolation smoke
+pass. Light/dark/narrow screenshots were compared with the catalogue and existing public references.
+F32 remains partial for exact Fork aliases/formats, asynchronous/hidden-output modes and the platform
+matrix; P12's broader settings, external-tool and workspace acceptance remains incomplete.
 
 1. Quick Launch with fuzzy commands, branch/file/repository lookup, discoverable shortcuts, and consistent
    action availability across keyboard, menus, toolbars, and context menus. The captured command →

@@ -1,5 +1,13 @@
 import { z } from 'zod';
 import {
+  customCommandsSchema,
+  customSaveSchema,
+  customSelectionSchema,
+  customPreviewRequestSchema,
+  customPreviewSchema,
+  customRunSchema,
+} from './custom-commands';
+import {
   hostingActivityRequestSchema,
   hostingActivityPageSchema,
   hostingActivitySelectionSchema,
@@ -1588,6 +1596,7 @@ export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSche
 export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
 
 export const repositoryOperationKindSchema = z.enum([
+  'custom-command',
   'clone',
   'connection',
   'fetch',
@@ -2177,6 +2186,18 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  listCustomCommands: request('custom-commands:list', z.undefined(), customCommandsSchema),
+  saveCustomCommand: request('custom-commands:save', customSaveSchema, customCommandsSchema),
+  removeCustomCommand: request('custom-commands:remove', customSelectionSchema, customCommandsSchema),
+  importCustomCommands: request('custom-commands:import', z.undefined(), customCommandsSchema.nullable()),
+  exportCustomCommand: request('custom-commands:export', customSelectionSchema, z.null()),
+  pickCustomCommandFile: request(
+    'custom-commands:pick-input-file',
+    z.undefined(),
+    z.string().max(32768).nullable(),
+  ),
+  previewCustomCommand: request('custom-commands:preview', customPreviewRequestSchema, customPreviewSchema),
+  runCustomCommand: request('custom-commands:run', customRunSchema, repositoryOperationSchema),
   listHostingAccounts: request('hosting:list-accounts', z.undefined(), hostingAccountsSchema),
   listHostingActivity: request(
     'hosting:list-activity',

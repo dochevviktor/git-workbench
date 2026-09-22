@@ -1,6 +1,8 @@
 import { app, clipboard, dialog, ipcMain, shell } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { basename } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { readCommandFile } from '../../commands/custom-command-store';
 import { events, requests } from '../../../common/ipc/contracts';
 import type {
   AppInfo,
@@ -160,6 +162,63 @@ export function registerAppIpc(repositoryService?: RepositoryService, hostingSer
   }));
 
   register(requests.getWindowState, (window) => windowState(window));
+  if (repositoryService) {
+    const store = () => repositoryService.customCommands.store;
+    register(requests.listCustomCommands, () => store().list());
+    register(requests.saveCustomCommand, (_window, request) => store().save(request));
+    register(requests.removeCustomCommand, (_window, request) => store().remove(request));
+    register(requests.previewCustomCommand, (window, request) =>
+      repositoryService.previewCustomCommand(window.webContents.id, request),
+    );
+    register(requests.runCustomCommand, (window, request) =>
+      repositoryService.startCustomCommand(window.webContents.id, request.token, (url) =>
+        shell.openExternal(url),
+      ),
+    );
+    register(requests.pickCustomCommandFile, async (window) => {
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Select command input file',
+        properties: ['openFile'],
+      });
+      return result.canceled || window.isDestroyed() ? null : (result.filePaths[0] ?? null);
+    });
+    register(requests.importCustomCommands, async (window) => {
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Import custom commands (disabled until enabled)',
+        properties: ['openFile'],
+        filters: [{ name: 'Custom command definitions', extensions: ['json'] }],
+      });
+      const path = result.filePaths[0];
+      if (result.canceled || !path || window.isDestroyed()) return null;
+      let data: unknown;
+      try {
+        data = await readCommandFile(path);
+      } catch {
+        throw new ExpectedBackendError(
+          'INVALID_REQUEST',
+          'The selected file is not a readable custom commands JSON file (maximum 2 MiB).',
+        );
+      }
+      if (window.isDestroyed()) return null;
+      return store().import(data);
+    });
+    register(requests.exportCustomCommand, async (window, request) => {
+      const content = await store().export(request);
+      const result = await dialog.showSaveDialog(window, {
+        title: 'Export custom command',
+        defaultPath: 'custom-command.json',
+        filters: [{ name: 'Custom command definitions', extensions: ['json'] }],
+      });
+      if (!result.canceled && result.filePath && !window.isDestroyed()) {
+        try {
+          await writeFile(result.filePath, content, { mode: 0o600 });
+        } catch {
+          throw new ExpectedBackendError('UNAVAILABLE', 'The custom command could not be exported.');
+        }
+      }
+      return null;
+    });
+  }
   if (hostingService) {
     register(requests.listHostingActivity, (window, request) =>
       hostingService.listActivity(window.webContents.id, request),

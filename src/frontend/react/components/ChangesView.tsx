@@ -320,6 +320,7 @@ function ChangePreview({
 }
 
 interface ChangesViewProps {
+  readonly customFileItems?: (path: string) => MenuEntry[];
   readonly operationBusy?: boolean;
   readonly repository: RepositorySummary;
   /** Increments when the user asks the application to refresh. */
@@ -342,6 +343,7 @@ interface ChangesViewProps {
 }
 
 export function ChangesView({
+  customFileItems,
   repository,
   refreshSignal,
   onCommitted,
@@ -592,10 +594,11 @@ export function ChangesView({
           { id: 'diff-popup', label: 'Open Diff Popup', run: () => setPopup(true) },
           menuSeparator,
           { id: 'copy-path', label: 'Copy Path', run: () => copyText(entry.path) },
+          ...(paths.length === 1 ? (customFileItems?.(paths[0]!) ?? []) : []),
         ]),
       });
     },
-    [onSavePatch, onStashPaths, selectedKeys, showContextMenu, stagedEntries, unstaged],
+    [onSavePatch, onStashPaths, selectedKeys, showContextMenu, stagedEntries, unstaged, customFileItems],
   );
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(() => {
     if (!selected) return undefined;

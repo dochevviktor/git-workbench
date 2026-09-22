@@ -39,6 +39,7 @@ export interface HistoryReferenceCommands {
 }
 
 interface HistoryViewProps {
+  readonly customCommitItems?: (commitId: string) => MenuEntry[];
   readonly history: RepositoryHistory;
   readonly references: HistoryReferenceCommands;
   readonly searchMatches?: ReadonlySet<string>;
@@ -172,6 +173,7 @@ const CommitRow = memo(function CommitRow({
 });
 
 export function HistoryView({
+  customCommitItems,
   history,
   references: referenceCommands,
   searchMatches,
@@ -541,12 +543,14 @@ export function HistoryView({
         event.clientX - cell.getBoundingClientRect().left < graphWidth(row);
       showContextMenu({
         anchor: contextMenuAnchor(event, event.currentTarget),
-        items: onGraph ? graphMenu(commit, row) : commitMenu(commit, row),
+        items: onGraph
+          ? graphMenu(commit, row)
+          : [...commitMenu(commit, row), ...(customCommitItems?.(commit.id) ?? [])],
         label: `${onGraph ? 'Graph' : 'Commit'} ${shortHash(commit.id)}`,
         onClose: () => setContextCommitId(undefined),
       });
     },
-    [commitMenu, commits, graph, graphMenu, showContextMenu],
+    [commitMenu, commits, graph, graphMenu, showContextMenu, customCommitItems],
   );
 
   const moveSelection = (index: number) => {

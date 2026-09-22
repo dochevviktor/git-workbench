@@ -65,6 +65,16 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
   };
 
   return {
+    customCommands: {
+      list: () => invoke(requests.listCustomCommands, undefined),
+      save: (request) => invoke(requests.saveCustomCommand, request),
+      remove: (request) => invoke(requests.removeCustomCommand, request),
+      import: () => invoke(requests.importCustomCommands, undefined, 310_000),
+      export: (request) => invoke(requests.exportCustomCommand, request, 310_000),
+      pickFile: () => invoke(requests.pickCustomCommandFile, undefined, 310_000),
+      preview: (request) => invoke(requests.previewCustomCommand, request),
+      run: (request) => invoke(requests.runCustomCommand, request),
+    },
     hosting: {
       listActivity: (request) => invoke(requests.listHostingActivity, request),
       openActivity: (request) => invoke(requests.openHostingActivity, request),

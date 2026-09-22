@@ -153,7 +153,15 @@ describe('preload capability API', () => {
     const { api, invoke } = fixture();
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
-    expect(Object.keys(api)).toEqual(['hosting', 'app', 'window', 'edit', 'clipboard', 'repository']);
+    expect(Object.keys(api)).toEqual([
+      'customCommands',
+      'hosting',
+      'app',
+      'window',
+      'edit',
+      'clipboard',
+      'repository',
+    ]);
   });
 
   it('blocks malformed input before crossing IPC', async () => {

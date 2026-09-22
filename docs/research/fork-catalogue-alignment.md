@@ -299,6 +299,23 @@ Existing implemented slices remain partial; new corrections require their own ve
 
 ## Verification and remaining research
 
+F32 checkpoint (2026-09-22): `P2-008-create-execute-remove-subcase:F1–F5` and
+`P2-008-menu-subcase:F1` now map to a verified Linux editor/menu/run/output/remove workflow. The
+repository Bash route preserves refs/index/status in temporary Git fixtures. Five target resolvers,
+optional forms, direct process and HTTP(S) actions, disabled imports and versioned export are independently
+specified and tested; they are not retroactively claimed as captured outcomes.
+
+The original editor/Bash/output screenshots were inspected before styling and compared with local
+`f32-editor-light.png`, `f32-editor-dark.png`, `f32-editor-narrow.png` and `f32-output-light.png`.
+The captured list/editor/help structure, target/name/action controls and Details output remain; a
+dedicated File-menu manager, inline editor/form controls, explicit enable/review, environment-based Bash
+variables and responsive scrolling are deliberate Linux/product adaptations. The public Windows dark
+action editor (TrackerWin 2807, 2026-06-22) and macOS UI controls editor (Tracker 2629, 2026-05-12),
+both version-unstated, supplement the original Windows 2.22.0.0 evidence. Sources were checked 2026-09-22;
+high confidence covers visible controls and release-note feature existence, not underlying semantics.
+See the [source record](fork-public-surface.md#f32-contextual-custom-commands--2026-09-22) and
+[F32 handoff](../reviews/f32-custom-commands.md) for tests, bounds and remaining asynchronous/format/platform gaps.
+
 Before implementing a slice, choose its original case(s), inspect the exact screenshots, record the
 preconditions and expected transitions, and link the implementation and tests to finding IDs. Compare
 Git Workbench before/after captures using independently generated repositories. Assert Git content,

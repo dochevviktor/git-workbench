@@ -25,6 +25,8 @@ import type {
 import { AboutDialog } from '../components/AboutDialog';
 import { CloneDialog } from '../components/CloneDialog';
 import { HostingAccountsDialog } from '../components/HostingAccountsDialog';
+import { CustomCommandsDialog, CustomCommandRunDialog } from '../components/CustomCommandsDialog';
+import type { CustomCommand, CustomContext } from '../../../common/ipc/custom-commands';
 import type { HostingCloneTarget } from '../../../common/ipc/hosting';
 import { ChangesView } from '../components/ChangesView';
 import { HistoryView } from '../components/HistoryView';
@@ -162,6 +164,29 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [hostingOpen, setHostingOpen] = useState(false);
+  const [customCommandsOpen, setCustomCommandsOpen] = useState(false);
+  const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
+  const [customRun, setCustomRun] = useState<{ command: CustomCommand; context: CustomContext }>();
+  useEffect(() => {
+    let current = true;
+    void window.desktop?.customCommands.list().then((result) => {
+      if (current && result.ok) setCustomCommands(result.value);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  const customItems = (target: CustomContext['target'], value: string): MenuEntry[] =>
+    customCommands
+      .filter((command) => command.target === target && command.enabled)
+      .map((command) => ({
+        id: `custom-${command.id}`,
+        label: command.name,
+        disabled: !active || referenceBusy,
+        run: () => {
+          if (active) setCustomRun({ command, context: { repositoryId: active.id, target, value } });
+        },
+      }));
   const [hostedCloneTarget, setHostedCloneTarget] = useState<HostingCloneTarget>();
   const [automaticFetch, setAutomaticFetch] = useState(true);
   useEffect(() => {
@@ -1281,6 +1306,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         quickLaunchOpen ||
         cloneOpen ||
         hostingOpen ||
+        customCommandsOpen ||
+        customRun ||
         referenceDialog ||
         networkDialog ||
         mergeRebaseDialog ||
@@ -1342,6 +1369,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     quickLaunchOpen,
     cloneOpen,
     hostingOpen,
+    customCommandsOpen,
+    customRun,
     active,
     activeOperation,
     closeActiveTab,
@@ -1427,6 +1456,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           run: () => setCloneOpen(true),
         },
         { id: 'hosting-accounts', label: 'Accounts…', run: () => setHostingOpen(true) },
+        { id: 'custom-commands', label: 'Custom Commands…', run: () => setCustomCommandsOpen(true) },
         menuSeparator,
         {
           id: 'open-recent',
@@ -1679,6 +1709,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 run: () => openInFileManager({ kind: 'open', id: active.id }),
               },
               { id: 'copy-path', label: 'Copy Repository Path', run: () => copyText(active.path) },
+              ...customItems('repository', ''),
             ],
           },
         ]
@@ -2012,6 +2043,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         },
         menuSeparator,
         { id: 'copy-path', label: 'Copy Path', run: () => copyText(submodule.path) },
+        ...customItems('submodule', submodule.path),
       ]),
     });
   };
@@ -2418,6 +2450,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           { id: 'copy-name', label: 'Copy Reference Name', run: () => copyText(reference.fullName) },
         ];
     }
+    if (reference.fullName.startsWith('refs/heads/') || reference.fullName.startsWith('refs/remotes/'))
+      items.push(...customItems('branch', reference.fullName));
     showContextMenu({ anchor: contextMenuAnchor(event, event.currentTarget), label: reference.name, items });
   };
 
@@ -2692,6 +2726,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               {view === 'changes' ? (
                 <ChangesView
                   key={active.id}
+                  customFileItems={(path) => customItems('file', path)}
                   repository={active}
                   onVisibleCountChange={onVisibleCountChange}
                   refreshSignal={refreshSignal}
@@ -2708,6 +2743,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               ) : (
                 <HistoryView
                   key={`${active.id}:${history.filterKey}`}
+                  customCommitItems={(commitId) => customItems('commit', commitId)}
                   history={history}
                   references={historyReferences}
                   searchMatches={matchingCommitIds}
@@ -2784,6 +2820,24 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             setHostingOpen(false);
             setCloneOpen(true);
           }}
+        />
+      )}
+      {customCommandsOpen && (
+        <CustomCommandsDialog
+          commands={customCommands}
+          onChanged={setCustomCommands}
+          onClose={() => setCustomCommandsOpen(false)}
+        />
+      )}
+      {customRun && (
+        <CustomCommandRunDialog
+          command={customRun.command}
+          context={customRun.context}
+          branches={references.filter(
+            (item) => item.fullName.startsWith('refs/heads/') || item.fullName.startsWith('refs/remotes/'),
+          )}
+          operations={operations}
+          onClose={() => setCustomRun(undefined)}
         />
       )}
       {networkDialog && (

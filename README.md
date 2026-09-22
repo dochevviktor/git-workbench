@@ -99,6 +99,16 @@ See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and
 
 ## Start
 
+File → Custom Commands adds contextual Bash, process and URL actions. Save and enable a command,
+then choose it in the Repository menu or the matching commit/branch/Local Changes file/submodule
+context menu. Optional forms collect text, branch and file inputs; Review Command shows its directory
+and expanded intent before Run Command. Output and cancellation remain available in Activity.
+Import/export shares Git Workbench version-1 JSON; imports are disabled until individually enabled.
+Bash uses quoted environment variables such as `"$GW_REPO_PATH"` and `"$GW_INPUT_1"`; process arguments
+use a JSON array with `${repo:path}` and `${input:1}` placeholders. Commands run with your permissions,
+wait for exit, and stop at five minutes or 64 KiB output. See the [F32 handoff](docs/reviews/f32-custom-commands.md)
+for the format, context rules and parity limits.
+
 Quick Launch opens with Ctrl+P (Cmd+P on macOS), the toolbar, or File → Quick Launch.
 Search commands or recent repositories; choose Rebase/Merge, Checkout Branch, or File History
 to search their parameters. Arrow keys select, Enter opens, Escape closes, and Backspace on an

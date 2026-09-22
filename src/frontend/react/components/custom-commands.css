@@ -1,0 +1,120 @@
+.dialog.custom-commands-dialog {
+  width: min(1040px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  max-width: calc(100vw - 48px);
+}
+.custom-command-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(240px, 1fr) 225px;
+  gap: 16px;
+  min-height: 320px;
+}
+.custom-command-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+}
+.custom-command-entries {
+  flex: 1;
+  max-height: 420px;
+  overflow: auto;
+}
+.custom-command-entries > button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 9px;
+  overflow-wrap: anywhere;
+}
+.custom-command-entries > button.selected {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.custom-command-entries span,
+.custom-command-help {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.custom-command-entries > button.selected span {
+  color: inherit;
+}
+.custom-command-tools {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+.custom-command-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.custom-command-editor label,
+.custom-run-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.custom-command-editor input:not([type='checkbox']),
+.custom-command-editor select,
+.custom-command-editor textarea,
+.custom-command-run textarea,
+.custom-run-field input,
+.custom-run-field select {
+  width: 100%;
+  min-width: 0;
+}
+.custom-command-editor textarea,
+.custom-command-run textarea,
+.custom-command-run pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.custom-command-editor .custom-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.custom-field {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.custom-command-help {
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+  overflow-wrap: anywhere;
+}
+.dialog.custom-command-run {
+  width: min(740px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+}
+.custom-command-run pre {
+  padding: 10px;
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.custom-run-field {
+  margin: 8px 0;
+}
+.custom-remove {
+  padding: 8px;
+  border: 1px solid var(--border);
+}
+@media (max-width: 850px) {
+  .custom-command-layout {
+    grid-template-columns: 160px minmax(200px, 1fr);
+  }
+  .custom-command-help {
+    grid-column: 1 / -1;
+    border-left: 0;
+  }
+}
