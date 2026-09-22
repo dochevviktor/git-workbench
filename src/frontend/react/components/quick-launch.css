@@ -1,0 +1,75 @@
+.quick-launch {
+  padding: 0;
+  width: min(580px, calc(100vw - 32px));
+  border: 1px solid var(--border-strong);
+  background: var(--window);
+  color: var(--text);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 30%);
+}
+.quick-launch::backdrop {
+  background: transparent;
+}
+.quick-launch-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.quick-launch-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 4px;
+}
+.quick-launch-search button {
+  flex-shrink: 0;
+}
+.quick-launch-results {
+  height: min(290px, 50vh);
+  overflow: auto;
+  padding: 4px;
+}
+.quick-launch-group {
+  padding: 6px 10px 3px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.quick-launch-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: default;
+}
+.quick-launch-option > span {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quick-launch-option small {
+  opacity: 0.75;
+}
+.quick-launch-option[aria-selected='true'] {
+  background: var(--row-selected);
+  color: var(--row-selected-text);
+}
+.quick-launch-option[aria-disabled='true'] {
+  opacity: 0.55;
+}
+.quick-launch-option kbd {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 11px;
+}
+.quick-launch-status {
+  min-height: 26px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+}

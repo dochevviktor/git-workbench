@@ -14,12 +14,12 @@ let lastMergeMode: MergeMode = 'default';
 export type MergeRebaseDialogRequest =
   | {
       readonly kind: 'merge';
-      readonly source: RepositoryBranch;
+      readonly source: Pick<RepositoryBranch, 'name' | 'fullName'>;
       readonly current: RepositoryBranch;
     }
   | {
       readonly kind: 'rebase';
-      readonly source: RepositoryBranch;
+      readonly source: Pick<RepositoryBranch, 'name' | 'fullName'>;
       readonly current: RepositoryBranch;
     };
 

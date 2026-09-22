@@ -25,6 +25,8 @@ import { MenuButton } from './menu/MenuButton';
 import type { MenuEntry } from './menu/menu-model';
 
 interface ToolbarProps {
+  readonly onQuickLaunch: () => void;
+  readonly quickLaunchShortcut: string;
   readonly repositoryListVisible: boolean;
   readonly onToggleRepositoryList: () => void;
   readonly repository: RepositorySummary | undefined;
@@ -173,6 +175,8 @@ function progressText(operation: RepositoryOperation): string {
 }
 
 export function Toolbar({
+  onQuickLaunch,
+  quickLaunchShortcut,
   repositoryListVisible,
   onToggleRepositoryList,
   repository,
@@ -223,7 +227,8 @@ export function Toolbar({
         <ToolbarButton
           icon={<QuickLaunchIcon size={18} />}
           label="Quick Launch"
-          disabledReason="Quick Launch is not available yet (planned for P12)."
+          shortcut={quickLaunchShortcut}
+          onClick={onQuickLaunch}
         />
         <ToolbarButton
           icon={<FetchIcon size={18} />}

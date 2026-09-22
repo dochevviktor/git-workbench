@@ -114,6 +114,14 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F31 Quick Launch is a renderer-only projection of menu actions plus typed parameter choosers.
+It reuses existing reference context, committed-tree reads, merge/rebase/checkout operations,
+repository opening and owned file-history inspectors. No new IPC, generic execution capability,
+subscriptions or persisted state are introduced. Async lookups discard results on dismissal and
+stop scheduling bounded tree reads; repository/ref-snapshot and busy-state changes close a parameter
+chooser while the root command list updates in place.
+The [F31 handoff](reviews/f31-quick-launch.md) records enumeration bounds and independent fuzzy ranking.
+
 ```mermaid
 flowchart LR
     UI["React renderer"] --> API["window.desktop: explicit capabilities"]

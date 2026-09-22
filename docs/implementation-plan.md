@@ -148,7 +148,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                              | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS verified (2026-09-20); F28 GPG commit/amend/tag signing, repository key and explicit verification verified (2026-09-22); native pinentry matrix, images, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                   | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                                                      | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell interactions verified (2026-09-20); bounded F31 Quick Launch verified (2026-09-22); custom commands, tools and workspace completion remain                                                                        | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                          | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                          | Every claimed workflow                |
 
@@ -1055,6 +1055,16 @@ Acceptance:
 
 Coverage: F02–F03 completion, F31–F34, F38. C01 brings shell work forward; C05 covers productivity.
 Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
+
+F31 checkpoint (2026-09-22): Quick Launch now supports Ctrl/Cmd+P, toolbar and File-menu
+entry, fuzzy commands/recent repositories, branch/tag parameter selection for reviewed
+Merge/Rebase, Checkout Branch, and bounded committed-file History lookup. Actual menu
+callbacks supply command availability and shortcuts. Focus, dismissal, async cancellation,
+lookup limits and stale repository context are covered by independent tests; Git operations
+reuse existing backend validation and recovery. See [F31 handoff](reviews/f31-quick-launch.md)
+for catalogue/public provenance, verification, screenshots and limits. Exact Fork ranking,
+complete command inventory and the platform/performance matrix remain unverified. Custom
+commands remain F33, and the broader P12 acceptance criteria remain partial.
 
 1. Quick Launch with fuzzy commands, branch/file/repository lookup, discoverable shortcuts, and consistent
    action availability across keyboard, menus, toolbars, and context menus. The captured command →

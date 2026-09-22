@@ -99,6 +99,13 @@ See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and
 
 ## Start
 
+Quick Launch opens with Ctrl+P (Cmd+P on macOS), the toolbar, or File → Quick Launch.
+Search commands or recent repositories; choose Rebase/Merge, Checkout Branch, or File History
+to search their parameters. Arrow keys select, Enter opens, Escape closes, and Backspace on an
+empty parameter input returns to commands. Merge/Rebase retain their confirmation dialogs.
+File History searches committed HEAD files, with explicit bounds and a File Tree fallback.
+See the [F31 handoff](docs/reviews/f31-quick-launch.md) for verification and remaining limits.
+
 Use Node.js 24.13+ within the Node 24 LTS line and npm 11+. The source, tests, and executable
 configuration are TypeScript/TSX. HTML, CSS, JSON, YAML, and documentation are non-code assets.
 JavaScript produced by compilation and supplied by dependencies is expected.

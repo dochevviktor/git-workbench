@@ -65,6 +65,17 @@ gaps or deliberate bounded-slice limits; F38 Lean Branching remains separate fro
 
 ## Baseline, provenance and review limits
 
+F31 implementation (2026-09-22): [Quick Launch handoff](../reviews/f31-quick-launch.md)
+maps `P1-032:F1` (Windows 2.22.0.0, 2026-09-19, high-confidence captured UI) to grouped
+commands/recent repositories, branch/tag selection, existing Rebase review and outside-click
+dismissal. The public [2019-10-23 Quick Launch article](https://fork.dev/blog/posts/quick-launch/)
+(retrieved 2026-09-22) supports Ctrl/Cmd+P, branch checkout and fuzzy file-history lookup.
+Linux light/dark screenshots were compared with the original four case images. Accessible
+HTML dialog, back/close buttons, shortcut/disabled hints, bounded HEAD-file enumeration and
+the Unicode substring/subsequence ranking are independent adaptations. Exact Fork ranking,
+empty-result behavior and other command outcomes remain catalogue unknowns; custom commands
+remain F33. The private bundle is unchanged.
+
 - Source: the user's private [bundle](fork-reference-new/START_HERE.md), especially the
   [implementation handoff](fork-reference-new/reference/catalogue/START_HERE.md),
   [design guide](fork-reference-new/reference/catalogue/DESIGN_GUIDE.md), original cases and linked PNG,

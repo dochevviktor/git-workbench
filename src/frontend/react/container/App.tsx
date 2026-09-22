@@ -57,6 +57,10 @@ import { Splitter } from '../components/Splitter';
 import { TitleBar } from '../components/TitleBar';
 import type { TitleBarMenu } from '../components/TitleBar';
 import { Toolbar } from '../components/Toolbar';
+import { QuickLaunch } from '../components/QuickLaunch';
+import { launchMenuItems } from '../lib/quick-launch';
+import { collectLaunchFiles } from '../lib/quick-launch-files';
+import type { LaunchItem } from '../lib/quick-launch';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { useContextMenu } from '../components/menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator, planned } from '../components/menu/menu-model';
@@ -75,7 +79,7 @@ import { useBisect } from '../hooks/use-bisect';
 import { useGitFlow } from '../hooks/use-git-flow';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
-import { detectPlatform, matchesShortcut } from '../lib/platform';
+import { detectPlatform, formatShortcut, matchesShortcut } from '../lib/platform';
 import type { Platform } from '../lib/platform';
 import { workspaceShortcuts } from '../lib/workspace-shortcuts';
 
@@ -155,6 +159,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [hostingOpen, setHostingOpen] = useState(false);
   const [hostedCloneTarget, setHostedCloneTarget] = useState<HostingCloneTarget>();
@@ -1273,6 +1278,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       // A modal dialog owns the keyboard while it is open, including its own Escape handling.
       if (
         aboutOpen ||
+        quickLaunchOpen ||
         cloneOpen ||
         hostingOpen ||
         referenceDialog ||
@@ -1285,7 +1291,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       )
         return;
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
-      if (is('Mod+T')) openManagerTab();
+      if (event.isComposing || document.querySelector('dialog[open]')) return;
+      if (is('Mod+P')) setQuickLaunchOpen(true);
+      else if (is('Mod+T')) openManagerTab();
       else if (is('Mod+N')) setCloneOpen(true);
       else if (is('Mod+O')) {
         if (!repositoryBusy) void openExisting();
@@ -1331,6 +1339,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     aboutOpen,
+    quickLaunchOpen,
     cloneOpen,
     hostingOpen,
     active,
@@ -1391,6 +1400,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       mnemonic: 'f',
       items: compactMenu([
         { id: 'new-tab', label: 'New Tab', shortcut: 'Mod+T', run: openManagerTab },
+        {
+          id: 'quick-launch',
+          label: 'Quick Launch…',
+          shortcut: 'Mod+P',
+          run: () => setQuickLaunchOpen(true),
+        },
         {
           id: 'open-repository',
           label: 'Open Repository…',
@@ -2407,6 +2422,105 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   };
 
   const error = desktop.error ?? repositoryError ?? operationError;
+  const launchReferenceReason = !active
+    ? 'Open a repository first.'
+    : active.bare
+      ? 'A bare repository has no working tree.'
+      : !referencesReady
+        ? referenceLoading
+        : referenceBusy
+          ? 'Another repository operation is running.'
+          : referenceContext?.pendingOperation
+            ? 'Finish the pending operation first.'
+            : undefined;
+  const launchItems: LaunchItem[] = [
+    ...recent.map((repository): LaunchItem => ({
+      id: `recent-${repository.id}`,
+      label: repository.name,
+      detail: repository.path,
+      group: 'Recent Repositories',
+      disabled: repositoryBusy || repository.status !== 'available',
+      disabledReason: repositoryBusy
+        ? 'Another repository action is running.'
+        : 'The repository is unavailable.',
+      run: () => void openRecent(repository.path),
+    })),
+    ...(['rebase', 'merge'] as const).map((kind): LaunchItem => ({
+      id: `launch-${kind}`,
+      label: kind === 'rebase' ? 'Rebase…' : 'Merge…',
+      group: 'Commands',
+      disabled: Boolean(launchReferenceReason) || !currentBranch,
+      disabledReason: launchReferenceReason ?? 'Check out a branch first.',
+      choices: async () => ({
+        items: [...(referenceContext?.branches ?? []), ...(referenceContext?.tags ?? [])].map((source) => ({
+          id: source.fullName,
+          label: source.name,
+          detail: source.fullName.startsWith('refs/tags/') ? 'Tag' : 'Branch',
+          group: 'Branches and Tags',
+          disabled: source.fullName === currentBranch?.fullName,
+          disabledReason: 'This is the current branch.',
+          run: () => {
+            if (currentBranch) openMergeRebaseDialog({ kind, source, current: currentBranch });
+          },
+        })),
+      }),
+    })),
+    {
+      id: 'launch-checkout',
+      label: 'Checkout Branch…',
+      group: 'Commands',
+      disabled: Boolean(launchReferenceReason),
+      disabledReason: launchReferenceReason,
+      choices: async () => ({
+        items: (referenceContext?.branches ?? []).map((branch) => ({
+          id: branch.fullName,
+          label: branch.name,
+          group: 'Branches',
+          disabled: branch.isHead || Boolean(branch.worktreePath),
+          disabledReason: branch.isHead
+            ? 'This branch is already checked out.'
+            : `Checked out in ${branch.worktreePath}.`,
+          run: () => checkoutBranch(branch),
+        })),
+      }),
+    },
+    {
+      id: 'launch-file-history',
+      label: 'File History…',
+      group: 'Commands',
+      disabled: !active?.head.commit,
+      disabledReason: 'Open a repository with a committed HEAD first.',
+      choices: async (signal) => {
+        const api = window.desktop?.repository;
+        const commitId = active?.head.commit;
+        if (!api || !active || !commitId) throw new Error('The repository is no longer available.');
+        const files = await collectLaunchFiles(async (path) => {
+          const result = await api.getRevisionTree({ id: active.id, commitId, path });
+          if (!result.ok) throw new Error(result.error.message);
+          return result.value;
+        }, signal);
+        return {
+          items: files.paths.map((path) => ({
+            id: path,
+            label: path,
+            group: 'Files at HEAD',
+            run: () => {
+              void api
+                .openFileHistory({ id: active.id, commitId, path, theme: appearance })
+                .then((opened) => {
+                  if (!opened.ok) reportError(opened.error.message);
+                })
+                .catch(() => reportError('File history could not be opened.'));
+            },
+          })),
+          notice: files.truncated
+            ? 'File lookup limit reached (5,000 files / 200 directories / 10 seconds). Use File Tree for other paths.'
+            : 'Committed files at HEAD; untracked files are not included.',
+        };
+      },
+    },
+    ...menus.flatMap((menu) => launchMenuItems(menu.items, menu.id)),
+  ];
   const desktopStatus = desktop.error ? 'unavailable' : desktop.loading ? 'connecting' : 'connected';
   const tabStrip = (orientation: 'horizontal' | 'vertical') => (
     <RepositoryTabs
@@ -2446,6 +2560,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onWindowCommand={windowCommand}
       />
       <Toolbar
+        onQuickLaunch={() => setQuickLaunchOpen(true)}
+        quickLaunchShortcut={formatShortcut('Mod+P', platform)}
         repositoryListVisible={repositoryListVisible}
         onToggleRepositoryList={() =>
           void setTabOrientation(repositoryListVisible ? 'horizontal' : 'vertical')
@@ -2698,6 +2814,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           failure={gitFlowFailure}
           onSubmit={startGitFlow}
           onClose={closeGitFlowDialog}
+        />
+      )}
+      {quickLaunchOpen && (
+        <QuickLaunch
+          items={launchItems}
+          platform={platform}
+          contextKey={`${active?.id}:${referenceContext?.snapshot}:${referenceBusy}`}
+          onClose={() => setQuickLaunchOpen(false)}
         />
       )}
       {mergeRebaseDialog && (
