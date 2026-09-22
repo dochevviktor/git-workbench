@@ -946,6 +946,12 @@ basic workflows complete early. Source: [Mac releases][mac].
 
 ## F36 patch import/export and clipboard — 2026-09-22
 
+Refresh follow-up (2026-09-22): the three baseline branch/stash failures found during F36 are addressed
+in the [refresh-fix record](../reviews/reference-refresh-fixes.md). Reference snapshots survive a
+same-repository refresh, operation busy state follows its own lifetime, and empty sections remember
+expansion intent. Tests synchronize on refreshed actions rather than pre-existing rows. These are
+independent implementation corrections, not new catalogue observations or expanded feature claims.
+
 F36 checkpoint (2026-09-22): the [patch handoff](../reviews/f36-patches.md) implements file/clipboard
 preflight, exact staged application, three-way conflict reporting, Create Patch save/copy and text-diff
 Copy as Patch. Primary high-confidence Windows 2.22.0.0 anchors are

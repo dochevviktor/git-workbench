@@ -28,6 +28,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const generation = useRef(0);
+  const operationGeneration = useRef(0);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -77,9 +78,16 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
 
   useEffect(() => {
     generation.current += 1;
+    operationGeneration.current += 1;
     setBusy(false);
     setContext(undefined);
+    setRemotes([]);
     setError(undefined);
+  }, [repositoryId]);
+
+  useEffect(() => {
+    // Keep the last complete snapshot while refreshing this repository. Menus capture their
+    // entries when opened; clearing it here could freeze a loading-only menu indefinitely.
     reload();
   }, [refreshSignal, reload]);
 
@@ -94,6 +102,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
       }
       setBusy(true);
       const requestGeneration = generation.current;
+      const actionGeneration = operationGeneration.current;
       try {
         const current = context;
         if (!current) throw new Error('The branches and tags could not be read.');
@@ -111,7 +120,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
         if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
         return result;
       } finally {
-        if (mounted.current && generation.current === requestGeneration) setBusy(false);
+        if (mounted.current && operationGeneration.current === actionGeneration) setBusy(false);
       }
     },
     [context, read, repositoryId],
@@ -123,6 +132,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
       if (!repositoryId || !api) throw new Error('Open this application in Electron to change remotes.');
       setBusy(true);
       const requestGeneration = generation.current;
+      const actionGeneration = operationGeneration.current;
       try {
         const result = unwrapResult(await api.repository.applyRemoteAction({ id: repositoryId, action }));
         if (mounted.current && generation.current === requestGeneration) setRemotes(result.remotes);
@@ -131,7 +141,7 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
         if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
         return result;
       } finally {
-        if (mounted.current && generation.current === requestGeneration) setBusy(false);
+        if (mounted.current && operationGeneration.current === actionGeneration) setBusy(false);
       }
     },
     [read, repositoryId],

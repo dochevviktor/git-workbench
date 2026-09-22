@@ -78,7 +78,7 @@ file/clipboard staged application, Ctrl+V, invalid-input disabled Apply, Escape,
 commit clipboard/file export and a narrow dark dialog. Native picker interaction itself is stubbed;
 real OS clipboard and application handlers are exercised.
 
-Final gates: `npm run check` passes 438 tests with one existing skip; `npm run build` passes.
+Initial F36 gates: `npm run check` passes 438 tests with one existing skip; `npm run build` passes.
 `npm run test:e2e` has 26 passes (including F36 and the isolated-preload desktop smoke), one opt-in skip,
 and three existing `review-workflows.test.ts` failures. All three reproduce with identical assertions
 in a separate detached worktree at unchanged baseline `e38c344`:
@@ -90,6 +90,10 @@ in a separate detached worktree at unchanged baseline `e38c344`:
 The F36 test also passes independently after adding export capture, with artifacts under
 `test-results/f36-final/`. These results verify this bounded feature; they do not declare the full
 Electron suite green or change the unrelated workflows.
+
+The subsequent [branch/stash refresh follow-up](reference-refresh-fixes.md) fixes those renderer
+timing issues and updates the review scenarios to wait for actionable state. See that record for
+current verification; the initial baseline results above are retained as historical evidence.
 
 Compared original screenshot
 `fork-reference-new/evidence/continuous15/20260920T050006_856066Z_patch-selected_fcee0d/screen.png`

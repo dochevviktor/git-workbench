@@ -877,10 +877,18 @@ F36 checkpoint (2026-09-22): file/clipboard applicability preflight, staged thre
 conflict diagnostics, Create Patch file/clipboard export, diff Copy as Patch and contextual Ctrl+V
 are verified. Tests establish exact mixed add/edit/rename staging, Cancel invariance and raw-byte
 round trips. `npm run check` passes 438 tests with one existing skip; production build and F36/desktop
-smoke scenarios pass. The full Electron suite has 26 passes, one opt-in skip and three older
+smoke scenarios pass. The initial full Electron suite had 26 passes, one opt-in skip and three older
 `review-workflows` failures, all reproduced at unchanged baseline `e38c344` in a separate worktree.
 See the [F36 handoff](reviews/f36-patches.md) for exact failures and limits. Mailboxes, merge-parent
 export, special-path imports and broader P08 criteria remain partial.
+
+Refresh follow-up (2026-09-22): all three baseline failures above are fixed. Reference context survives
+same-repository refresh; operation busy state has an independent generation; empty sidebar sections
+retain expansion intent. Review tests wait for the refreshed current branch and enabled actions.
+`npm run check` passes 438 tests (one existing skip), production build passes, and the full headless
+Electron suite passes 29 scenarios (one opt-in skip). See the
+[refresh-fix record](reviews/reference-refresh-fixes.md). This closes the verification caveat without
+promoting the remaining P08 scope.
 
 F26 checkpoint (2026-09-22): manual Start/Bad/Good/Skip/Abort, visible range and first-bad/ambiguous
 outcomes, graph navigation, and application-restart restoration are implemented. Disposable Git tests

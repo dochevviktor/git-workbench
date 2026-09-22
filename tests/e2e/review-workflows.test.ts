@@ -206,7 +206,7 @@ test('review branch workflows preserve intent, refresh diffs and fit the support
       await main.click({ button: 'right' });
       await expect(
         page.getByRole('menuitem', { name: "Create Pull Request on 'github'…", exact: true }),
-      ).toBeVisible();
+      ).toBeEnabled();
     }).toPass({ timeout: 10000 });
     await page.getByRole('menuitem', { name: "Create Pull Request on 'github'…", exact: true }).click();
     await expect
@@ -245,6 +245,8 @@ test('F15 saves a selected working file as a named stash from its context menu',
       env: environment(),
     });
     const page = await open(application, cwd);
+    // An empty section remembers expansion intent while the new stash is being created/read.
+    await page.getByRole('treeitem', { name: 'Stashes', exact: true }).click();
     await page.getByRole('button', { name: /Local Changes/u }).click();
     const selected = page.getByTestId('working-changes-unstaged').getByTestId('working-change').filter({
       hasText: 'selected.txt',
@@ -259,7 +261,6 @@ test('F15 saves a selected working file as a named stash from its context menu',
     await expect(dialog).toHaveCount(0);
     await expect.poll(() => readFile(join(cwd, 'selected.txt'), 'utf8')).toBe('base selected\n');
     expect(await readFile(join(cwd, 'other.txt'), 'utf8')).toBe('other change\n');
-    await page.getByRole('treeitem', { name: 'Stashes', exact: true }).click();
     await expect(page.getByRole('treeitem', { name: /stash@\{0\}: selected from UI/u })).toBeVisible();
     await expect(page.getByTestId('reference-status')).toContainText('stash');
   } finally {
@@ -323,9 +324,16 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
 
     await run('checkout', '--quiet', 'rebase-topic');
     await page.keyboard.press('F5');
-    await expect(page.getByRole('treeitem', { name: 'rebase-target', exact: true })).toBeVisible();
-    await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
+    await expect(page.locator('.toolbar-repository-branch')).toHaveText('rebase-topic');
     const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
+    // The target row already existed before checkout; wait for the source/action to refresh too.
+    await expect(async () => {
+      await page.keyboard.press('Escape');
+      await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
+      await expect(
+        rebaseMenu.getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true }),
+      ).toBeEnabled({ timeout: 500 });
+    }).toPass({ timeout: 10000 });
     await rebaseMenu
       .getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true })
       .click();

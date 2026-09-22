@@ -408,7 +408,7 @@ export function RepositorySidebar({
     if (filtering || expand === item.expanded) return;
     setToggled((current) => {
       const next = new Set(current);
-      if (next.has(item.key)) next.delete(item.key);
+      if (expand === expandedByDefault(item.key, item.level)) next.delete(item.key);
       else next.add(item.key);
       return next;
     });
@@ -535,6 +535,9 @@ export function RepositorySidebar({
             onActiveChange={setActiveKey}
             onToggle={toggle}
             onSelect={(item) => {
+              // Remember a click while a section is still empty/loading, so newly arrived
+              // references become visible without requiring the user to click a second time.
+              if (item.key.startsWith('section:') && !item.expandable) toggle(item, true);
               const worktree = worktreesByKey.get(item.key);
               if (worktree) return;
               const submodule = submodulesByKey.get(item.key);
