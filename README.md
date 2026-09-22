@@ -105,6 +105,20 @@ See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and
 
 ## Start
 
+File → External Tools configures editors, diff/merge tools and terminals. Use an absolute executable
+path and a JSON argument array, for example `["--wait", "$LOCAL"]` for a waiting editor. File menus
+offer the configured tools; historical actions receive the selected revision, and working editors open
+the actual checkout file. Diff sides are copies. Merge tools edit a temporary result that returns to
+the conflict editor for review before Resolve and Stage. Output/cancellation remain in Activity.
+The Linux terminal preset uses an installed `xdg-terminal-exec`; Browse can select another terminal.
+Tools stop after five minutes; configure their wait option so temporary files remain available until
+they exit. See the [F33 handoff](docs/reviews/f33-external-tools.md) for variables and limits.
+
+After building, `npx electron . -- /absolute/repository/path` opens a repository from the command line.
+Packaged builds accept `git-workbench -- /absolute/repository/path`; a second invocation activates the
+existing window. Use `--` before paths beginning with a dash. File Manager remains in Open in and
+repository/tab context menus.
+
 File → Custom Commands adds contextual Bash, process and URL actions. Save and enable a command,
 then choose it in the Repository menu or the matching commit/branch/Local Changes file/submodule
 context menu. Optional forms collect text, branch and file inputs; Review Command shows its directory

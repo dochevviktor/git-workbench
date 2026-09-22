@@ -193,6 +193,9 @@ import {
 } from './lfs-service';
 
 import { CustomCommandStore } from '../commands/custom-command-store';
+import { ExternalToolStore } from '../tools/external-tool-store';
+import { ExternalToolService } from '../tools/external-tool-service';
+import type { ExternalToolRun } from '../../common/ipc/external-tools';
 import { CustomCommandService, runCustomCommand } from '../commands/custom-command-service';
 import type { CustomPreviewRequest, CustomPreview } from '../../common/ipc/custom-commands';
 
@@ -223,6 +226,7 @@ export interface RepositoryServiceOptions {
 
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
+  readonly externalTools: ExternalToolService;
   readonly customCommands: CustomCommandService;
   private readonly store: RecentRepositoryStore;
   private readonly managerStore: RepositoryManagerStore;
@@ -260,6 +264,10 @@ export class RepositoryService {
       maxTabs: this.maxOpenTabs,
     });
     this.runner = new ReadCoordinator(options.runner ?? new GitRunner());
+    this.externalTools = new ExternalToolService(
+      new ExternalToolStore(`${options.storagePath}.external-tools`),
+      this.runner,
+    );
     this.customCommands = new CustomCommandService(
       new CustomCommandStore(`${options.storagePath}.custom-commands`),
       this.runner,
@@ -1407,6 +1415,20 @@ export class RepositoryService {
 
   listOperations(ownerId: number): RepositoryOperation[] {
     return this.operations.list(ownerId);
+  }
+
+  startExternalTool(ownerId: number, request: ExternalToolRun): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.repositoryId);
+    return this.startOperation(
+      { ownerId, repositoryId: cached.id, kind: 'external-tool', title: 'External tool', command: '' },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          if (handle.signal.aborted)
+            return { status: 'failed', message: 'Cancelled before launch.', output: '' };
+          const summary = await this.refreshOpenRepository(ownerId, cached.id);
+          return this.externalTools.run(summary, request, handle);
+        }),
+    );
   }
 
   async previewCustomCommand(ownerId: number, request: CustomPreviewRequest): Promise<CustomPreview> {

@@ -1,0 +1,68 @@
+.external-tools-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+.external-tools-grid {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+}
+.external-tools-grid aside {
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+.external-tools-grid aside .button {
+  display: block;
+  max-width: 100%;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.external-tools-grid h3 {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.external-tools-grid fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.external-tools-dialog label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.external-tools-dialog input,
+.external-tools-dialog select,
+.external-tools-dialog textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid var(--input-border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+.external-tools-dialog .dialog-actions {
+  gap: 6px;
+}
+.external-tools-grid aside .button[aria-pressed='true'] {
+  background: var(--row-context);
+}
+.external-tools-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.external-tool-output {
+  max-height: 220px;
+  overflow: auto;
+}
+@media (max-width: 650px) {
+  .external-tools-grid {
+    grid-template-columns: 1fr;
+  }
+  .external-tools-grid aside {
+    border-right: 0;
+  }
+}

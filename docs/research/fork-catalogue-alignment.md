@@ -65,6 +65,20 @@ gaps or deliberate bounded-slice limits; F38 Lean Branching remains separate fro
 
 ## Baseline, provenance and review limits
 
+F33 implementation (2026-09-22): [external-tool handoff](../reviews/f33-external-tools.md) maps
+`P2-009-custom-viewer-subcase:F1–F4` and `P2-009-configuration-subcase:F1` (Windows 2.22.0.0,
+2026-09-19, high confidence within the trial) to named tool configuration/Browse/removal and exact
+historical blob handoff. Original cases, Git manifests/comparison and screens 0507/0509/0511/0512/0514
+were compared with independent Linux light/dark/narrow captures before and after implementation.
+Grouped lists and Name/Path/Arguments follow the evidence; JSON argv, explicit Save/launch review,
+temporary merge drafts and the dedicated File → External Tools entry are independent adaptations.
+[JuxtaCode](https://juxtacode.app/integrations/fork/) and
+[xdg-terminal-exec](https://github.com/Vladimir-csp/xdg-terminal-exec), accessed 2026-09-22, supplement
+macOS argument conventions and Linux desktop selection respectively; neither proves Windows merge
+outcomes. Binary/missing-stage conflicts, arbitrary daemon lifetimes, Ctrl+D/default selection and
+the native platform/tool matrix remain open. The private bundle is unchanged; full F34 Preferences
+and P12 retention/workspace acceptance remain partial.
+
 F31 implementation (2026-09-22): [Quick Launch handoff](../reviews/f31-quick-launch.md)
 maps `P1-032:F1` (Windows 2.22.0.0, 2026-09-19, high-confidence captured UI) to grouped
 commands/recent repositories, branch/tag selection, existing Rebase review and outside-click

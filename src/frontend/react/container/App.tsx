@@ -26,6 +26,7 @@ import { AboutDialog } from '../components/AboutDialog';
 import { CloneDialog } from '../components/CloneDialog';
 import { HostingAccountsDialog } from '../components/HostingAccountsDialog';
 import { CustomCommandsDialog, CustomCommandRunDialog } from '../components/CustomCommandsDialog';
+import { useExternalTools } from '../components/external-tools-context';
 import type { CustomCommand, CustomContext } from '../../../common/ipc/custom-commands';
 import type { HostingCloneTarget } from '../../../common/ipc/hosting';
 import { ChangesView } from '../components/ChangesView';
@@ -65,7 +66,7 @@ import { collectLaunchFiles } from '../lib/quick-launch-files';
 import type { LaunchItem } from '../lib/quick-launch';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { useContextMenu } from '../components/menu/context-menu';
-import { compactMenu, contextMenuAnchor, menuSeparator, planned } from '../components/menu/menu-model';
+import { compactMenu, contextMenuAnchor, menuSeparator } from '../components/menu/menu-model';
 import type { MenuEntry } from '../components/menu/menu-model';
 import { useDesktop } from '../hooks/use-desktop';
 import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persistent-state';
@@ -110,6 +111,7 @@ export default function App() {
 }
 
 function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly platform: Platform }) {
+  const externalTools = useExternalTools();
   const { info, windowState, windowCommand } = desktop;
   const repositories = useRepositories();
   const {
@@ -1419,7 +1421,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         if (active) openInFileManager({ kind: 'open', id: active.id });
       },
     },
-    { id: 'open-in-terminal', label: 'Terminal', ...planned('Opening a terminal', 'P12') },
+    ...(active ? externalTools.items(active.id, { kind: 'repository' }) : []),
+    { id: 'configure-tools', label: 'Configure External Tools…', run: externalTools.settings },
   ];
 
   const menus: TitleBarMenu[] = [
@@ -1457,6 +1460,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         },
         { id: 'hosting-accounts', label: 'Accounts…', run: () => setHostingOpen(true) },
         { id: 'custom-commands', label: 'Custom Commands…', run: () => setCustomCommandsOpen(true) },
+        { id: 'external-tools', label: 'External Tools…', run: externalTools.settings },
         menuSeparator,
         {
           id: 'open-recent',
@@ -1710,6 +1714,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               },
               { id: 'copy-path', label: 'Copy Repository Path', run: () => copyText(active.path) },
               ...customItems('repository', ''),
+              ...(active ? externalTools.items(active.id, { kind: 'repository' }) : []),
             ],
           },
         ]
@@ -1798,11 +1803,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           label: 'Open in File Manager',
           run: () => openInFileManager({ kind: 'open', id: repository.id }),
         },
-        repository && {
-          id: 'open-in-terminal',
-          label: 'Open in Terminal',
-          ...planned('Opening a terminal', 'P12'),
-        },
+        ...(repository ? externalTools.items(repository.id, { kind: 'repository' }) : []),
         repository && { id: 'copy-path', label: 'Copy Path', run: () => copyText(repository.path) },
       ]),
     });

@@ -163,6 +163,23 @@ export function registerAppIpc(repositoryService?: RepositoryService, hostingSer
 
   register(requests.getWindowState, (window) => windowState(window));
   if (repositoryService) {
+    register(requests.listExternalTools, () => repositoryService.externalTools.store.list());
+    register(requests.saveExternalTool, (_window, request) =>
+      repositoryService.externalTools.store.save(request),
+    );
+    register(requests.removeExternalTool, (_window, request) =>
+      repositoryService.externalTools.store.remove(request),
+    );
+    register(requests.runExternalTool, (window, request) =>
+      repositoryService.startExternalTool(window.webContents.id, request),
+    );
+    register(requests.pickExternalTool, async (window) => {
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Select external tool executable',
+        properties: ['openFile'],
+      });
+      return result.canceled || window.isDestroyed() ? null : (result.filePaths[0] ?? null);
+    });
     const store = () => repositoryService.customCommands.store;
     register(requests.listCustomCommands, () => store().list());
     register(requests.saveCustomCommand, (_window, request) => store().save(request));

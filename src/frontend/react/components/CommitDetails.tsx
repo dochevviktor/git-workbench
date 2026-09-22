@@ -40,6 +40,7 @@ import type { TreeItem } from './TreeView';
 import { MenuButton } from './menu/MenuButton';
 import { useContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
+import { useExternalTools } from './external-tools-context';
 import { copyText } from '../lib/clipboard';
 
 type DetailTab = 'commit' | 'changes' | 'tree';
@@ -439,6 +440,7 @@ export function CommitDetails({
   searchQuery = '',
 }: CommitDetailsProps) {
   const savedPresentation = detailPresentations.get(repositoryId ?? '');
+  const externalTools = useExternalTools();
   const showContextMenu = useContextMenu();
   const [activeTab, setActiveTab] = useState<DetailTab>(
     initialTab ?? savedPresentation?.activeTab ?? 'commit',
@@ -488,6 +490,7 @@ export function CommitDetails({
         anchor: contextMenuAnchor(event, event.currentTarget),
         label: `File ${path}`,
         items: compactMenu([
+          ...externalTools.items(repositoryId, { kind: 'revision', path, commitId: commit.id, line: 1 }),
           {
             id: 'file-history',
             label: 'History…',
@@ -533,7 +536,7 @@ export function CommitDetails({
         ]),
       });
     },
-    [commit, repositoryId, showContextMenu, standalone],
+    [commit, repositoryId, showContextMenu, standalone, externalTools],
   );
 
   useEffect(() => {

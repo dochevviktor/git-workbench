@@ -106,6 +106,12 @@ import type {
   CustomPreview,
 } from './custom-commands';
 import type {
+  ExternalTool,
+  ExternalToolSave,
+  ExternalToolSelection,
+  ExternalToolRun,
+} from './external-tools';
+import type {
   HostingAccount,
   HostingAccounts,
   HostingConnectRequest,
@@ -132,6 +138,13 @@ export interface DesktopApi {
     pickFile(): Promise<IpcResult<string | null>>;
     preview(request: CustomPreviewRequest): Promise<IpcResult<CustomPreview>>;
     run(request: { token: string }): Promise<IpcResult<RepositoryOperation>>;
+  };
+  readonly externalTools: {
+    list(): Promise<IpcResult<ExternalTool[]>>;
+    save(request: ExternalToolSave): Promise<IpcResult<ExternalTool[]>>;
+    remove(request: ExternalToolSelection): Promise<IpcResult<ExternalTool[]>>;
+    pickExecutable(): Promise<IpcResult<string | null>>;
+    run(request: ExternalToolRun): Promise<IpcResult<RepositoryOperation>>;
   };
   readonly hosting: {
     listActivity(request: HostingActivityRequest): Promise<IpcResult<HostingActivityPage>>;

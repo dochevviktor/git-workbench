@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RepositoryConflictFile, RepositoryConflictState } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import { CodePreview } from './CodePreview';
+import { useExternalTools } from './external-tools-context';
 
 interface ConflictResolverProps {
   readonly repositoryId: string;
@@ -88,6 +89,7 @@ function displayResolution(
 }
 
 export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved }: ConflictResolverProps) {
+  const externalTools = useExternalTools();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, setState] = useState<RepositoryConflictState>();
   const [activePath, setActivePath] = useState(path);
@@ -202,6 +204,33 @@ export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved
             Cancel
           </button>
         </header>
+        {state && file && textCapable && (
+          <div className="dialog-actions">
+            {externalTools
+              .items(
+                repositoryId,
+                { kind: 'conflict', path: file.path, snapshot: state.snapshot },
+                (draft) => {
+                  if (draft.path === file.path && draft.snapshot === state.snapshot)
+                    setContent(draft.content);
+                },
+              )
+              .map(
+                (item) =>
+                  item.type !== 'separator' && (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="button"
+                      disabled={busy || saving || loading}
+                      onClick={item.run}
+                    >
+                      {item.label}
+                    </button>
+                  ),
+              )}
+          </div>
+        )}
         {error && (
           <div className="inline-alert" role="alert">
             <span>{error}</span>

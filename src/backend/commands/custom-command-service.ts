@@ -216,6 +216,9 @@ export async function runCustomCommand(
   for (const key of [
     'PATH',
     'HOME',
+    'USER',
+    'LOGNAME',
+    'SHELL',
     'LANG',
     'LC_ALL',
     'TMPDIR',
@@ -223,6 +226,13 @@ export async function runCustomCommand(
     'DISPLAY',
     'WAYLAND_DISPLAY',
     'XDG_RUNTIME_DIR',
+    'XDG_CURRENT_DESKTOP',
+    'XDG_SESSION_TYPE',
+    'XDG_CONFIG_HOME',
+    'XDG_CONFIG_DIRS',
+    'XDG_DATA_HOME',
+    'XDG_DATA_DIRS',
+    'PULSE_SERVER',
     'DBUS_SESSION_BUS_ADDRESS',
   ])
     if (process.env[key]) env[key] = process.env[key];

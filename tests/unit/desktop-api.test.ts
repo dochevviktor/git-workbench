@@ -26,6 +26,25 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates external tool definitions, responses and named launch targets', async () => {
+    const { api, invoke } = fixture();
+    invoke.mockResolvedValueOnce({ ok: true, value: [] });
+    expect(await api.externalTools.list()).toEqual({ ok: true, value: [] });
+    expect(invoke).toHaveBeenLastCalledWith('external-tools:list', undefined);
+    invoke.mockResolvedValueOnce({ ok: true, value: [{ executable: '/bin/sh' }] });
+    expect(await api.externalTools.list()).toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });
+    expect(
+      await api.externalTools.run({
+        repositoryId: `repo-${'a'.repeat(64)}`,
+        executable: '/bin/sh',
+        target: { kind: 'repository' },
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(2);
+    invoke.mockResolvedValueOnce({ ok: true, value: '/usr/bin/meld' });
+    expect(await api.externalTools.pickExecutable()).toEqual({ ok: true, value: '/usr/bin/meld' });
+    expect(invoke).toHaveBeenLastCalledWith('external-tools:pick-executable', undefined);
+  });
   it('routes bounded image diffs through the existing validated capability', async () => {
     const { api, invoke } = fixture();
     const request = {
@@ -198,6 +217,7 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
     expect(Object.keys(api)).toEqual([
       'customCommands',
+      'externalTools',
       'hosting',
       'app',
       'window',

@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import {
+  externalToolsSchema,
+  externalToolSaveSchema,
+  externalToolSelectionSchema,
+  externalToolRunSchema,
+  externalMergeDraftSchema,
+} from './external-tools';
+import {
   customCommandsSchema,
   customSaveSchema,
   customSelectionSchema,
@@ -1618,6 +1625,7 @@ export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSche
 export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
 
 export const repositoryOperationKindSchema = z.enum([
+  'external-tool',
   'custom-command',
   'clone',
   'connection',
@@ -1685,6 +1693,7 @@ export const repositoryOperationSchema = z.strictObject({
   revision: z.number().int().nonnegative().optional(),
   result: z
     .discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('external-merge'), value: externalMergeDraftSchema }),
       z.strictObject({ kind: z.literal('clone'), value: repositorySummarySchema }),
       z.strictObject({ kind: z.literal('commit'), value: repositoryCommitResultSchema }),
       z.strictObject({ kind: z.literal('reference'), value: repositoryReferenceActionResultSchema }),
@@ -2209,6 +2218,11 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 
 export const requests = {
   listCustomCommands: request('custom-commands:list', z.undefined(), customCommandsSchema),
+  listExternalTools: request('external-tools:list', z.undefined(), externalToolsSchema),
+  saveExternalTool: request('external-tools:save', externalToolSaveSchema, externalToolsSchema),
+  removeExternalTool: request('external-tools:remove', externalToolSelectionSchema, externalToolsSchema),
+  pickExternalTool: request('external-tools:pick-executable', z.undefined(), z.string().max(4096).nullable()),
+  runExternalTool: request('external-tools:run', externalToolRunSchema, repositoryOperationSchema),
   saveCustomCommand: request('custom-commands:save', customSaveSchema, customCommandsSchema),
   removeCustomCommand: request('custom-commands:remove', customSelectionSchema, customCommandsSchema),
   importCustomCommands: request('custom-commands:import', z.undefined(), customCommandsSchema.nullable()),

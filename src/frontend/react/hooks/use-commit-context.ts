@@ -19,6 +19,8 @@ function actionError(reason: unknown): string {
  */
 export function useCommitContext(repositoryId: string | undefined, changeToken: string): CommitContextState {
   const [value, setValue] = useState<RepositoryCommitContext>();
+  const [loadedKey, setLoadedKey] = useState<string>();
+  const key = `${repositoryId ?? ''}\0${changeToken}`;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const generation = useRef(0);
@@ -29,6 +31,7 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
     generation.current = requestGeneration;
     if (!repositoryId) {
       setValue(undefined);
+      setLoadedKey(key);
       setLoading(false);
       setError(undefined);
       return;
@@ -37,6 +40,7 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
     const api = window.desktop;
     if (!api) {
       setValue(undefined);
+      setLoadedKey(key);
       setLoading(false);
       setError('Open this application in Electron to commit changes.');
       return;
@@ -47,16 +51,18 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
       const next = unwrapResult(await api.repository.getCommitContext({ id: repositoryId }));
       if (!mounted.current || generation.current !== requestGeneration) return;
       setValue(next);
+      setLoadedKey(key);
       setError(undefined);
     } catch (reason: unknown) {
       if (mounted.current && generation.current === requestGeneration) {
         setValue(undefined);
+        setLoadedKey(key);
         setError(actionError(reason));
       }
     } finally {
       if (mounted.current && generation.current === requestGeneration) setLoading(false);
     }
-  }, [repositoryId]);
+  }, [repositoryId, key]);
 
   useEffect(() => {
     mounted.current = true;
@@ -74,5 +80,11 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
     void load();
   }, [load]);
 
-  return { value, loading, error, refresh };
+  // Invalidate in the render that observes changed staging, before the reload effect runs.
+  return {
+    value: loadedKey === key ? value : undefined,
+    loading: loading || loadedKey !== key,
+    error,
+    refresh,
+  };
 }

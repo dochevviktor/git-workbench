@@ -199,7 +199,7 @@ export function CommitComposer({
   const commit = useCallback(
     async (skipHooks: boolean) => {
       const api = window.desktop;
-      if (!api || !value || committing) return;
+      if (!api || !value || context.loading || committing) return;
       setCommitting(true);
       setFailure(undefined);
       setError(undefined);
@@ -261,6 +261,7 @@ export function CommitComposer({
       amend,
       body,
       committing,
+      context.loading,
       onCommitted,
       refreshContext,
       repository.id,
@@ -274,6 +275,7 @@ export function CommitComposer({
   );
 
   const blockedReason = useMemo(() => {
+    if (context.loading) return 'The commit details are still loading.';
     if (!value) return context.error ?? 'The commit details are still loading.';
     if (busy) return 'Another working-tree action is in progress.';
     if (value.identity.source === 'missing') {
@@ -288,7 +290,7 @@ export function CommitComposer({
     if (amend) return value.amend ? undefined : (value.amendBlockedReason ?? 'There is no commit to amend.');
     if (stagedCount === 0 && !value.pendingOperation) return 'Stage at least one change to commit.';
     return undefined;
-  }, [amend, busy, conflictedCount, context.error, stagedCount, subject, value]);
+  }, [amend, busy, conflictedCount, context.error, context.loading, stagedCount, subject, value]);
 
   // Count code points so an emoji or accented character is one character, as a reader would count it.
   const remaining = subjectLengthGuide - [...subject].length;
@@ -382,7 +384,7 @@ export function CommitComposer({
               <button
                 type="button"
                 className="button button-small"
-                disabled={committing}
+                disabled={committing || context.loading || !value}
                 onClick={() => void commit(true)}
               >
                 Commit Without Hooks

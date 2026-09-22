@@ -5,6 +5,7 @@ import BlameInspector from './container/BlameInspector';
 import CommitInspector from './container/CommitInspector';
 import FileHistoryInspector from './container/FileHistoryInspector';
 import './styles.css';
+import { ExternalToolsProvider } from './components/ExternalTools';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('The application root is missing.');
@@ -17,7 +18,9 @@ const page =
   ) : window.location.hash === '#blame' ? (
     <BlameInspector />
   ) : (
-    <App />
+    <ExternalToolsProvider>
+      <App />
+    </ExternalToolsProvider>
   );
 
 createRoot(root).render(<StrictMode>{page}</StrictMode>);

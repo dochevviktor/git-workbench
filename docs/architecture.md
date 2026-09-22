@@ -114,6 +114,16 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F33 adds profile-owned `desktop.externalTools` list/save/remove/native executable selection and named
+launch capabilities. Definitions use explicit executable paths and argument arrays; the renderer can
+launch only a saved revision for an owned repository and a validated working/revision/conflict target.
+Main materializes bounded exact blobs, rejects symlink/submodule file targets, and supervises the process
+through the existing operation registry and common-directory queue. Temporary merge output returns as
+an `external-merge` operation result for review in the conflict editor; its original snapshot still guards
+Resolve and Stage. Settings writes are atomic/versioned with stale-revision checks. Inspectors are denied
+all external-tool channels. Temporary cleanup is tied to process termination; GUI adapters must wait.
+See [F33](reviews/f33-external-tools.md) for independent argument semantics, resource and platform limits.
+
 F32 adds `desktop.customCommands` definition CRUD, native import/export/file selection, preview and
 token-only run capabilities. Profile definitions are main-owned, versioned, bounded and atomically
 saved; imported definitions are disabled. Preview resolves context and inputs in the backend and binds

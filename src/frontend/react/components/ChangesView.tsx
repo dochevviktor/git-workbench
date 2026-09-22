@@ -31,6 +31,7 @@ import { CommitComposer } from './CommitComposer';
 import { MenuButton } from './menu/MenuButton';
 import { useContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
+import { useExternalTools } from './external-tools-context';
 import type { MenuEntry } from './menu/menu-model';
 import { copyText } from '../lib/clipboard';
 import { DiscardDialog } from './DiscardDialog';
@@ -356,6 +357,7 @@ export function ChangesView({
   onVisibleCountChange,
 }: ChangesViewProps) {
   const showContextMenu = useContextMenu();
+  const externalTools = useExternalTools();
   const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
     'tree',
@@ -550,6 +552,14 @@ export function ChangesView({
         anchor: contextMenuAnchor(event, event.currentTarget),
         label: paths.length === 1 ? paths[0]! : `${paths.length} changed files`,
         items: compactMenu([
+          ...(paths.length === 1 && entry.kind === 'working' && entry.change.area !== 'ignored'
+            ? externalTools.items(repository.id, {
+                kind: 'working',
+                path: entry.path,
+                area: entry.change.area,
+                line: 1,
+              })
+            : []),
           {
             id: 'stash-selected',
             label: paths.length > 1 ? `Stash ${paths.length} Files…` : 'Stash File…',
@@ -598,7 +608,17 @@ export function ChangesView({
         ]),
       });
     },
-    [onSavePatch, onStashPaths, selectedKeys, showContextMenu, stagedEntries, unstaged, customFileItems],
+    [
+      onSavePatch,
+      onStashPaths,
+      selectedKeys,
+      showContextMenu,
+      stagedEntries,
+      unstaged,
+      customFileItems,
+      externalTools,
+      repository.id,
+    ],
   );
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(() => {
     if (!selected) return undefined;

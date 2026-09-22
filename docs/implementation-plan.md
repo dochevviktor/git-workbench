@@ -148,7 +148,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                           | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain                       | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell interactions verified (2026-09-20); bounded F31 Quick Launch and F32 contextual commands/forms/sharing verified (2026-09-22); command parity variants, tools and workspace completion remain                   | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31 Quick Launch, F32 commands and F33 configured tools/historical/text-merge handoff verified (2026-09-22); native tool/platform variants, settings and workspace completion remain                          | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                       | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                       | Every claimed workflow                |
 
@@ -1090,6 +1090,32 @@ with one existing skip; production build, F32 headless Electron workflow and des
 pass. Light/dark/narrow screenshots were compared with the catalogue and existing public references.
 F32 remains partial for exact Fork aliases/formats, asynchronous/hidden-output modes and the platform
 matrix; P12's broader settings, external-tool and workspace acceptance remains incomplete.
+
+F33 checkpoint (2026-09-22): File → External Tools manages profile-owned editor/diff/merge/terminal
+definitions with native executable Browse, Save/Cancel and confirmed removal. Historical file menus
+materialize the exact selected Git bytes; working diffs distinguish staged/index/worktree/untracked
+sides. Editor line handoff, repository terminal cwd and an optional Linux desktop terminal preset are
+implemented. Merge tools return a temporary text draft to the conflict editor for review before its
+snapshot-validated Resolve and Stage. Named IPC, process supervision, Activity/cancellation, private
+temporary files and common-directory serialization preserve the established boundaries. Existing
+file-manager and CLI/second-instance workflows are regression-tested.
+
+Disposable tests cover quoting/unusual paths, exact historical/binary/CRLF bytes, rename/deletion,
+configuration failures and stale guards, missing tools, cancellation, output limits, merge invariance
+and repeated owner-close cleanup. A stale commit-context readiness race exposed by conflict staging
+was corrected without relaxing backend validation; the original conflict scenario passes three
+consecutive runs. See [F33 external tools](reviews/f33-external-tools.md) for reference findings,
+screenshots, independent argument semantics and verification. Non-text/missing-stage merges, GUI
+daemon and native platform matrices, crash cleanup and exact default-tool/shortcut parity remain
+unverified or unimplemented. P12 remains partial for those variants and its broader settings/workspace
+and retention acceptance criteria.
+
+F33 verification: `npm run check` passes 410 tests with one existing skip; `npm run build` passes.
+The F33 workflow and desktop isolation/commit/hook smoke both pass against the final build. The
+custom-command and CLI/second-instance scenarios pass, and the conflict scenario passes three
+consecutive runs after its readiness fix. Light/dark/narrow tool settings, historical handoff and
+merge-review screenshots were compared with the original catalogue states. Tests use disposable
+repositories/profiles and headless Electron; native terminal/editor windows were not opened.
 
 1. Quick Launch with fuzzy commands, branch/file/repository lookup, discoverable shortcuts, and consistent
    action availability across keyboard, menus, toolbars, and context menus. The captured command →

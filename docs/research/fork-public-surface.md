@@ -933,7 +933,7 @@ earlier slices; recording them here does not promote their full feature families
 | F30 | Notifications and issue/PR lists/filters                                              | D: [product][home], [releases][win]; public-only                          | Verified GitHub explicit-refresh slice (2026-09-22): paged lists, state/author/assignee/title filters, recent session searches, notification inbox and safe links; automatic alerts and other providers remain             | P11                           |
 | F31 | Quick Launch commands and parameter selection; fuzzy lookup                           | D: [Quick Launch][quick]; B: P1-032                                       | Implemented bounded command/repository/branch/tag/file lookup; [F31 handoff](../reviews/f31-quick-launch.md). Exact ranking/inventory parity unverified.                                                                   | P12 / C05                     |
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                       | Bounded Linux workflow verified (2026-09-22): editor, five targets, reviewed Bash/process/URL execution, forms, disabled imports/export and cancellation; exact Fork formats/aliases and asynchronous modes remain partial | P12 / C05                     |
-| F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                       | Partial; file-manager handoff only, tool/CLI workflows open                                                                                                                                                                | P02, P12 / C05                |
+| F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                       | Partial; configurable editor/diff/terminal and reviewed text merge handoff implemented; CLI/file-manager verified; non-text/daemon/platform variants remain                                                                | P02, P12 / C05                |
 | F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell, details and split-button corrections verified; broader workspace/platform scope remains                                                                                                                    | P03, P04, P12, P14 / C01, C06 |
 | F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Planned; metric definitions require independent specification                                                                                                                                                              | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [activity][activity], [releases][mac]; B: P2-005                       | Partial via F15 export; import and clipboard remain                                                                                                                                                                        | P08 / C05                     |
@@ -1255,3 +1255,29 @@ default, persistence requires a secure keyring, PAT replacement is manual, and c
 with installed Git helpers/agents. Only fixed GitHub.com origins are supported, so self-hosted URLs are
 not silently accepted. F30 lists/filters/notifications remain separate. See the
 [F29 handoff](../reviews/f29-hosting.md) for verification and limitations.
+
+## F33 external tools — 2026-09-22
+
+Primary evidence is `P2-009-custom-viewer-subcase:F1–F4` and
+`P2-009-configuration-subcase:F1`, Windows 2.22.0.0, captured 2026-09-19: high confidence for
+Name/Path/Arguments, native executable Browse, named historical Diff menu entry, `middle` blob
+handoff instead of the `latest` checkout, removal confirmation and unchanged Git output. Original
+cases, screens 0507/0509/0511/0512/0514, before/after manifests and the 13-output comparison were
+inspected. Full external merge invocation remains a catalogue unknown. `P0-013:F1` establishes
+Preferences inventory only, not factory defaults or a save policy.
+
+Public supplements accessed 2026-09-22: [JuxtaCode's Fork instructions](https://juxtacode.app/integrations/fork/)
+document custom diff/merge executable and arguments on macOS (high confidence for the documented
+adapter, no inferred Windows result). [xdg-terminal-exec](https://github.com/Vladimir-csp/xdg-terminal-exec)
+documents Linux desktop terminal selection and directory options, with best-effort behavior and
+implementation-dependent process waiting; this is an independent Linux adaptation.
+
+Implemented profile tool CRUD, explicit argv configuration, historical/working editor and diff
+handoff, terminal cwd and reviewed temporary text merge output. Git bytes stay backend-owned;
+exact revision IDs, copied diff sides and conflict snapshot validation prevent implicit checkout
+replacement/staging. Existing CLI/second-instance and file-manager routes remain verified separately.
+Linux light/dark/narrow captures were compared with the original Integration and file-menu states.
+The separate File → External Tools entry, explicit Save/launch review, JSON arguments and draft review
+are deliberate deviations. F34's full Settings UI, binary/missing-stage merges, Ctrl+D/default-tool
+selection, real GUI daemon/platform matrices and crash cleanup remain partial. See the
+[F33 handoff](../reviews/f33-external-tools.md) for implementation/tests, screenshot paths and limits.
