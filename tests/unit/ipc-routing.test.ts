@@ -125,6 +125,19 @@ describe('IPC sender and window lifecycle', () => {
       }),
     ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     expect(hosting.list).toHaveBeenCalledOnce();
+    for (const contract of [requests.listHostingActivity, requests.openHostingActivity]) {
+      const activityHandler = handlers.get(contract.channel)!;
+      expect(await activityHandler(inspector.event(), {})).toMatchObject({
+        ok: false,
+        error: { code: 'FORBIDDEN' },
+      });
+      expect(
+        await activityHandler(
+          { ...window.event(), senderFrame: { url: window.webContents.getURL() } } as never,
+          {},
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    }
     window.emit('closed');
     expect(hosting.cancel).toHaveBeenCalledWith(20);
     ipc.dispose();

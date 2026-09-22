@@ -1,12 +1,22 @@
 import { z } from 'zod';
-import type { HostedRepositories } from '../../common/ipc/hosting';
-import { hostedRepositorySchema } from '../../common/ipc/hosting';
+import type {
+  HostedRepositories,
+  HostingActivityRequest,
+  HostingActivityPage,
+} from '../../common/ipc/hosting';
+import { hostedRepositorySchema, hostingActivityRequestSchema } from '../../common/ipc/hosting';
 import { ExpectedBackendError } from '../errors';
 
 export interface HostingProvider {
   readonly id: 'github';
   identity(token: string, signal: AbortSignal): Promise<{ id: string; login: string }>;
   repositories(token: string, page: number, signal: AbortSignal): Promise<HostedRepositories>;
+  activity(
+    token: string,
+    request: HostingActivityRequest,
+    repository: string | undefined,
+    signal: AbortSignal,
+  ): Promise<HostingActivityPage>;
 }
 
 const userSchema = z.object({
@@ -28,6 +38,124 @@ const reposSchema = z
 export class GitHubProvider implements HostingProvider {
   readonly id = 'github' as const;
   constructor(private readonly transport: typeof fetch = (input, init) => fetch(input, init)) {}
+
+  async activity(
+    token: string,
+    input: HostingActivityRequest,
+    repository: string | undefined,
+    signal: AbortSignal,
+  ): Promise<HostingActivityPage> {
+    const request = hostingActivityRequestSchema.parse(input);
+    if (request.kind === 'notifications') {
+      const { body, headers } = await this.get(
+        `/notifications?per_page=100&page=${request.page}&all=${request.all}&participating=${request.participating}`,
+        token,
+        signal,
+      );
+      const parsed = z
+        .array(
+          z.object({
+            id: z.string().regex(/^\d+$/u),
+            unread: z.boolean(),
+            reason: z.string().max(100),
+            updated_at: z.iso.datetime(),
+            repository: z.object({ full_name: hostedRepositorySchema.shape.fullName }),
+            subject: z.object({ title: z.string().max(1024), type: z.string(), url: z.string().nullable() }),
+          }),
+        )
+        .max(100)
+        .safeParse(body);
+      if (!parsed.success) throw invalidResponse();
+      return {
+        items: parsed.data.map((item) => {
+          // Recognize only exact GitHub subject paths. Unknown subjects open the repository's inbox.
+          const match = item.subject.url?.match(
+            /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\/(issues|pulls)\/([1-9]\d*)$/u,
+          );
+          const valid =
+            match &&
+            match[1] === item.repository.full_name &&
+            ((match[2] === 'issues' && item.subject.type === 'Issue') ||
+              (match[2] === 'pulls' && item.subject.type === 'PullRequest')) &&
+            Number.isSafeInteger(Number(match[3]));
+          return {
+            id: `notification-${item.id}`,
+            repository: item.repository.full_name,
+            title: item.subject.title,
+            kind: valid
+              ? match[2] === 'pulls'
+                ? ('pull-request' as const)
+                : ('issue' as const)
+              : ('notification' as const),
+            number: valid ? Number(match[3]) : null,
+            state: null,
+            updatedAt: item.updated_at,
+            unread: item.unread,
+            reason: item.reason,
+          };
+        }),
+        page: request.page,
+        nextPage:
+          /;\s*rel="next"/u.test(headers.get('link') ?? '') && request.page < 10000 ? request.page + 1 : null,
+        limited: false,
+      };
+    }
+    const repo = hostedRepositorySchema.shape.fullName.parse(repository);
+    const query = [`repo:${repo}`, request.kind === 'issues' ? 'is:issue' : 'is:pr'];
+    if (request.state !== 'all') query.push(`is:${request.state}`);
+    if (request.author) query.push(`author:${request.author}`);
+    if (request.assignee) query.push(`assignee:${request.assignee}`);
+    if (request.text.trim()) query.push(`"${request.text.trim()}" in:title`);
+    const { body } = await this.get(
+      `/search/issues?per_page=100&page=${request.page}&sort=updated&order=desc&q=${encodeURIComponent(query.join(' '))}`,
+      token,
+      signal,
+    );
+    const parsed = z
+      .object({
+        total_count: z.number().int().nonnegative(),
+        incomplete_results: z.boolean(),
+        items: z
+          .array(
+            z.object({
+              id: z.number().int().positive(),
+              number: z.number().int().positive(),
+              title: z.string().max(1024),
+              state: z.enum(['open', 'closed']),
+              updated_at: z.iso.datetime(),
+              repository_url: z.string(),
+              pull_request: z.object({ merged_at: z.string().nullable().optional() }).optional(),
+            }),
+          )
+          .max(100),
+      })
+      .safeParse(body);
+    if (
+      !parsed.success ||
+      parsed.data.items.some(
+        (item) =>
+          item.repository_url !== `https://api.github.com/repos/${repo}` ||
+          Boolean(item.pull_request) !== (request.kind === 'pull-requests'),
+      )
+    )
+      throw invalidResponse();
+    return {
+      items: parsed.data.items.map((item) => ({
+        id: `item-${item.id}`,
+        repository: repo,
+        title: item.title,
+        kind: request.kind === 'issues' ? 'issue' : 'pull-request',
+        number: item.number,
+        state: item.pull_request?.merged_at ? 'merged' : item.state,
+        updatedAt: item.updated_at,
+        unread: false,
+        reason: '',
+      })),
+      page: request.page,
+      nextPage: request.page < 10 && request.page * 100 < parsed.data.total_count ? request.page + 1 : null,
+      limited: parsed.data.incomplete_results || parsed.data.total_count > 1000,
+    };
+  }
 
   async identity(token: string, signal: AbortSignal) {
     const { body } = await this.get('/user', token, signal);

@@ -40,6 +40,42 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
         const state = globalThis as unknown as { hostingFailure?: boolean };
         if (state.hostingFailure)
           return Response.json({ message: 'synthetic secret must not appear' }, { status: 401 });
+        if (url.includes('/notifications?'))
+          return Response.json([
+            {
+              id: '9',
+              unread: true,
+              reason: 'mention',
+              updated_at: '2026-09-22T10:00:00Z',
+              repository: { full_name: 'example/project' },
+              subject: {
+                type: 'Issue',
+                title: 'Notification title',
+                url: 'https://api.github.com/repos/example/project/issues/8',
+              },
+            },
+          ]);
+        if (url.includes('/search/issues?')) {
+          const query = new URL(url).searchParams.get('q') ?? '';
+          const pull = query.includes('is:pr');
+          return Response.json({
+            total_count: 1,
+            incomplete_results: false,
+            items: query.includes('author:nobody')
+              ? []
+              : [
+                  {
+                    id: 7,
+                    number: 8,
+                    title: pull ? 'Review this change' : '<script>Issue title</script>',
+                    state: 'open',
+                    updated_at: '2026-09-22T10:00:00Z',
+                    repository_url: 'https://api.github.com/repos/example/project',
+                    ...(pull ? { pull_request: {} } : {}),
+                  },
+                ],
+          });
+        }
         const second = new URL(url).searchParams.get('page') === '2';
         return Response.json(
           [
@@ -67,6 +103,35 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await accounts.getByRole('button', { name: 'Add GitHub account…' }).click();
     await expect(accounts.getByRole('heading', { name: 'synthetic-account' })).toBeVisible();
     await expect(accounts).toContainText('This application session only');
+    await accounts.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await expect(accounts).toContainText('Notification title');
+    await accounts.getByRole('button', { name: '#8 Notification title' }).click();
+    expect(await app.evaluate(() => (globalThis as unknown as { openedUrl: string }).openedUrl)).toBe(
+      'https://github.com/example/project/issues/8',
+    );
+    await page.screenshot({ path: test.info().outputPath('f30-notifications.png') });
+    await accounts.getByRole('combobox', { name: 'Notification state' }).selectOption('all');
+    await accounts.getByRole('checkbox', { name: 'Participating only' }).check();
+    await accounts.getByRole('button', { name: 'Apply filters' }).click();
+    await expect(accounts).toContainText('Notification title');
+    await accounts.getByRole('button', { name: 'Repositories', exact: true }).click();
+    await accounts.getByRole('button', { name: 'Browse issues', exact: true }).click();
+    await expect(accounts).toContainText('<script>Issue title</script>');
+    await accounts.getByRole('textbox', { name: 'Author', exact: true }).fill('nobody');
+    await accounts.getByRole('button', { name: 'Apply filters' }).click();
+    await expect(accounts).toContainText('No matching items.');
+    await accounts.getByRole('button', { name: 'Repositories', exact: true }).click();
+    await accounts.getByRole('button', { name: 'Browse pull requests', exact: true }).click();
+    await expect(accounts).toContainText('Review this change');
+    await page.screenshot({ path: test.info().outputPath('f30-pull-requests.png') });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.screenshot({ path: test.info().outputPath('f30-pull-requests-dark.png') });
+    await page.emulateMedia({ colorScheme: 'light' });
+    await accounts.getByRole('button', { name: '#8 Review this change' }).click();
+    expect(await app.evaluate(() => (globalThis as unknown as { openedUrl: string }).openedUrl)).toBe(
+      'https://github.com/example/project/pull/8',
+    );
+    await accounts.getByRole('button', { name: 'Account', exact: true }).click();
     await page.screenshot({ path: test.info().outputPath('f29-account.png') });
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.screenshot({ path: test.info().outputPath('f29-account-dark.png') });

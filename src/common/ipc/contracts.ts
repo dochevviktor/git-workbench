@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import {
+  hostingActivityRequestSchema,
+  hostingActivityPageSchema,
+  hostingActivitySelectionSchema,
   hostingAccountSchema,
   hostingAccountsSchema,
   hostingAccountRequestSchema,
@@ -2175,6 +2178,12 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 
 export const requests = {
   listHostingAccounts: request('hosting:list-accounts', z.undefined(), hostingAccountsSchema),
+  listHostingActivity: request(
+    'hosting:list-activity',
+    hostingActivityRequestSchema,
+    hostingActivityPageSchema,
+  ),
+  openHostingActivity: request('hosting:open-activity', hostingActivitySelectionSchema, z.null()),
   connectHostingAccount: request(
     'hosting:connect-account',
     hostingConnectRequestSchema,

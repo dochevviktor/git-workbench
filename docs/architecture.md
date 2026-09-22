@@ -524,8 +524,22 @@ the dialog; reopening Accounts shows the authoritative state.
 This extends the earlier no-secret-store limitation for hosting API credentials only. Git authentication
 remains delegated to installed helpers/agents. PAT renewal is explicit replacement, and remote revocation
 remains a GitHub account action. There is no OAuth client registration, custom-origin/self-hosted policy,
-provider background polling, or F30 implementation in this slice. Linux keyring integration beyond the
+provider background polling. Linux keyring integration beyond the
 tested fail-closed adapter and injected-encryption persistence remains a platform verification gate.
+
+### F30 hosting activity
+
+`hosting:list-activity` accepts a discriminated notification or repository issue/PR request;
+`hosting:open-activity` accepts an account/item ID only. Explicit preload methods and main handlers
+validate both directions and retain the main-window sender/frame policy. GitHub search queries are
+constructed in main from a window-owned repository ID, named filters and a quoted title phrase.
+Pages contain at most 100 items; search stops at 1,000 and reports incomplete results. Notification
+subject URLs are never fetched or opened directly: exact repository/type/number matches produce fixed
+GitHub browser paths; unknown subjects open a repository-filtered GitHub inbox. The latest activity
+page is window-owned and invalidated on refresh, replacement, cancellation and sign-out. Late reads
+cannot repopulate a replaced page or disconnected account. There is no persistent activity cache,
+remote write, background polling or renderer network access. Recent search phrases stay in bounded
+renderer memory for the Accounts dialog lifetime and are cleared for a signed-out account.
 
 ### Earlier implementation inventory
 

@@ -66,6 +66,8 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
 
   return {
     hosting: {
+      listActivity: (request) => invoke(requests.listHostingActivity, request),
+      openActivity: (request) => invoke(requests.openHostingActivity, request),
       listAccounts: () => invoke(requests.listHostingAccounts, undefined),
       // Native file selection can take longer than a short control request. Main also bounds its lifetime.
       connect: (request) => invoke(requests.connectHostingAccount, request, 310_000),

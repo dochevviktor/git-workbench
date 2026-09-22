@@ -7,7 +7,11 @@ import { GitHubProvider } from '../../src/backend/hosting/github-provider';
 import type { HostingProvider } from '../../src/backend/hosting/github-provider';
 import { HostingAccountStore } from '../../src/backend/hosting/account-store';
 import { HostingService, readTokenFile } from '../../src/backend/hosting/hosting-service';
-import { hostingConnectRequestSchema, hostingRepositoriesRequestSchema } from '../../src/common/ipc/hosting';
+import {
+  hostingConnectRequestSchema,
+  hostingRepositoriesRequestSchema,
+  hostingActivityRequestSchema,
+} from '../../src/common/ipc/hosting';
 
 const token = 'synthetic_token_for_unit_tests';
 const repo = { id: '12', fullName: 'example/project', private: true, archived: false };
@@ -37,6 +41,12 @@ async function fixture() {
     },
   };
   const provider: HostingProvider = {
+    activity: vi.fn(async (_token, request) => ({
+      items: [],
+      page: request.page,
+      nextPage: null,
+      limited: false,
+    })),
     id: 'github',
     identity: vi.fn(async () => ({ id: '42', login: 'example' })),
     repositories: vi.fn(async (_token, page) => ({
@@ -52,6 +62,205 @@ async function fixture() {
 }
 
 describe('GitHub provider', () => {
+  it('rejects foreign repository search results and malformed notification payloads', async () => {
+    const provider = new GitHubProvider(async () =>
+      Response.json({
+        total_count: 1,
+        incomplete_results: false,
+        items: [
+          {
+            id: 1,
+            number: 1,
+            title: 'wrong repository',
+            state: 'open',
+            updated_at: '2026-09-22T10:00:00Z',
+            repository_url: 'https://api.github.com/repos/other/project',
+          },
+        ],
+      }),
+    );
+    await expect(
+      provider.activity(
+        token,
+        {
+          accountId: 'github-42',
+          repositoryId: '12',
+          kind: 'issues',
+          page: 1,
+          state: 'open',
+          author: '',
+          assignee: '',
+          text: '',
+        },
+        repo.fullName,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('unsupported');
+    await expect(
+      provider.activity(
+        token,
+        { accountId: 'github-42', kind: 'notifications', page: 1, all: false, participating: false },
+        undefined,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('unsupported');
+  });
+  it('owns activity selections by window, invalidates pages and aborts sign-out races', async () => {
+    const { service, connect, provider } = await fixture();
+    await connect();
+    const request = {
+      accountId: 'github-42',
+      kind: 'notifications' as const,
+      page: 1,
+      all: false,
+      participating: false,
+    };
+    const item = {
+      id: 'notification-9',
+      repository: repo.fullName,
+      title: 'Title',
+      kind: 'issue' as const,
+      number: 8,
+      state: null,
+      updatedAt: '2026-09-22T10:00:00Z',
+      unread: true,
+      reason: 'mention',
+    };
+    vi.mocked(provider.activity).mockResolvedValueOnce({
+      items: [item],
+      page: 1,
+      nextPage: 2,
+      limited: false,
+    });
+    await service.listActivity(1, request);
+    const selection = { accountId: request.accountId, itemId: item.id };
+    expect(service.activityUrl(1, selection)).toBe('https://github.com/example/project/issues/8');
+    expect(() => service.activityUrl(2, selection)).toThrow('Refresh');
+    await service.listActivity(1, { ...request, page: 2 });
+    expect(() => service.activityUrl(1, selection)).toThrow('Refresh');
+    let release!: () => void;
+    let signal!: AbortSignal;
+    vi.mocked(provider.activity).mockImplementationOnce(async (_token, _request, _repo, pendingSignal) => {
+      signal = pendingSignal;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { items: [item], page: 1, nextPage: null, limited: false };
+    });
+    const pending = service.listActivity(1, request);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    await service.disconnect(request.accountId);
+    expect(signal.aborted).toBe(true);
+    release();
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(() => service.activityUrl(1, selection)).toThrow('no longer connected');
+  });
+  it('builds scoped issue/PR searches with author, assignee and phrase filters and reports the search cap', async () => {
+    const transport = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        total_count: 1200,
+        incomplete_results: false,
+        items: [
+          {
+            id: 7,
+            number: 8,
+            title: '<script>inert</script>',
+            state: 'closed',
+            updated_at: '2026-09-22T10:00:00Z',
+            repository_url: 'https://api.github.com/repos/example/project',
+            pull_request: { merged_at: '2026-09-22T10:00:00Z' },
+          },
+        ],
+      }),
+    );
+    const result = await new GitHubProvider(transport).activity(
+      token,
+      {
+        accountId: 'github-42',
+        repositoryId: '12',
+        kind: 'pull-requests',
+        page: 1,
+        state: 'closed',
+        author: 'alice',
+        assignee: 'bob',
+        text: 'repo:other/project',
+      },
+      repo.fullName,
+      new AbortController().signal,
+    );
+    const url = new URL(String(transport.mock.calls[0]![0]));
+    expect(url.origin).toBe('https://api.github.com');
+    expect(url.searchParams.get('q')).toBe(
+      'repo:example/project is:pr is:closed author:alice assignee:bob "repo:other/project" in:title',
+    );
+    expect(result).toMatchObject({
+      nextPage: 2,
+      limited: true,
+      items: [{ state: 'merged', kind: 'pull-request' }],
+    });
+    expect(
+      hostingActivityRequestSchema.safeParse({
+        accountId: 'x',
+        repositoryId: '12',
+        kind: 'issues',
+        page: 11,
+        state: 'all',
+        author: '',
+        assignee: '',
+        text: '',
+      }).success,
+    ).toBe(false);
+  });
+  it('validates notification subject paths and ignores hostile next links', async () => {
+    const notification = {
+      id: '9',
+      unread: true,
+      reason: 'mention',
+      updated_at: '2026-09-22T10:00:00Z',
+      repository: { full_name: repo.fullName },
+      subject: {
+        type: 'Issue',
+        title: 'Title',
+        url: 'https://api.github.com/repos/example/project/issues/8',
+      },
+    };
+    const transport = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json(
+        [
+          notification,
+          {
+            ...notification,
+            id: '10',
+            subject: { ...notification.subject, url: 'https://evil.example/secret' },
+          },
+        ],
+        { headers: { link: '<https://evil.example/>; rel="next"' } },
+      ),
+    );
+    const result = await new GitHubProvider(transport).activity(
+      token,
+      { accountId: 'github-42', kind: 'notifications', page: 1, all: false, participating: true },
+      undefined,
+      new AbortController().signal,
+    );
+    expect(result.items.map((item) => [item.kind, item.number])).toEqual([
+      ['issue', 8],
+      ['notification', null],
+    ]);
+    expect(result.nextPage).toBe(2);
+    expect(String(transport.mock.calls[0]![0])).toContain('all=false&participating=true');
+  });
+  it.each([401, 403, 429, 500])('suppresses notification error bodies (%s)', async (status) => {
+    const provider = new GitHubProvider(async () => Response.json({ message: token }, { status }));
+    await expect(
+      provider.activity(
+        token,
+        { accountId: 'github-42', kind: 'notifications', page: 1, all: false, participating: false },
+        undefined,
+        new AbortController().signal,
+      ),
+    ).rejects.not.toThrow(token);
+  });
   it('uses fixed authenticated endpoints, maps metadata and never follows a pagination URL', async () => {
     const fetcher = vi
       .fn<typeof fetch>()

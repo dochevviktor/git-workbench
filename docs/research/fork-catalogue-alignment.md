@@ -348,6 +348,27 @@ Mac features, while exact Windows signing configuration and native prompts remai
 The public image index was refreshed and consulted; no signing screenshot supplies stronger layout
 evidence. No reference images were added to application assets. See the [F28 handoff](../reviews/f28-signing.md).
 
+## F30 alignment checkpoint — 2026-09-22
+
+Authenticated issue/PR lists and notifications have no original case/finding ID in the Windows
+2.22.0.0 bundle. Consult the public evidence rather than inventing a captured state. The
+[Windows release notes](https://fork.dev/releasenoteswin), accessed 2026-09-22, establish notifications
+in 1.61 (2021-04-09), and author/assignee filters plus recent searches in 1.62 (2021-05-07), high
+confidence for availability. Current exact UI behavior remains unknown.
+
+Refreshed the public library (226 present) and inspected `site-imagenotifications.jpg` from the
+[product page](https://fork.dev/) before styling. It is undated macOS/light imagery, unstated version,
+medium confidence for repository/title/time grouping. Compared generated Linux light notification
+and light/dark PR screenshots after implementation. Accounts navigation, explicit refresh/paging,
+text-only entries, bounded session search history and filter forms are independently authored
+adaptations, not observed Windows parity. There is no matching private screenshot for this state.
+The implementation preserves the existing repository clone/browser workflows and copies no assets.
+
+The [GitHub API sources and implementation record](fork-public-surface.md#f30-github-lists-and-notifications--2026-09-22)
+define provider behavior and limitations. The [F30 handoff](../reviews/f30-hosting-activity.md) records
+mock, Electron and live read-only verification. Automatic notifications, remote read-state actions,
+other providers and persistent history remain separate scope; P11 remains partial.
+
 ## F29 alignment checkpoint — 2026-09-22
 
 No authenticated hosting workflow is captured in the supplied catalogue. The relevant original

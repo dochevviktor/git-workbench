@@ -87,7 +87,15 @@ plaintext fallback is refused. Tokens never enter the renderer, IPC, repository 
 Replace token selects another file and verifies that it belongs to the same account. Sign out removes
 the app's saved credential and cancels its pending reads; it does not delete the original file or revoke
 the token on GitHub. There is no background hosting polling. Other providers, self-hosted accounts,
-OAuth, and F30 in-app PR/issue lists and notifications remain unimplemented.
+and OAuth remain unimplemented.
+
+In Accounts, Notifications lists your GitHub inbox with unread/all and participation filters.
+Repositories → Browse issues / Browse pull requests opens paged lists with state, author, assignee
+and title filters. Apply filters searches GitHub; recent title phrases are kept while Accounts is open.
+Refresh checks for updates. Item titles open in your browser without marking notifications read in
+the app. Notifications require a classic token with `notifications` or `repo` scope; GitHub's endpoint
+does not support fine-grained tokens. Search is limited to 1,000 results and reports incomplete results.
+See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and remaining limits.
 
 ## Start
 

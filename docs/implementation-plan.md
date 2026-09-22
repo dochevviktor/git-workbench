@@ -147,7 +147,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06 scoped search, bounded F20 reflog recovery, and bounded F21 file-history/Blame inspectors verified (2026-09-20); F26 manual Bisect verified (2026-09-22); directory/code history and patch import remain planned    | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                              | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS verified (2026-09-20); F28 GPG commit/amend/tag signing, repository key and explicit verification verified (2026-09-22); native pinentry matrix, images, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
-| P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub PAT accounts, paged repositories/clone selection, browser links and read-only live API check verified (2026-09-22); other providers, OAuth/self-hosting and F30 remain                                           | P05 auth; browser handoff independent |
+| P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                   | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, split toolbar and detail interactions verified (2026-09-20); productivity/workspaces remain                                                                                                                      | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                          | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                          | Every claimed workflow                |
@@ -1013,10 +1013,27 @@ verification uses it in memory, saves no credential copy, and suppresses identit
 Live identity and repository enumeration succeeded; no second page was needed, so live pagination is
 not claimed. See [F29 hosting](reviews/f29-hosting.md) for evidence and exact commands.
 
+F30 GitHub checkpoint (2026-09-22): File → Accounts provides Notifications and repository-scoped
+Browse issues/Browse pull requests. GitHub searches apply open/closed/all, author, assignee and title
+phrase filters with bounded paging and explicit incomplete/1,000-result limit messaging. Recent title
+searches survive view changes within the Accounts dialog, scoped by account/repository/list kind.
+Notifications show repository, title, timestamp, unread state and reason, with unread/all and
+participation filters, Refresh, cancellation and safe browser handoff. Refresh is explicit; no polling,
+desktop alerts or remote mark-read mutations are introduced. Full review editing remains unresolved.
+Main owns credentials, API queries and window-scoped item selections; typed IPC validates both directions.
+Sign-out aborts pending reads and invalidates selections. See [F30 handoff](reviews/f30-hosting-activity.md).
+The supplied token remains only at `.idea/.githubtoken`; after implementation the live GET-only check
+passed issue search, PR search and notifications without copying credentials or recording private data.
+Synthetic contracts and the headless Electron workflow verify filters, paging, failures and browser links.
+`npm run check` passes 376 tests with one existing skip; production build, hosting workflow and desktop
+startup/isolation smoke pass. Light/dark screenshots were compared with the public reference.
+P11 remains partial for the provider/platform matrix; automatic notifications and persistent recent
+search history remain outside this explicitly refreshed GitHub slice.
+
 F29/P11 remain partial: GitLab/Bitbucket/Azure/Gitea account setup and enumeration, self-hosted instances,
 OAuth and automatic token renewal, remote revocation, account-token-backed Git transport, and the real
-Linux keyring/platform matrix are not implemented or verified. F30 in-app lists/filters/notifications
-remain separate; browser links do not complete F30. No hosting background polling is introduced.
+Linux keyring/platform matrix are not implemented or verified. F30's verified GitHub scope is recorded
+above; other providers remain separate. No hosting background polling is introduced.
 
 No authenticated hosting workflow is exercised in the supplied catalogue. Keep public sources and the
 verified browser handoff distinct from captured local Git coverage; missing captures do not drop this phase.

@@ -161,6 +161,18 @@ export function registerAppIpc(repositoryService?: RepositoryService, hostingSer
 
   register(requests.getWindowState, (window) => windowState(window));
   if (hostingService) {
+    register(requests.listHostingActivity, (window, request) =>
+      hostingService.listActivity(window.webContents.id, request),
+    );
+    register(requests.openHostingActivity, async (window, request) => {
+      const url = hostingService.activityUrl(window.webContents.id, request);
+      try {
+        await shell.openExternal(url);
+      } catch {
+        throw new ExpectedBackendError('UNAVAILABLE', 'The system browser could not be opened.');
+      }
+      return null;
+    });
     register(requests.listHostingAccounts, () => hostingService.list());
     register(requests.connectHostingAccount, (window, request) =>
       hostingService.connect(window.webContents.id, request, async () => {

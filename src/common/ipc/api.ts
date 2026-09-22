@@ -107,6 +107,9 @@ import type {
   HostingRepositoryRequest,
   HostingCloneSelection,
   HostingCloneTarget,
+  HostingActivityRequest,
+  HostingActivityPage,
+  HostingActivitySelection,
 } from './hosting';
 
 export type Unsubscribe = () => void;
@@ -114,6 +117,8 @@ export type Unsubscribe = () => void;
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
   readonly hosting: {
+    listActivity(request: HostingActivityRequest): Promise<IpcResult<HostingActivityPage>>;
+    openActivity(request: HostingActivitySelection): Promise<IpcResult<null>>;
     listAccounts(): Promise<IpcResult<HostingAccounts>>;
     connect(request: HostingConnectRequest): Promise<IpcResult<HostingAccount | null>>;
     disconnect(request: { accountId: string }): Promise<IpcResult<null>>;

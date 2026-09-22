@@ -26,6 +26,38 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates activity requests, results and fixed browser selection channels', async () => {
+    const { api, invoke } = fixture();
+    const request = {
+      accountId: 'github-42',
+      kind: 'notifications' as const,
+      page: 1,
+      all: false,
+      participating: false,
+    };
+    expect(await api.hosting.listActivity({ ...request, token: 'forbidden' } as never)).toMatchObject({
+      ok: false,
+    });
+    expect(
+      await api.hosting.openActivity({
+        accountId: 'github-42',
+        itemId: '9',
+        url: 'https://evil.example',
+      } as never),
+    ).toMatchObject({ ok: false });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { items: [], page: 1, nextPage: null, limited: false } });
+    expect(await api.hosting.listActivity(request)).toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenLastCalledWith('hosting:list-activity', request);
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { items: [], page: 1, nextPage: null, limited: false, token: 'forbidden' },
+    });
+    expect(await api.hosting.listActivity(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('keeps hosting secrets and arbitrary URLs out of the bridge in both directions', async () => {
     const { api, invoke } = fixture();
     expect(await api.hosting.connect({ remember: false, token: 'not-allowed' } as never)).toMatchObject({

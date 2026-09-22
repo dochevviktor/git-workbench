@@ -69,3 +69,54 @@ export type HostedRepositories = z.infer<typeof hostedRepositoriesSchema>;
 export type HostingRepositoryRequest = z.infer<typeof hostingRepositoryRequestSchema>;
 export type HostingCloneSelection = z.infer<typeof hostingCloneSelectionSchema>;
 export type HostingCloneTarget = z.infer<typeof hostingCloneTargetSchema>;
+
+const pageNumber = z.number().int().min(1).max(10000);
+const loginFilter = z
+  .string()
+  .max(100)
+  .regex(/^[A-Za-z0-9-]*$/u);
+export const hostingActivityRequestSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    accountId: identifier,
+    kind: z.literal('notifications'),
+    page: pageNumber,
+    all: z.boolean(),
+    participating: z.boolean(),
+  }),
+  z.strictObject({
+    accountId: identifier,
+    repositoryId: identifier,
+    kind: z.enum(['issues', 'pull-requests']),
+    page: z.number().int().min(1).max(10),
+    state: z.enum(['open', 'closed', 'all']),
+    author: loginFilter,
+    assignee: loginFilter,
+    text: z
+      .string()
+      .max(200)
+      // eslint-disable-next-line no-control-regex
+      .regex(/^[^\u0000-\u001f"\\]*$/u),
+  }),
+]);
+export const hostingActivityItemSchema = z.strictObject({
+  id: identifier,
+  repository: hostedRepositorySchema.shape.fullName,
+  title: z.string().max(1024),
+  kind: z.enum(['issue', 'pull-request', 'notification']),
+  number: z.number().int().positive().nullable(),
+  state: z.enum(['open', 'closed', 'merged']).nullable(),
+  updatedAt: z.iso.datetime(),
+  unread: z.boolean(),
+  reason: z.string().max(100),
+});
+export const hostingActivityPageSchema = z.strictObject({
+  items: z.array(hostingActivityItemSchema).max(100),
+  page: pageNumber,
+  nextPage: pageNumber.nullable(),
+  limited: z.boolean(),
+});
+export const hostingActivitySelectionSchema = z.strictObject({ accountId: identifier, itemId: identifier });
+export type HostingActivityRequest = z.infer<typeof hostingActivityRequestSchema>;
+export type HostingActivityItem = z.infer<typeof hostingActivityItemSchema>;
+export type HostingActivityPage = z.infer<typeof hostingActivityPageSchema>;
+export type HostingActivitySelection = z.infer<typeof hostingActivitySelectionSchema>;

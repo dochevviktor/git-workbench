@@ -7,8 +7,15 @@ import type {
   HostingConnectRequest,
   HostingRepositoriesRequest,
   HostingRepositoryRequest,
+  HostingActivityRequest,
+  HostingActivityItem,
+  HostingActivitySelection,
 } from '../../common/ipc/hosting';
-import { hostingAccountSchema, hostedRepositoriesSchema } from '../../common/ipc/hosting';
+import {
+  hostingAccountSchema,
+  hostedRepositoriesSchema,
+  hostingActivityPageSchema,
+} from '../../common/ipc/hosting';
 import { ExpectedBackendError } from '../errors';
 import type { HostingAccountStore } from './account-store';
 import type { StoredAccount } from './account-store';
@@ -25,6 +32,10 @@ export class HostingService {
   private readonly pending = new Set<Request>();
   private readonly ownerGenerations = new Map<number, number>();
   private readonly repositories = new Map<number, Map<string, Map<string, HostedRepository>>>();
+  private readonly activityPages = new Map<
+    number,
+    { accountId: string; items: Map<string, HostingActivityItem> }
+  >();
 
   constructor(
     private readonly store: HostingAccountStore,
@@ -151,6 +162,37 @@ export class HostingService {
       name: repo.fullName.split('/')[1]!,
     };
   }
+  async listActivity(owner: number, request: HostingActivityRequest) {
+    const generation = this.ownerGenerations.get(owner) ?? 0;
+    await this.load();
+    this.checkOwner(owner, generation);
+    const entry = this.require(request.accountId);
+    const repository =
+      request.kind === 'notifications'
+        ? undefined
+        : this.repository(owner, request.accountId, request.repositoryId).fullName;
+    const selection = { accountId: request.accountId, items: new Map<string, HostingActivityItem>() };
+    this.activityPages.set(owner, selection);
+    return this.run(owner, request.accountId, async (signal) => {
+      const result = hostingActivityPageSchema.parse(
+        await this.provider.activity(this.token(entry), request, repository, signal),
+      );
+      this.checkSignal(signal);
+      if (this.entries.get(request.accountId) !== entry || this.activityPages.get(owner) !== selection)
+        throw new ExpectedBackendError('STALE_SNAPSHOT', 'The hosting selection changed. Refresh the list.');
+      selection.items = new Map(result.items.map((item) => [item.id, item]));
+      return result;
+    });
+  }
+  activityUrl(owner: number, request: HostingActivitySelection) {
+    this.require(request.accountId);
+    const page = this.activityPages.get(owner);
+    const item = page?.accountId === request.accountId ? page.items.get(request.itemId) : undefined;
+    if (!item) throw new ExpectedBackendError('STALE_SNAPSHOT', 'Refresh the list before opening an item.');
+    if (item.kind === 'notification' || item.number === null)
+      return `https://github.com/notifications?query=${encodeURIComponent(`repo:${item.repository}`)}`;
+    return `https://github.com/${item.repository}/${item.kind === 'issue' ? 'issues' : 'pull'}/${item.number}`;
+  }
   repositoryUrl(owner: number, request: HostingRepositoryRequest) {
     const repo = this.repository(owner, request.accountId, request.repositoryId);
     return `https://github.com/${repo.fullName}${request.destination === 'issues' ? '/issues' : request.destination === 'pull-requests' ? '/pulls' : ''}`;
@@ -159,6 +201,7 @@ export class HostingService {
     this.ownerGenerations.set(owner, (this.ownerGenerations.get(owner) ?? 0) + 1);
     for (const request of this.pending) if (request.owner === owner) request.controller.abort();
     this.repositories.delete(owner);
+    this.activityPages.delete(owner);
     return null;
   }
   private repository(owner: number, accountId: string, repositoryId: string) {
@@ -206,6 +249,8 @@ export class HostingService {
   }
   private clearRepositories(accountId: string) {
     for (const repos of this.repositories.values()) repos.delete(accountId);
+    for (const [owner, page] of this.activityPages)
+      if (page.accountId === accountId) this.activityPages.delete(owner);
   }
   private checkSignal(signal: AbortSignal) {
     if (signal.aborted) throw new ExpectedBackendError('UNAVAILABLE', 'The hosting request was cancelled.');

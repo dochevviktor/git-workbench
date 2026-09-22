@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { HostedRepositories, HostingAccounts, HostingCloneTarget } from '../../../common/ipc/hosting';
 import { unwrapResult } from '../../../common/ipc/result';
+import type { HostingActivityRequest } from '../../../common/ipc/hosting';
+import { HostingActivity } from './HostingActivity';
 
 export function HostingAccountsDialog({
   onClose,
@@ -14,7 +16,9 @@ export function HostingAccountsDialog({
   const generation = useRef(0);
   const [accounts, setAccounts] = useState<HostingAccounts>({ accounts: [], secureStorageAvailable: false });
   const [selected, setSelected] = useState('');
-  const [tab, setTab] = useState<'account' | 'repositories'>('account');
+  const [tab, setTab] = useState<'account' | 'repositories' | 'activity'>('account');
+  const [activity, setActivity] = useState<HostingActivityRequest>();
+  const [searches] = useState(() => new Map<string, string[]>());
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -93,6 +97,7 @@ export function HostingAccountsDialog({
     run(async (current) => {
       if (!account) return;
       unwrapResult(await api().disconnect({ accountId: account.id }));
+      for (const key of searches.keys()) if (key.startsWith(`${account.id}/`)) searches.delete(key);
       const result = unwrapResult(await api().listAccounts());
       if (current()) {
         setAccounts(result);
@@ -157,9 +162,27 @@ export function HostingAccountsDialog({
                 className="button"
                 aria-pressed={tab === 'repositories'}
                 disabled={busy}
-                onClick={() => (page ? setTab('repositories') : void repositories(1))}
+                onClick={() => void repositories(page?.page ?? 1)}
               >
                 Repositories
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={busy}
+                aria-pressed={tab === 'activity' && activity?.kind === 'notifications'}
+                onClick={() => {
+                  setActivity({
+                    accountId: account.id,
+                    kind: 'notifications',
+                    page: 1,
+                    all: false,
+                    participating: false,
+                  });
+                  setTab('activity');
+                }}
+              >
+                Notifications
               </button>
             </div>
           )}
@@ -275,6 +298,28 @@ export function HostingAccountsDialog({
                       >
                         Clone…
                       </button>
+                      {(['issues', 'pull-requests'] as const).map((kind) => (
+                        <button
+                          type="button"
+                          className="button"
+                          key={kind}
+                          onClick={() => {
+                            setActivity({
+                              accountId: account.id,
+                              repositoryId: repo.id,
+                              kind,
+                              page: 1,
+                              state: 'open',
+                              author: '',
+                              assignee: '',
+                              text: '',
+                            });
+                            setTab('activity');
+                          }}
+                        >
+                          Browse {kind === 'issues' ? 'issues' : 'pull requests'}
+                        </button>
+                      ))}
                       {(['website', 'pull-requests', 'issues'] as const).map((destination) => (
                         <button
                           type="button"
@@ -349,6 +394,18 @@ export function HostingAccountsDialog({
                 Cancel request
               </button>
             </p>
+          )}
+          {tab === 'activity' && activity && account && (
+            <HostingActivity
+              key={`${activity.accountId}-${activity.kind}-${activity.kind === 'notifications' ? '' : activity.repositoryId}`}
+              initial={activity}
+              searches={searches}
+              repositoryName={
+                activity.kind === 'notifications'
+                  ? undefined
+                  : page?.repositories.find((repo) => repo.id === activity.repositoryId)?.fullName
+              }
+            />
           )}
           {error && (
             <p role="alert" className="hosting-error">
