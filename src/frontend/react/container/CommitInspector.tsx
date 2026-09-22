@@ -5,9 +5,11 @@ import { CommitDetails } from '../components/CommitDetails';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { useDesktop } from '../hooks/use-desktop';
 import { detectPlatform } from '../lib/platform';
+import { useAppearanceUpdates } from '../hooks/use-appearance-updates';
 
 /** The privileged host supplies this window's repository/commit; no URL carries repository paths. */
 export default function CommitInspector() {
+  useAppearanceUpdates();
   const desktop = useDesktop();
   const [platform] = useState(detectPlatform);
   const [context, setContext] = useState<RepositoryCommitDetailsContext>();

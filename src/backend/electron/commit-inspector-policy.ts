@@ -36,6 +36,8 @@ export function canInvokeInspector(kind: InspectorKind, channel: string, payload
   if (channel === requests.getRepositoryFileHistoryContext.channel) return kind === 'file-history';
   if (channel === requests.getRepositoryBlameContext.channel) return kind === 'blame';
   if (typeof payload !== 'object' || payload === null) return false;
+  if (channel === requests.getGitSettings.channel || channel === requests.openIssue.channel)
+    return 'id' in payload && typeof payload.id === 'string';
   if (channel === requests.openRepositoryCommitDetails.channel) {
     return kind === 'file-history' || kind === 'blame';
   }

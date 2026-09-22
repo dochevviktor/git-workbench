@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const storagePrefix = 'git-workbench.';
 
@@ -23,11 +23,21 @@ export function usePersistentState<Value>(
   accept: (value: unknown) => value is Value,
 ): readonly [Value, (value: Value) => void] {
   const [value, setValue] = useState<Value>(() => readStored(key, fallback, accept));
+  useEffect(() => {
+    const changed = () => setValue(readStored(key, fallback, accept));
+    window.addEventListener('storage', changed);
+    window.addEventListener('workbench-preference-changed', changed);
+    return () => {
+      window.removeEventListener('storage', changed);
+      window.removeEventListener('workbench-preference-changed', changed);
+    };
+  }, [key, fallback, accept]);
   const update = useCallback(
     (next: Value) => {
       setValue(next);
       try {
         window.localStorage.setItem(storagePrefix + key, JSON.stringify(next));
+        window.dispatchEvent(new Event('workbench-preference-changed'));
       } catch {
         // The preference still applies for this session.
       }

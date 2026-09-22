@@ -56,7 +56,13 @@ type InspectorEntry =
 type InspectorAttachment =
   InspectorEntry | { readonly parentId: number; readonly context: RepositoryCommitDetailsContext };
 
-export function registerAppIpc(repositoryService?: RepositoryService, hostingService?: HostingService) {
+import type { GitInstanceStore } from '../../git/instance-store';
+
+export function registerAppIpc(
+  repositoryService?: RepositoryService,
+  hostingService?: HostingService,
+  gitInstances?: GitInstanceStore,
+) {
   const windows = new Map<
     number,
     {
@@ -162,7 +168,36 @@ export function registerAppIpc(repositoryService?: RepositoryService, hostingSer
   }));
 
   register(requests.getWindowState, (window) => windowState(window));
+  if (gitInstances) {
+    register(requests.getGitInstance, () => gitInstances.read());
+    register(requests.saveGitInstance, (_window, request) => gitInstances.save(request));
+    register(requests.pickGitInstance, async (window) => {
+      const selected = await dialog.showOpenDialog(window, {
+        title: 'Select Git executable',
+        properties: ['openFile'],
+      });
+      return selected.canceled ? null : (selected.filePaths[0] ?? null);
+    });
+  }
   if (repositoryService) {
+    register(requests.getGitSettings, (window, request) =>
+      repositoryService.getGitSettings(window.webContents.id, request.id),
+    );
+    register(requests.saveGitSettings, async (window, request) => {
+      const result = await repositoryService.saveGitSettings(window.webContents.id, request);
+      for (const entry of windows.values()) {
+        if (!entry.window.isDestroyed() && isTrustedDocument(entry.window.webContents.getURL(), entry.url))
+          entry.window.webContents.send(events.settingsChanged.channel, null);
+      }
+      return result;
+    });
+    register(requests.openIssue, async (window, request) => {
+      const settings = await repositoryService.getGitSettings(window.webContents.id, request.id);
+      if (!settings.issueRule)
+        throw new ExpectedBackendError('OPERATION_FAILED', 'Configure repository issue links first.');
+      await shell.openExternal(settings.issueRule.url.replace('{id}', request.number));
+      return null;
+    });
     register(requests.listExternalTools, () => repositoryService.externalTools.store.list());
     register(requests.saveExternalTool, (_window, request) =>
       repositoryService.externalTools.store.save(request),

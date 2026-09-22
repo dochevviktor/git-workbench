@@ -155,6 +155,8 @@ import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } 
 import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
 import { readBisectContext, applyBisectAction } from './bisect-service';
 import { readSigningSettings, setSigningKey, verifySignature } from './signing-service';
+import { GitSettingsService, globalConfigPath } from './settings-service';
+import type { SaveGitSettings } from '../../common/ipc/settings';
 import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
 import {
   applyWorkingChange,
@@ -1036,6 +1038,34 @@ export class RepositoryService {
   async getSigningSettings(ownerId: number, id: string) {
     const summary = await this.requireWorktree(ownerId, id);
     return readSigningSettings(this.runner, summary.worktreePath, id);
+  }
+
+  async getGitSettings(ownerId: number, id: string | null) {
+    const service = new GitSettingsService(this.runner);
+    if (id === null) return service.read(null, tmpdir(), await globalConfigPath());
+    const repository = this.operationRepository(ownerId, id);
+    return service.read(
+      id,
+      repository.worktreePath ?? repository.commonDir,
+      join(repository.commonDir, 'config'),
+    );
+  }
+
+  async saveGitSettings(ownerId: number, request: SaveGitSettings) {
+    const service = new GitSettingsService(this.runner);
+    if (request.id === null) {
+      const path = await globalConfigPath();
+      return this.withRepositoryMutation(path, () => service.save(tmpdir(), path, request));
+    }
+    const repository = this.operationRepository(ownerId, request.id);
+    return this.withRepositoryMutation(repository.commonDir, () => {
+      const current = this.operationRepository(ownerId, request.id!);
+      return service.save(
+        current.worktreePath ?? current.commonDir,
+        join(current.commonDir, 'config'),
+        request,
+      );
+    });
   }
 
   async setSigningKey(ownerId: number, request: RepositorySigningSettingsRequest) {

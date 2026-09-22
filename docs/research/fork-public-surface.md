@@ -934,7 +934,7 @@ earlier slices; recording them here does not promote their full feature families
 | F31 | Quick Launch commands and parameter selection; fuzzy lookup                           | D: [Quick Launch][quick]; B: P1-032                                       | Implemented bounded command/repository/branch/tag/file lookup; [F31 handoff](../reviews/f31-quick-launch.md). Exact ranking/inventory parity unverified.                                                                   | P12 / C05                     |
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                       | Bounded Linux workflow verified (2026-09-22): editor, five targets, reviewed Bash/process/URL execution, forms, disabled imports/export and cancellation; exact Fork formats/aliases and asynchronous modes remain partial | P12 / C05                     |
 | F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                       | Partial; configurable editor/diff/terminal and reviewed text merge handoff implemented; CLI/file-manager verified; non-text/daemon/platform variants remain                                                                | P02, P12 / C05                |
-| F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell, details and split-button corrections verified; broader workspace/platform scope remains                                                                                                                    | P03, P04, P12, P14 / C01, C06 |
+| F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell and bounded global/repository settings verified (2026-09-22): scoped identity, presentation, Git selection and issue links; full inventory/workspace/platform scope remains                                 | P03, P04, P12, P14 / C01, C06 |
 | F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Planned; metric definitions require independent specification                                                                                                                                                              | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [activity][activity], [releases][mac]; B: P2-005                       | Partial via F15 export; import and clipboard remain                                                                                                                                                                        | P08 / C05                     |
 | F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only                          | Planned; separate platform/provider evidence required                                                                                                                                                                      | P13                           |
@@ -948,10 +948,11 @@ basic workflows complete early. Source: [Mac releases][mac].
 
 Scope audit: **2026-09-22**. Both surfaces belong to **F34 / P12**, with persistence prerequisites in
 P02. Global preferences were broadly listed; repository settings were not an explicit deliverable.
-Both settings surfaces are **planned, not implemented**; existing appearance/fetch controls and stored
-preferences do not constitute complete settings pages. The
-[explicit plan](../implementation-plan.md#f34-application-settings-and-repository-settings--planned-not-implemented)
-now tracks each surface and its acceptance criteria separately.
+Both settings surfaces now have **bounded implementations**, verified 2026-09-22; the complete
+preference inventory and broader F34 workspace scope remain partial. The
+[explicit plan](../implementation-plan.md#f34-application-settings-and-repository-settings)
+tracks each surface and its acceptance criteria separately. The [F34 handoff](../reviews/f34-settings.md)
+records implemented controls, independent semantics, tests and remaining field/platform limits.
 
 - **Global application settings — B, high confidence for visible inventory:**
   [P0-013 dossier](fork-reference-new/reference/catalogue/features/P0-013.md), original case
@@ -969,7 +970,7 @@ now tracks each surface and its acceptance criteria separately.
   inventory or global/local precedence, save/cancel semantics, or worktree behavior.
 - **Linux/product specification:** provide separate application and selected-repository settings,
   explicit scope/origin/inheritance, global and local identity editing, isolated persistence and tested
-  error handling. Repository identity and issue-link editing are planned requirements; their exact
+  error handling. Repository identity and issue-link editing now have a bounded implementation; their exact
   Windows presentation remains unverified. Use installed Linux Git/tools, independently authored UI,
   and project defaults rather than the captured bundled Windows Git instance or assumed factory defaults.
 

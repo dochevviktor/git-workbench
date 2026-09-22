@@ -10,14 +10,12 @@ import type {
 import { unwrapResult } from '../../../common/ipc/result';
 import { waitForOperation } from '../lib/operations';
 import { useCommitContext } from '../hooks/use-commit-context';
-import { usePersistentState } from '../hooks/use-persistent-state';
+import { isNumberBetween, usePersistentState } from '../hooks/use-persistent-state';
 import { ChevronDownIcon, RecentMessagesIcon } from './Icons';
 import { MenuButton } from './menu/MenuButton';
 import { menuSeparator, planned } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
-/** Git's conventional subject length; the counter counts down from it like Fork's reminder. */
-const subjectLengthGuide = 50;
 const recentMessageLabelLength = 72;
 const descriptionMinimumHeight = 52;
 const descriptionMaximumHeight = 220;
@@ -115,6 +113,12 @@ export function CommitComposer({
   busy,
   onCommitted,
 }: CommitComposerProps) {
+  const [subjectLengthGuide] = usePersistentState('commit.subjectGuide', 50, isNumberBetween(30, 120));
+  const [spellCheck] = usePersistentState(
+    'commit.spellCheck',
+    true,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   const [subject, setSubject] = usePersistentState(
     `repository.${repository.id}.commit.subject`,
     '',
@@ -415,7 +419,7 @@ export function CommitComposer({
             value={subject}
             placeholder="Commit subject"
             aria-label="Commit subject"
-            spellCheck
+            spellCheck={spellCheck}
             data-testid="commit-subject"
             onChange={(event) => setSubject(event.target.value)}
           />
@@ -444,7 +448,7 @@ export function CommitComposer({
           value={body}
           placeholder="Description"
           aria-label="Commit description"
-          spellCheck
+          spellCheck={spellCheck}
           data-testid="commit-description"
           onChange={(event) => setBody(event.target.value)}
         />

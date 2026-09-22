@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { IssueLinks } from './IssueLinks';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type {
   RepositoryCommitChange,
@@ -693,6 +694,7 @@ export function CommitDetails({
           </dd>
         </dl>
         <div className="details-message">
+          <IssueLinks repositoryId={repositoryId} message={`${commit.subject}\n${commit.body}`} />
           <h2>
             <SearchMatch text={commit.subject || '(no subject)'} query={searchQuery} />
           </h2>

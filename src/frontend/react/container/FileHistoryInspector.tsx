@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAppearanceUpdates } from '../hooks/use-appearance-updates';
 import type {
   RepositoryDiffTarget,
   RepositoryFileHistory,
@@ -24,6 +25,7 @@ function revisionLabel(revision: RepositoryFileHistoryRevision): string {
 }
 
 export default function FileHistoryInspector() {
+  useAppearanceUpdates();
   const desktop = useDesktop();
   const [platform] = useState(detectPlatform);
   const [context, setContext] = useState<RepositoryFileHistoryContext>();

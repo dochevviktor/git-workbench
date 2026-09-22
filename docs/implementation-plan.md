@@ -148,7 +148,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                                           | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain                       | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31 Quick Launch, F32 commands and F33 configured tools/historical/text-merge handoff verified (2026-09-22); native tool/platform variants, settings and workspace completion remain                          | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31–F33 workflows and bounded F34 Preferences/repository settings verified (2026-09-22); full preference inventory, workspaces and native platform coverage remain                                            | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                       | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                       | Every claimed workflow                |
 
@@ -1144,11 +1144,29 @@ Acceptance:
   main-owned with validated definitions/variables; a captured Bash Command editor does not authorize a
   generic renderer command API. Forms, variable expansion and failures need independent specifications.
 
-### F34 application settings and repository settings — planned, not implemented
+### F34 application settings and repository settings
+
+Checkpoint (2026-09-22): both entry points and their bounded controls are implemented. Preferences
+works without a repository and includes appearance, diff font/marks, commit guide/spellchecking,
+automatic fetch, global identity, validated next-startup Git selection and existing integration managers.
+Repository Settings provides local identity/removal/inheritance/origin, common-directory worktree scope,
+one issue-link rule and existing remote/Git-flow handoffs. Save/Cancel, external-change detection and
+atomic writes preserve unrelated configuration. Presentation keys remain compatible; Git settings use
+the existing Git files, and inspector writes remain denied. See the [F34 handoff](reviews/f34-settings.md).
+
+Verification: `npm run check` passes 421 tests with one existing skip; production build and four headless Electron scenarios pass: settings, desktop startup/
+isolation/commit/hooks, catalogue foundation and catalogue changes. Unit verification covers scoped
+identity, linked worktrees, includes, no-op invariance, stale writes/locks, failed preparation, executable
+selection and validated IPC/listener cleanup. Final settings/startup reruns pass after the config-lock
+handoff correction; the settings scenario also verifies live inspector appearance/issue updates and
+rejection of inspector global reads. Screenshots were compared with P0-013 and public issue-link
+states. F34/P12 remain partial for full preference inventory, workspaces, shortcut/avatar policy, the
+complete retention/display matrix and native Wayland frame testing. The acceptance below remains the
+full target, not a claim that every field/platform has been completed.
 
 Scope clarification (2026-09-22): global preferences were previously implicit in P12 item 4 and F34;
 repository settings lacked an explicit deliverable. Track both independently within F34. P02 supplies
-persistence prerequisites, not completed settings UI. See the
+persistence prerequisites; the checkpoint above records the new settings UI. See the
 [settings evidence and limits](research/fork-public-surface.md#application-and-repository-settings).
 
 1. **Global application settings:** provide a discoverable application-menu Preferences/Settings entry

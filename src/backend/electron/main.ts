@@ -9,6 +9,8 @@ import { forwardedRepositoryPaths, repositoryPathsFromArguments } from './launch
 import { ExpectedBackendError } from '../errors';
 import { HostingAccountStore } from '../hosting/account-store';
 import { HostingService } from '../hosting/hosting-service';
+import { GitInstanceStore } from '../git/instance-store';
+import { GitRunner } from '../git/runner';
 
 app.setName('Git Workbench');
 const launchPaths = repositoryPathsFromArguments(process.argv, process.cwd(), process.defaultApp === true);
@@ -40,12 +42,16 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
 
   void app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
         callback(false),
       );
       session.defaultSession.setPermissionCheckHandler(() => false);
+      const gitInstances = new GitInstanceStore(join(app.getPath('userData'), 'git-instance.json'));
+      // A damaged profile setting must not prevent opening Preferences to see its read error.
+      const gitInstance = await gitInstances.read().catch(() => ({ executable: null }));
       const repositories = new RepositoryService({
+        runner: new GitRunner(gitInstance.executable ? { executable: gitInstance.executable } : {}),
         storagePath: join(app.getPath('userData'), 'recent-repositories.json'),
         managerStoragePath: join(app.getPath('userData'), 'repository-manager.json'),
         workspaceStoragePath: join(app.getPath('userData'), 'repository-workspace.json'),
@@ -62,7 +68,7 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
           decrypt: (value) => safeStorage.decryptString(value),
         }),
       );
-      const ipc = registerAppIpc(repositories, hosting);
+      const ipc = registerAppIpc(repositories, hosting, gitInstances);
       installApplicationMenu();
       const loadedWindows = new Set<number>();
       let openQueue = Promise.resolve();

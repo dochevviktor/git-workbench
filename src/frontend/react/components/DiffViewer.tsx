@@ -502,6 +502,8 @@ function diffMessage(value: RepositoryDiff): string | undefined {
 }
 
 /** Renders bounded Git patch text in unified or split form with literal search and inline highlights. */
+import { isNumberBetween, usePersistentState } from '../hooks/use-persistent-state';
+
 export function DiffViewer({
   value,
   loading,
@@ -518,6 +520,12 @@ export function DiffViewer({
   controls,
   positionKey,
 }: DiffViewerProps) {
+  const [fontSize] = usePersistentState('diff.fontSize', 12, isNumberBetween(10, 20));
+  const [showMarks] = usePersistentState(
+    'diff.showMarks',
+    true,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
   const [selectedLines, setSelectedLines] = useState<{ hunk: number; indexes: ReadonlySet<number> }>();
@@ -564,7 +572,7 @@ export function DiffViewer({
       ) ?? [],
     [document, mode, split, indexes, controls?.entireFile],
   );
-  const rowHeight = mode === 'split' ? 19 : 18;
+  const rowHeight = fontSize + (mode === 'split' ? 7 : 6);
   const large = Boolean(
     document?.hunks.some(
       (hunk, index) => (mode === 'split' ? split[index]!.length : hunk.lines.length) > 2000,
@@ -574,12 +582,12 @@ export function DiffViewer({
     let offset = 0;
     return (
       document?.hunks.map((hunk, index) => {
-        const top = offset + (index > 0 ? 6 : 0) + 18;
+        const top = offset + (index > 0 ? 6 : 0) + fontSize + 6;
         offset = top + (mode === 'split' ? split[index]!.length : hunk.lines.length) * rowHeight;
         return top;
       }) ?? []
     );
-  }, [document, mode, split, rowHeight]);
+  }, [document, mode, split, rowHeight, fontSize]);
   const searchRows = useMemo(() => {
     let total = 0;
     const hunks =
@@ -845,7 +853,7 @@ export function DiffViewer({
   }
 
   return (
-    <div className="diff-viewer" data-testid="diff-viewer" aria-label={label}>
+    <div className="diff-viewer" data-testid="diff-viewer" data-show-marks={showMarks} aria-label={label}>
       {toolbar}
       <div
         className={`diff-body ${mode}${wrap && mode === 'unified' && !large ? ' wrap' : ''}`}
@@ -855,8 +863,11 @@ export function DiffViewer({
         aria-busy={loading}
         style={
           {
+            fontSize: `${fontSize}px`,
+            lineHeight: `${fontSize + 6}px`,
+            '--diff-row-height': `${fontSize + 6}px`,
             '--diff-horizontal-offset': `${-scrollLeft}px`,
-            '--diff-wide-line': `${Math.min(longestLine, 100000) * 7.25}px`,
+            '--diff-wide-line': `${Math.min(longestLine, 100000) * (fontSize / 12) * 7.25}px`,
           } as CSSProperties
         }
         onScroll={(event) => {

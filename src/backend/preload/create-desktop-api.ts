@@ -75,6 +75,15 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       preview: (request) => invoke(requests.previewCustomCommand, request),
       run: (request) => invoke(requests.runCustomCommand, request),
     },
+    settings: {
+      getGitInstance: () => invoke(requests.getGitInstance, undefined),
+      saveGitInstance: (request) => invoke(requests.saveGitInstance, request),
+      pickGitInstance: () => invoke(requests.pickGitInstance, undefined, 310_000),
+      onChanged: (listener) => subscribe(events.settingsChanged, listener),
+      getGit: (request) => invoke(requests.getGitSettings, request),
+      saveGit: (request) => invoke(requests.saveGitSettings, request),
+      openIssue: (request) => invoke(requests.openIssue, request),
+    },
     externalTools: {
       list: () => invoke(requests.listExternalTools, undefined),
       save: (request) => invoke(requests.saveExternalTool, request),

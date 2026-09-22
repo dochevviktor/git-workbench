@@ -53,6 +53,8 @@ import type { StashDialogRequest } from '../components/StashDialogs';
 import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
 import { RepositorySidebar } from '../components/RepositorySidebar';
+import { SettingsDialog } from '../components/SettingsDialog';
+import type { RepositorySummary } from '../../../common/ipc/contracts';
 import type { RepositoryView } from '../components/RepositorySidebar';
 import { RepositoryTabs } from '../components/RepositoryTabs';
 import type { WorkspaceTab } from '../components/RepositoryTabs';
@@ -163,6 +165,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [settingsTarget, setSettingsTarget] = useState<{ repository: RepositorySummary | null }>();
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [hostingOpen, setHostingOpen] = useState(false);
@@ -1322,6 +1325,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (event.isComposing || document.querySelector('dialog[open]')) return;
       if (is('Mod+P')) setQuickLaunchOpen(true);
+      else if (is('Mod+,')) setSettingsTarget({ repository: null });
       else if (is('Mod+T')) openManagerTab();
       else if (is('Mod+N')) setCloneOpen(true);
       else if (is('Mod+O')) {
@@ -1459,6 +1463,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           run: () => setCloneOpen(true),
         },
         { id: 'hosting-accounts', label: 'Accounts…', run: () => setHostingOpen(true) },
+        {
+          id: 'preferences',
+          label: 'Preferences…',
+          shortcut: 'Mod+,',
+          run: () => setSettingsTarget({ repository: null }),
+        },
         { id: 'custom-commands', label: 'Custom Commands…', run: () => setCustomCommandsOpen(true) },
         { id: 'external-tools', label: 'External Tools…', run: externalTools.settings },
         menuSeparator,
@@ -1624,6 +1634,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             mnemonic: 'r',
             items: [
               { id: 'refresh', label: 'Refresh', shortcut: 'F5', run: refresh },
+              {
+                id: 'repository-settings',
+                label: 'Settings…',
+                run: () => setSettingsTarget({ repository: active }),
+              },
               menuSeparator,
               {
                 id: 'fetch',
@@ -2672,6 +2687,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
           >
             <RepositorySidebar
+              onSettings={() => setSettingsTarget({ repository: active })}
               key={active.id}
               repository={active}
               visibleChangeCount={visibleChangeCounts[active.id]?.count}
@@ -2795,6 +2811,25 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             Retry
           </button>
         </div>
+      )}
+      {settingsTarget && (
+        <SettingsDialog
+          repository={settingsTarget.repository}
+          canNavigate={settingsTarget.repository?.id === active?.id}
+          gitInfo={gitInfo}
+          onClose={() => setSettingsTarget(undefined)}
+          onSaved={() => {
+            refresh();
+            void window.desktop?.repository.getAutomaticFetch().then((result) => {
+              if (result.ok) setAutomaticFetch(result.value.enabled);
+            });
+          }}
+          tools={externalTools.settings}
+          commands={() => setCustomCommandsOpen(true)}
+          accounts={() => setHostingOpen(true)}
+          remotes={() => openNetworkDialog({ kind: 'remotes' })}
+          gitFlow={() => openGitFlowDialog({ kind: 'initialize' })}
+        />
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
       {cloneOpen && (

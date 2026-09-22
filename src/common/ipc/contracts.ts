@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import {
+  settingsTargetSchema,
+  gitSettingsSchema,
+  saveGitSettingsSchema,
+  openIssueSchema,
+  gitInstanceSchema,
+} from './settings';
+import {
   externalToolsSchema,
   externalToolSaveSchema,
   externalToolSelectionSchema,
@@ -2217,6 +2224,12 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  getGitInstance: request('settings:get-git-instance', z.undefined(), gitInstanceSchema),
+  saveGitInstance: request('settings:save-git-instance', gitInstanceSchema, gitInstanceSchema),
+  pickGitInstance: request('settings:pick-git-instance', z.undefined(), z.string().max(4096).nullable()),
+  getGitSettings: request('settings:get-git', settingsTargetSchema, gitSettingsSchema),
+  saveGitSettings: request('settings:save-git', saveGitSettingsSchema, gitSettingsSchema),
+  openIssue: request('settings:open-issue', openIssueSchema, z.null()),
   listCustomCommands: request('custom-commands:list', z.undefined(), customCommandsSchema),
   listExternalTools: request('external-tools:list', z.undefined(), externalToolsSchema),
   saveExternalTool: request('external-tools:save', externalToolSaveSchema, externalToolsSchema),
@@ -2619,6 +2632,7 @@ export const requests = {
 } as const;
 
 export const events = {
+  settingsChanged: { channel: 'settings:changed', payload: z.null() },
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
   repositoryActivated: { channel: 'repository:activated', payload: repositorySummarySchema },
   repositoryOperationChanged: {

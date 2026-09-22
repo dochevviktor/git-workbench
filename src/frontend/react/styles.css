@@ -2926,7 +2926,7 @@ p {
 .diff-range-line {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
-  height: 18px;
+  height: var(--diff-row-height, 18px);
   width: max-content;
   min-width: 100%;
   color: var(--text-dim);
@@ -2993,7 +2993,7 @@ p {
 .diff-cell {
   display: grid;
   grid-template-columns: 24px 52px 20px minmax(0, 1fr);
-  min-height: 18px;
+  min-height: var(--diff-row-height, 18px);
   padding-right: 12px;
   white-space: pre;
 }
@@ -3043,6 +3043,10 @@ p {
   color: var(--text-muted);
   text-align: center;
   user-select: none;
+}
+
+.diff-viewer[data-show-marks='false'] .diff-line-sign {
+  visibility: hidden;
 }
 
 .diff-cell.add .diff-line-sign {

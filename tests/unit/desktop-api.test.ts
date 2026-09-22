@@ -26,6 +26,33 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates settings in both directions and releases the exact change listener', async () => {
+    const { api, emitter, invoke } = fixture();
+    expect(await api.settings.getGit({ id: null })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(invoke).toHaveBeenLastCalledWith('settings:get-git', { id: null });
+    expect(
+      await api.settings.saveGit({
+        id: null,
+        snapshot: 'a'.repeat(64),
+        name: 'x',
+        email: 'invalid',
+        issueRule: null,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    const listener = vi.fn();
+    const release = api.settings.onChanged(listener);
+    emitter.emit(events.settingsChanged.channel, {}, 'invalid');
+    expect(listener).not.toHaveBeenCalled();
+    emitter.emit(events.settingsChanged.channel, {}, null);
+    expect(listener).toHaveBeenCalledTimes(1);
+    release();
+    release();
+    expect(emitter.listenerCount(events.settingsChanged.channel)).toBe(0);
+  });
   it('validates external tool definitions, responses and named launch targets', async () => {
     const { api, invoke } = fixture();
     invoke.mockResolvedValueOnce({ ok: true, value: [] });
@@ -217,6 +244,7 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
     expect(Object.keys(api)).toEqual([
       'customCommands',
+      'settings',
       'externalTools',
       'hosting',
       'app',

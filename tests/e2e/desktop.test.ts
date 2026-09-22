@@ -98,6 +98,7 @@ test('production build loads its isolated preload and renderer', async () => {
     expect(bridge.ipcAvailable).toBe(false);
     expect(bridge.keys).toEqual([
       'customCommands',
+      'settings',
       'externalTools',
       'hosting',
       'app',

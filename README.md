@@ -105,6 +105,15 @@ See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and
 
 ## Start
 
+File → Preferences (Ctrl/Cmd+,) provides appearance, diff font/marks, commit presentation, automatic fetch,
+global Git identity and Git executable selection, plus access to tools, accounts and custom commands.
+Appearance/presentation/fetch apply immediately; identity uses Save/Cancel. Save Git instance takes effect
+on the next application launch. Repository → Settings or the sidebar gear edits repository identity and
+issue links, showing the destination file and effective value origin. Blank identity fields remove that
+file's override; linked worktrees share repository settings. Issue links use a prefix such as `#` and an
+HTTPS URL such as `https://tracker.example/issues/{id}`. See the [F34 handoff](docs/reviews/f34-settings.md)
+for supported controls and remaining preference/workspace scope.
+
 File → External Tools configures editors, diff/merge tools and terminals. Use an absolute executable
 path and a JSON argument array, for example `["--wait", "$LOCAL"]` for a waiting editor. File menus
 offer the configured tools; historical actions receive the selected revision, and working editors open

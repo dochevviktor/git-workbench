@@ -202,8 +202,8 @@ design process, internal widgets or architecture.
 
 ## Settings scope clarification — 2026-09-22
 
-F34/P12 now explicitly requires **global application settings** and **repository settings**, each still
-planned, not implemented. P0-013's crosswalk entry covers the captured global Preferences inventory;
+F34/P12 explicitly requires **global application settings** and **repository settings**. Their bounded
+implementation is recorded below; the full field inventory remains partial. P0-013 covers the captured global Preferences inventory;
 it must not be treated as evidence for a repository settings dialog or completion of either surface.
 
 Evidence: `P0-013-general-git-subcase:F1–F4` (Windows 2.22.0.0, 2026-09-19; high confidence for the
@@ -214,10 +214,31 @@ bugtracker configuration. Public sources checked 2026-09-22; high confidence for
 not the Windows 2.22 repository field inventory. No new catalogue capture topic is invented.
 
 The [surface record](fork-public-surface.md#application-and-repository-settings) retains unknowns.
-The [P12 settings deliverables](../implementation-plan.md#f34-application-settings-and-repository-settings--planned-not-implemented)
+The [P12 settings deliverables](../implementation-plan.md#f34-application-settings-and-repository-settings)
 specify Linux scope/inheritance, persistence, validation, configuration isolation and worktree tests
 as independent requirements. Save/cancel behavior, exact repository fields and pristine defaults need
-further evidence or an explicit product decision. No phase or feature completion status is promoted.
+further evidence or an explicit product decision. No entire phase or feature family is marked complete.
+
+### F34 implementation checkpoint — 2026-09-22
+
+The original `P0-013-general-git-subcase:F1–F4` case, General/Git screenshots and batch02 Git invariance
+record guided compact labelled Preferences pages. Compared before/after with the independently generated
+light/dark/narrow screenshots. Global/local identity and value origins, atomic Save/Cancel, linked-worktree
+scope, diff/commit presentation, automatic fetch and next-startup Git selection now work. Existing tools,
+accounts and command managers are linked; Repository Settings has explicit identity inheritance and one
+issue-link rule. Evidence confidence stays high only for the captured inventory/no-edit trial; save scope,
+literal-prefix issue rules and executable restart semantics are independent product decisions.
+
+Public gap review restored the existing reference cache without changing the private bundle. Windows
+[1.38 issue hyperlinks](https://fork.dev/blog/posts/forkwin-1.38/) (2019-08-27) and Mac
+[1.0.79 issue settings](https://fork.dev/blog/posts/fork-1.0.79/) (2019-06-12) were visually compared.
+The public Mac regex/multiple/shared-rule surface is broader than our single prefix/HTTPS implementation;
+neither it nor its file format is claimed as Windows 2.22 parity. Sources reviewed 2026-09-22.
+
+The [F34 handoff](../reviews/f34-settings.md) records actual tests and remaining criteria. Four headless
+Electron workflows pass, including startup isolation and catalogue foundation/changes regressions.
+Full Updates/syntax/avatar/shortcut inventory, workspaces, retention/display/leak matrix and native Wayland
+frame checks remain open. No capture-coverage status changes and no full F34/P12 completion is asserted.
 
 ## Complete topic-to-implementation crosswalk
 

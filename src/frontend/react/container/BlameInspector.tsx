@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAppearanceUpdates } from '../hooks/use-appearance-updates';
 import type {
   RepositoryBlame,
   RepositoryBlameContext,
@@ -48,6 +49,7 @@ function selectedRevision(
 }
 
 export default function BlameInspector() {
+  useAppearanceUpdates();
   const desktop = useDesktop();
   const [platform] = useState(detectPlatform);
   const [context, setContext] = useState<RepositoryBlameContext>();

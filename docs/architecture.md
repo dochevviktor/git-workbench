@@ -114,6 +114,15 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F34 adds `desktop.settings` for scoped Git identity/issue rules and a next-startup Git executable
+selection. Runtime schemas, fixed preload calls and the existing sender/frame/ownership checks apply.
+Main reads the effective Git value/origin and owns a snapshot-guarded, Git-lock-compatible atomic config
+write. Repository scope means common-directory config shared by linked worktrees; worktree/include
+overrides are reported and preserved. Inspectors may read owned repository settings/open named issue
+links but cannot write settings. A validated payload-free event refreshes affected views with exact cleanup.
+Presentation preferences retain existing keys and now synchronize across consumers/windows. See the
+[F34 settings handoff](reviews/f34-settings.md) for scope, persistence, independent choices and limits.
+
 F33 adds profile-owned `desktop.externalTools` list/save/remove/native executable selection and named
 launch capabilities. Definitions use explicit executable paths and argument arrays; the renderer can
 launch only a saved revision for an owned repository and a validated working/revision/conflict target.

@@ -30,6 +30,7 @@ import type { TreeItem } from './TreeView';
 export type RepositoryView = 'history' | 'changes';
 
 interface RepositorySidebarProps {
+  readonly onSettings: () => void;
   readonly repository: RepositorySummary;
   readonly visibleChangeCount?: number | undefined;
   readonly view: RepositoryView;
@@ -137,6 +138,7 @@ function submoduleTree(submodules: readonly RepositorySubmodule[]): SubmoduleFol
 }
 
 export function RepositorySidebar({
+  onSettings,
   repository,
   visibleChangeCount,
   view,
@@ -443,9 +445,9 @@ export function RepositorySidebar({
         <button
           type="button"
           className="icon-button"
-          aria-disabled="true"
           aria-label="Repository settings"
-          title="Repository settings are not available yet (planned for P12)."
+          title="Repository settings"
+          onClick={onSettings}
         >
           <SettingsIcon size={14} />
         </button>

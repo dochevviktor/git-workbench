@@ -125,10 +125,20 @@ import type {
   HostingActivitySelection,
 } from './hosting';
 
+import type { SettingsTarget, SaveGitSettings, GitSettings, GitInstance } from './settings';
 export type Unsubscribe = () => void;
 
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
+  readonly settings: {
+    getGitInstance(): Promise<IpcResult<GitInstance>>;
+    saveGitInstance(request: GitInstance): Promise<IpcResult<GitInstance>>;
+    pickGitInstance(): Promise<IpcResult<string | null>>;
+    onChanged(listener: () => void): Unsubscribe;
+    getGit(request: SettingsTarget): Promise<IpcResult<GitSettings>>;
+    saveGit(request: SaveGitSettings): Promise<IpcResult<GitSettings>>;
+    openIssue(request: { id: string; number: string }): Promise<IpcResult<null>>;
+  };
   readonly customCommands: {
     list(): Promise<IpcResult<CustomCommand[]>>;
     save(request: CustomSave): Promise<IpcResult<CustomCommand[]>>;

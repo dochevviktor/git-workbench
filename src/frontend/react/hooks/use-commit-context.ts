@@ -79,6 +79,9 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
   const refresh = useCallback(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    return window.desktop?.settings.onChanged(refresh);
+  }, [refresh]);
 
   // Invalidate in the render that observes changed staging, before the reload effect runs.
   return {
