@@ -114,6 +114,15 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F38 adds named `getLean`/`startLean` capabilities for a reviewed local base, Start,
+Sync and Finish. Main includes fetched upstream targets in the review snapshot and
+revalidates inside the common-directory queue. Reference creation/checkout and P06
+merge/rebase/recovery services own mutations; the renderer never sends Git commands.
+No Git-flow configuration, remote mutation, automatic stash or topic deletion is
+implied. Inspectors are denied both channels. Base choices stay per repository in
+renderer session state; Git owns interrupted rebase/merge state across restart.
+See the [F38 execution policy](reviews/f38-lean-branching.md) for safeguards and limits.
+
 F37 adds `desktop.ai` settings/configure/disable/preview/send/cancel capabilities. Main owns session-only
 OpenAI credentials selected through a native file chooser, fixed-origin HTTP, bounded Git diff reads,
 immutable window/repository preview tokens, expiry and cancellation. The renderer receives only public

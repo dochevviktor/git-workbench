@@ -1609,6 +1609,46 @@ export const repositoryGitFlowActionResultSchema = z.discriminatedUnion('status'
   }),
 ]);
 
+export const leanBranchNameSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  // eslint-disable-next-line no-control-regex -- reject control bytes in branch input.
+  .refine((name) => !name.startsWith('-') && !/[\s\x00-\x1f\x7f]/u.test(name));
+export const repositoryLeanReadSchema = z.strictObject({
+  id: repositoryIdSchema,
+  base: leanBranchNameSchema.optional(),
+});
+export const repositoryLeanContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  branches: z.array(z.string().min(1).max(32768)).max(10000),
+  current: z.string().max(32768).nullable(),
+  base: z.string().max(32768).nullable(),
+  baseTarget: gitObjectIdSchema.nullable(),
+  startTarget: gitObjectIdSchema.nullable(),
+  upstream: z.string().max(32768).nullable(),
+  commitCount: z.number().int().nonnegative(),
+  startReason: z.string().max(4096).nullable(),
+  syncReason: z.string().max(4096).nullable(),
+  finishReason: z.string().max(4096).nullable(),
+  snapshot: z.string().regex(/^[a-f0-9]{64}$/u),
+});
+export const repositoryLeanActionSchema = z
+  .strictObject({
+    id: repositoryIdSchema,
+    kind: z.enum(['start', 'sync', 'finish']),
+    base: leanBranchNameSchema,
+    name: leanBranchNameSchema.optional(),
+    snapshot: z.string().regex(/^[a-f0-9]{64}$/u),
+  })
+  .superRefine((value, ctx) => {
+    if ((value.kind === 'start') !== (value.name !== undefined))
+      ctx.addIssue({ code: 'custom', message: 'Only Start requires a new branch name.' });
+  });
+export type RepositoryLeanRead = z.infer<typeof repositoryLeanReadSchema>;
+export type RepositoryLeanContext = z.infer<typeof repositoryLeanContextSchema>;
+export type RepositoryLeanAction = z.infer<typeof repositoryLeanActionSchema>;
+
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
 export const repositoryBisectContextSchema = z.strictObject({
@@ -1642,6 +1682,7 @@ export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSche
 export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
 
 export const repositoryOperationKindSchema = z.enum([
+  'lean-branching',
   'patch',
   'external-tool',
   'custom-command',
@@ -2512,6 +2553,12 @@ export const requests = {
   startRepositoryBisectOperation: request(
     'repository:start-bisect-operation',
     repositoryBisectActionRequestSchema,
+    repositoryOperationSchema,
+  ),
+  getRepositoryLean: request('repository:get-lean', repositoryLeanReadSchema, repositoryLeanContextSchema),
+  startRepositoryLean: request(
+    'repository:start-lean',
+    repositoryLeanActionSchema,
     repositoryOperationSchema,
   ),
   getRepositoryGitFlow: request(

@@ -52,7 +52,12 @@ F25 adds native Git-flow initialization plus feature, release, and hotfix start/
 annotated tags, optional develop back-merges, explicit capability checks, and a Git-flow toolbar/menu.
 It uses ordinary Git and repository-local `gitflow.*` configuration; remote publishing, topic rebase,
 automatic stash/reapply, and specialized conflict continuation remain later work. Lean Branching remains
-a separate F38 family.
+a separate F38 family: the Branch dropdown and Repository → Lean Branching offer
+Start, Sync and Finish with a reviewed base branch. Start checks out a new topic,
+Sync rebases, and Finish returns to the base and merges while retaining the topic.
+Commit or stash local changes first. Fetch and push are separate actions; conflicts
+use Recovery Continue/Abort, then Sync can be run again. See the
+[F38 policy and limits](docs/reviews/f38-lean-branching.md).
 F26 adds manual Bisect start/Bad/Good/Skip/Abort, visible range and results, and restoration of active
 sessions after restart. First-bad and ambiguous skipped-candidate results stay visible until Abort
 restores the original checkout; local changes must be committed or stashed before advancing.

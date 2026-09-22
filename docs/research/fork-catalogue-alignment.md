@@ -356,6 +356,30 @@ P10 remains partial.
 
 ## Verification and remaining research
 
+### F38 alignment checkpoint — 2026-09-22
+
+`P0-008-toolbar-dropdown-subcase:F1` establishes the Branch dropdown heading,
+Start/Sync entries and disabled Finish on main (Windows 2.22.0.0, light, 96 DPI,
+2026-09-20; high confidence for that state only). Original JSON, screen-0038 and
+both Git manifests were inspected. The matched menu remains available on dirty
+main; execution dialogs require committing/stashing first as an independent policy.
+
+The maintainer's [public proposal](https://github.com/fork-dev/TrackerWin/issues/1432)
+(2022-01-20, checked 2026-09-22) supplements the execution gap but does not convert
+unexercised private-case outcomes into observations. The
+[F38 handoff](../reviews/f38-lean-branching.md) records the independent local policy
+and tests. Start/Sync/Finish use the backend reference and P06 services; fetched
+upstream targets join the snapshot, and unfinished replay remains in Recovery.
+
+Deliberate adaptations: explicit base selection/review, clean-state checks, retained
+topic branches, separate fetch/push, no automatic remote-ref restoration or resets,
+and session-only base choices. Existing New Tag/Checkout menu extensions remain;
+the captured Start/Sync/Finish order and muted heading are preserved. The captured
+help glyph is represented by an explanatory heading tooltip. Linux light/dark and
+narrow dialog captures are independently generated; no private image is bundled.
+Exact Fork dialogs/outcomes, automatic remote restoration, persisted base selection,
+merge-preserving replay and native scaling remain unverified. F38/P12 parity stays partial.
+
 ### F37 alignment checkpoint — 2026-09-22
 
 F37 remains public-only. The original P0-013-general-git-subcase:F1–F4 settings and P0-030:F1 composer

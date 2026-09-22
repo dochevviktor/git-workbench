@@ -55,6 +55,9 @@ import type {
   RepositoryReferenceContextRequest,
   RepositoryBisectActionRequest,
   RepositoryBisectContext,
+  RepositoryLeanRead,
+  RepositoryLeanContext,
+  RepositoryLeanAction,
   RepositoryGitFlowActionRequest,
   RepositoryGitFlowContext,
   RepositoryWorktreeActionRequest,
@@ -255,6 +258,8 @@ export interface DesktopApi {
     setSigningKey(request: RepositorySigningSettingsRequest): Promise<IpcResult<RepositorySigningSettings>>;
     verifySignature(request: RepositoryVerifySignatureRequest): Promise<IpcResult<RepositorySignature>>;
     startBisectOperation(request: RepositoryBisectActionRequest): Promise<IpcResult<RepositoryOperation>>;
+    getLean(request: RepositoryLeanRead): Promise<IpcResult<RepositoryLeanContext>>;
+    startLean(request: RepositoryLeanAction): Promise<IpcResult<RepositoryOperation>>;
     getGitFlow(request: RepositorySession): Promise<IpcResult<RepositoryGitFlowContext>>;
     startGitFlowOperation(request: RepositoryGitFlowActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getSubmodules(request: RepositorySession): Promise<IpcResult<RepositorySubmoduleContext>>;

@@ -44,7 +44,9 @@ Catalogue checkpoint (2026-09-20): all 7,295 portable-manifest entries passed si
 and focused source inspection. The audit confirms tab-layout and empty-message-tag mismatches and adds
 missing state-level requirements. **No implementation status is promoted.** Historical verification
 records below remain valid for their original scope; they do not verify catalogue parity. F38 now tracks
-the captured Lean Branching menu separately from Git-flow, with execution semantics still unresolved.
+the captured Lean Branching menu separately from Git-flow. Its independently specified local
+execution workflow is recorded in the [F38 handoff](reviews/f38-lean-branching.md); captured Fork
+execution outcomes remain unresolved.
 
 Implementation checkpoint (later 2026-09-20): the single F01–F16 request is verified through 295 routine
 tests, production build and nine headless Electron scenarios; the separate 100k-commit/1,002-ref scale
@@ -148,7 +150,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                     | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                          | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31–F33 workflows and bounded F34 Preferences/repository settings verified (2026-09-22); full preference inventory, workspaces and native platform coverage remain                      | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31–F34 and bounded F38 local Lean Branching verified (2026-09-22); full preference inventory, workspaces and native platform coverage remain                                           | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                             | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                 | Every claimed workflow                |
 
@@ -1085,6 +1087,16 @@ Acceptance:
 
 Coverage: F02–F03 completion, F31–F34, F38. C01 brings shell work forward; C05 covers productivity.
 Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
+
+F38 checkpoint (2026-09-22): Branch and Repository menus expose reviewed Start/Sync/Finish,
+also discoverable through Quick Launch. Named validated IPC, upstream-aware snapshots and
+common-directory serialization reuse reference and P06 recovery services. Disposable tests
+verify single/multiple-commit Finish, upstream/base Sync, stale reviews, clean-state and worktree
+guards, and durable conflict Continue/Abort. Headless Electron verifies Cancel invariance,
+the complete lifecycle and preload isolation. The [F38 handoff](reviews/f38-lean-branching.md)
+separates catalogue UI evidence from the public proposal and independent execution policy.
+Remote-ref restoration, base persistence, exact Fork outcomes and native platform/scaling
+coverage remain unverified or intentionally excluded; F38/P12 remain partial for parity.
 
 F31 checkpoint (2026-09-22): Quick Launch now supports Ctrl/Cmd+P, toolbar and File-menu
 entry, fuzzy commands/recent repositories, branch/tag parameter selection for reviewed

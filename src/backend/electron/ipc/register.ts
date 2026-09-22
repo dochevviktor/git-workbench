@@ -761,6 +761,12 @@ export function registerAppIpc(
     register(requests.startRepositoryBisectOperation, (window, request) =>
       repositoryService.startBisectOperation(window.webContents.id, request),
     );
+    register(requests.getRepositoryLean, (window, request) =>
+      repositoryService.getLean(window.webContents.id, request),
+    );
+    register(requests.startRepositoryLean, (window, request) =>
+      repositoryService.startLean(window.webContents.id, request),
+    );
     register(requests.getRepositoryGitFlow, (window, { id }) =>
       repositoryService.getGitFlow(window.webContents.id, id),
     );

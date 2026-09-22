@@ -62,6 +62,8 @@ import type {
   RepositoryReferenceContext,
   RepositoryBisectActionRequest,
   RepositoryBisectContext,
+  RepositoryLeanRead,
+  RepositoryLeanAction,
   RepositoryGitFlowActionRequest,
   RepositoryGitFlowActionResult,
   RepositoryGitFlowContext,
@@ -163,6 +165,7 @@ import { statisticsLimits } from '../../common/ipc/statistics';
 import { GitSettingsService, globalConfigPath } from './settings-service';
 import type { SaveGitSettings } from '../../common/ipc/settings';
 import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
+import { readLeanContext, runLeanAction } from './lean-branching-service';
 import {
   applyWorkingChange,
   previewDiscard,
@@ -1172,6 +1175,59 @@ export class RepositoryService {
                   : 'Bisect stopped; original checkout restored.',
             result: { kind: 'bisect', value },
           };
+        }),
+    );
+  }
+
+  async getLean(ownerId: number, request: RepositoryLeanRead) {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    try {
+      return await readLeanContext(this.runner, {
+        repositoryId: request.id,
+        cwd: summary.worktreePath,
+        worktreePath: summary.worktreePath,
+        gitDir: summary.gitDir,
+        base: request.base,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read Lean Branching state.');
+    }
+  }
+
+  startLean(ownerId: number, request: RepositoryLeanAction): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'lean-branching',
+        title: `Lean Branching: ${request.kind}`,
+        command: '',
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          try {
+            return await runLeanAction(
+              this.runner,
+              {
+                repositoryId: request.id,
+                cwd: summary.worktreePath,
+                worktreePath: summary.worktreePath,
+                gitDir: summary.gitDir,
+                base: request.base,
+              },
+              request,
+              handle,
+            );
+          } catch (error) {
+            if (error instanceof StaleReferenceSnapshotError)
+              throw new ExpectedBackendError('STALE_SNAPSHOT', error.message);
+            throw this.mapGitFailure(
+              error,
+              'Git could not complete Lean Branching. Check Activity and Recovery before retrying.',
+            );
+          }
         }),
     );
   }

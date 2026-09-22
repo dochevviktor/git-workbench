@@ -42,6 +42,7 @@ import { MergeRebaseDialog } from '../components/MergeRebaseDialog';
 import type { MergeRebaseDialogRequest } from '../components/MergeRebaseDialog';
 import { InteractiveRebaseDialog } from '../components/InteractiveRebaseDialog';
 import { GitFlowDialog } from '../components/GitFlowDialog';
+import { LeanBranchingDialog } from '../components/LeanBranchingDialog';
 import type { GitFlowActionDraft, GitFlowDialogRequest } from '../components/GitFlowDialog';
 import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRebaseDialog';
 import { ReferenceDialog } from '../components/ReferenceDialogs';
@@ -794,6 +795,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     [refresh, revealSearchResult],
   );
   const bisect = useBisect(active && !active.bare ? active.id : undefined, refreshSignal, bisectChanged);
+  const [leanBases, setLeanBases] = useState<Record<string, string>>({});
+  const [leanDialog, setLeanDialog] = useState<{ id: string; kind: 'start' | 'sync' | 'finish' }>();
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
   const [statisticsView, setStatisticsView] = useState<'statistics' | 'treemap'>();
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
@@ -1166,8 +1169,54 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     run: () => checkoutBranch(branch),
   }));
 
+  const leanBase =
+    (active ? leanBases[active.id] : undefined) ??
+    ['main', 'master', 'develop'].find((name) =>
+      referenceContext?.branches.some((branch) => branch.name === name),
+    ) ??
+    referenceContext?.head.name;
+  const leanDisabled =
+    !active || active.bare || !referencesReady || referenceBusy || referenceContext?.head.state !== 'branch';
+  const leanItems: MenuEntry[] = [
+    {
+      id: 'lean-heading',
+      label: 'Lean Branching',
+      disabled: true,
+      disabledReason: 'Start a topic, synchronize with a base, then merge it back.',
+    },
+    {
+      id: 'lean-start',
+      label: `Start Branch on '${leanBase ?? 'base'}'…`,
+      disabled: leanDisabled,
+      run: () => {
+        if (active) setLeanDialog({ id: active.id, kind: 'start' });
+      },
+    },
+    {
+      id: 'lean-sync',
+      label: `Sync '${referenceContext?.head.name ?? 'branch'}' (Rebase on '${leanBase ?? 'base'}')…`,
+      disabled: leanDisabled,
+      run: () => {
+        if (active) setLeanDialog({ id: active.id, kind: 'sync' });
+      },
+    },
+    {
+      id: 'lean-finish',
+      label: `Finish (Merge into '${leanBase ?? 'base'}')…`,
+      disabled: leanDisabled || referenceContext?.head.name === leanBase,
+      disabledReason:
+        referenceContext?.head.name === leanBase
+          ? 'The base branch cannot be finished into itself.'
+          : undefined,
+      run: () => {
+        if (active) setLeanDialog({ id: active.id, kind: 'finish' });
+      },
+    },
+  ];
   const branchMenuItems: MenuEntry[] = compactMenu([
     ...newReferenceItems(headTarget, headTargetReason),
+    menuSeparator,
+    ...leanItems,
     menuSeparator,
     {
       id: 'checkout-branch',
@@ -1736,6 +1785,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   bisect.context?.blockedReason ??
                   (bisect.context?.active ? 'Bisect is already active.' : undefined),
                 run: () => void bisect.apply('start'),
+              },
+              {
+                id: 'lean-branching',
+                label: 'Lean Branching',
+                submenu: leanItems.slice(1),
               },
               {
                 id: 'git-flow',
@@ -2966,6 +3020,19 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           repository={aiReview}
           mode="range"
           onClose={() => setAiReview(undefined)}
+        />
+      )}
+      {leanDialog && active?.id === leanDialog.id && (
+        <LeanBranchingDialog
+          key={`${leanDialog.id}-${leanDialog.kind}`}
+          id={leanDialog.id}
+          kind={leanDialog.kind}
+          initialBase={leanBase ?? undefined}
+          onBaseChange={(base) => setLeanBases((previous) => ({ ...previous, [leanDialog.id]: base }))}
+          platform={platform}
+          repositoryBusy={referenceBusy}
+          onClose={() => setLeanDialog(undefined)}
+          onChanged={refresh}
         />
       )}
       {gitFlowDialog && gitFlowContext && (

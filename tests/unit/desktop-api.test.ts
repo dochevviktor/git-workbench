@@ -26,6 +26,19 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates Lean Branching requests and backend results through fixed channels', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    const request = { id, kind: 'start' as const, base: 'main', snapshot: 'a'.repeat(64) };
+    expect(await api.repository.startLean(request)).toMatchObject({ ok: false });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { repositoryId: id, arbitrary: true } });
+    expect(await api.repository.getLean({ id })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-lean', { id });
+  });
   it('validates AI input and results and exposes only fixed preview/send/cancel channels', async () => {
     const { api, invoke } = fixture();
     expect(await api.ai.configure({ model: '--invalid model' })).toMatchObject({ ok: false });
