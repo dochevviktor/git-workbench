@@ -117,3 +117,29 @@ promisor objects, queue cancellation, independent work, shutdown, redaction and 
 
 All mutating tests use temporary repositories/profiles. The private catalogue is unchanged. No Fork
 images/binaries enter the application and no historical capture harness was run.
+
+## Window-close follow-up — 2026-09-22
+
+The reported pair of `Object has been destroyed` dialogs came from one cleanup failure. The `closed`
+handler retrieved `BrowserWindow.webContents` after native window destruction. That threw before the
+window could be removed from the IPC registry; the application's subsequent `dispose()` retried the
+same stale entry and raised the second dialog. Earlier close tests did not check for main-process error
+dialogs and their mocks allowed the destroyed window's native getter to remain readable.
+
+Registration now retains the WebContents emitter before destruction. Cleanup unregisters the window
+and removes its exact listeners before closing children or cancelling services, and both per-window
+cleanup and registry disposal are idempotent. State/activation publishing also guards destroyed renderers
+and windows. No sender/frame, sandbox, or process-draining policy has changed.
+
+Three unit regressions reproduce the old failure and cover destruction, renderer destruction before the
+window, and reentrant disposal with owned inspectors. The new headless `window-close` scenarios close
+one inspector while keeping a sibling usable, then close the main window via the title bar, native close,
+or application Quit. They capture and fail on every uncaught exception/native error box and require a
+clean process exit. The settings scenario now waits for its asynchronous browser handoff before checking
+it, so that unrelated timing race does not prevent exercising inspector closure.
+
+Verification: `npm run check` passes 486 tests (one existing opt-in skip), and `npm run build` passes.
+The final headless run passes eight scenarios: desktop smoke, interaction/inspector lifecycle, settings,
+both P01 workflows, and all three new close routes. The earlier interaction/settings inspector-close
+failures are now resolved. The ninth scenario, Quick Launch, still hits its previously recorded file
+chooser/context-refresh race (zero options while two are expected); it remains outside this close fix.

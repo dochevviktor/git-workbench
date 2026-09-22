@@ -115,6 +115,9 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
       };
     });
     await page.getByRole('button', { name: '#42 ↗', exact: true }).click();
+    await expect
+      .poll(() => app!.evaluate(() => (globalThis as typeof globalThis & { opened?: string[] }).opened))
+      .toEqual(['https://example.test/issues/42']);
     opened.push(
       ...(await app.evaluate(() => (globalThis as typeof globalThis & { opened: string[] }).opened)),
     );

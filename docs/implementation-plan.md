@@ -380,6 +380,15 @@ Verification: `npm run check` passes 483 tests (one existing opt-in skip); produ
 13 distinct targeted headless Electron scenarios pass, including shutdown during a real Git hook.
 The 95-test minimum-version matrix also passes against official Git 2.43.0 built locally.
 
+Window-close follow-up (2026-09-22): fixed the two destroyed-object dialogs by retaining the renderer
+emitter before native destruction, unregistering before cleanup callbacks, and making window/IPC cleanup
+idempotent. New regressions cover destroyed native getters, reentrant inspector disposal, and title-bar,
+native and application-quit routes with error-dialog detection. See the
+[P01 close record](reviews/p01-infrastructure.md#window-close-follow-up--2026-09-22).
+`npm run check` passes 486 tests (one existing opt-in skip); build and eight relevant Electron scenarios
+pass, including the previously failing inspector-close scenarios. The existing Quick Launch chooser
+race remains recorded separately.
+
 ## P02 — Repository sessions and persistence
 
 Coverage: F01–F03, F33 foundation.

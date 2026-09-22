@@ -38,6 +38,7 @@ vi.mock('electron', () => ({
 
 class TestWindow extends EventEmitter {
   destroyed = false;
+  contentsDestroyed = false;
   fullScreen = false;
   zoomLevel = 0;
   readonly minimize = vi.fn();
@@ -47,19 +48,28 @@ class TestWindow extends EventEmitter {
   readonly setFullScreen = vi.fn((value: boolean) => {
     this.fullScreen = value;
   });
-  readonly webContents;
+  private readonly contents;
+
+  get webContents() {
+    if (this.destroyed) throw new TypeError('Object has been destroyed');
+    return this.contents;
+  }
 
   constructor(id: number, url = 'file:///app/index.html') {
     super();
     const webEvents = new EventEmitter();
-    this.webContents = {
+    this.contents = {
       on: webEvents.on.bind(webEvents),
       removeListener: webEvents.removeListener.bind(webEvents),
       emit: webEvents.emit.bind(webEvents),
       listenerCount: webEvents.listenerCount.bind(webEvents),
       id,
+      isDestroyed: () => this.contentsDestroyed,
       mainFrame: { url },
-      getURL: () => this.webContents.mainFrame.url,
+      getURL: (): string => {
+        if (this.contentsDestroyed) throw new TypeError('Object has been destroyed');
+        return this.contents.mainFrame.url;
+      },
       send: vi.fn(),
       getZoomLevel: () => this.zoomLevel,
       setZoomLevel: vi.fn((level: number) => {
@@ -104,6 +114,82 @@ afterEach(() => {
 });
 
 describe('IPC sender and window lifecycle', () => {
+  it('cleans up a destroyed window once before application disposal', async () => {
+    const releaseOperations = vi.fn();
+    const service = {
+      disposeWindow: vi.fn(),
+      subscribeOperations: () => releaseOperations,
+    } as unknown as RepositoryService;
+    const hosting = { cancel: vi.fn() } as unknown as HostingService;
+    const ipc = registerAppIpc(service, hosting);
+    const window = new TestWindow(60);
+    const contents = window.webContents;
+    const event = window.event();
+    ipc.attachWindow(window.asWindow(), contents.getURL());
+    window.destroyed = true;
+    window.contentsDestroyed = true;
+
+    expect(() => window.emit('closed')).not.toThrow();
+    expect(contents.listenerCount('did-start-loading')).toBe(0);
+    expect(window.eventNames()).toEqual([]);
+    expect(service.disposeWindow).toHaveBeenCalledExactlyOnceWith(60);
+    expect(hosting.cancel).toHaveBeenCalledExactlyOnceWith(60);
+    expect(await handlers.get(requests.getWindowState.channel)?.(event)).toMatchObject({
+      ok: false,
+      error: { code: 'FORBIDDEN' },
+    });
+    expect(() => ipc.publishRepositoryActivated(window.asWindow(), {} as never)).not.toThrow();
+    expect(() => {
+      ipc.dispose();
+      ipc.dispose();
+      window.emit('closed');
+    }).not.toThrow();
+    expect(service.disposeWindow).toHaveBeenCalledTimes(1);
+    expect(hosting.cancel).toHaveBeenCalledTimes(1);
+    expect(releaseOperations).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores window state events after its renderer has been destroyed', () => {
+    const ipc = registerAppIpc();
+    const window = new TestWindow(61);
+    const contents = window.webContents;
+    ipc.attachWindow(window.asWindow(), contents.getURL());
+    window.contentsDestroyed = true;
+    expect(() => window.emit('focus')).not.toThrow();
+    expect(() => ipc.publishRepositoryActivated(window.asWindow(), {} as never)).not.toThrow();
+    expect(contents.send).not.toHaveBeenCalled();
+    ipc.dispose();
+    expect(contents.listenerCount('did-start-loading')).toBe(0);
+  });
+
+  it('handles reentrant disposal when closing owned inspector windows', () => {
+    const releaseOperations = vi.fn();
+    const service = {
+      disposeWindow: vi.fn(),
+      subscribeOperations: () => releaseOperations,
+    } as unknown as RepositoryService;
+    const ipc = registerAppIpc(service);
+    const parent = new TestWindow(62);
+    const child = new TestWindow(63);
+    const childContents = child.webContents;
+    ipc.attachWindow(parent.asWindow(), parent.webContents.getURL());
+    ipc.attachWindow(child.asWindow(), childContents.getURL(), { parentId: 62, context: {} as never });
+    child.close.mockImplementation(() => {
+      child.destroyed = true;
+      child.contentsDestroyed = true;
+      child.emit('closed');
+      ipc.dispose();
+    });
+    expect(() => ipc.dispose()).not.toThrow();
+    expect(service.disposeWindow).toHaveBeenCalledTimes(2);
+    expect(service.disposeWindow).toHaveBeenCalledWith(62);
+    expect(service.disposeWindow).toHaveBeenCalledWith(63);
+    expect(child.close).toHaveBeenCalledOnce();
+    expect(childContents.listenerCount('did-start-loading')).toBe(0);
+    expect(parent.listenerCount('closed')).toBe(0);
+    expect(releaseOperations).toHaveBeenCalledOnce();
+  });
+
   it('authorizes AI settings only in main windows and releases its exact reload listener', async () => {
     const service = {
       ai: {

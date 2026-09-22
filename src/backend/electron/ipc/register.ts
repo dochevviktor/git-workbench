@@ -75,15 +75,20 @@ export function registerAppIpc(
   >();
   const openingInspectors = new Map<number, number>();
   const channels: string[] = [];
+  let disposed = false;
 
   const attachWindow = (window: BrowserWindow, url: string, inspector?: InspectorAttachment) => {
-    const id = window.webContents.id;
+    // BrowserWindow.webContents is a native getter and throws after the window's destruction.
+    // Keep the emitter so closed-time cleanup can still remove the exact registered listener.
+    const contents = window.webContents;
+    const id = contents.id;
     windows.get(id)?.cleanup();
+    let cleanedUp = false;
     const cancelAi = () => repositoryService?.ai.cancel(id);
-    window.webContents.on('did-start-loading', cancelAi);
+    contents.on('did-start-loading', cancelAi);
     const publishState = () => {
-      if (!window.isDestroyed() && isTrustedDocument(window.webContents.getURL(), url)) {
-        window.webContents.send(events.windowStateChanged.channel, windowState(window));
+      if (!window.isDestroyed() && !contents.isDestroyed() && isTrustedDocument(contents.getURL(), url)) {
+        contents.send(events.windowStateChanged.channel, windowState(window));
       }
     };
     window.on('maximize', publishState);
@@ -93,13 +98,12 @@ export function registerAppIpc(
     window.on('enter-full-screen', publishState);
     window.on('leave-full-screen', publishState);
     const cleanup = () => {
-      for (const entry of windows.values()) {
-        if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
-      }
-      repositoryService?.disposeWindow(id);
-      window.webContents.removeListener('did-start-loading', cancelAi);
-      hostingService?.cancel(id);
+      if (cleanedUp) return;
+      cleanedUp = true;
+      // Unregister first: closing children/cancelling services can re-enter disposal or emit events.
       windows.delete(id);
+      openingInspectors.delete(id);
+      contents.removeListener('did-start-loading', cancelAi);
       window.removeListener('maximize', publishState);
       window.removeListener('unmaximize', publishState);
       window.removeListener('focus', publishState);
@@ -107,6 +111,11 @@ export function registerAppIpc(
       window.removeListener('enter-full-screen', publishState);
       window.removeListener('leave-full-screen', publishState);
       window.removeListener('closed', cleanup);
+      for (const entry of [...windows.values()]) {
+        if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
+      }
+      repositoryService?.disposeWindow(id);
+      hostingService?.cancel(id);
     };
     const normalizedInspector: InspectorEntry | undefined =
       inspector && 'kind' in inspector
@@ -854,19 +863,19 @@ export function registerAppIpc(
 
   return {
     publishRepositoryActivated(window: BrowserWindow, repository: RepositorySummary) {
-      const entry = windows.get(window.webContents.id);
-      if (!entry || window.isDestroyed() || !isTrustedDocument(window.webContents.getURL(), entry.url))
-        return;
-      window.webContents.send(
-        events.repositoryActivated.channel,
-        events.repositoryActivated.payload.parse(repository),
-      );
+      if (window.isDestroyed()) return;
+      const contents = window.webContents;
+      const entry = windows.get(contents.id);
+      if (!entry || contents.isDestroyed() || !isTrustedDocument(contents.getURL(), entry.url)) return;
+      contents.send(events.repositoryActivated.channel, events.repositoryActivated.payload.parse(repository));
     },
     attachWindow,
     dispose() {
+      if (disposed) return;
+      disposed = true;
       releaseOperations?.();
       for (const channel of channels) ipcMain.removeHandler(channel);
-      for (const entry of windows.values()) entry.cleanup();
+      for (const entry of [...windows.values()]) entry.cleanup();
     },
   };
 }
