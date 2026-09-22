@@ -1,3 +1,4 @@
+import type { Statistics, StatisticsRequest } from './statistics';
 import type {
   RepositorySigningSettings,
   RepositorySigningSettingsRequest,
@@ -237,6 +238,8 @@ export interface DesktopApi {
     startWorktreeOperation(request: RepositoryWorktreeActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getBisect(request: RepositorySession): Promise<IpcResult<RepositoryBisectContext>>;
     getSigningSettings(request: RepositorySession): Promise<IpcResult<RepositorySigningSettings>>;
+    getStatistics(request: StatisticsRequest): Promise<IpcResult<Statistics>>;
+    cancelStatistics(request: { id: string; readId: string }): Promise<IpcResult<null>>;
     setSigningKey(request: RepositorySigningSettingsRequest): Promise<IpcResult<RepositorySigningSettings>>;
     verifySignature(request: RepositoryVerifySignatureRequest): Promise<IpcResult<RepositorySignature>>;
     startBisectOperation(request: RepositoryBisectActionRequest): Promise<IpcResult<RepositoryOperation>>;

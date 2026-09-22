@@ -1,5 +1,9 @@
 # Git Workbench
 
+F35 adds Repository > Statistics… and Repository Treemap…: local monthly activity, contributor shares,
+date filtering and selectable file activity with Commits/Authors details. Reads are cached, cancellable
+and bounded; see the [metric rules and limits](docs/reviews/f35-statistics.md).
+
 A Linux-first Git desktop client in early development. **Git Workbench is a working name.**
 The long-term target is Fork's captured Windows workflows and publicly documented feature families,
 implemented independently with Electron, shared TypeScript contracts, and React. The Windows 2.22.0.0

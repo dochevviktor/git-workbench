@@ -80,6 +80,7 @@ import { useRepositoryStashes } from '../hooks/use-repository-stashes';
 import { useWorktrees } from '../hooks/use-worktrees';
 import { useSubmodules } from '../hooks/use-submodules';
 import { BisectBanner } from '../components/BisectBanner';
+import { RepositoryStatistics } from '../components/RepositoryStatistics';
 import { useBisect } from '../hooks/use-bisect';
 import { useGitFlow } from '../hooks/use-git-flow';
 import { copyText } from '../lib/clipboard';
@@ -797,6 +798,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const bisect = useBisect(active && !active.bare ? active.id : undefined, refreshSignal, bisectChanged);
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
+  const [statisticsView, setStatisticsView] = useState<'statistics' | 'treemap'>();
   const [gitFlowFailure, setGitFlowFailure] = useState<string>();
   const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
   const [mergeRebaseFailure, setMergeRebaseFailure] = useState<string>();
@@ -1688,6 +1690,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                     run: initializeLfs,
                   },
                 ],
+              },
+              {
+                id: 'repository-statistics',
+                label: 'Statistics…',
+                run: () => setStatisticsView('statistics'),
+              },
+              {
+                id: 'repository-treemap',
+                label: 'Repository Treemap…',
+                run: () => setStatisticsView('treemap'),
               },
               {
                 id: 'bisect',
@@ -2893,6 +2905,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onRemoteAction={runRemoteAction}
           onOpen={openNetworkDialog}
           onClose={closeNetworkDialog}
+        />
+      )}
+      {statisticsView && active && (
+        <RepositoryStatistics
+          key={active.id}
+          repositoryId={active.id}
+          name={active.name}
+          initialView={statisticsView}
+          onClose={() => setStatisticsView(undefined)}
         />
       )}
       {gitFlowDialog && gitFlowContext && (

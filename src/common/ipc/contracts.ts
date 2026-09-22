@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { statisticsRequestSchema, statisticsCancelSchema, statisticsSchema } from './statistics';
 import {
   settingsTargetSchema,
   gitSettingsSchema,
@@ -2224,6 +2225,8 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  getRepositoryStatistics: request('repository:get-statistics', statisticsRequestSchema, statisticsSchema),
+  cancelRepositoryStatistics: request('repository:cancel-statistics', statisticsCancelSchema, z.null()),
   getGitInstance: request('settings:get-git-instance', z.undefined(), gitInstanceSchema),
   saveGitInstance: request('settings:save-git-instance', gitInstanceSchema, gitInstanceSchema),
   pickGitInstance: request('settings:pick-git-instance', z.undefined(), z.string().max(4096).nullable()),

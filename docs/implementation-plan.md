@@ -149,7 +149,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain                       | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; GitHub accounts and F30 paged issue/PR filters, notification inbox and read-only live API checks verified (2026-09-22); other providers and OAuth/self-hosting remain                                                | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; shell, F31–F33 workflows and bounded F34 Preferences/repository settings verified (2026-09-22); full preference inventory, workspaces and native platform coverage remain                                            | P02/P03 plus relevant domain services |
-| P13   | Statistics and explicitly enabled AI integrations                    | Planned                                                                                                                                                                                                                       | P03 history; P12 tools for AI         |
+| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics/treemap verified (2026-09-22); F37 AI remains planned                                                                                                                                         | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                       | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
@@ -1206,6 +1206,23 @@ Acceptance for these two deliverables:
 ## P13 — Statistics and optional AI integrations
 
 Coverage: F35, F37. These are separate slices; AI is never required for normal Git use.
+
+F35 bounded slice verified 2026-09-22: Repository Statistics and Treemap, UTC date filtering,
+monthly chart/contributor table/donut, weighted selectable file/folder activity and Commits/Authors
+details. Main owns validated, cached, cancellable HEAD-history reads; metrics, resource limits and
+deliberate window/layout adaptations are specified in the [F35 handoff](reviews/f35-statistics.md).
+`npm run check` passed (427 tests, one existing skip), `npm run build` passed through `test:e2e`,
+and both F35 Electron workflow and desktop/preload smoke tests passed. Original P2-010 screenshots
+were compared with light/dark/narrow Linux captures. No repository data leaves the machine through
+this feature. F37 remains planned; 100k-history performance and native/scaling/accessibility parity
+remain unverified P14 criteria. P13 stays partial.
+
+F35 follow-up: date filtering now precedes detailed activity reads and range limits. Standard/2×/5×/10×
+computation budgets have explicit performance warnings and aligned backend/preload deadlines. A disposable
+10,005-commit regression fixture covers author-date ordering and selected-only diffs; an opt-in read-only
+SillyTavern Electron check confirms 9 commits for September 1–14 and all 11,805 commits at 2×.
+Follow-up validation: `npm run check` passed (428 tests, one existing skip), production build passed,
+and the F35, opt-in existing-repository and desktop/preload Electron checks passed.
 
 Catalogue anchor: P2-010 for Statistics/Treemap (C05). AI integrations remain public-only and require
 their own tool/platform research; no account or provider behavior follows from this bundle.

@@ -935,7 +935,7 @@ earlier slices; recording them here does not promote their full feature families
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                       | Bounded Linux workflow verified (2026-09-22): editor, five targets, reviewed Bash/process/URL execution, forms, disabled imports/export and cancellation; exact Fork formats/aliases and asynchronous modes remain partial | P12 / C05                     |
 | F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                       | Partial; configurable editor/diff/terminal and reviewed text merge handoff implemented; CLI/file-manager verified; non-text/daemon/platform variants remain                                                                | P02, P12 / C05                |
 | F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016 | Partial; shell and bounded global/repository settings verified (2026-09-22): scoped identity, presentation, Git selection and issue links; full inventory/workspace/platform scope remains                                 | P03, P04, P12, P14 / C01, C06 |
-| F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Planned; metric definitions require independent specification                                                                                                                                                              | P13 / C05                     |
+| F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                            | Bounded slice verified; UTC/raw-author metrics, date chart/contributors and cancellable cached file activity; independent rules and limits in [F35 handoff](../reviews/f35-statistics.md)                                  | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [activity][activity], [releases][mac]; B: P2-005                       | Partial via F15 export; import and clipboard remain                                                                                                                                                                        | P08 / C05                     |
 | F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only                          | Planned; separate platform/provider evidence required                                                                                                                                                                      | P13                           |
 | F38 | Lean Branching Start/Sync/Finish                                                      | B-UI: P0-008-toolbar-dropdown-subcase:F1; effects U                       | Planned; menu inventory only, not Git-flow parity                                                                                                                                                                          | P06 prerequisites, P12        |
@@ -943,6 +943,32 @@ earlier slices; recording them here does not promote their full feature families
 Recent release notes also describe conflict previews, rebase-dependent-reference updates, richer worktree
 navigation, and tab ergonomics. These are refinements within F03/F16/F18/F22, not reasons to declare the
 basic workflows complete early. Source: [Mac releases][mac].
+
+## F35 statistics and treemap — 2026-09-22
+
+User-reported SillyTavern regression corrected: the original 10,000-commit guard preceded date filtering.
+Compact author-date metadata is now filtered before detailed activity reads and range limits. A user
+Computation limit selector offers Standard/2×/5×/10×, with explicit CPU, memory, responsiveness and
+duration warnings. This is an independent product addition, not observed Fork behavior. Read-only
+Electron verification on the requested repository confirms a 9-commit September range at Standard and
+all 11,805 commits at 2×, with unchanged refs/index/status. See the handoff for bounds and regression tests.
+
+`P2-010:F1` is the primary Windows 2.22.0.0 reference (captured 2026-09-19, high confidence for its
+sampled state). Original screens 0515–0517 show date range/month chart, contributor table/donut and
+file tiles with Commits/Authors details. The original JSON and linked before/after Git evidence were
+reviewed; recovery spans those snapshots, so they do not prove statistical aggregation or isolation.
+
+The independent implementation exposes both views through Repository and Quick Launch. Exact metric
+rules are HEAD-reachable commits, inclusive UTC author dates, unmerged name/email identities and
+per-path touches, with first-parent merge diffs and delete/add rename treatment. Computation is local,
+cached, bounded and cancellable. [Git log documentation](https://git-scm.com/docs/git-log), accessed
+2026-09-22, supports those explicit Git choices, not inferred Fork semantics.
+
+Generated light/dark/narrow Linux screens were compared with the original screenshots. A shared modal,
+explicit date inputs, Unicode paths, folder drill-down, accessible tables and independently weighted
+tiles are deliberate product adaptations. Captured date/aggregation/tile algorithms remain unknown.
+The [F35 handoff](../reviews/f35-statistics.md) records implementation, tests, screenshots and resource
+limits. F37 AI and the P14 large-repository/native-platform matrix remain separate scope.
 
 ## Application and repository settings
 

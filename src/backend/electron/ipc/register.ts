@@ -683,6 +683,12 @@ export function registerAppIpc(
     register(requests.getRepositorySigningSettings, (window, { id }) =>
       repositoryService.getSigningSettings(window.webContents.id, id),
     );
+    register(requests.getRepositoryStatistics, (window, request) =>
+      repositoryService.getStatistics(window.webContents.id, request),
+    );
+    register(requests.cancelRepositoryStatistics, (window, request) =>
+      repositoryService.cancelStatistics(window.webContents.id, request),
+    );
     register(requests.setRepositorySigningKey, (window, request) =>
       repositoryService.setSigningKey(window.webContents.id, request),
     );

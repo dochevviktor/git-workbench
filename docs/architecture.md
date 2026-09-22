@@ -114,6 +114,13 @@ cancellation requested is distinct from terminal status. No automatic rollback o
 
 ## Process boundaries
 
+F35 adds named `getStatistics`/`cancelStatistics` repository reads with strict range/result schemas,
+the existing sender/frame/owner checks and inspector denial. Main pins HEAD, computes UTC author and
+exact-path activity, and caches bounded source snapshots; the renderer draws charts and weighted file
+tiles. Cancellation is scoped to owner/repository/read ID and tied to tab/window disposal. No repository
+mutation or network access is introduced. The [F35 handoff](reviews/f35-statistics.md) specifies merge,
+rename, alias, shallow-history, cache and resource policies plus the modal-window adaptation.
+
 F34 adds `desktop.settings` for scoped Git identity/issue rules and a next-startup Git executable
 selection. Runtime schemas, fixed preload calls and the existing sender/frame/ownership checks apply.
 Main reads the effective Git value/origin and owns a snapshot-guarded, Git-lock-compatible atomic config

@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { statisticsLimits } from '../../common/ipc/statistics';
 import type { DesktopApi, Unsubscribe } from '../../common/ipc/api';
 import { events, requests } from '../../common/ipc/contracts';
 import type { RequestContract } from '../../common/ipc/contracts';
@@ -162,6 +163,13 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       startWorktreeOperation: (request) => invoke(requests.startRepositoryWorktreeOperation, request),
       getBisect: (request) => invoke(requests.getRepositoryBisect, request),
       getSigningSettings: (request) => invoke(requests.getRepositorySigningSettings, request),
+      getStatistics: (request) =>
+        invoke(
+          requests.getRepositoryStatistics,
+          request,
+          statisticsLimits(request.limitScale).timeoutMs + 10000,
+        ),
+      cancelStatistics: (request) => invoke(requests.cancelRepositoryStatistics, request),
       setSigningKey: (request) => invoke(requests.setRepositorySigningKey, request),
       verifySignature: (request) => invoke(requests.verifyRepositorySignature, request),
       startBisectOperation: (request) => invoke(requests.startRepositoryBisectOperation, request),

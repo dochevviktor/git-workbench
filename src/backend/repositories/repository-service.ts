@@ -155,6 +155,9 @@ import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } 
 import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
 import { readBisectContext, applyBisectAction } from './bisect-service';
 import { readSigningSettings, setSigningKey, verifySignature } from './signing-service';
+import { StatisticsService } from './statistics-service';
+import type { StatisticsRequest } from '../../common/ipc/statistics';
+import { statisticsLimits } from '../../common/ipc/statistics';
 import { GitSettingsService, globalConfigPath } from './settings-service';
 import type { SaveGitSettings } from '../../common/ipc/settings';
 import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
@@ -239,6 +242,8 @@ export class RepositoryService {
   private readonly maxOpenTabs: number;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
   private readonly diffReads = new Map<string, AbortController>();
+  private readonly statistics = new StatisticsService();
+  private readonly statisticsReads = new Map<string, AbortController>();
   private readonly restorePromises = new Map<number, Promise<void>>();
   private readonly ownerGenerations = new Map<number, number>();
   private readonly managerRepositoryPaths = new Map<number, ReadonlyMap<string, string>>();
@@ -537,6 +542,11 @@ export class RepositoryService {
   }
 
   async close(ownerId: number, id: string): Promise<void> {
+    for (const [key, controller] of this.statisticsReads)
+      if (key.startsWith(`${ownerId}:${id}:`)) {
+        controller.abort();
+        this.statisticsReads.delete(key);
+      }
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
     if (!ownerSessions?.has(id)) {
@@ -1038,6 +1048,36 @@ export class RepositoryService {
   async getSigningSettings(ownerId: number, id: string) {
     const summary = await this.requireWorktree(ownerId, id);
     return readSigningSettings(this.runner, summary.worktreePath, id);
+  }
+
+  async getStatistics(ownerId: number, request: StatisticsRequest) {
+    const repository = this.operationRepository(ownerId, request.id);
+    const key = `${ownerId}:${request.id}:${request.readId}`;
+    if (this.statisticsReads.size >= 4)
+      throw new ExpectedBackendError('UNAVAILABLE', 'Too many statistics reads. Cancel a read first.');
+    this.statisticsReads.get(key)?.abort();
+    const controller = new AbortController();
+    this.statisticsReads.set(key, controller);
+    try {
+      return await this.statistics.read(
+        this.runner,
+        repository.worktreePath ?? repository.commonDir,
+        request,
+        AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(statisticsLimits(request.limitScale).timeoutMs),
+        ]),
+      );
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not calculate statistics.');
+    } finally {
+      if (this.statisticsReads.get(key) === controller) this.statisticsReads.delete(key);
+    }
+  }
+
+  async cancelStatistics(ownerId: number, request: { id: string; readId: string }): Promise<null> {
+    this.statisticsReads.get(`${ownerId}:${request.id}:${request.readId}`)?.abort();
+    return null;
   }
 
   async getGitSettings(ownerId: number, id: string | null) {
@@ -2734,6 +2774,11 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    for (const [key, controller] of this.statisticsReads)
+      if (key.startsWith(`${ownerId}:`)) {
+        controller.abort();
+        this.statisticsReads.delete(key);
+      }
     this.customCommands.disposeOwner(ownerId);
     for (const [key, controller] of this.diffReads)
       if (key.startsWith(`${ownerId}:`)) {
@@ -2749,6 +2794,9 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    for (const controller of this.statisticsReads.values()) controller.abort();
+    this.statisticsReads.clear();
+    this.statistics.clear();
     for (const controller of this.diffReads.values()) controller.abort();
     this.diffReads.clear();
     this.ownerGenerations.clear();

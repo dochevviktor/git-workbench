@@ -356,6 +356,24 @@ P10 remains partial.
 
 ## Verification and remaining research
 
+F35 checkpoint (2026-09-22): `P2-010:F1` (Windows 2.22.0.0, 2026-09-19) maps to the independently
+implemented Statistics/Treemap workflow. Confidence is high for the sampled composition only. Original
+case, screens 0515–0517, manifests and graphs were inspected before styling and compared with Linux
+light/dark/narrow captures afterward. The chart/table/donut, neutral tiles, blue selection and
+Commits/Authors detail sidebar are retained. An inherited narrow-dialog width was corrected after review.
+One modal with two views, explicit date inputs, exact Unicode paths, accessible tables, folder drill-down,
+HEAD-only UTC/raw-author aggregation and weighted tile sizing are deliberate adaptations. Metric/date/
+tile algorithms remain unknown in Fork; the capture's recovery-spanning Git snapshots are not isolation
+proof. [Git log](https://git-scm.com/docs/git-log), accessed 2026-09-22, supports the independent backend
+semantics. See the [F35 handoff](../reviews/f35-statistics.md) for bounds and test evidence. Large-history
+performance and native/scaling/accessibility coverage remain P14 work; F37 remains separate.
+
+F35 range-limit correction (2026-09-22): SillyTavern exposed the pre-filter scan cap. Date filtering now
+precedes range caps and detailed diff reads. Standard/2×/5×/10× controls and their explicit performance
+warning are independent additions. The existing P2-010 chart/table/treemap structure remains; new
+headless captures of the 9-commit range and full 11,805-commit result were inspected. The regression
+check compares refs/index/status unchanged; this is additional Linux evidence, not a new Fork claim.
+
 F32 checkpoint (2026-09-22): `P2-008-create-execute-remove-subcase:F1–F5` and
 `P2-008-menu-subcase:F1` now map to a verified Linux editor/menu/run/output/remove workflow. The
 repository Bash route preserves refs/index/status in temporary Git fixtures. Five target resolvers,
