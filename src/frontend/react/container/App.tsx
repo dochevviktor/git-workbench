@@ -68,6 +68,8 @@ import { useRepositoryHistory } from '../hooks/use-repository-history';
 import { useRepositoryStashes } from '../hooks/use-repository-stashes';
 import { useWorktrees } from '../hooks/use-worktrees';
 import { useSubmodules } from '../hooks/use-submodules';
+import { BisectBanner } from '../components/BisectBanner';
+import { useBisect } from '../hooks/use-bisect';
 import { useGitFlow } from '../hooks/use-git-flow';
 import { copyText } from '../lib/clipboard';
 import { shortHash } from '../lib/format';
@@ -746,6 +748,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const [networkDialog, setNetworkDialog] = useState<NetworkDialogRequest>();
   const [networkFailure, setNetworkFailure] = useState<string>();
+  const bisectChanged = useCallback(
+    (head: string | null) => {
+      refresh();
+      if (head) revealSearchResult(head);
+    },
+    [refresh, revealSearchResult],
+  );
+  const bisect = useBisect(active && !active.bare ? active.id : undefined, refreshSignal, bisectChanged);
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
   const [gitFlowFailure, setGitFlowFailure] = useState<string>();
   const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
@@ -1608,6 +1618,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                 ],
               },
               {
+                id: 'bisect',
+                label: 'Bisect',
+                disabled:
+                  !bisect.context ||
+                  bisect.context.active ||
+                  Boolean(bisect.context.blockedReason) ||
+                  bisect.busy ||
+                  activeOperation !== undefined,
+                disabledReason:
+                  bisect.context?.blockedReason ??
+                  (bisect.context?.active ? 'Bisect is already active.' : undefined),
+                run: () => void bisect.apply('start'),
+              },
+              {
                 id: 'git-flow',
                 label: 'Git-flow',
                 submenu: gitFlowItems,
@@ -2453,6 +2477,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onCancelOperation={cancelOperation}
       />
       {tabStrip('horizontal')}
+      {active && bisect.context?.active && (
+        <BisectBanner
+          context={bisect.context}
+          busy={bisect.busy || activeOperation !== undefined}
+          error={bisect.error}
+          onAction={(action) => void bisect.apply(action)}
+          onReveal={revealSearchResult}
+        />
+      )}
+      {active && !bisect.context?.active && bisect.error && <div role="alert">{bisect.error}</div>}
       <div className="workbench">
         {repositoryListVisible && tabStrip('vertical')}
         {managerActive || !active ? (

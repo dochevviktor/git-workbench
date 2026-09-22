@@ -1494,6 +1494,36 @@ export const repositoryGitFlowActionResultSchema = z.discriminatedUnion('status'
 
 export const repositoryOperationIdSchema = z.string().regex(/^op-[a-f0-9]{32}$/);
 
+export const repositoryBisectContextSchema = z.strictObject({
+  repositoryId: repositoryIdSchema,
+  active: z.boolean(),
+  original: z.string().max(4096).nullable(),
+  head: z
+    .string()
+    .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)
+    .nullable(),
+  bad: z
+    .string()
+    .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)
+    .nullable(),
+  good: z.array(z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)).max(10000),
+  skipped: z.array(z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)).max(10000),
+  firstBad: z
+    .string()
+    .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)
+    .nullable(),
+  candidates: z.array(z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u)).max(10000),
+  blockedReason: z.string().max(4096).nullable(),
+  snapshot: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+export const repositoryBisectActionRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  action: z.enum(['start', 'bad', 'good', 'skip', 'reset']),
+  snapshot: z.string().regex(/^[0-9a-f]{64}$/u),
+});
+export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSchema>;
+export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
+
 export const repositoryOperationKindSchema = z.enum([
   'clone',
   'connection',
@@ -1515,6 +1545,7 @@ export const repositoryOperationKindSchema = z.enum([
   'submodule',
   'lfs',
   'git-flow',
+  'bisect',
 ]);
 
 export const repositoryOperationStatusSchema = z.enum(['running', 'succeeded', 'failed', 'cancelled']);
@@ -1566,6 +1597,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('worktree'), value: repositoryWorktreeActionResultSchema }),
       z.strictObject({ kind: z.literal('submodule'), value: repositorySubmoduleActionResultSchema }),
       z.strictObject({ kind: z.literal('git-flow'), value: repositoryGitFlowActionResultSchema }),
+      z.strictObject({ kind: z.literal('bisect'), value: repositoryBisectContextSchema }),
       z.strictObject({ kind: z.literal('lfs'), value: repositoryLfsSaveResultSchema }),
     ])
     .optional(),
@@ -2259,6 +2291,16 @@ export const requests = {
   startRepositorySubmoduleOperation: request(
     'repository:start-submodule-operation',
     repositorySubmoduleActionRequestSchema,
+    repositoryOperationSchema,
+  ),
+  getRepositoryBisect: request(
+    'repository:get-bisect',
+    repositorySessionSchema,
+    repositoryBisectContextSchema,
+  ),
+  startRepositoryBisectOperation: request(
+    'repository:start-bisect-operation',
+    repositoryBisectActionRequestSchema,
     repositoryOperationSchema,
   ),
   getRepositoryGitFlow: request(

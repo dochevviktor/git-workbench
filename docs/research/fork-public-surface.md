@@ -926,7 +926,7 @@ earlier slices; recording them here does not promote their full feature families
 | F23 | Submodule lifecycle, revision comparison, dirty state and navigation                  | D: [merge][merge]; B: P2-002                                              | Partial; bounded lifecycle, revision cards, dirty child, successful local Update and child navigation verified; broader variants remain open    | P09 / C05                     |
 | F24 | LFS initialization, historical payload retrieval, transfers and locks                 | D: [manager][manager], [operations][operations]; B: P2-011                | Partial; local pointer/materialized inspection, initialization, exact Save As and unchanged-pointer verification; remote/auth/locks/push open   | P10 / C05                     |
 | F25 | Git-flow feature/release/hotfix workflows                                             | D: [product][home], [git-flow docs][gitflow-presentation]; public-only    | Partial; native initialize/start/finish and all three disposable/Electron lifecycles verified; public defaults and broader variants remain open | P09                           |
-| F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Planned                                                                                                                                         | P08 / C05                     |
+| F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                    | Bounded manual workflow verified 2026-09-22; see [F26 handoff](../reviews/f26-bisect.md)                                                        | P08 / C05                     |
 | F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                       | Planned rich viewers; pixel comparison public-only                                                                                              | P04 fallback, P10 / C02, C05  |
 | F28 | GPG signing/verification and signed tags                                              | D: [product][home], [releases][mac]; public-only                          | Planned                                                                                                                                         | P10                           |
 | F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                 | Partial; PR browser handoff only                                                                                                                | P11                           |
@@ -1090,3 +1090,14 @@ Source dates for historical workflow evidence: [activity][activity] 2018-05-28;
 [lfs-spec]: https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md
 [lfs-install]: https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-install.adoc
 [lfs-man]: https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs.adoc
+
+## F26 implementation evidence — 2026-09-22
+
+`P2-006:F1` and `P2-006-skip-subcase:F1–F3` (Windows 2.22.0.0, captured 2026-09-19)
+are high-confidence evidence for Start/Bad/Good/Skip/Abort, midpoint selection and restored branch.
+Original screenshots, cases and Git evidence were compared with independent Linux implementation
+and headless Electron screenshots. [Git bisect documentation](https://git-scm.com/docs/git-bisect),
+accessed 2026-09-22, supplements reset and ambiguous-skip semantics. The app deliberately presents
+first-bad as success, adds a visible range, and tests restart and repeated-skip ambiguity independently.
+Those variants do not expand the captured Fork claims. See the [F26 handoff](../reviews/f26-bisect.md)
+for the verification matrix and remaining limits.

@@ -299,3 +299,15 @@ reference-style links were checked after the F25 handoff update. Prettier and `g
 F24's bounded local slice updates P10 to Partial and the public-only F25 bounded slice updates the
 verified implementation record for P09; the phases remain partial. The supplied
 bundle and preexisting `.gitignore` edits were preserved.
+
+## F26 alignment checkpoint — 2026-09-22
+
+Implemented `P2-006:F1` and `P2-006-skip-subcase:F1–F3` with high confidence for the recorded
+Windows 2.22.0.0 workflow (capture 2026-09-19): Repository > Bisect, initially disabled Good,
+checkout of a known-good revision, midpoint, Skip and immediate Abort restoring the original branch.
+Compared original `screen-0482` with Linux midpoint/result screenshots. The banner occupies the strip
+below repository tabs and exposes Bad/Good/Skip/Abort. Linux adds an explicit range row and links,
+keeps neutral independently authored reference chips, and reports first-bad as a successful outcome.
+Repeated-skip ambiguity and restart restoration are independent verified additions; captured
+ambiguity remains unknown. [Git documentation](https://git-scm.com/docs/git-bisect), accessed
+2026-09-22, supports their semantics. See the [F26 handoff](../reviews/f26-bisect.md) for tests and limits.

@@ -26,6 +26,24 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates named bisect requests and rejects malformed responses', async () => {
+    const { api, invoke } = fixture();
+    const request = { id: 'repo-' + 'b'.repeat(64), action: 'start' as const, snapshot: 'a'.repeat(64) };
+    invoke.mockResolvedValueOnce({ ok: false, error: { code: 'STALE_SNAPSHOT', message: 'Refresh' } });
+    expect(await api.repository.startBisectOperation(request)).toMatchObject({
+      ok: false,
+      error: { code: 'STALE_SNAPSHOT' },
+    });
+    expect(invoke).toHaveBeenCalledWith(requests.startRepositoryBisectOperation.channel, request);
+    invoke.mockClear();
+    expect(await api.repository.startBisectOperation({ ...request, snapshot: 'HEAD' })).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { active: true } });
+    expect(await api.repository.getBisect({ id: request.id })).toMatchObject({ ok: false });
+  });
   it('validates repository activation events and removes exactly its subscription', () => {
     const { api, emitter } = fixture();
     const channel = events.repositoryActivated.channel;

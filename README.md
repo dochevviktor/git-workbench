@@ -40,6 +40,9 @@ annotated tags, optional develop back-merges, explicit capability checks, and a 
 It uses ordinary Git and repository-local `gitflow.*` configuration; remote publishing, topic rebase,
 automatic stash/reapply, and specialized conflict continuation remain later work. Lean Branching remains
 a separate F38 family.
+F26 adds manual Bisect start/Bad/Good/Skip/Abort, visible range and results, and restoration of active
+sessions after restart. First-bad and ambiguous skipped-candidate results stay visible until Abort
+restores the original checkout; local changes must be committed or stashed before advancing.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history

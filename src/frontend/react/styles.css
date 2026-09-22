@@ -4352,3 +4352,29 @@ svg.spinning {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.bisect-banner {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.bisect-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bisect-actions {
+  display: flex;
+  gap: 4px;
+}
+.bisect-actions button {
+  min-width: 48px;
+}
+.bisect-range {
+  max-height: 88px;
+  overflow: auto;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}

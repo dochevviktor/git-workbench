@@ -60,7 +60,15 @@ export function referenceChips(
     chips.push({
       key: decoration.fullName,
       kind: decoration.kind,
-      label: decoration.kind === 'head' ? 'HEAD' : decoration.name,
+      label:
+        decoration.kind === 'head'
+          ? 'HEAD'
+          : decoration.fullName.startsWith('refs/bisect/')
+            ? 'bisect: ' +
+              decoration.fullName
+                .slice('refs/bisect/'.length)
+                .replace(/-(?:[0-9a-f]{40}|[0-9a-f]{64})$/u, (hash) => hash.slice(0, 8))
+            : decoration.name,
       current: decoration.kind === 'head',
       tracksRemote: false,
       title: decoration.fullName,

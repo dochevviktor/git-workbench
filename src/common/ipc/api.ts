@@ -44,6 +44,8 @@ import type {
   RepositoryReferenceActionRequest,
   RepositoryReferenceContext,
   RepositoryReferenceContextRequest,
+  RepositoryBisectActionRequest,
+  RepositoryBisectContext,
   RepositoryGitFlowActionRequest,
   RepositoryGitFlowContext,
   RepositoryWorktreeActionRequest,
@@ -164,6 +166,8 @@ export interface DesktopApi {
     applyReferenceAction(request: RepositoryReferenceActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getWorktrees(request: RepositorySession): Promise<IpcResult<RepositoryWorktreeContext>>;
     startWorktreeOperation(request: RepositoryWorktreeActionRequest): Promise<IpcResult<RepositoryOperation>>;
+    getBisect(request: RepositorySession): Promise<IpcResult<RepositoryBisectContext>>;
+    startBisectOperation(request: RepositoryBisectActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getGitFlow(request: RepositorySession): Promise<IpcResult<RepositoryGitFlowContext>>;
     startGitFlowOperation(request: RepositoryGitFlowActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getSubmodules(request: RepositorySession): Promise<IpcResult<RepositorySubmoduleContext>>;

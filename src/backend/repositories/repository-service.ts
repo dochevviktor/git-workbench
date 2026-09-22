@@ -56,6 +56,8 @@ import type {
   RepositoryReferenceActionRequest,
   RepositoryReferenceActionResult,
   RepositoryReferenceContext,
+  RepositoryBisectActionRequest,
+  RepositoryBisectContext,
   RepositoryGitFlowActionRequest,
   RepositoryGitFlowActionResult,
   RepositoryGitFlowContext,
@@ -149,6 +151,7 @@ import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
 import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
+import { readBisectContext, applyBisectAction } from './bisect-service';
 import { applyGitFlowAction, GitFlowSnapshotError, readGitFlowContext } from './gitflow-service';
 import {
   applyWorkingChange,
@@ -994,6 +997,54 @@ export class RepositoryService {
     } catch (error) {
       throw this.mapGitFailure(error, 'Git could not read the linked worktrees.');
     }
+  }
+
+  async getBisect(ownerId: number, id: string): Promise<RepositoryBisectContext> {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readBisectContext(this.runner, {
+        repositoryId: id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+      });
+    } catch (error) {
+      throw this.mapGitFailure(error, 'Git could not read the bisect state.');
+    }
+  }
+
+  startBisectOperation(ownerId: number, request: RepositoryBisectActionRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'bisect',
+        title: 'Bisect: ' + request.action,
+        command: 'git bisect ' + request.action,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          const value = await applyBisectAction(
+            this.runner,
+            { repositoryId: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir },
+            request,
+            handle.signal,
+          );
+          return {
+            status: 'succeeded',
+            output: '',
+            message: value.firstBad
+              ? 'First bad commit: ' + value.firstBad
+              : value.candidates.length
+                ? 'Skipped commits prevent a unique result.'
+                : value.active
+                  ? 'Bisect state updated.'
+                  : 'Bisect stopped; original checkout restored.',
+            result: { kind: 'bisect', value },
+          };
+        }),
+    );
   }
 
   async getGitFlow(ownerId: number, id: string): Promise<RepositoryGitFlowContext> {

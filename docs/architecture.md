@@ -5,6 +5,11 @@ F03 tab slice, the initial F04 history/selection slice, the initial F07 revision
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
 initial F11 commit slice, the initial F12 branch/tag slice, the initial F13 remote and network slice
 with its F14 operation registry, background-fetch scheduler, and activity views, the F01–F13 stabilization, minimal saved-change/pull recovery, the initial F15 stash/patch slice, bounded F17 conflict-helper, F19 history-operation, F20 reflog, and F21 file-history/Blame slices, a branch PR browser handoff, the initial F34 workspace-chrome slice, the bounded F22 worktree lifecycle slice, the bounded F23 submodule lifecycle slice, and the bounded F24 local LFS slice implemented. The bounded F25 native Git-flow slice is implemented and verified through its dated handoff.
+The bounded F26 manual Bisect slice reads durable per-worktree Git state through named validated
+capabilities and serializes start/mark/skip/reset through the common-directory operation queue. Its
+snapshot covers HEAD, bisect files/refs, status and pending sequencers. First-bad and ambiguous skipped
+candidates are outcomes, and app restart reconstructs the banner without duplicating Git state.
+See the [F26 handoff](reviews/f26-bisect.md) for verified behavior and limits.
 F22 topology reads and create/open/remove/prune operations use backend-issued worktree IDs, common-directory
 serialization, linked-tab sessions, and explicit current/main/occupied/dirty/locked/stale guards. F23
 submodule reads and actions use backend-issued submodule IDs, parent/index/child gitlink comparison,
