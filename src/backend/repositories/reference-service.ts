@@ -9,6 +9,7 @@ import type {
   RepositoryReferenceFailureReason,
   RepositoryReferenceStartPoint,
   RepositoryTag,
+  RepositoryOperationProgress,
 } from '../../common/ipc/contracts';
 import {
   repositoryReferenceActionResultSchema,
@@ -19,6 +20,7 @@ import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { detectPendingOperation } from './commit-service';
 import { readWorkingChanges } from './working-tree-service';
 import { isAllowedRemoteUrl } from './remote-service';
+import { classifyNetworkFailure, ProgressCollector } from './network-service';
 
 const referenceReadTimeoutMs = 15_000;
 const referenceReadOutputLimit = 8 * 1024 * 1024;
@@ -49,6 +51,8 @@ export interface ReferenceContextInput {
 }
 
 export interface ReferenceActionInput extends ReferenceContextInput {
+  readonly onOutput?: ((output: string) => void) | undefined;
+  readonly onProgress?: ((progress: RepositoryOperationProgress) => void) | undefined;
   readonly onCommand?: ((args: readonly string[]) => void) | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly action: RepositoryReferenceAction;
@@ -164,16 +168,116 @@ export async function applyReferenceAction(
     return blocked(input.repositoryId, action.kind, plan.reason, plan.message, false);
   }
 
+  const deletingBranch =
+    action.kind === 'delete-branch'
+      ? context.branches.find((branch) => branch.fullName === action.fullName)
+      : undefined;
+  const remoteNames =
+    action.kind === 'create-tag' && action.pushRemote
+      ? [action.pushRemote]
+      : action.kind === 'delete-tag'
+        ? [...new Set(action.remoteNames ?? [])]
+        : action.kind === 'delete-branch' && action.deleteUpstream && deletingBranch?.upstreamRemote
+          ? [deletingBranch.upstreamRemote]
+          : [];
+  const fullName =
+    action.kind === 'create-tag'
+      ? `refs/tags/${action.name}`
+      : action.kind === 'delete-branch'
+        ? `refs/heads/${deletingBranch?.upstreamBranch ?? ''}`
+        : 'fullName' in action
+          ? action.fullName
+          : '';
+  const deleting = action.kind === 'delete-tag' || action.kind === 'delete-branch';
+  const updateRemotes = async (): Promise<RepositoryReferenceActionResult | undefined> => {
+    const completed: string[] = [];
+    for (const remote of remoteNames) {
+      const args = [
+        'push',
+        '--progress',
+        '--porcelain',
+        '--no-follow-tags',
+        '--',
+        remote,
+        deleting ? `:${fullName}` : `${fullName}:${fullName}`,
+      ];
+      input.onCommand?.(args);
+      const progress = new ProgressCollector(
+        (value) => input.onProgress?.(value),
+        (line) => input.onOutput?.(`${line}\n`),
+      );
+      try {
+        await runner.run(args, {
+          cwd: input.cwd,
+          timeoutMs: 10 * 60_000,
+          maxOutputBytes: referenceWriteOutputLimit,
+          signal: input.signal,
+          authentication: 'prompt',
+          onStderr: (chunk) => progress.push(chunk),
+        });
+        completed.push(remote);
+      } catch (error) {
+        const output = error instanceof GitCommandError ? displayOutput(error.stdout, error.stderr) : '';
+        const explanation = output
+          ? classifyNetworkFailure('push', output).message
+          : 'Remote update did not complete. Refresh before retrying.';
+        return {
+          status: 'blocked',
+          repositoryId: input.repositoryId,
+          kind: action.kind,
+          reason: 'other',
+          canForce: false,
+          paths: [],
+          output,
+          message: boundedMessage(
+            `${deleting ? 'The local reference was retained.' : plan.message} ${explanation}${completed.length ? ` Completed remotes: ${completed.join(', ')}.` : ''}`,
+          ),
+        };
+      } finally {
+        progress.flush();
+      }
+    }
+    return undefined;
+  };
+  // Retain the local recovery point if a remote refuses deletion or the transfer is cancelled.
+  if (deleting) {
+    const failure = await updateRemotes();
+    if (failure) return repositoryReferenceActionResultSchema.parse(failure);
+    if (remoteNames.length) {
+      const latest = await readReferenceContext(runner, {
+        ...input,
+        head: await readHead(runner, input.cwd),
+      });
+      if (latest.snapshot !== input.snapshot)
+        return blocked(
+          input.repositoryId,
+          action.kind,
+          'other',
+          'Remote deletion completed, but local references changed. The local reference was retained; review it again.',
+          false,
+        );
+    }
+  }
+
   let result: GitCommandResult;
+  const progress = new ProgressCollector(
+    (value) => input.onProgress?.(value),
+    (line) => input.onOutput?.(`${line}\n`),
+  );
   input.onCommand?.(plan.args);
   try {
     result = await runner.run(plan.args, {
       cwd: input.cwd,
       timeoutMs:
-        plan.write || action.kind === 'create-tag' ? referenceWriteTimeoutMs : referenceReadTimeoutMs,
+        action.kind === 'push-tag'
+          ? 10 * 60_000
+          : plan.write || action.kind === 'create-tag'
+            ? referenceWriteTimeoutMs
+            : referenceReadTimeoutMs,
       maxOutputBytes: referenceWriteOutputLimit,
       signal: input.signal,
       authentication: action.kind === 'push-tag' ? 'prompt' : 'silent',
+      ...(input.onOutput ? { onStderr: (chunk: string) => progress.push(chunk) } : {}),
       ...(plan.stdin === undefined ? {} : { stdin: plan.stdin }),
     });
   } catch (error) {
@@ -199,54 +303,13 @@ export async function applyReferenceAction(
       canForce: failure.canForce,
       paths: blockedPaths(output),
     } satisfies RepositoryReferenceActionResult);
+  } finally {
+    progress.flush();
   }
 
-  const remoteNames =
-    action.kind === 'create-tag' && action.pushRemote
-      ? [action.pushRemote]
-      : action.kind === 'delete-tag'
-        ? [...new Set(action.remoteNames ?? [])]
-        : [];
-  const completedRemotes: string[] = [];
-  for (const remote of remoteNames) {
-    const fullName =
-      action.kind === 'create-tag'
-        ? `refs/tags/${action.name}`
-        : action.kind === 'delete-tag'
-          ? action.fullName
-          : '';
-    const args = [
-      'push',
-      '--porcelain',
-      '--',
-      remote,
-      action.kind === 'delete-tag' ? `:${fullName}` : `${fullName}:${fullName}`,
-    ];
-    input.onCommand?.(args);
-    try {
-      await runner.run(args, {
-        cwd: input.cwd,
-        timeoutMs: referenceWriteTimeoutMs,
-        maxOutputBytes: referenceWriteOutputLimit,
-        signal: input.signal,
-        authentication: 'prompt',
-      });
-      completedRemotes.push(remote);
-    } catch (error) {
-      const output = error instanceof GitCommandError ? displayOutput(error.stdout, error.stderr) : '';
-      return repositoryReferenceActionResultSchema.parse({
-        status: 'blocked',
-        repositoryId: input.repositoryId,
-        kind: action.kind,
-        reason: 'other',
-        canForce: false,
-        paths: [],
-        output,
-        message: boundedMessage(
-          `${plan.message} Remote update for '${remote}' did not complete; refresh its refs before retrying.${completedRemotes.length ? ` Completed remotes: ${completedRemotes.join(', ')}.` : ''}`,
-        ),
-      });
-    }
+  if (!deleting) {
+    const failure = await updateRemotes();
+    if (failure) return repositoryReferenceActionResultSchema.parse(failure);
   }
 
   return repositoryReferenceActionResultSchema.parse({
@@ -279,6 +342,21 @@ function planAction(
   action: RepositoryReferenceAction,
 ): ActionPlan | ActionRefusal {
   switch (action.kind) {
+    case 'delete-references': {
+      const branches = action.fullNames[0]?.startsWith('refs/heads/');
+      return {
+        args: [
+          branches ? 'branch' : 'tag',
+          branches && action.force ? '-D' : '-d',
+          '--',
+          ...action.fullNames.map((name) =>
+            name.slice(branches ? 'refs/heads/'.length : 'refs/tags/'.length),
+          ),
+        ],
+        message: `Deleted ${action.fullNames.length} ${branches ? 'branches' : 'tags'} locally.`,
+        write: false,
+      };
+    }
     case 'create-branch': {
       const start = resolveStartPoint(context, action.startPoint);
       if (!start) return notFound('That starting point is no longer in this repository.');
@@ -394,7 +472,15 @@ function planAction(
       const tag = context.tags.find((candidate) => candidate.fullName === action.fullName);
       if (!tag) return notFound('That tag is no longer in this repository.');
       return {
-        args: ['push', '--porcelain', '--', action.remote, `${tag.fullName}:${tag.fullName}`],
+        args: [
+          'push',
+          '--progress',
+          '--porcelain',
+          '--no-follow-tags',
+          '--',
+          action.remote,
+          `${tag.fullName}:${tag.fullName}`,
+        ],
         message: `Pushed tag '${tag.name}' to '${action.remote}'.`,
         write: true,
       };
@@ -409,6 +495,40 @@ async function refuseAction(
   context: RepositoryReferenceContext,
   action: RepositoryReferenceAction,
 ): Promise<ActionRefusal | undefined> {
+  if (action.kind === 'delete-references') {
+    const prefix = action.fullNames[0]?.startsWith('refs/heads/') ? 'refs/heads/' : 'refs/tags/';
+    if (
+      new Set(action.fullNames).size !== action.fullNames.length ||
+      action.fullNames.some((name) => !name.startsWith(prefix))
+    )
+      return notFound('Select distinct local branches or tags, without mixing reference types.');
+    for (const fullName of action.fullNames) {
+      if (prefix === 'refs/heads/') {
+        if (!context.branches.some((branch) => branch.fullName === fullName))
+          return notFound('A selected branch no longer exists.');
+        const failure = await refuseAction(runner, cwd, context, {
+          kind: 'delete-branch',
+          fullName,
+          force: action.force,
+        });
+        if (failure) return failure;
+      } else if (!context.tags.some((tag) => tag.fullName === fullName))
+        return notFound('A selected tag no longer exists.');
+    }
+    return undefined;
+  }
+  const upstreamBranch =
+    action.kind === 'delete-branch' && action.deleteUpstream
+      ? context.branches.find((branch) => branch.fullName === action.fullName)
+      : undefined;
+  if (
+    action.kind === 'delete-branch' &&
+    action.deleteUpstream &&
+    (!upstreamBranch?.upstreamRemote ||
+      !upstreamBranch.upstreamBranch ||
+      upstreamBranch.upstreamRemote === '.')
+  )
+    return notFound('This branch has no configured remote upstream to delete.');
   const selectedRemotes =
     action.kind === 'create-tag' && action.pushRemote
       ? [action.pushRemote]
@@ -416,7 +536,9 @@ async function refuseAction(
         ? (action.remoteNames ?? [])
         : action.kind === 'push-tag'
           ? [action.remote]
-          : [];
+          : upstreamBranch?.upstreamRemote
+            ? [upstreamBranch.upstreamRemote]
+            : [];
   if (selectedRemotes.some((remote) => !context.remotes.includes(remote))) {
     return notFound('A selected remote is no longer configured. Review the remote selection again.');
   }
@@ -628,6 +750,8 @@ function actionDescription(action: RepositoryReferenceAction): string {
       return `rename that branch to '${action.name}'`;
     case 'delete-branch':
       return 'delete that branch';
+    case 'delete-references':
+      return 'delete those references';
     case 'set-upstream':
       return 'change the upstream branch';
     case 'checkout-branch':

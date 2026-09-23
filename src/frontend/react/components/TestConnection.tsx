@@ -57,10 +57,25 @@ export function TestConnection({
         Test Connection
       </button>
       {(error || operation) && (
-        <span role="status" className="muted">
+        <span
+          role="status"
+          className={operation?.status === 'succeeded' && !error ? 'connection-succeeded' : 'muted'}
+        >
           {' '}
           {error ?? operation?.message}
         </span>
+      )}
+      {operation?.status === 'running' && (
+        <button
+          type="button"
+          className="link-button"
+          disabled={operation.cancelRequested}
+          onClick={() => {
+            void window.desktop?.repository.cancelOperation({ operationId: operation.id });
+          }}
+        >
+          {operation.cancelRequested ? 'Cancelling…' : 'Cancel'}
+        </button>
       )}
     </div>
   );

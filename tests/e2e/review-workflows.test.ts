@@ -83,8 +83,9 @@ test('review branch workflows preserve intent, refresh diffs and fit the support
     await page.getByTestId('toolbar-push').click();
     const dialog = page.getByTestId('reference-dialog');
     await expect(
-      dialog.getByRole('textbox', { name: 'Destination branch for topic', exact: true }),
+      dialog.getByRole('combobox', { name: 'Destination branch for topic', exact: true }),
     ).toHaveValue('main');
+    await dialog.getByRole('button', { name: 'Choose multiple branches…', exact: true }).click();
     await dialog.getByRole('checkbox', { name: 'Push new-branch', exact: true }).check();
     await page.screenshot({ path: 'test-results/review-push.png' });
     await dialog.getByTestId('reference-dialog-submit').click();

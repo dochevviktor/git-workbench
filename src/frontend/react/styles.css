@@ -3635,6 +3635,192 @@ p {
   width: min(560px, calc(100vw - 32px));
 }
 
+/* P1-001–012: compact Windows action forms, independently drawn Linux chrome. */
+.p05-dialog {
+  width: min(590px, calc(100vw - 32px));
+  border-radius: 2px;
+  background: var(--sidebar-bg);
+}
+.reference-dialog.p05-dialog .dialog-content {
+  position: relative;
+  gap: 12px;
+  padding: 26px 20px 18px 96px;
+}
+.p05-dialog .link-button {
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  width: fit-content;
+  justify-self: start;
+}
+.p05-dialog .reference-dialog-header {
+  min-height: 34px;
+}
+.p05-dialog-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+}
+.p05-dialog-close:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.p05-dialog .reference-dialog-mark {
+  position: absolute;
+  left: 22px;
+  top: 28px;
+  width: 52px;
+  height: 52px;
+}
+.p05-dialog .reference-dialog-header h2 {
+  font-size: 14px;
+}
+.p05-dialog .reference-dialog-header p {
+  font-size: 12px;
+}
+.p05-dialog .reference-dialog-fields {
+  gap: 7px 8px;
+}
+.p05-dialog .reference-input {
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.p05-dialog .reference-dialog-fields dt {
+  color: var(--text);
+}
+.p05-dialog .reference-dialog-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.p05-dialog .reference-dialog-warning:empty {
+  display: none;
+}
+.p05-dialog .reference-dialog-warning:not(:empty) {
+  flex-basis: 100%;
+}
+.p05-dialog .dialog-actions {
+  margin-left: auto;
+}
+.p05-dialog .button {
+  min-height: 25px;
+  padding: 3px 12px;
+}
+.p05-dialog .reference-target-name {
+  font-weight: 400;
+}
+.p05-dialog .reference-dialog-options {
+  gap: 5px;
+}
+.p05-fetch,
+.p05-push,
+.p05-push-tag {
+  width: min(490px, calc(100vw - 32px));
+}
+.p05-pull,
+.p05-delete-tag {
+  width: min(520px, calc(100vw - 32px));
+}
+.p05-rename-branch,
+.p05-checkout {
+  width: min(500px, calc(100vw - 32px));
+}
+.p05-delete-branch {
+  width: min(570px, calc(100vw - 32px));
+}
+.p05-edit-remote {
+  width: min(630px, calc(100vw - 32px));
+}
+.p05-remotes,
+.p05-tag-details,
+.p05-expanded {
+  width: min(650px, calc(100vw - 32px));
+}
+.p05-tag-details .reference-message {
+  min-height: 150px;
+}
+.p05-create-tag .reference-message {
+  min-height: 96px;
+}
+.p05-options {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.p05-options summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.p05-options[open] > :not(summary) {
+  display: flex;
+  margin-top: 6px;
+}
+.p05-options input.reference-input {
+  display: block;
+}
+.push-review {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  user-select: text;
+}
+.push-review p {
+  margin: 0 0 8px;
+}
+.push-review p:last-child {
+  margin-bottom: 0;
+}
+.p05-push-destination {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.p05-push-destination > span {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  max-width: 45%;
+}
+.p05-push-destination > input {
+  min-width: 0;
+  flex: 1;
+}
+.connection-succeeded {
+  color: var(--success, #248044);
+}
+.reference-batch-list {
+  display: grid;
+  gap: 5px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--input-border);
+}
+.reference-batch-list .reference-checkbox {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.reference-batch-list .muted {
+  margin-left: auto;
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .reference-dialog.p05-dialog .dialog-content {
+    padding-left: 20px;
+  }
+  .p05-dialog .reference-dialog-mark {
+    display: none;
+  }
+}
+
 .patch-dialog {
   width: min(590px, calc(100vw - 32px));
 }

@@ -1933,7 +1933,40 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       showContextMenu({
         anchor: contextMenuAnchor(event, event.currentTarget),
         label: 'Branches',
-        items: newReferenceItems(headTarget, headTargetReason),
+        items: [
+          ...newReferenceItems(headTarget, headTargetReason),
+          menuSeparator,
+          {
+            id: 'delete-branches',
+            label: 'Delete Branches…',
+            disabled: referenceBusy || !referencesReady,
+            run: () => openReferenceDialog({ kind: 'delete-references', referenceType: 'branch' }),
+          },
+          {
+            id: 'select-stale',
+            label: 'Select Stale Local Branches…',
+            disabled: referenceBusy || !referencesReady,
+            run: () =>
+              openReferenceDialog({ kind: 'delete-references', referenceType: 'branch', stale: true }),
+          },
+        ],
+      });
+      return;
+    }
+    if (section === 'tags') {
+      showContextMenu({
+        anchor: contextMenuAnchor(event, event.currentTarget),
+        label: 'Tags',
+        items: [
+          ...newReferenceItems(headTarget, headTargetReason),
+          menuSeparator,
+          {
+            id: 'delete-tags',
+            label: 'Delete Tags…',
+            disabled: referenceBusy || !referencesReady,
+            run: () => openReferenceDialog({ kind: 'delete-references', referenceType: 'tag' }),
+          },
+        ],
       });
       return;
     }
@@ -2839,6 +2872,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   (candidate) => candidate.fullName === reference.fullName,
                 );
                 if (branch && !referenceBusy) openReferenceDialog({ kind: 'rename-branch', branch });
+              }}
+              onReferenceDelete={(reference) => {
+                if (referenceBusy) return;
+                const branch = referenceContext?.branches.find(
+                  (candidate) => candidate.fullName === reference.fullName,
+                );
+                const tag = referenceContext?.tags.find(
+                  (candidate) => candidate.fullName === reference.fullName,
+                );
+                if (branch && !branch.isHead && !branch.worktreePath)
+                  openReferenceDialog({ kind: 'delete-branch', branch });
+                else if (tag) openReferenceDialog({ kind: 'delete-tag', tag });
               }}
               onReferenceDragStart={onReferenceDragStart}
               onReferenceDrop={onReferenceDrop}

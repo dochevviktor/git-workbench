@@ -134,9 +134,9 @@ describe('network command planning', () => {
     expect(push.args).toEqual([
       'push',
       '--progress',
+      '--no-follow-tags',
       '--set-upstream',
-      '--force-with-lease',
-      '--follow-tags',
+      '--tags',
       '--',
       'origin',
       'refs/heads/main:refs/heads/main',
@@ -150,7 +150,7 @@ describe('network command planning', () => {
         head: branchHead,
         request: { kind: 'delete-remote-branch', remote: 'origin', remoteBranch: 'topic' },
       }).args,
-    ).toEqual(['push', '--progress', '--', 'origin', ':refs/heads/topic']);
+    ).toEqual(['push', '--progress', '--no-follow-tags', '--', 'origin', ':refs/heads/topic']);
   });
 
   it('refuses to push anything that is not a local branch', () => {
@@ -270,7 +270,7 @@ describe('network operations against a local remote', () => {
 
     expect(pushed).toMatchObject({ status: 'succeeded', kind: 'push', failureReason: null });
     expect(pushed.command).toBe(
-      'git push --progress --set-upstream -- origin refs/heads/main:refs/heads/main',
+      'git push --progress --no-follow-tags --set-upstream -- origin refs/heads/main:refs/heads/main',
     );
     expect(await output(context, ['rev-parse', 'refs/heads/main'], context.remote)).toBe(
       await output(context, ['rev-parse', 'HEAD']),
@@ -401,6 +401,14 @@ describe('network operations against a local remote', () => {
     expect(await output(context, ['rev-parse', 'refs/heads/main'], context.remote)).toBe(remoteTip);
 
     // The lease is stale until the remote's commit is fetched, so even a lease-checked push refuses.
+    const review = () =>
+      context.service.previewPush(1, {
+        id: context.repositoryId,
+        remote: 'origin',
+        targets: [{ fullName: 'refs/heads/main', remoteBranch: 'main' }],
+        tags: false,
+      });
+    const stalePreview = await review();
     const stale = await runOperation(context, {
       kind: 'push',
       remote: 'origin',
@@ -408,11 +416,13 @@ describe('network operations against a local remote', () => {
       setUpstream: false,
       force: 'with-lease',
       tags: false,
+      previewToken: stalePreview.token,
     });
     expect(stale).toMatchObject({ status: 'failed', failureReason: 'lease', canForceWithLease: false });
     expect(await output(context, ['rev-parse', 'refs/heads/main'], context.remote)).toBe(remoteTip);
 
     await runOperation(context, { kind: 'fetch', remote: 'origin', prune: false, tags: false });
+    const freshPreview = await review();
     const forced = await runOperation(context, {
       kind: 'push',
       remote: 'origin',
@@ -420,6 +430,7 @@ describe('network operations against a local remote', () => {
       setUpstream: false,
       force: 'with-lease',
       tags: false,
+      previewToken: freshPreview.token,
     });
     expect(forced).toMatchObject({ status: 'succeeded' });
     expect(await output(context, ['rev-parse', 'refs/heads/main'], context.remote)).toBe(
@@ -573,6 +584,7 @@ describe('remote management', () => {
         pushUrl: null,
         branchCount: 0,
         fetchAutomatically: true,
+        snapshot: expect.any(String),
       },
     ]);
 
@@ -665,6 +677,7 @@ describe('remote management', () => {
         pushUrl: null,
         branchCount: 2,
         fetchAutomatically: true,
+        snapshot: expect.any(String),
       },
     ]);
   });

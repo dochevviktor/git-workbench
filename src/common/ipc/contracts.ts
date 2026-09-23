@@ -1068,6 +1068,11 @@ const localChangesOptions = {
 
 export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
   z.strictObject({
+    kind: z.literal('delete-references'),
+    fullNames: z.array(z.string().min(1).max(32_768)).min(1).max(100),
+    force: z.boolean(),
+  }),
+  z.strictObject({
     kind: z.literal('create-branch'),
     ...localChangesOptions,
     name: repositoryReferenceNameSchema,
@@ -1085,6 +1090,8 @@ export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
     fullName: z.string().min(1).max(32_768),
     /** `git branch -D`: set only by a confirmation that names the branch and its unmerged state. */
     force: z.boolean(),
+    /** Delete only this branch's configured remote upstream, after explicit review. */
+    deleteUpstream: z.boolean().optional(),
   }),
   z.strictObject({
     kind: z.literal('set-upstream'),
@@ -1126,6 +1133,7 @@ export const repositoryReferenceActionSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const repositoryReferenceActionKindSchema = z.enum([
+  'delete-references',
   'create-branch',
   'rename-branch',
   'delete-branch',
@@ -1326,6 +1334,8 @@ export const repositoryRemoteSchema = z.strictObject({
   branchCount: z.number().int().nonnegative().max(100_000),
   /** A Git Workbench preference; it does not alter the remote's Git configuration. */
   fetchAutomatically: z.boolean().default(true),
+  /** Opaque guard over the privileged remote configuration, never its credentials. */
+  snapshot: repositoryDiffSnapshotSchema.optional(),
 });
 
 export const repositoryRemoteNameSchema = z
@@ -1351,6 +1361,14 @@ export const repositoryRemoteUrlSchema = z
   );
 
 export const repositoryRemoteActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('edit'),
+    name: repositoryRemoteNameSchema,
+    newName: repositoryRemoteNameSchema,
+    url: repositoryRemoteUrlSchema,
+    pushUrl: repositoryRemoteUrlSchema.nullable(),
+    snapshot: repositoryDiffSnapshotSchema,
+  }),
   z.strictObject({
     kind: z.literal('add'),
     name: repositoryRemoteNameSchema,
@@ -1915,6 +1933,8 @@ export const repositoryNetworkRequestSchema = z.discriminatedUnion('kind', [
     /** `with-lease` is only ever chosen by an explicit confirmation naming the branches. */
     force: z.enum(['none', 'with-lease']),
     tags: z.boolean(),
+    /** Required for force; binds exact source objects and explicit per-branch leases. */
+    previewToken: z.string().uuid().optional(),
   }),
   z.strictObject({
     kind: z.literal('delete-remote-branch'),
@@ -1927,6 +1947,33 @@ export const repositoryNetworkRequestEnvelopeSchema = z.strictObject({
   id: repositoryIdSchema,
   request: repositoryNetworkRequestSchema,
 });
+
+export const repositoryPushPreviewRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  remote: repositoryRemoteNameSchema,
+  targets: z.array(repositoryPushTargetSchema).min(1).max(50),
+  tags: z.boolean(),
+});
+
+export const repositoryPushPreviewSchema = z.strictObject({
+  token: z.string().uuid(),
+  remote: repositoryRemoteNameSchema,
+  targets: z
+    .array(
+      z.strictObject({
+        fullName: z.string().startsWith('refs/heads/').max(32_768),
+        remoteBranch: repositoryReferenceNameSchema,
+        localId: gitObjectIdSchema,
+        remoteId: gitObjectIdSchema.nullable(),
+        replacedCommits: z.number().int().nonnegative(),
+      }),
+    )
+    .min(1)
+    .max(50),
+  tagCount: z.number().int().nonnegative(),
+});
+export type RepositoryPushPreviewRequest = z.infer<typeof repositoryPushPreviewRequestSchema>;
+export type RepositoryPushPreview = z.infer<typeof repositoryPushPreviewSchema>;
 
 export const repositoryOperationSessionSchema = z.strictObject({
   operationId: repositoryOperationIdSchema,
@@ -2746,6 +2793,11 @@ export const requests = {
     'repository:start-network-operation',
     repositoryNetworkRequestEnvelopeSchema,
     repositoryOperationSchema,
+  ),
+  previewRepositoryPush: request(
+    'repository:preview-push',
+    repositoryPushPreviewRequestSchema,
+    repositoryPushPreviewSchema,
   ),
   listRepositoryOperations: request(
     'repository:list-operations',

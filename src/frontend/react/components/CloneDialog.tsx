@@ -97,6 +97,7 @@ export function CloneDialog({
   return (
     <DialogShell
       title="Clone"
+      className="p05-dialog p05-clone"
       subtitle="Clone a repository into a new local folder"
       icon={<RepositoryIcon size={26} />}
       platform={platform}
@@ -107,12 +108,6 @@ export function CloneDialog({
       onSubmit={() => void submit()}
       onClose={close}
     >
-      <dt />
-      <dd>
-        <button type="button" className="link-button" disabled={interactionBusy} onClick={onBrowseHosted}>
-          Browse hosted repositories…
-        </button>
-      </dd>
       <dt>
         <label htmlFor="clone-url">Repository URL:</label>
       </dt>
@@ -149,7 +144,7 @@ export function CloneDialog({
           Test Connection
         </button>
         {operation?.kind === 'connection' && (
-          <span role="status" className="muted">
+          <span role="status" className={operation.status === 'succeeded' ? 'connection-succeeded' : 'muted'}>
             {' '}
             {operation.message}
           </span>
@@ -198,6 +193,12 @@ export function CloneDialog({
             setName(event.target.value);
           }}
         />
+      </dd>
+      <dt />
+      <dd>
+        <button type="button" className="link-button" disabled={interactionBusy} onClick={onBrowseHosted}>
+          Browse hosted repositories…
+        </button>
       </dd>
       {operation?.kind === 'clone' && (
         <>

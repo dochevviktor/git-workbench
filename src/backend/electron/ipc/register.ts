@@ -690,6 +690,9 @@ export function registerAppIpc(
     register(requests.startRepositoryNetworkOperation, (window, request) =>
       repositoryService.startNetworkOperation(window.webContents.id, request),
     );
+    register(requests.previewRepositoryPush, (window, request) =>
+      repositoryService.previewPush(window.webContents.id, request),
+    );
     register(requests.listRepositoryOperations, (window) =>
       repositoryService.listOperations(window.webContents.id),
     );

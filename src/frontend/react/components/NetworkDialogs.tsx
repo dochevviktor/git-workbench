@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type {
   RepositoryBranch,
   RepositoryNetworkRequest,
@@ -6,7 +6,10 @@ import type {
   RepositoryRemoteAction,
   RepositoryLocalChangesPreview,
   RepositoryOperation,
+  RepositoryPushPreview,
 } from '../../../common/ipc/contracts';
+import { unwrapResult } from '../../../common/ipc/result';
+import { referenceNameProblem } from '../lib/references';
 import type { Platform } from '../lib/platform';
 import { DialogShell } from './DialogShell';
 import { TestConnection } from './TestConnection';
@@ -85,12 +88,14 @@ function PullDialog({
   );
   const [source, setSource] = useState(branch.upstreamBranch ?? branch.name);
   const [rebase, setRebase] = useState(false);
+  const [ffOnly, setFfOnly] = useState(false);
   const [autostash, setAutostash] = useState(false);
   const listId = useId();
   return (
     <DialogShell
       {...rest}
       title="Pull"
+      className="p05-dialog p05-pull"
       subtitle={
         branch.isHead
           ? 'Pull remote changes into your local branch'
@@ -108,7 +113,7 @@ function PullDialog({
           into: branch.fullName,
           expectedHead: branch.target,
           snapshot: referenceSnapshot,
-          rebase,
+          ...(ffOnly ? {} : { rebase }),
           autostash,
           changesSnapshot: preview?.snapshot,
           prune: true,
@@ -144,7 +149,12 @@ function PullDialog({
       <dt />
       <dd className="reference-dialog-options">
         <label className="reference-checkbox">
-          <input type="checkbox" checked={rebase} onChange={(event) => setRebase(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={rebase}
+            disabled={ffOnly}
+            onChange={(event) => setRebase(event.target.checked)}
+          />
           Rebase instead of merge
         </label>
         <label className="reference-checkbox">
@@ -156,6 +166,13 @@ function PullDialog({
           />
           Stash and reapply local changes
         </label>
+        <details className="p05-options">
+          <summary>Options</summary>
+          <label className="reference-checkbox">
+            <input type="checkbox" checked={ffOnly} onChange={(event) => setFfOnly(event.target.checked)} />
+            Fast-forward only
+          </label>
+        </details>
       </dd>
     </DialogShell>
   );
@@ -208,6 +225,7 @@ function FetchDialog({ remotes, failure, onStart, ...rest }: NetworkDialogProps)
     <DialogShell
       {...rest}
       title="Fetch"
+      className="p05-dialog p05-fetch"
       subtitle="Fetch the latest changes from a remote repository"
       icon={<FetchIcon size={26} />}
       warning={failure ?? (remotes.length === 0 ? 'This repository has no remotes yet.' : null)}
@@ -227,14 +245,17 @@ function FetchDialog({ remotes, failure, onStart, ...rest }: NetworkDialogProps)
           />
           <span>Fetch all remotes</span>
         </label>
-        <label className="reference-checkbox">
-          <input type="checkbox" checked={prune} onChange={(event) => setPrune(event.target.checked)} />
-          <span>Remove remote branches that no longer exist</span>
-        </label>
-        <label className="reference-checkbox">
-          <input type="checkbox" checked={tags} onChange={(event) => setTags(event.target.checked)} />
-          <span>Fetch tags</span>
-        </label>
+        <details className="p05-options">
+          <summary>Options</summary>
+          <label className="reference-checkbox">
+            <input type="checkbox" checked={prune} onChange={(event) => setPrune(event.target.checked)} />
+            <span>Remove remote branches that no longer exist</span>
+          </label>
+          <label className="reference-checkbox">
+            <input type="checkbox" checked={tags} onChange={(event) => setTags(event.target.checked)} />
+            <span>Fetch tags</span>
+          </label>
+        </details>
       </dd>
     </DialogShell>
   );
@@ -247,6 +268,8 @@ function PushDialog({
   force,
   failure,
   onStart,
+  repositoryId,
+  remoteBranches = [],
   ...rest
 }: NetworkDialogProps & { readonly branch: RepositoryBranch | undefined; readonly force: boolean }) {
   const current = branch ?? branches.find((candidate) => candidate.isHead);
@@ -260,12 +283,64 @@ function PushDialog({
   );
   const [withLease, setWithLease] = useState(force);
   const [tags, setTags] = useState(false);
+  const [track, setTrack] = useState(true);
+  const [multiple, setMultiple] = useState(false);
+  const [review, setReview] = useState<{ key: string; value: RepositoryPushPreview }>();
+  const [reviewError, setReviewError] = useState<string>();
+  const [reviewing, setReviewing] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [destinations, setDestinations] = useState<Readonly<Record<string, string>>>({});
   const destination = (candidate: RepositoryBranch) =>
     destinations[`${remote}:${candidate.fullName}`] ??
     (candidate.upstreamRemote === remote ? (candidate.upstreamBranch ?? candidate.name) : candidate.name);
   const chosen = branches.filter((candidate) => selected.has(candidate.fullName));
   const missingUpstream = chosen.some((candidate) => candidate.upstream === null);
+  const targets = chosen.map((candidate) => ({
+    fullName: candidate.fullName,
+    remoteBranch: destination(candidate).trim(),
+    setUpstream: track && candidate.upstream === null,
+  }));
+  const reviewKey = JSON.stringify([repositoryId, remote, targets, tags]);
+  const reviewed = review?.key === reviewKey ? review.value : undefined;
+  const nameProblem = targets
+    .map((target) => referenceNameProblem(target.remoteBranch, 'branch'))
+    .find(Boolean);
+  const duplicate = new Set(targets.map((target) => target.remoteBranch)).size !== targets.length;
+  const submit = async () => {
+    if (withLease && !reviewed) {
+      if (!repositoryId || !window.desktop) return;
+      setReviewing(true);
+      setReviewError(undefined);
+      try {
+        const value = unwrapResult(
+          await window.desktop.repository.previewPush({ id: repositoryId, remote, targets, tags }),
+        );
+        if (mounted.current) setReview({ key: reviewKey, value });
+      } catch (error) {
+        if (mounted.current)
+          setReviewError(error instanceof Error ? error.message : 'The push could not be reviewed.');
+      } finally {
+        if (mounted.current) setReviewing(false);
+      }
+      return;
+    }
+    onStart({
+      kind: 'push',
+      remote,
+      targets,
+      setUpstream: false,
+      force: withLease ? 'with-lease' : 'none',
+      tags,
+      ...(withLease && reviewed ? { previewToken: reviewed.token } : {}),
+    });
+    setReview(undefined);
+  };
 
   const toggle = (fullName: string) => {
     setSelected((currentSelection) => {
@@ -279,97 +354,186 @@ function PushDialog({
   return (
     <DialogShell
       {...rest}
+      className={`p05-dialog p05-push${multiple || reviewed ? ' p05-expanded' : ''}`}
+      busy={rest.busy || reviewing}
       title={chosen.length > 1 ? `Push ${chosen.length} Branches` : 'Push'}
       subtitle={
         withLease
-          ? 'Replace the remote branch, but only if it still points where it did when last fetched'
-          : 'Send the selected branches to a remote repository'
+          ? 'Review the exact remote commits before replacing them'
+          : 'Push your local changes to a remote repository'
       }
       icon={<PushIcon size={26} />}
       warning={
         failure ??
+        reviewError ??
+        nameProblem ??
+        (duplicate ? 'Choose each destination branch once.' : null) ??
         (withLease
           ? 'A lease-checked push overwrites commits on the remote that are not in this branch.'
-          : missingUpstream
-            ? 'A branch without an upstream will start tracking the branch it creates.'
-            : null)
+          : null)
       }
-      submitLabel={withLease ? 'Force Push with Lease' : 'Push'}
+      submitLabel={withLease ? (reviewed ? 'Force Push with Lease' : 'Review Force Push') : 'Push'}
       submitDisabled={
         chosen.length === 0 ||
         remote.length === 0 ||
-        chosen.some((candidate) => !destination(candidate).trim())
+        chosen.some((candidate) => !destination(candidate).trim()) ||
+        Boolean(nameProblem) ||
+        duplicate
       }
       danger={withLease}
-      onSubmit={() =>
-        onStart({
-          kind: 'push',
-          remote,
-          targets: chosen.map((candidate) => ({
-            fullName: candidate.fullName,
-            remoteBranch: destination(candidate).trim(),
-            setUpstream: candidate.upstream === null,
-          })),
-          setUpstream: false,
-          force: withLease ? 'with-lease' : 'none',
-          tags,
-        })
-      }
+      onSubmit={() => void submit()}
     >
-      <RemoteSelect remotes={remotes} value={remote} onChange={setRemote} />
-      <dt>Branches:</dt>
+      {(remotes.length > 1 || multiple) && (
+        <RemoteSelect remotes={remotes} value={remote} onChange={setRemote} />
+      )}
+      <dt>{multiple ? 'Branches:' : 'Branch:'}</dt>
       <dd>
-        <div className="push-branches" role="group" aria-label="Branches to push" data-testid="push-branches">
-          {branches.map((candidate) => (
-            <div key={candidate.fullName} className="reference-checkbox push-branch">
-              <input
-                type="checkbox"
-                checked={selected.has(candidate.fullName)}
-                aria-label={`Push ${candidate.name}`}
-                onChange={() => toggle(candidate.fullName)}
-              />
-              <BranchIcon size={13} />
-              <span className="push-branch-name">{candidate.name}</span>
-              {selected.has(candidate.fullName) && (
+        {!multiple && (
+          <select
+            className="reference-input"
+            aria-label="Branch to push"
+            value={chosen[0]?.fullName ?? ''}
+            data-testid="push-branches"
+            onChange={(event) => setSelected(new Set([event.target.value]))}
+          >
+            {!chosen.length && <option value="">Choose a branch</option>}
+            {branches.map((candidate) => (
+              <option key={candidate.fullName} value={candidate.fullName}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {multiple && (
+          <div
+            className="push-branches"
+            role="group"
+            aria-label="Branches to push"
+            data-testid="push-branches"
+          >
+            {branches.map((candidate) => (
+              <div key={candidate.fullName} className="reference-checkbox push-branch">
                 <input
-                  className="reference-input push-destination"
-                  aria-label={`Destination branch for ${candidate.name}`}
-                  value={destination(candidate)}
-                  onChange={(event) =>
-                    setDestinations((current) => ({
-                      ...current,
-                      [`${remote}:${candidate.fullName}`]: event.target.value,
-                    }))
-                  }
+                  type="checkbox"
+                  checked={selected.has(candidate.fullName)}
+                  aria-label={`Push ${candidate.name}`}
+                  onChange={() => toggle(candidate.fullName)}
                 />
-              )}
-              <span className="push-branch-meta muted">
-                {candidate.upstream === null
-                  ? 'new branch'
-                  : candidate.upstreamGone
-                    ? 'upstream gone'
-                    : trackingSummary(candidate)}
-              </span>
-            </div>
-          ))}
-        </div>
+                <BranchIcon size={13} />
+                <span className="push-branch-name">{candidate.name}</span>
+                {selected.has(candidate.fullName) && (
+                  <input
+                    className="reference-input push-destination"
+                    aria-label={`Destination branch for ${candidate.name}`}
+                    value={destination(candidate)}
+                    onChange={(event) =>
+                      setDestinations((current) => ({
+                        ...current,
+                        [`${remote}:${candidate.fullName}`]: event.target.value,
+                      }))
+                    }
+                  />
+                )}
+                <span className="push-branch-meta muted">
+                  {candidate.upstream === null
+                    ? 'new branch'
+                    : candidate.upstreamGone
+                      ? 'upstream gone'
+                      : trackingSummary(candidate)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </dd>
+      {!multiple && chosen[0] && (
+        <>
+          <dt>To:</dt>
+          <dd>
+            <div className="p05-push-destination">
+              <span>{remote}/</span>
+              <input
+                className="reference-input"
+                aria-label={`Destination branch for ${chosen[0].name}`}
+                list="push-destinations"
+                value={destination(chosen[0])}
+                onChange={(event) => {
+                  const fullName = chosen[0]!.fullName;
+                  setDestinations((value) => ({ ...value, [`${remote}:${fullName}`]: event.target.value }));
+                }}
+              />
+            </div>
+            <datalist id="push-destinations">
+              {remoteBranches
+                .filter((name) => name.startsWith(`${remote}/`))
+                .map((name) => (
+                  <option key={name} value={name.slice(remote.length + 1)} />
+                ))}
+            </datalist>
+          </dd>
+        </>
+      )}
       <dt />
       <dd className="reference-dialog-options">
+        {missingUpstream && (
+          <label className="reference-checkbox">
+            <input type="checkbox" checked={track} onChange={(event) => setTrack(event.target.checked)} />
+            Create tracking reference
+          </label>
+        )}
         <label className="reference-checkbox">
           <input type="checkbox" checked={tags} onChange={(event) => setTags(event.target.checked)} />
-          <span>Push annotated tags that these commits carry</span>
+          <span>Push all tags</span>
         </label>
         <label className="reference-checkbox">
           <input
             type="checkbox"
             checked={withLease}
             data-testid="push-force"
-            onChange={(event) => setWithLease(event.target.checked)}
+            onChange={(event) => {
+              setWithLease(event.target.checked);
+              setReview(undefined);
+            }}
           />
-          <span>Force push, checking the remote has not moved</span>
+          <span>Force push (with lease)</span>
         </label>
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => {
+            setMultiple(!multiple);
+            if (multiple) setSelected(new Set(chosen[0] ? [chosen[0].fullName] : []));
+          }}
+        >
+          {multiple ? 'Push one branch' : 'Choose multiple branches…'}
+        </button>
       </dd>
+      {withLease && reviewed && (
+        <>
+          <dt>Review:</dt>
+          <dd className="push-review" data-testid="push-review">
+            {reviewed.targets.map((target) => (
+              <p key={target.remoteBranch}>
+                <strong>
+                  {reviewed.remote}/{target.remoteBranch}
+                </strong>
+                <br />
+                <code title={target.remoteId ?? ''}>{target.remoteId?.slice(0, 12) ?? 'Must not exist'}</code>
+                {' → '}
+                <code title={target.localId}>{target.localId.slice(0, 12)}</code>
+                <br />
+                {target.replacedCommits} remote commits will be replaced.
+              </p>
+            ))}
+            {reviewed.tagCount > 0 && (
+              <p>Also push {reviewed.tagCount} tags without overwriting existing tags.</p>
+            )}
+            <p className="muted">
+              Based on the last fetch. If the remote has changed, the push will be refused.
+            </p>
+          </dd>
+        </>
+      )}
     </DialogShell>
   );
 }
@@ -403,6 +567,7 @@ function RemotesDialog({
     <DialogShell
       {...rest}
       title="Remotes"
+      className="p05-dialog p05-remotes"
       subtitle="The repositories this one exchanges commits with"
       icon={<RemoteIcon size={26} />}
       warning={failure ?? (taken ? `A remote named '${trimmedName}' already exists` : null)}
@@ -492,33 +657,46 @@ function EditRemoteDialog({
 }: NetworkDialogProps & { readonly remote: RepositoryRemote }) {
   const [name, setName] = useState(remote.name);
   const [url, setUrl] = useState(remote.fetchUrl);
+  const [pushUrl, setPushUrl] = useState(remote.pushUrl ?? '');
+  const [separatePush, setSeparatePush] = useState(remote.pushUrl !== null);
   const nameId = useId();
   const urlId = useId();
   const trimmedName = name.trim();
   const trimmedUrl = url.trim();
   const renamed = trimmedName !== remote.name;
   const retargeted = trimmedUrl !== remote.fetchUrl;
+  const nextPushUrl = separatePush ? pushUrl.trim() : null;
+  const pushChanged = nextPushUrl !== remote.pushUrl;
 
   return (
     <DialogShell
       {...rest}
-      title={`Edit '${remote.name}'`}
-      subtitle="Change the name or the URL Git uses for this remote"
+      title="Edit Remote"
+      className="p05-dialog p05-edit-remote"
+      subtitle="Edit URL of the remote repository"
       icon={<RemoteIcon size={26} />}
       warning={failure ?? null}
-      submitLabel="Save"
-      submitDisabled={trimmedName.length === 0 || trimmedUrl.length === 0 || (!renamed && !retargeted)}
+      submitLabel="Edit"
+      submitDisabled={
+        !remote.snapshot ||
+        trimmedName.length === 0 ||
+        trimmedUrl.length === 0 ||
+        (separatePush && !nextPushUrl) ||
+        (!renamed && !retargeted && !pushChanged)
+      }
       onSubmit={() =>
-        // One change at a time keeps each Git invocation, and each refusal, unambiguous.
-        onRemoteAction(
-          renamed
-            ? { kind: 'rename', name: remote.name, newName: trimmedName }
-            : { kind: 'set-url', name: remote.name, url: trimmedUrl, push: false },
-        )
+        onRemoteAction({
+          kind: 'edit',
+          name: remote.name,
+          newName: trimmedName,
+          url: trimmedUrl,
+          pushUrl: nextPushUrl,
+          snapshot: remote.snapshot!,
+        })
       }
     >
       <dt>
-        <label htmlFor={nameId}>Name:</label>
+        <label htmlFor={nameId}>Remote:</label>
       </dt>
       <dd>
         <input
@@ -526,6 +704,10 @@ function EditRemoteDialog({
           type="text"
           className="reference-input"
           value={name}
+          autoFocus
+          data-dialog-autofocus
+          data-select-on-open="true"
+          onFocus={(event) => event.target.select()}
           spellCheck={false}
           autoComplete="off"
           data-testid="remote-name"
@@ -533,7 +715,7 @@ function EditRemoteDialog({
         />
       </dd>
       <dt>
-        <label htmlFor={urlId}>URL:</label>
+        <label htmlFor={urlId}>Repository URL:</label>
       </dt>
       <dd>
         <input
@@ -543,7 +725,6 @@ function EditRemoteDialog({
           value={url}
           spellCheck={false}
           autoComplete="off"
-          disabled={renamed}
           data-testid="remote-url"
           onChange={(event) => setUrl(event.target.value)}
         />
@@ -558,18 +739,28 @@ function EditRemoteDialog({
           disabled={!trimmedUrl}
         />
       </dd>
-      {remote.pushUrl && (
-        <>
-          <dt>Push URL:</dt>
-          <dd className="muted">{remote.pushUrl}</dd>
-        </>
-      )}
-      {renamed && retargeted && (
-        <>
-          <dt />
-          <dd className="muted">Saving renames the remote first; reopen this dialog to change its URL.</dd>
-        </>
-      )}
+      <dt />
+      <dd>
+        <details className="p05-options" open={remote.pushUrl !== null || undefined}>
+          <summary>Push URL</summary>
+          <label className="reference-checkbox">
+            <input
+              type="checkbox"
+              checked={separatePush}
+              onChange={(event) => setSeparatePush(event.target.checked)}
+            />
+            Use a separate URL for push
+          </label>
+          {separatePush && (
+            <input
+              className="reference-input"
+              aria-label="Push URL"
+              value={pushUrl}
+              onChange={(event) => setPushUrl(event.target.value)}
+            />
+          )}
+        </details>
+      </dd>
     </DialogShell>
   );
 }
@@ -584,6 +775,7 @@ function DeleteRemoteDialog({
     <DialogShell
       {...rest}
       title="Remove Remote"
+      className="p05-dialog p05-delete-remote"
       subtitle={`Stop tracking the repository at '${remote.name}'`}
       icon={<RemoteIcon size={26} />}
       warning={
@@ -618,6 +810,7 @@ function DeleteRemoteBranchDialog({
     <DialogShell
       {...rest}
       title="Delete Branch on Remote"
+      className="p05-dialog p05-delete-branch"
       subtitle={`Delete '${remoteBranch}' on '${remote}'`}
       icon={<RemoteIcon size={26} />}
       warning={

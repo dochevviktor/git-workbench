@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Platform } from '../lib/platform';
-import { WarningIcon } from './Icons';
+import { CloseIcon, WarningIcon } from './Icons';
 
 /** Fork's dialog chrome: a large mark, a title with one explanatory line, then labelled rows. */
 export function DialogShell({
@@ -39,6 +39,9 @@ export function DialogShell({
   useEffect(() => {
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
+    const initial = dialog?.querySelector<HTMLInputElement>('[data-dialog-autofocus]');
+    initial?.focus();
+    if (initial?.dataset.selectOnOpen === 'true') initial.select();
   }, []);
 
   const submit = (event: FormEvent) => {
@@ -100,6 +103,11 @@ export function DialogShell({
             {platform === 'darwin' ? [cancel, confirm] : [confirm, cancel]}
           </div>
         </div>
+        {className?.includes('p05-dialog') && (
+          <button type="button" className="p05-dialog-close" aria-label="Close dialog" onClick={onClose}>
+            <CloseIcon size={14} />
+          </button>
+        )}
       </form>
     </dialog>
   );

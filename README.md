@@ -38,6 +38,13 @@ Signing and Generate Message. Discard previews the exact selected changes and ke
 copy; external edits require a refresh. See the [P04 handoff](docs/reviews/p04-working-changes.md) for
 verified Git semantics, screenshots and resource limits.
 
+P05 aligns branch/tag and network dialogs with the Windows catalogue. Push offers optional tracking,
+all tags and a separate review before force push; its exact lease stays fixed across background fetches.
+Edit Remote saves name, fetch URL and optional push URL together. Branches/Tags menus support batch
+deletion and stale-branch review; remote deletion retains the local reference if the remote refuses.
+Pull → Options adds Fast-forward only. See the [P05 handoff](docs/reviews/p05-network.md) for verified
+scope, authentication tests and deliberate design adaptations.
+
 P03's history and revision browser is complete for the Linux baseline. Search includes Commit SHA
 (full hash or at least four prefix characters) and ten session-only recent queries. Commit summaries
 support inline file expansion; large File Tree directories have Load more and virtualized rows.
@@ -225,6 +232,10 @@ npm run package       # build installers for the host OS; never publishes
 ```
 
 On Linux, packaging targets AppImage. Windows targets NSIS; macOS targets DMG.
+
+Linux network integration tests use Git, OpenSSL and OpenSSH (`sshd`, `ssh-agent`, `ssh-add`,
+`ssh-keygen`). They create temporary keys and loopback servers, without touching installed services,
+user SSH configuration or real hosting repositories.
 Run platform builds on their respective operating systems. Signing, update distribution, product
 icons, and final application identifiers are deferred to the release milestone.
 Debian packaging is also deferred until a real maintainer email is selected; the initial package command

@@ -192,6 +192,52 @@ describe('IPC sender and window lifecycle', () => {
     expect(releaseOperations).toHaveBeenCalledOnce();
   });
 
+  it('authorizes push reviews only in the owning main frame and validates results', async () => {
+    const preview = {
+      token: '12345678-1234-4234-8234-123456789abc',
+      remote: 'origin',
+      tagCount: 0,
+      targets: [
+        {
+          fullName: 'refs/heads/main',
+          remoteBranch: 'main',
+          localId: 'a'.repeat(40),
+          remoteId: null,
+          replacedCommits: 0,
+        },
+      ],
+    };
+    const previewPush = vi.fn(async () => preview);
+    const service = {
+      previewPush,
+      disposeWindow: vi.fn(),
+      subscribeOperations: () => () => undefined,
+      subscribeInvalidations: () => () => undefined,
+    } as unknown as RepositoryService;
+    const ipc = registerAppIpc(service);
+    const main = new TestWindow(70);
+    const child = new TestWindow(71);
+    ipc.attachWindow(main.asWindow(), main.webContents.getURL());
+    ipc.attachWindow(child.asWindow(), child.webContents.getURL(), { parentId: 70, context: {} as never });
+    const handler = handlers.get(requests.previewRepositoryPush.channel)!;
+    const request = {
+      id: `repo-${'a'.repeat(64)}`,
+      remote: 'origin',
+      tags: false,
+      targets: [{ fullName: 'refs/heads/main', remoteBranch: 'main' }],
+    };
+    expect(await handler(main.event(), request)).toMatchObject({ ok: true, value: preview });
+    expect(previewPush).toHaveBeenCalledWith(70, request);
+    expect(await handler(child.event(), request)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(
+      await handler({ ...main.event(), senderFrame: { url: main.webContents.getURL() } } as never, request),
+    ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(await handler(main.event(), { ...request, targets: [] })).toMatchObject({ ok: false });
+    previewPush.mockResolvedValueOnce({ ...preview, token: 'invalid' });
+    expect(await handler(main.event(), request)).toMatchObject({ ok: false });
+    ipc.dispose();
+  });
+
   it('authorizes AI settings only in main windows and releases its exact reload listener', async () => {
     const service = {
       ai: {

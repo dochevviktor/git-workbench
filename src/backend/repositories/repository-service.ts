@@ -159,6 +159,8 @@ import {
   runNetworkOperation,
 } from './network-service';
 import type { NetworkPlan } from './network-service';
+import { PushPreviewStore } from './push-preview-service';
+import type { RepositoryPushPreviewRequest } from '../../common/ipc/contracts';
 import {
   applyRemoteAction,
   isAllowedRemoteUrl,
@@ -276,6 +278,7 @@ export class RepositoryService {
   private readonly sourceScanOptions: SourceScanOptions;
   private readonly maxOpenTabs: number;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
+  private readonly pushPreviews = new PushPreviewStore();
   private readonly sessionGenerations = new Map<string, number>();
   private readonly diffReads = new Map<string, AbortController>();
   private readonly statistics = new StatisticsService();
@@ -694,6 +697,7 @@ export class RepositoryService {
   }
 
   async close(ownerId: number, id: string): Promise<void> {
+    this.pushPreviews.release(ownerId, id);
     this.ai.cancel(ownerId, id);
     this.patches.release(ownerId, id);
     for (const [key, controller] of this.statisticsReads)
@@ -1116,6 +1120,7 @@ export class RepositoryService {
     request: RepositoryReferenceActionRequest,
     signal?: AbortSignal,
     onCommand?: (args: readonly string[]) => void,
+    progress?: Pick<OperationHandle, 'appendOutput' | 'setProgress'>,
   ): Promise<RepositoryReferenceActionResult> {
     const cached = await this.requireWorktree(ownerId, request.id);
     return this.withRepositoryMutation(cached.commonDir, async () => {
@@ -1151,6 +1156,8 @@ export class RepositoryService {
             const result = await applyReferenceAction(this.runner, {
               signal,
               onCommand,
+              onOutput: progress?.appendOutput,
+              onProgress: progress?.setProgress,
               repositoryId: request.id,
               cwd: summary.worktreePath,
               gitDir: summary.gitDir,
@@ -1632,8 +1639,14 @@ export class RepositoryService {
           cwd,
           action,
         });
-        if (result.status === 'applied') {
-          if (action.kind === 'rename')
+        if (
+          result.status === 'applied' ||
+          (action.kind === 'edit' &&
+            action.newName !== action.name &&
+            result.remotes.some((remote) => remote.name === action.newName) &&
+            !result.remotes.some((remote) => remote.name === action.name))
+        ) {
+          if (action.kind === 'rename' || (action.kind === 'edit' && action.newName !== action.name))
             await this.remoteFetchPreferences.rename(request.id, action.name, action.newName);
           if (action.kind === 'remove') await this.remoteFetchPreferences.remove(request.id, action.name);
         }
@@ -1813,12 +1826,16 @@ export class RepositoryService {
         ownerId,
         repositoryId: request.id,
         kind: 'reference',
-        title: `${request.action.kind.replaceAll('-', ' ')} '${'fullName' in request.action ? request.action.fullName.replace(/^refs\/(heads|remotes|tags)\//u, '') : 'name' in request.action ? request.action.name : request.action.commitId.slice(0, 7)}'`,
+        title: `${request.action.kind.replaceAll('-', ' ')} '${'fullName' in request.action ? request.action.fullName.replace(/^refs\/(heads|remotes|tags)\//u, '') : 'name' in request.action ? request.action.name : 'commitId' in request.action ? request.action.commitId.slice(0, 7) : `${request.action.fullNames.length} selected`}'`,
         command: '',
       },
       async (handle) => {
-        const value = await this.applyReferenceAction(ownerId, request, handle.signal, (args) =>
-          handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+        const value = await this.applyReferenceAction(
+          ownerId,
+          request,
+          handle.signal,
+          (args) => handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+          handle,
         );
         return {
           status: value.status === 'applied' ? 'succeeded' : 'failed',
@@ -2000,6 +2017,29 @@ export class RepositoryService {
     return this.operations.subscribe(listener);
   }
 
+  async previewPush(ownerId: number, request: RepositoryPushPreviewRequest) {
+    const summary = this.operationRepository(ownerId, request.id);
+    const sessionGeneration = this.sessionGenerations.get(`${ownerId}:${request.id}`);
+    const ownerGeneration = this.ownerGenerations.get(ownerId);
+    const cwd = summary.worktreePath ?? summary.commonDir;
+    const preview = await this.pushPreviews.preview(this.runner, cwd, ownerId, request);
+    try {
+      this.operationRepository(ownerId, request.id);
+      if (
+        sessionGeneration !== this.sessionGenerations.get(`${ownerId}:${request.id}`) ||
+        ownerGeneration !== this.ownerGenerations.get(ownerId)
+      )
+        throw new ExpectedBackendError(
+          'REPOSITORY_NOT_OPEN',
+          'This repository session closed during the push review.',
+        );
+      return preview;
+    } catch (error) {
+      this.pushPreviews.release(ownerId, request.id);
+      throw error;
+    }
+  }
+
   /**
    * Accepts one network operation and reports it as running. The work continues in the background:
    * the caller's request returns the accepted record, so an IPC deadline never decides the outcome of
@@ -2084,7 +2124,22 @@ export class RepositoryService {
                   'INVALID_REQUEST',
                   'The selected local branch no longer exists.',
                 );
-              await this.runner.run(['check-ref-format', `refs/heads/${target.remoteBranch}`], { cwd });
+              try {
+                await this.runner.run(['check-ref-format', `refs/heads/${target.remoteBranch}`], { cwd });
+              } catch (error) {
+                if (!(error instanceof GitCommandError)) throw error;
+                throw new ExpectedBackendError(
+                  'INVALID_REQUEST',
+                  'Enter a valid destination branch name before pushing.',
+                );
+              }
+            }
+            if (new Set(action.targets.map((target) => target.remoteBranch)).size !== action.targets.length)
+              throw new ExpectedBackendError('INVALID_REQUEST', 'Choose each destination branch once.');
+            if (action.force === 'with-lease') {
+              const args = await this.pushPreviews.consume(this.runner, cwd, ownerId, request.id, action);
+              plan = { ...plan, args, command: ['git', ...args].join(' ') };
+              handle.setCommand?.(plan.command);
             }
           }
           if (action.kind === 'delete-remote-branch')
@@ -2178,8 +2233,10 @@ export class RepositoryService {
             handle,
             source === 'background' ? 'silent' : 'prompt',
           );
-          if (outcome.status === 'succeeded' && action.kind === 'push' && !action.setUpstream) {
-            for (const target of action.targets.filter((target) => target.setUpstream)) {
+          if (outcome.status === 'succeeded' && action.kind === 'push') {
+            for (const target of action.targets.filter(
+              (target) => target.setUpstream || action.setUpstream,
+            )) {
               const name = target.fullName.slice('refs/heads/'.length);
               await this.runner.run(['config', `branch.${name}.remote`, action.remote], { cwd });
               await this.runner.run(['config', `branch.${name}.merge`, `refs/heads/${target.remoteBranch}`], {
@@ -3417,6 +3474,7 @@ export class RepositoryService {
     }
     this.ai.cancel(ownerId);
     this.patches.release(ownerId);
+    this.pushPreviews.release(ownerId);
     for (const [key, controller] of this.statisticsReads)
       if (key.startsWith(`${ownerId}:`)) {
         controller.abort();
@@ -3437,6 +3495,7 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    this.pushPreviews.release();
     for (const entry of this.watches.values()) entry.watcher.dispose();
     this.watches.clear();
     for (const watcher of this.sourceWatches.values()) watcher.dispose();

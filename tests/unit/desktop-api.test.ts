@@ -939,6 +939,35 @@ describe('preload capability API', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it('validates push reviews on both sides of the preload boundary', async () => {
+    const { api, invoke } = fixture();
+    const request = {
+      id: `repo-${'5'.repeat(64)}`,
+      remote: 'origin',
+      targets: [{ fullName: 'refs/heads/main', remoteBranch: 'main' }],
+      tags: false,
+    };
+    const preview = {
+      token: '12345678-1234-4234-8234-123456789abc',
+      remote: 'origin',
+      tagCount: 0,
+      targets: [
+        { ...request.targets[0]!, localId: 'a'.repeat(40), remoteId: 'b'.repeat(40), replacedCommits: 1 },
+      ],
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value: preview });
+    expect(await api.repository.previewPush(request)).toEqual({ ok: true, value: preview });
+    expect(invoke).toHaveBeenLastCalledWith(requests.previewRepositoryPush.channel, request);
+    expect(await api.repository.previewPush({ ...request, remote: '--upload-pack=sh' })).toMatchObject({
+      ok: false,
+    });
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { ...preview, targets: [{ ...preview.targets[0], localId: 'HEAD' }] },
+    });
+    expect(await api.repository.previewPush(request)).toMatchObject({ ok: false });
+  });
+
   it('validates remote changes and delivers operation events to the listener', async () => {
     const { api, emitter, invoke } = fixture();
     const repositoryId = `repo-${'6'.repeat(64)}`;

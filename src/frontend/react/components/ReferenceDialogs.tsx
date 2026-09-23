@@ -28,6 +28,7 @@ export interface ReferenceTarget {
 }
 
 export type ReferenceDialogRequest =
+  | { readonly kind: 'delete-references'; readonly referenceType: 'branch' | 'tag'; readonly stale?: boolean }
   | { readonly kind: 'checkout-branch'; readonly branch: RepositoryBranch }
   | { readonly kind: 'new-branch'; readonly target: ReferenceTarget }
   | { readonly kind: 'new-tag'; readonly target: ReferenceTarget }
@@ -82,6 +83,14 @@ function TargetRow({ label, target }: { readonly label: string; readonly target:
 
 export function ReferenceDialog(props: ReferenceDialogProps) {
   switch (props.request.kind) {
+    case 'delete-references':
+      return (
+        <DeleteReferencesDialog
+          {...props}
+          referenceType={props.request.referenceType}
+          stale={props.request.stale ?? false}
+        />
+      );
     case 'checkout-branch':
       return <CheckoutBranchDialog {...props} branch={props.request.branch} />;
     case 'new-branch':
@@ -122,6 +131,7 @@ function CheckoutBranchDialog({ branch, preview, failure, onSubmit, ...rest }: D
     <DialogShell
       {...rest}
       title="Checkout Branch"
+      className="p05-dialog p05-checkout"
       subtitle="Switch to another branch"
       icon={<BranchIcon size={26} />}
       warning={failure?.message ?? null}
@@ -152,11 +162,15 @@ function NameField({
   value,
   placeholder,
   onChange,
+  selectOnFocus = false,
+  suggestions = [],
 }: {
   readonly label: string;
   readonly value: string;
   readonly placeholder: string;
   readonly onChange: (value: string) => void;
+  readonly selectOnFocus?: boolean;
+  readonly suggestions?: readonly string[];
 }) {
   const fieldId = useId();
   return (
@@ -174,9 +188,20 @@ function NameField({
           spellCheck={false}
           autoComplete="off"
           autoFocus
+          data-dialog-autofocus
+          data-select-on-open={selectOnFocus}
+          onFocus={selectOnFocus ? (event) => event.target.select() : undefined}
           data-testid="reference-name"
+          list={suggestions.length ? `${fieldId}-folders` : undefined}
           onChange={(event) => onChange(event.target.value)}
         />
+        {suggestions.length > 0 && (
+          <datalist id={`${fieldId}-folders`}>
+            {suggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        )}
       </dd>
     </>
   );
@@ -220,6 +245,7 @@ function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogP
     <DialogShell
       {...rest}
       title="Create Branch"
+      className="p05-dialog p05-create-branch"
       subtitle={
         checkout ? 'Create a branch and check it out' : 'Create a branch without changing the working tree'
       }
@@ -245,7 +271,28 @@ function NewBranchDialog({ target, context, failure, preview, ...rest }: DialogP
     >
       <TargetRow label="Create at:" target={target} />
       {checkout && <LocalChangesOptions value={policy} preview={preview} onChange={setPolicy} />}
-      <NameField label="Branch Name:" value={name} placeholder="Enter branch name" onChange={setName} />
+      <NameField
+        label="Branch Name:"
+        value={name}
+        placeholder="Enter branch name"
+        onChange={setName}
+        suggestions={[
+          ...new Set(
+            context?.branches.flatMap((branch) =>
+              branch.name
+                .split('/')
+                .slice(0, -1)
+                .map(
+                  (_part, index) =>
+                    branch.name
+                      .split('/')
+                      .slice(0, index + 1)
+                      .join('/') + '/',
+                ),
+            ) ?? [],
+          ),
+        ]}
+      />
       <dt />
       <dd className="reference-dialog-options">
         <label className="reference-checkbox">
@@ -288,11 +335,12 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
     <DialogShell
       {...rest}
       title="Create Tag"
+      className="p05-dialog p05-create-tag"
       subtitle="Create annotated tag at the selected point"
       icon={<TagIcon size={26} />}
       platform={rest.platform}
       warning={warning}
-      submitLabel="Create Tag"
+      submitLabel={push ? 'Create and Push' : 'Create'}
       submitDisabled={
         trimmed.length === 0 ||
         taken.has(trimmed) ||
@@ -312,17 +360,6 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
       }
     >
       <TargetRow label="Create tag at:" target={target} />
-      <dt />
-      <dd>
-        {context && (
-          <SigningControls
-            repositoryId={context.repositoryId}
-            value={signing}
-            onChange={setSigning}
-            disabled={rest.busy}
-          />
-        )}
-      </dd>
       <NameField label="Tag Name:" value={name} placeholder="Enter tag name" onChange={setName} />
       <dt className="reference-label-top">
         <label htmlFor={messageId}>Message:</label>
@@ -364,6 +401,17 @@ function NewTagDialog({ target, context, failure, ...rest }: DialogPropsWithTarg
             ))}
           </select>
         )}
+        {context && (
+          <details className="p05-options">
+            <summary>Signing</summary>
+            <SigningControls
+              repositoryId={context.repositoryId}
+              value={signing}
+              onChange={setSigning}
+              disabled={rest.busy}
+            />
+          </details>
+        )}
       </dd>
     </DialogShell>
   );
@@ -381,6 +429,7 @@ function CheckoutRemoteDialog({ target, context, failure, preview, ...rest }: Di
     <DialogShell
       {...rest}
       title="Checkout Remote Branch"
+      className="p05-dialog p05-checkout"
       subtitle={`Create a local branch that tracks '${target.label}'`}
       icon={<RemoteIcon size={26} />}
       platform={rest.platform}
@@ -420,8 +469,9 @@ function RenameBranchDialog({ branch, context, failure, ...rest }: DialogPropsWi
   return (
     <DialogShell
       {...rest}
-      title="Rename Branch"
-      subtitle="Give the branch a different name"
+      title="Rename Local Branch"
+      className="p05-dialog p05-rename-branch"
+      subtitle="Rename local branch"
       icon={<BranchIcon size={26} />}
       platform={rest.platform}
       warning={warning}
@@ -435,15 +485,13 @@ function RenameBranchDialog({ branch, context, failure, ...rest }: DialogPropsWi
       onClose={rest.onClose}
       onSubmit={() => rest.onSubmit({ kind: 'rename-branch', fullName: branch.fullName, name: trimmed })}
     >
-      <TargetRow
-        label="Branch:"
-        target={{
-          startPoint: { kind: 'commit', commitId: branch.target },
-          icon: 'branch',
-          label: branch.name,
-        }}
+      <NameField
+        label="New Name:"
+        value={name}
+        placeholder="Enter branch name"
+        onChange={setName}
+        selectOnFocus
       />
-      <NameField label="New Name:" value={name} placeholder="Enter branch name" onChange={setName} />
     </DialogShell>
   );
 }
@@ -463,6 +511,7 @@ function UpstreamDialog({ branch, context, failure, ...rest }: DialogPropsWithBr
     <DialogShell
       {...rest}
       title="Branch Tracking"
+      className="p05-dialog p05-tracking"
       subtitle={`Choose the branch '${branch.name}' compares itself with`}
       icon={<RemoteIcon size={26} />}
       platform={rest.platform}
@@ -515,14 +564,22 @@ function UpstreamDialog({ branch, context, failure, ...rest }: DialogPropsWithBr
   );
 }
 
-function DeleteBranchDialog({ branch, failure, ...rest }: DialogPropsWithBranch) {
+function DeleteBranchDialog({ branch, failure, context, ...rest }: DialogPropsWithBranch) {
   const [force, setForce] = useState(false);
+  const [deleteUpstream, setDeleteUpstream] = useState(false);
+  const canDeleteUpstream = Boolean(
+    branch.upstreamRemote &&
+    branch.upstreamBranch &&
+    !branch.upstreamGone &&
+    context?.remotes.includes(branch.upstreamRemote),
+  );
   const unmerged = !branch.merged;
 
   return (
     <DialogShell
       {...rest}
       title="Delete Branch"
+      className="p05-dialog p05-delete-branch"
       subtitle={`Remove the branch '${branch.name}' from this repository`}
       icon={<BranchIcon size={26} />}
       platform={rest.platform}
@@ -536,7 +593,9 @@ function DeleteBranchDialog({ branch, failure, ...rest }: DialogPropsWithBranch)
       submitDisabled={unmerged && !force}
       danger
       onClose={rest.onClose}
-      onSubmit={() => rest.onSubmit({ kind: 'delete-branch', fullName: branch.fullName, force })}
+      onSubmit={() =>
+        rest.onSubmit({ kind: 'delete-branch', fullName: branch.fullName, force, deleteUpstream })
+      }
     >
       <TargetRow
         label="Branch:"
@@ -547,15 +606,23 @@ function DeleteBranchDialog({ branch, failure, ...rest }: DialogPropsWithBranch)
           detail: branch.target.slice(0, 7),
         }}
       />
-      {branch.upstream && (
-        <>
-          <dt>Upstream:</dt>
-          <dd className="muted">
-            {branch.upstreamGone ? `${branch.upstream} (gone)` : branch.upstream}
-            {' — the remote branch itself is not deleted.'}
-          </dd>
-        </>
-      )}
+      <dt />
+      <dd>
+        <label className="reference-checkbox">
+          <input
+            type="checkbox"
+            checked={deleteUpstream}
+            disabled={!canDeleteUpstream}
+            onChange={(event) => setDeleteUpstream(event.target.checked)}
+          />
+          Also delete corresponding remote branch
+        </label>
+        {deleteUpstream && (
+          <p className="dialog-inline-note">
+            Delete {branch.upstreamRemote}/{branch.upstreamBranch} for everyone using that remote.
+          </p>
+        )}
+      </dd>
       {(unmerged || failure?.canForce) && (
         <>
           <dt />
@@ -576,6 +643,104 @@ function DeleteBranchDialog({ branch, failure, ...rest }: DialogPropsWithBranch)
   );
 }
 
+function DeleteReferencesDialog({
+  context,
+  referenceType,
+  stale,
+  failure,
+  onSubmit,
+  ...rest
+}: ReferenceDialogProps & { readonly referenceType: 'branch' | 'tag'; readonly stale: boolean }) {
+  const candidates = referenceType === 'branch' ? (context?.branches ?? []) : (context?.tags ?? []);
+  const unavailable = (candidate: RepositoryBranch | RepositoryTag) =>
+    'isHead' in candidate && (candidate.isHead || Boolean(candidate.worktreePath));
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () =>
+      new Set(
+        stale
+          ? candidates
+              .filter(
+                (candidate) =>
+                  'upstreamGone' in candidate && candidate.upstreamGone && !unavailable(candidate),
+              )
+              .slice(0, 100)
+              .map((candidate) => candidate.fullName)
+          : [],
+      ),
+  );
+  const [force, setForce] = useState(false);
+  const unmerged = candidates.some(
+    (candidate) => selected.has(candidate.fullName) && 'merged' in candidate && !candidate.merged,
+  );
+  return (
+    <DialogShell
+      {...rest}
+      title={referenceType === 'branch' ? 'Delete Branches' : 'Delete Tags'}
+      className="p05-dialog p05-expanded"
+      subtitle="Select local references to remove"
+      icon={referenceType === 'branch' ? <BranchIcon size={26} /> : <TagIcon size={26} />}
+      warning={
+        failure?.message ??
+        (unmerged ? 'Selected branches contain commits not merged into the current branch.' : null)
+      }
+      danger
+      submitLabel={`Delete ${selected.size || ''} ${referenceType === 'branch' ? 'Branches' : 'Tags'}`.replace(
+        '  ',
+        ' ',
+      )}
+      submitDisabled={!selected.size || (unmerged && !force)}
+      onSubmit={() => onSubmit({ kind: 'delete-references', fullNames: [...selected], force })}
+    >
+      <dt>Delete:</dt>
+      <dd>
+        <div className="reference-batch-list" role="group" aria-label="References to delete">
+          {candidates.map((candidate) => (
+            <label className="reference-checkbox" key={candidate.fullName}>
+              <input
+                type="checkbox"
+                checked={selected.has(candidate.fullName)}
+                disabled={
+                  unavailable(candidate) || (!selected.has(candidate.fullName) && selected.size >= 100)
+                }
+                onChange={(event) =>
+                  setSelected((values) => {
+                    const next = new Set(values);
+                    if (event.target.checked) next.add(candidate.fullName);
+                    else next.delete(candidate.fullName);
+                    return next;
+                  })
+                }
+              />
+              {candidate.name}
+              <span className="muted">
+                {'isHead' in candidate
+                  ? candidate.isHead
+                    ? 'current'
+                    : candidate.worktreePath
+                      ? 'in worktree'
+                      : candidate.upstreamGone
+                        ? 'upstream gone'
+                        : ''
+                  : ''}
+              </span>
+            </label>
+          ))}
+        </div>
+      </dd>
+      <dt />
+      <dd className="reference-dialog-options">
+        <span className="muted">Remote references are retained. Up to 100 references per operation.</span>
+        {unmerged && (
+          <label className="reference-checkbox">
+            <input type="checkbox" checked={force} onChange={(event) => setForce(event.target.checked)} />
+            Delete unmerged branches
+          </label>
+        )}
+      </dd>
+    </DialogShell>
+  );
+}
+
 function DeleteTagDialog({
   tag,
   failure,
@@ -588,12 +753,13 @@ function DeleteTagDialog({
     <DialogShell
       {...rest}
       title="Delete Tag"
+      className="p05-dialog p05-delete-tag"
       subtitle={`Remove the tag '${tag.name}' from this repository`}
       icon={<TagIcon size={26} />}
       platform={rest.platform}
       warning={failure?.message ?? null}
       submitLabel="Delete Tag"
-      submitDisabled={false}
+      submitDisabled={deleteRemotes && remoteNames.length === 0}
       danger
       onClose={rest.onClose}
       onSubmit={() =>
@@ -655,7 +821,7 @@ function TagDetailsDialog({
 }) {
   return (
     <dialog
-      className="dialog reference-dialog"
+      className="dialog reference-dialog p05-dialog p05-tag-details"
       aria-label="Tag Details"
       ref={(node) => {
         if (node && !node.open) node.showModal();
@@ -664,31 +830,44 @@ function TagDetailsDialog({
     >
       <div className="dialog-content">
         <div className="reference-dialog-header">
-          <TagIcon size={26} />
+          <span className="reference-dialog-mark">
+            <TagIcon size={26} />
+          </span>
           <h2>Tag Details</h2>
         </div>
-        <p>
-          <strong>{tag.name}</strong> · {tag.annotated ? 'Annotated tag' : 'Lightweight tag'} ·{' '}
-          {tag.target.slice(0, 12)}
-        </p>
-        {repositoryId && tag.annotated && tag.objectId ? (
-          <SignatureCheck key={tag.objectId} repositoryId={repositoryId} objectId={tag.objectId} kind="tag" />
-        ) : !tag.annotated ? (
-          <p>Unsigned lightweight tag</p>
-        ) : null}
-        <textarea
-          aria-label="Tag message"
-          className="reference-input reference-message"
-          readOnly
-          rows={9}
-          value={
-            tag.annotated
-              ? [tag.tagger, tag.taggedAt, '', tag.message]
-                  .filter((line) => line !== null && line !== undefined)
-                  .join('\n')
-              : 'This lightweight tag has no tagger or annotation.'
-          }
-        />
+        <dl className="reference-dialog-fields">
+          <dt>Tag:</dt>
+          <dd className="reference-target">
+            <TagIcon size={13} />
+            {tag.name} <span className="muted">{tag.annotated ? 'Annotated tag' : 'Lightweight tag'}</span>
+          </dd>
+          <dt className="reference-label-top">Message:</dt>
+          <dd>
+            <textarea
+              aria-label="Tag message"
+              className="reference-input reference-message"
+              readOnly
+              rows={7}
+              value={
+                tag.annotated
+                  ? [tag.tagger, tag.taggedAt, '', tag.message]
+                      .filter((line) => line !== null && line !== undefined)
+                      .join('\n')
+                  : 'This lightweight tag has no tagger or annotation.'
+              }
+            />
+            {repositoryId && tag.annotated && tag.objectId ? (
+              <SignatureCheck
+                key={tag.objectId}
+                repositoryId={repositoryId}
+                objectId={tag.objectId}
+                kind="tag"
+              />
+            ) : !tag.annotated ? (
+              <p>Unsigned lightweight tag</p>
+            ) : null}
+          </dd>
+        </dl>
         <div className="dialog-actions">
           <button type="button" className="button primary" onClick={onClose}>
             Close
@@ -710,6 +889,7 @@ function PushTagDialog({
     <DialogShell
       {...rest}
       title="Push Tag"
+      className="p05-dialog p05-push-tag"
       subtitle={`Push '${tag.name}' to a remote repository`}
       icon={<TagIcon size={26} />}
       warning={failure?.message ?? null}
@@ -744,6 +924,7 @@ function CheckoutDetachedDialog({ target, failure, preview, ...rest }: DialogPro
     <DialogShell
       {...rest}
       title="Checkout Revision"
+      className="p05-dialog p05-checkout-commit"
       subtitle="Check out this revision without a branch"
       icon={<CommitIcon size={26} />}
       platform={rest.platform}

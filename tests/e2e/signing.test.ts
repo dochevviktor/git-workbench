@@ -67,6 +67,7 @@ test('F28 signing key, signed commit, verification and signed tag through Electr
     await page.getByRole('menuitem', { name: 'New Tag…', exact: true }).click();
     const dialog = page.getByTestId('reference-dialog');
     await dialog.getByTestId('reference-name').fill('signed-e2e');
+    await dialog.locator('summary', { hasText: 'Signing' }).click();
     await dialog.getByRole('combobox', { name: 'Signing mode' }).selectOption('gpg');
     await dialog.getByRole('button', { name: 'Signing key…' }).click();
     await page.getByRole('dialog', { name: 'Repository signing key' }).press('Escape');

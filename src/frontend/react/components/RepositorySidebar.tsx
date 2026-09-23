@@ -51,6 +51,7 @@ interface RepositorySidebarProps {
   readonly onReferenceSelect: (reference: RepositoryHistoryReference) => void;
   readonly onReferenceActivate?: ((reference: RepositoryHistoryReference) => void) | undefined;
   readonly onReferenceRename?: ((reference: RepositoryHistoryReference) => void) | undefined;
+  readonly onReferenceDelete?: ((reference: RepositoryHistoryReference) => void) | undefined;
   readonly onReferenceDragStart: (
     reference: RepositoryHistoryReference,
     event: ReactDragEvent<HTMLElement>,
@@ -165,6 +166,7 @@ export function RepositorySidebar({
   onReferenceSelect,
   onReferenceActivate,
   onReferenceRename,
+  onReferenceDelete,
   onReferenceDragStart,
   onReferenceDrop,
   onReferenceContextMenu,
@@ -439,14 +441,17 @@ export function RepositorySidebar({
       aria-label={`${repository.name} navigation`}
       onKeyDown={(event) => {
         if (
-          event.key !== 'F2' ||
+          !['F2', 'Delete'].includes(event.key) ||
           mode !== 'references' ||
           !(event.target instanceof Element) ||
           !event.target.closest('[role="tree"]')
         )
           return;
         const reference = activeKey ? referencesByKey.get(activeKey) : undefined;
-        if (reference?.kind === 'branch' && onReferenceRename) {
+        if (event.key === 'Delete' && reference && onReferenceDelete) {
+          event.preventDefault();
+          onReferenceDelete(reference);
+        } else if (event.key === 'F2' && reference?.kind === 'branch' && onReferenceRename) {
           event.preventDefault();
           onReferenceRename(reference);
         }

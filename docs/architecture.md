@@ -1,5 +1,16 @@
 # Architecture and implementation decisions
 
+P05 (2026-09-23): [reference/network behavior and verification](reviews/p05-network.md) adds a named
+`repository:preview-push` read across contracts/preload/main. Main stores bounded, expiring, one-use
+window/repository reviews of source IDs, last-fetched lease IDs, tags and the push destination fingerprint.
+Force execution revalidates inside the common-directory mutation queue and supplies exact object IDs
+and explicit per-branch expectations; background fetch cannot weaken the reviewed lease. The renderer
+receives inert review metadata and a token, never a refspec, command or credential. Inspector calls are
+denied and disposal/session generations prevent leaked reviews. Remote edits have an opaque URL guard,
+validate all fields before sequential Git writes and report partial results. Multi-reference deletion
+validates every target; scoped remote deletion retains local references on remote failure. Existing
+native helper/agent, account broker, trust, progress/cancellation and Recovery policies remain in force.
+
 P04 completion (2026-09-23): the [working-changes handoff](reviews/p04-working-changes.md) covers
 the Linux status/diff/staging/commit/discard requirements. Syntax coloring is a bounded renderer-only
 lexer emitting inert text spans, with separate before/after hunk state and plain-text fallbacks.

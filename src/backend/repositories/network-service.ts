@@ -105,10 +105,10 @@ export function planNetworkOperation(input: NetworkOperationInput): NetworkPlan 
         command: '',
       };
     case 'push': {
-      const args = ['push', '--progress'];
+      const args = ['push', '--progress', '--no-follow-tags'];
       if (request.setUpstream) args.push('--set-upstream');
-      if (request.force === 'with-lease') args.push('--force-with-lease');
-      if (request.tags) args.push('--follow-tags');
+      // The repository service replaces force plans with the reviewed, explicit leases before execution.
+      if (request.tags) args.push('--tags');
       args.push('--', request.remote);
       for (const target of request.targets) {
         // Only a local branch may be pushed, and only to a branch name. The renderer never supplies a
@@ -133,7 +133,14 @@ export function planNetworkOperation(input: NetworkOperationInput): NetworkPlan 
       };
     }
     case 'delete-remote-branch': {
-      const args = ['push', '--progress', '--', request.remote, `:refs/heads/${request.remoteBranch}`];
+      const args = [
+        'push',
+        '--progress',
+        '--no-follow-tags',
+        '--',
+        request.remote,
+        `:refs/heads/${request.remoteBranch}`,
+      ];
       return {
         kind: 'delete-remote-branch',
         args,
@@ -204,7 +211,8 @@ export async function runNetworkOperation(
       message: failure.message,
       output,
       failureReason: failure.reason,
-      canForceWithLease: failure.canForceWithLease && !plan.args.includes('--force-with-lease'),
+      canForceWithLease:
+        failure.canForceWithLease && !plan.args.some((arg) => arg.startsWith('--force-with-lease')),
     };
   }
 }
@@ -252,8 +260,14 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
     canForceWithLease: false,
   });
 
+  if (/host key verification failed|remote host identification has changed/iu.test(output))
+    return plain(
+      'authentication',
+      'SSH could not verify this host. Check its fingerprint and your known_hosts entry with SSH before retrying.',
+    );
+
   if (
-    /authentication failed|could not read username|could not read password|unable to get password|credential helper[^\n]*told us to quit|permission denied \(publickey|terminal prompts disabled|invalid username or password|access denied|403 forbidden/iu.test(
+    /authentication failed|could not read username|could not read password|unable to get password|credential helper[^\n]*told us to quit|permission denied \(publickey|terminal prompts disabled|invalid username or password|access denied|403 forbidden|returned error: (?:401|403)|authentication cancel|user cancel/iu.test(
       output,
     )
   ) {
@@ -267,7 +281,10 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
       output,
     )
   ) {
-    return plain('network', 'The remote host could not be reached.');
+    return plain(
+      'network',
+      'The remote host could not be reached. Check the remote URL and your connection, then retry.',
+    );
   }
   if (/stale info|does not match any|remote ref is at but expected/iu.test(output)) {
     return plain(
@@ -306,11 +323,14 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
     return plain('local-changes', 'Local changes would be overwritten. Commit or stash them first.');
   }
   if (
-    /couldn't find remote ref|does not appear to be a git repository|repository not found|remote ref does not exist|no such remote/iu.test(
+    /couldn't find remote ref|no such ref was fetched|does not appear to be a git repository|repository not found|remote ref does not exist|no such remote/iu.test(
       output,
     )
   ) {
-    return plain('not-found', 'The remote or the branch on it no longer exists.');
+    return plain(
+      'not-found',
+      'The remote or its branch no longer exists. Fetch with pruning, then choose another branch or update its tracking settings.',
+    );
   }
   return plain('other', 'Git could not complete the operation. Its output is shown below.');
 }

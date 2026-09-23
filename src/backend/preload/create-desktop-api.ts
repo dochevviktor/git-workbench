@@ -208,6 +208,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       listRemotes: (request) => invoke(requests.listRepositoryRemotes, request),
       applyRemoteAction: (request) => invoke(requests.applyRepositoryRemoteAction, request),
       startNetworkOperation: (request) => invoke(requests.startRepositoryNetworkOperation, request),
+      previewPush: (request) => invoke(requests.previewRepositoryPush, request),
       previewLocalChanges: (request) => invoke(requests.previewRepositoryLocalChanges, request),
       getRecovery: (request) => invoke(requests.getRepositoryRecovery, request),
       recover: (request) => invoke(requests.recoverRepository, request),

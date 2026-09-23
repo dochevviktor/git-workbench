@@ -9,6 +9,27 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P05 implementation (2026-09-23): the [reference/network handoff](../reviews/p05-network.md) closes
+the Linux phase requirements and acceptance, retaining broader provider/platform and public reference
+organization limits. `P1-001-create-rename-delete-subcase:F1–F2`, `P1-004-create-delete-tag-subcase:F1–F2`,
+`P1-004-empty-message-tag-subcase:F1–F3`, `P1-007:F1`, `P1-008-stale-fetch-subcase:F1–F4`,
+`P1-009-pull-rebase-subcase:F1–F3`, `P1-010-upstream-subcase:F1–F2`,
+`P1-011-delayed-local-cancel-subcase:F1–F5` and `P1-012-local-clone-subcase:F1–F3` anchor original
+case/PNG/Git comparison. Windows 2.22.0.0, 2026-09-19–20, 96 DPI; high confidence for sampled states.
+Compact 490/500/520/570/590/630/650 px form widths, icon column, field alignment, rename selection,
+tracking checkbox, all-tag wording, remote deletion and green connection feedback now have Linux
+before/after and light/dark/880×600 implementation captures. Safe checkout/Recovery semantics persist.
+
+Explicit-ID force review, branch-folder suggestions, a separate multi-reference/stale review dialog,
+optional push URL, FF-only/prune/tag Options, Signing disclosure and retained Recovery copies are
+independent adaptations. The [Git push manual](https://git-scm.com/docs/git-push),
+[credential manual](https://git-scm.com/docs/gitcredentials) and Fork
+[Windows](https://git-fork.com/releasenoteswin)/[Mac](https://git-fork.com/releasenotes) release notes
+were consulted on 2026-09-23 for public gaps (high confidence for documented capabilities).
+The 226-image public cache was restored and browsed; no private bundle/image was changed or bundled.
+Accepting-remote cancellation, authenticated loopback TLS/SSH and encrypted-key askpass/agent tests
+establish this implementation separately. They do not resolve Fork's unobserved authenticated variants.
+
 P04 implementation (2026-09-23): the [working-changes handoff](../reviews/p04-working-changes.md)
 closes the Linux phase requirements and acceptance. `P0-014:F1–F2`, `P0-022:F1–F2`,
 `P0-023-hunk-subcase:F1`, `P0-025-untracked-toggle-subcase:F1–F3`, `P0-026:F1`,

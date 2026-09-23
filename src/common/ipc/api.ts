@@ -43,6 +43,8 @@ import type {
   RepositoryLocation,
   RepositoryManagerSnapshot,
   RepositoryNetworkRequestEnvelope,
+  RepositoryPushPreviewRequest,
+  RepositoryPushPreview,
   RepositoryOperation,
   RepositoryLocalChangesPreview,
   RepositoryMergeRebaseRequest,
@@ -305,6 +307,7 @@ export interface DesktopApi {
       request: RepositoryRemoteActionRequest,
     ): Promise<IpcResult<RepositoryRemoteActionResult>>;
     startNetworkOperation(request: RepositoryNetworkRequestEnvelope): Promise<IpcResult<RepositoryOperation>>;
+    previewPush(request: RepositoryPushPreviewRequest): Promise<IpcResult<RepositoryPushPreview>>;
     listOperations(): Promise<IpcResult<RepositoryOperation[]>>;
     cancelOperation(request: RepositoryOperationSession): Promise<IpcResult<RepositoryOperation | null>>;
     onOperationChanged(listener: (operation: RepositoryOperation) => void): Unsubscribe;
