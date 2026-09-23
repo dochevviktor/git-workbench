@@ -207,14 +207,15 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(graphToggle).toHaveAttribute('aria-label', 'Collapse merged branch');
     await expect(page.getByText('Feature branch commit 1', { exact: true })).toHaveCount(1);
 
-    // A context-menu collapse keeps a selected hidden commit available in the details pane.
+    // P03 keeps the selected secondary commit visible as the keyboard's active descendant.
     const featureOneRow = page.getByTestId('history-commit').filter({ hasText: 'Feature branch commit 1' });
     await featureOneRow.click();
     await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
     await featureOneRow.click({ button: 'right' });
     const rowMenu = page.getByRole('menu', { name: /^Commit / });
     await rowMenu.getByRole('menuitem', { name: 'Collapse All', exact: true }).click();
-    await expect(featureOneRow).toHaveCount(0);
+    await expect(featureOneRow).toHaveCount(1);
+    await expect(featureOneRow).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('heading', { name: 'Feature branch commit 1' })).toBeVisible();
 
     await mergeRow.click({ button: 'right' });

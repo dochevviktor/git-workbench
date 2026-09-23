@@ -141,7 +141,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                                                      | —                                     |
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                        | P00                                   |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                           | P01 runner/jobs                       |
-| P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                                                                                    | P02 sessions                          |
+| P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                               | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                                                                                       | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; GitHub account-backed HTTPS Git verified with authenticated local transport (2026-09-23), alongside annotated tags, clone/Test Connection and global fetch; live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                             | P01/P04/P05 capabilities              |
@@ -670,6 +670,23 @@ Acceptance:
 - Paging and collapse do not lose selected commits or show incorrect parent edges.
 - Record baseline cold/warm performance using at least 100,000 commits and 1,000 refs. Establish budgets
   for first-page display, memory, and interaction latency before accepting further rendering work.
+
+Completion checkpoint (2026-09-23): P03 is verified for Linux. The retained paged history and independent
+graph now have visible selected-commit retention through collapse, viewport retention on prepend,
+SHA search, ten session-scoped recent queries, retained sidebar state, and virtualized reference/search/
+revision-tree rows. Commit details add inline changed-file disclosures/Expand All, compact aligned
+metadata and full-width separators; large directories can load further pages and restore distant paths.
+All four requirements and the three acceptance criteria are covered in the
+[P03 handoff](reviews/p03-history.md), including CLI ancestry/metadata comparisons, the 5,101-file tree,
+catalogue/public evidence, before/after light/dark/narrow captures and explicit resource limits.
+
+`npm run check` passes 507 tests (one existing opt-in skip); production build and the dedicated 100k/1k
+backend/browser benchmarks pass. The full-suite browser baseline has 100,000 commits and 1,003 refs:
+first display 1,467 ms, warm refresh 432 ms, keyboard selection 28 ms, renderer heap 22.1 MiB and
+Electron working-set growth 208.5 MiB, all within the recorded budgets. The handoff records the full
+Electron run and focused rerun, including the pre-existing F31/P12 Quick Launch chooser race; it is
+not silently counted as fixed. P08 directory/code history and P12/P14 platform/workspace variants
+remain outside this phase. Earlier started-slice paragraphs retain their original historical scope.
 
 ## P04 — Working changes, diff, staging, and commits
 

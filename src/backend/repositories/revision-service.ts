@@ -34,6 +34,7 @@ export interface ReadRevisionInput {
 export interface ReadRevisionTreeInput extends ReadRevisionInput {
   /** Empty means the root tree. Git paths use forward slashes. */
   readonly path: string;
+  readonly offset?: number | undefined;
 }
 
 export interface ReadRevisionBlobInput extends ReadRevisionInput {
@@ -153,12 +154,17 @@ export async function readRevisionTree(
   if (path) args.push(`${path}/`);
   const result = await runner.run(args, readOptions(input.cwd, revisionReadOutputLimit));
   const parsed = parseTreeEntries(result.stdout);
+  const offset = input.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000)
+    throw new RevisionPathError('The revision tree offset is not valid.');
+  const nextOffset = offset + revisionTreeEntryLimit;
   const response = {
     repositoryId: input.repositoryId,
     commitId: input.commitId,
     path,
-    entries: parsed.slice(0, revisionTreeEntryLimit),
-    truncated: parsed.length > revisionTreeEntryLimit,
+    entries: parsed.slice(offset, nextOffset),
+    truncated: parsed.length > nextOffset,
+    nextOffset: parsed.length > nextOffset && nextOffset <= 100_000 ? nextOffset : null,
   } satisfies RepositoryRevisionTree;
   return repositoryRevisionTreeSchema.parse(response);
 }

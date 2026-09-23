@@ -15,6 +15,29 @@ function commit(index: number, ...parents: number[]): TestCommit {
 }
 
 describe('collapsed history projection', () => {
+  it('retains the selected secondary commit and its ancestry across paging and collapse', () => {
+    const commits = [
+      commit(7, 6, 5),
+      commit(6, 2),
+      commit(5, 4),
+      commit(4, 3),
+      commit(3, 2),
+      commit(2, 1),
+      commit(1),
+    ];
+    for (const count of [3, 5, 7]) {
+      const projection = buildCollapsedHistory(commits.slice(0, count), new Set([id(7)]), new Set([id(5)]));
+      expect(projection.commits.some((entry) => entry.id === id(5))).toBe(true);
+      expect(projection.hiddenCommitIds.has(id(5))).toBe(false);
+      if (count === 7) {
+        expect(projection.graphCommits.find((entry) => entry.id === id(5))?.parents).toEqual([id(2)]);
+        expect(projection.hiddenCommitIds).toEqual(new Set([id(4), id(3)]));
+      }
+      expect(
+        buildHistoryGraph(projection.graphCommits).find((row) => row.commitId === id(7))?.parentLanes,
+      ).toHaveLength(2);
+    }
+  });
   it('hides unique secondary-parent commits and reconnects the branch at its merge base', () => {
     const commits = [commit(6, 5), commit(5, 4, 3), commit(4, 2), commit(3, 2), commit(2, 1), commit(1)];
     const projection = buildCollapsedHistory(commits, new Set([id(5)]));

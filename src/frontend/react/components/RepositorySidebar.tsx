@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { repositorySessionMap } from '../lib/repository-session';
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type {
   RepositoryBranch,
@@ -75,6 +76,13 @@ interface RepositorySidebarProps {
 }
 
 const collapsedByDefault = new Set(['section:tags', 'section:stashes']);
+interface SidebarSession {
+  readonly mode: 'references' | 'search';
+  readonly filter: string;
+  readonly toggled: ReadonlySet<string>;
+  readonly activeKey: string | undefined;
+}
+const sidebarSessions = repositorySessionMap<SidebarSession>();
 
 function trackingText(
   reference: RepositoryHistoryReference,
@@ -168,11 +176,15 @@ export function RepositorySidebar({
   onSubmoduleActivate,
   onSubmoduleContextMenu,
 }: RepositorySidebarProps) {
-  const [mode, setMode] = useState<'references' | 'search'>('references');
-  const [filter, setFilter] = useState('');
+  const saved = sidebarSessions.get(repository.id);
+  const [mode, setMode] = useState<'references' | 'search'>(saved?.mode ?? 'references');
+  const [filter, setFilter] = useState(saved?.filter ?? '');
   // Keys whose expansion differs from their default state.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
-  const [activeKey, setActiveKey] = useState<string>();
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => saved?.toggled ?? new Set());
+  const [activeKey, setActiveKey] = useState<string | undefined>(saved?.activeKey);
+  useEffect(() => {
+    sidebarSessions.set(repository.id, { mode, filter, toggled, activeKey });
+  }, [repository.id, mode, filter, toggled, activeKey]);
   const filtering = filter.trim().length > 0;
   const sections = useMemo(() => referenceSections(references, filter), [references, filter]);
   const branchesByFullName = useMemo(
@@ -527,6 +539,7 @@ export function RepositorySidebar({
             />
           </label>
           <TreeView
+            virtualize
             className="sidebar-tree"
             items={items}
             label="References"

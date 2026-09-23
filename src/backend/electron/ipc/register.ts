@@ -856,8 +856,8 @@ export function registerAppIpc(
     register(requests.startRepositoryInteractiveRebase, (window, request) =>
       repositoryService.startInteractiveRebase(window.webContents.id, request),
     );
-    register(requests.getRepositoryRevisionTree, (window, { id, commitId, path }) =>
-      repositoryService.getRevisionTree(window.webContents.id, id, commitId, path),
+    register(requests.getRepositoryRevisionTree, (window, { id, commitId, path, offset }) =>
+      repositoryService.getRevisionTree(window.webContents.id, id, commitId, path, offset),
     );
     register(requests.getRepositoryRevisionBlob, (window, { id, commitId, path }) =>
       repositoryService.getRevisionBlob(window.webContents.id, id, commitId, path),

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GitRunner } from '../../src/backend/git/runner';
 import { RepositoryService } from '../../src/backend/repositories/repository-service';
+import { repositoryRevisionTreeRequestSchema } from '../../src/common/ipc/contracts';
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +22,42 @@ afterEach(async () => {
 });
 
 describe('repository revision inspection service', () => {
+  it('pages large immutable directories without losing files and validates the cursor', async () => {
+    const directory = await fixtureDirectory();
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'profile', 'recent.json'), runner });
+    try {
+      const repository = await service.initialize(24, directory, false);
+      const content = '<script>globalThis.p03Executed = true</script>\n';
+      const files = Array.from({ length: 5_101 }, (_, index) => `file-${String(index).padStart(5, '0')}.txt`);
+      const source = `blob\nmark :1\ndata ${Buffer.byteLength(content)}\n${content}\ncommit refs/heads/main\ncommitter Tree <tree@test.invalid> 1700000000 +0000\ndata 5\nlarge\n${files.map((path) => `M 100644 :1 ${path}\n`).join('')}\n`;
+      await runner.run(['fast-import', '--quiet'], { cwd: directory, stdin: source });
+      const commitId = (await runner.run(['rev-parse', 'main'], { cwd: directory })).stdout.trim();
+      const first = await service.getRevisionTree(24, repository.id, commitId, '');
+      const second = await service.getRevisionTree(24, repository.id, commitId, '', first.nextOffset!);
+      expect(first.entries).toHaveLength(5_000);
+      expect(first).toMatchObject({ truncated: true, nextOffset: 5_000 });
+      expect(second).toMatchObject({ truncated: false, nextOffset: null });
+      const expected = (
+        await runner.run(['ls-tree', '--name-only', '-z', commitId], { cwd: directory })
+      ).stdout
+        .split('\0')
+        .filter(Boolean);
+      expect([...first.entries, ...second.entries].map((entry) => entry.path)).toEqual(expected);
+      expect((await service.getRevisionBlob(24, repository.id, commitId, files.at(-1)!)).content).toBe(
+        content,
+      );
+      for (const offset of [-1, 0.5, 100_001]) {
+        expect(
+          repositoryRevisionTreeRequestSchema.safeParse({ id: repository.id, commitId, path: '', offset })
+            .success,
+        ).toBe(false);
+        await expect(service.getRevisionTree(24, repository.id, commitId, '', offset)).rejects.toThrow();
+      }
+    } finally {
+      service.dispose();
+    }
+  });
   it('reads changed paths, directory entries, and bounded text blobs from committed revisions', async () => {
     const directory = await fixtureDirectory();
     const repositoryPath = join(directory, 'revision');

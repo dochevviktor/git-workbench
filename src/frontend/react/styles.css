@@ -1211,7 +1211,7 @@ p {
 .commit-row {
   --graph-node-fill: var(--list-bg);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px 72px 148px;
+  grid-template-columns: minmax(0, 1fr) clamp(110px, 15vw, 190px) 72px 180px;
   align-items: stretch;
   height: 24px;
   color: var(--text);
@@ -1397,7 +1397,7 @@ p {
 
 @container (max-width: 760px) {
   .commit-row {
-    grid-template-columns: minmax(0, 1fr) 72px 132px;
+    grid-template-columns: minmax(0, 1fr) 72px 180px;
   }
   .commit-author-cell {
     display: none;

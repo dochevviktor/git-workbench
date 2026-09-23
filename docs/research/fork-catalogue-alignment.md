@@ -9,6 +9,24 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P03 implementation (2026-09-23): the [history handoff](../reviews/p03-history.md) closes the Linux
+history/graph/revision phase. `P0-003-baseline-subcase:F1–F2`, `P0-006:F1`, `P0-007:F1–F3`,
+`P1-029:F1` and `P2-017:F1` anchor the original case/PNG/Git comparisons (Windows 2.22.0.0,
+2026-09-19–20, 96 DPI; high confidence for those states). Before/after light/dark/narrow Linux
+captures verify the compact details, full-width separators, disclosures/Expand All, separate search
+results and graph highlights, retained selection and current-branch distinction. Original image paths,
+implementation/test mapping and performance budgets are in the handoff.
+
+The [public graph article](https://fork.dev/blog/posts/collapsible-graph/) (2020-08-03, Mac/Windows),
+[Windows 1.21 inline-change image/article](https://fork.dev/blog/posts/forkwin-1.21/) (2018-09-25),
+and [Mac 2.9 recent-query notes](https://fork.dev/releasenotes) (2021-06-25) were revisited 2026-09-23
+to supplement catalogue gaps. Public assets were already in the restored reference library; none was
+added to the product. Selected-commit retention during collapse, session-only recent queries, SHA
+prefix search, directory pagination and 300px inline diff viewports are explicit project choices.
+No exact Fork font/color, graph-layout alternative, general Back/Forward or restart-query policy is
+inferred. P03 browser scale gates now pass on 100k commits/1,003 refs; P08/P12/P14 extensions and
+the existing Quick Launch chooser race remain separately recorded.
+
 P02 implementation (2026-09-23): the [repository-session handoff](../reviews/p02-repository-sessions.md)
 closes repository sessions/persistence/manager requirements for Linux. Its before/after comparison uses
 `P0-004-close-restore-subcase:F1`, `P0-004-reorder-subcase:F1–F2`,

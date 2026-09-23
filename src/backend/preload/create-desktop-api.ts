@@ -223,6 +223,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       listOperations: () => invoke(requests.listRepositoryOperations, undefined),
       cancelOperation: (request) => invoke(requests.cancelRepositoryOperation, request),
       onOperationChanged: (listener) => subscribe(events.repositoryOperationChanged, listener),
+      // The shared contract validates the optional directory cursor and the returned continuation.
       getRevisionTree: (request) => invoke(requests.getRepositoryRevisionTree, request),
       getRevisionBlob: (request) => invoke(requests.getRepositoryRevisionBlob, request),
       getLfsFile: (request) => invoke(requests.getRepositoryLfsFile, request),

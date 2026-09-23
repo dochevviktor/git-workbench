@@ -9,6 +9,7 @@ import { MenuButton } from './menu/MenuButton';
 import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 import { SearchMatch } from './SearchMatch';
+import { useVirtualRows } from '../hooks/use-virtual-rows';
 
 interface CommitSearchPanelProps {
   readonly repositoryId: string;
@@ -24,6 +25,7 @@ const searchFields: readonly { readonly field: CommitSearchField; readonly label
   { field: 'author', label: 'Author' },
   { field: 'path', label: 'Path' },
   { field: 'content', label: 'Diff Content' },
+  { field: 'hash', label: 'Commit SHA' },
 ];
 
 function resultId(commitId: string): string {
@@ -44,10 +46,11 @@ export function CommitSearchPanel({
   const search = useCommitSearch(repositoryId);
   const { results, hasMore, loading, loadMore } = search;
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string>();
   const activeIndex = results.findIndex((commit) => commit.id === activeId);
+  const rows = useVirtualRows(results.length, activeIndex, 22);
+  const listRef = rows.root;
   const scopeItems: readonly MenuEntry[] = [
     ...searchFields.map(({ field, label }) => ({
       id: `scope-${field}`,
@@ -98,7 +101,7 @@ export function CommitSearchPanel({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadMore, loading]);
+  }, [hasMore, loadMore, loading, listRef]);
 
   const choose = (commitId: string) => {
     setActiveId(commitId);
@@ -127,7 +130,10 @@ export function CommitSearchPanel({
     const commit = results[Math.max(0, Math.min(results.length - 1, index))];
     if (!commit) return;
     choose(commit.id);
-    document.getElementById(resultId(commit.id))?.scrollIntoView({ block: 'nearest' });
+    rows.reveal(results.indexOf(commit));
+    window.requestAnimationFrame(() =>
+      document.getElementById(resultId(commit.id))?.scrollIntoView({ block: 'nearest' }),
+    );
   };
 
   const status = !search.query
@@ -187,10 +193,32 @@ export function CommitSearchPanel({
           {searchFields.find(({ field }) => field === search.field)?.label}
           <ChevronDownIcon size={9} />
         </MenuButton>
+        {search.recent.length > 0 && (
+          <MenuButton
+            className="icon-button"
+            aria-label="Recent searches"
+            title="Recent searches"
+            menuLabel="Recent searches"
+            items={[
+              ...search.recent.map((entry, index) => ({
+                id: `recent-${index}`,
+                label: `${entry.query} · ${searchFields.find((item) => item.field === entry.field)?.label}${entry.scope === 'current-branch' ? ' · Current Branch' : ''}`,
+                run: () => search.useRecent(entry),
+              })),
+              menuSeparator,
+              { id: 'clear-recent-searches', label: 'Clear Recent Searches', run: search.clearRecent },
+            ]}
+          >
+            <ChevronDownIcon size={9} />
+          </MenuButton>
+        )}
         <span className="commit-search-count" role="status" aria-live="polite">
           {status}
         </span>
       </div>
+      {search.field === 'hash' && (
+        <p className="commit-search-scope-detail">Full SHA or prefix (at least 4 characters)</p>
+      )}
       {(search.scope === 'current-branch' || search.field === 'content') && (
         <p className="commit-search-scope-detail">
           {search.scope === 'current-branch' ? 'Current Branch' : 'Repository'}
@@ -214,6 +242,7 @@ export function CommitSearchPanel({
       )}
       <div
         ref={listRef}
+        onScroll={rows.update}
         className="commit-search-results"
         role="listbox"
         aria-label="Commit search results"
@@ -221,36 +250,50 @@ export function CommitSearchPanel({
         aria-activedescendant={activeIndex >= 0 && activeId ? resultId(activeId) : undefined}
         onKeyDown={onListKeyDown}
       >
-        {results.map((commit) => (
-          <div
-            key={commit.id}
-            id={resultId(commit.id)}
-            role="option"
-            aria-selected={commit.id === activeId}
-            className={commit.id === activeId ? 'commit-search-result active' : 'commit-search-result'}
-            data-testid="commit-search-result"
-            title={commit.subject}
-            onMouseDown={(event) => {
-              if (event.button === 0) choose(commit.id);
-            }}
-          >
-            <span
-              className={`avatar avatar-${avatarColor(commit.author.email || commit.author.name)}`}
-              aria-hidden="true"
-            >
-              {initials(commit.author.name, commit.author.email)}
-            </span>
-            <span className="commit-search-subject">
-              <SearchMatch
-                text={commit.subject || '(no subject)'}
-                query={search.field === 'message' ? search.query : ''}
-              />
-            </span>
-            <time className="commit-search-date" dateTime={commit.author.date}>
-              {formatShortDate(commit.author.date)}
-            </time>
-          </div>
-        ))}
+        <div
+          className={rows.virtual ? 'virtual-tree-rows' : undefined}
+          style={rows.virtual ? { height: results.length * 22 } : undefined}
+          role="presentation"
+        >
+          {rows.indices.map((index) => {
+            const commit = results[index]!;
+            return (
+              <div
+                key={commit.id}
+                id={resultId(commit.id)}
+                role="option"
+                aria-posinset={index + 1}
+                aria-setsize={results.length}
+                style={
+                  rows.virtual ? { position: 'absolute', top: index * 22, left: 0, right: 0 } : undefined
+                }
+                aria-selected={commit.id === activeId}
+                className={commit.id === activeId ? 'commit-search-result active' : 'commit-search-result'}
+                data-testid="commit-search-result"
+                title={commit.subject}
+                onMouseDown={(event) => {
+                  if (event.button === 0) choose(commit.id);
+                }}
+              >
+                <span
+                  className={`avatar avatar-${avatarColor(commit.author.email || commit.author.name)}`}
+                  aria-hidden="true"
+                >
+                  {initials(commit.author.name, commit.author.email)}
+                </span>
+                <span className="commit-search-subject">
+                  <SearchMatch
+                    text={commit.subject || '(no subject)'}
+                    query={search.field === 'message' ? search.query : ''}
+                  />
+                </span>
+                <time className="commit-search-date" dateTime={commit.author.date}>
+                  {formatShortDate(commit.author.date)}
+                </time>
+              </div>
+            );
+          })}
+        </div>
         {search.query && !loading && !search.pending && !search.error && results.length === 0 && (
           <p className="commit-search-empty">No commits match “{search.query}”.</p>
         )}

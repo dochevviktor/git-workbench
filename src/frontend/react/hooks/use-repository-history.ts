@@ -185,6 +185,10 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
         setTracking(page.tracking);
         setHeadCommit(page.head.commit);
         setSelectedCommitId(selected);
+        if (selectFirst && selected) {
+          revealToken.current += 1;
+          setReveal({ token: revealToken.current, commitId: selected, status: 'ready', pages: 1 });
+        }
         if (
           replace &&
           !anchor &&

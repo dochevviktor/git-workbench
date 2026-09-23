@@ -1,5 +1,15 @@
 # Architecture and implementation decisions
 
+P03 completion (2026-09-23): the [history handoff](reviews/p03-history.md) closes the Linux history,
+graph, scoped search and revision-inspection requirements. SHA-prefix search reads bounded reachable
+IDs and then exact commit metadata, without accepting revision expressions. The existing revision-tree
+capability carries an optional validated directory offset/continuation; backend tree output stays bounded.
+Reference, search and revision-tree rows virtualize while retaining accessible active descendants.
+Collapse keeps the selected commit visible, and prepend preserves the viewport. Inline committed diffs
+load near the viewport and reuse existing bounded read/cancel capabilities. Per-repository sidebar/query
+state remains session-only and is released on close. No new privileged channel or repository mutation
+is introduced. The dated handoff records browser and backend scale budgets separately.
+
 P02 completion (2026-09-23): the [repository-session handoff](reviews/p02-repository-sessions.md)
 supersedes the initial F01–F03 descriptions below. Profile-owned manager configuration now stores
 logical folders, display aliases and a default source, with version-1 migration. The renderer uses
@@ -461,9 +471,10 @@ chevron shows the collapse state, and dims commits that are not reachable from H
 the loaded commits.
 
 Sidebar commit search runs its own bounded history queries and never replaces the commit list. Choosing
-a result asks the history hook to load further pages, at most 40, until that commit is present; the
-history view then expands any collapsed merge hiding it and selects it. Revision trees are cached per
-directory for the selected commit and load as folders expand. Unit tests check hand-built cases and seeded random histories by
+a distant result asks the backend to locate a bounded page around the exact commit (up to 200,000 IDs);
+the history view expands any collapsed merge hiding it and selects it. Revision trees are cached per
+directory for the selected commit, load as folders expand, and offer further 5,000-entry pages.
+Unit tests check hand-built cases and seeded random histories by
 following every drawn line to the expected parent.
 
 Projection now has a no-collapse fast path and uses topological position to bound ancestry queries when
@@ -691,7 +702,7 @@ fetch, durable closed-tab/order/window state, author/path/diff-content search, t
 tag push/details and merge modes. The bounded F19 slice adds single-commit cherry-pick/revert and
 soft/mixed/hard reset with preview/CAS and Recovery safeguards. P02 adds filesystem watchers and logical
 manager folder editing. There is still no
-hash-search extension, commit-and-push, multiple-reference selection, application-managed
+commit-and-push, multiple-reference selection, application-managed
 credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
 integration, automatic updater or final branding. The bounded F21 slice adds rename-aware file History and
@@ -720,5 +731,5 @@ checkout/pull/fast-forward/push workflows, recovery controls, and PR browser han
 the narrower stabilization scope recorded in `docs/reviews/f01-f13-review.md`.
 The newer catalogue correction scope and verification are recorded in
 `docs/reviews/f01-f16-catalogue-corrections.md`. Scale results distinguish backend timing and harness
-memory from unmeasured browser paint and memory; reads collect bounded chunks and concatenate once to
+memory from the separately measured P03 browser paint and memory; reads collect bounded chunks and concatenate once to
 avoid quadratic copying of large Git output.

@@ -12,7 +12,12 @@ function actionError(reason: unknown, fallback: string): string {
 
 export type RevisionDirectory =
   | { readonly status: 'loading' }
-  | { readonly status: 'loaded'; readonly tree: RepositoryRevisionTree }
+  | {
+      readonly status: 'loaded';
+      readonly tree: RepositoryRevisionTree;
+      readonly loadingMore?: boolean;
+      readonly moreError?: string;
+    }
   | { readonly status: 'error'; readonly message: string };
 
 export type RevisionInspection = ReturnType<typeof useRevisionInspection>;
@@ -33,6 +38,7 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
   const revisionGeneration = useRef(0);
   const changesRequestGeneration = useRef(0);
   const blobRequestGeneration = useRef(0);
+  const directoryRequests = useRef(new Set<string>());
 
   useEffect(() => {
     setOwner(key);
@@ -43,6 +49,7 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
     setChangesLoading(false);
     setChangesError(undefined);
     setDirectories(new Map());
+    directoryRequests.current = new Set();
     setBlob(undefined);
     setBlobPath(undefined);
     setBlobLoading(false);
@@ -79,24 +86,53 @@ export function useRevisionInspection(repositoryId: string | undefined, commitId
   }, [commitId, repositoryId]);
 
   const loadDirectory = useCallback(
-    async (path: string) => {
-      if (!repositoryId || !commitId) return;
+    async (path: string, append = false) => {
+      if (!repositoryId || !commitId || directoryRequests.current.has(path)) return;
+      const previous = append ? directories.get(path) : undefined;
+      const offset = previous?.status === 'loaded' ? previous.tree.nextOffset : undefined;
+      if (append && offset == null) return;
+      directoryRequests.current.add(path);
       const revision = revisionGeneration.current;
       const update = (state: RevisionDirectory) =>
         setDirectories((current) => new Map(current).set(path, state));
-      update({ status: 'loading' });
+      update(
+        previous?.status === 'loaded'
+          ? { status: 'loaded', tree: previous.tree, loadingMore: true }
+          : { status: 'loading' },
+      );
       try {
         const api = window.desktop;
         if (!api) throw new Error('Open this application in Electron to inspect the revision tree.');
-        const tree = unwrapResult(await api.repository.getRevisionTree({ id: repositoryId, commitId, path }));
-        if (revision === revisionGeneration.current) update({ status: 'loaded', tree });
+        const tree = unwrapResult(
+          await api.repository.getRevisionTree({
+            id: repositoryId,
+            commitId,
+            path,
+            ...(offset != null ? { offset } : {}),
+          }),
+        );
+        if (revision === revisionGeneration.current)
+          update({
+            status: 'loaded',
+            tree:
+              previous?.status === 'loaded'
+                ? { ...tree, entries: [...previous.tree.entries, ...tree.entries] }
+                : tree,
+          });
       } catch (reason: unknown) {
         if (revision === revisionGeneration.current) {
-          update({ status: 'error', message: actionError(reason, 'The revision tree could not be loaded.') });
+          const message = actionError(reason, 'The revision tree could not be loaded.');
+          update(
+            previous?.status === 'loaded'
+              ? { status: 'loaded', tree: previous.tree, moreError: message }
+              : { status: 'error', message },
+          );
         }
+      } finally {
+        if (revision === revisionGeneration.current) directoryRequests.current.delete(path);
       }
     },
-    [commitId, repositoryId],
+    [commitId, repositoryId, directories],
   );
 
   const loadBlob = useCallback(

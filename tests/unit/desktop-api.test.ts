@@ -26,6 +26,31 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('keeps P03 directory paging inside the validated revision capability', async () => {
+    const { api, invoke } = fixture();
+    const request = { id: `repo-${'a'.repeat(64)}`, commitId: 'a'.repeat(40), path: '', offset: 5_000 };
+    const value = {
+      repositoryId: request.id,
+      commitId: request.commitId,
+      path: '',
+      entries: [],
+      truncated: false,
+      nextOffset: null,
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value });
+    await expect(api.repository.getRevisionTree(request)).resolves.toEqual({ ok: true, value });
+    expect(invoke).toHaveBeenLastCalledWith(requests.getRepositoryRevisionTree.channel, request);
+    await expect(api.repository.getRevisionTree({ ...request, offset: -1 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    invoke.mockResolvedValueOnce({ ok: true, value: { ...value, nextOffset: -5 } });
+    await expect(api.repository.getRevisionTree(request)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates manager jobs and invalidations and removes the exact event listener', async () => {
     const { api, emitter, invoke } = fixture();
     const listener = vi.fn();

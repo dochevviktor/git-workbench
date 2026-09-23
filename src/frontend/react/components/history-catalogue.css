@@ -17,6 +17,10 @@
   position: relative;
 }
 
+.virtual-tree-rows {
+  position: relative;
+}
+
 .commit-search-scope-detail {
   margin: 0 10px 6px;
   color: var(--text-muted);
@@ -34,4 +38,63 @@
 .history-view:has(.details-collapsed) .commit-list-scroll {
   flex: 1;
   height: auto;
+}
+
+/* P0-007: full-width separators, compact metadata, and per-file disclosures. */
+.commit-details .details-content {
+  max-width: none;
+  padding: 14px 20px 24px;
+}
+
+.commit-details .details-people,
+.commit-details .details-fields {
+  margin-left: 18px;
+}
+
+.commit-details .details-message {
+  margin-left: 0;
+  padding: 12px 0 0 74px;
+}
+
+.commit-details .details-message h2 {
+  font-size: 14px;
+}
+
+.commit-details .details-files {
+  margin-left: 0;
+  padding-top: 4px;
+}
+
+.details-files-actions {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 22px;
+}
+
+.details-files-actions .text-button,
+.details-files > .text-button {
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.commit-details .details-file {
+  min-height: 26px;
+  padding-left: 8px;
+}
+
+.details-file-disclosure {
+  width: 18px;
+  height: 22px;
+}
+
+.inline-commit-diff {
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  margin: 2px 0 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
 }

@@ -45,6 +45,7 @@ export function getMergeCommitIds(commits: readonly CollapsibleHistoryCommit[]):
 export function buildCollapsedHistory<Commit extends CollapsibleHistoryCommit>(
   commits: readonly Commit[],
   requestedCollapsedMergeIds: ReadonlySet<string>,
+  retainedCommitIds: ReadonlySet<string> = new Set(),
 ): CollapsedHistoryProjection<Commit> {
   const records = new Map(commits.map((commit): [string, HistoryRecord] => [commit.id, commit]));
   const mergeIds = new Set(getMergeCommitIds(commits));
@@ -102,6 +103,7 @@ export function buildCollapsedHistory<Commit extends CollapsibleHistoryCommit>(
       !owners ||
       mergeIds.has(commit.id) ||
       decorated.has(commit.id) ||
+      retainedCommitIds.has(commit.id) ||
       expandedBranchCommits.has(commit.id)
     ) {
       continue;

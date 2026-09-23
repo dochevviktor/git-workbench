@@ -427,7 +427,7 @@ export const repositoryHistoryFilterSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('commit-search'),
     query: repositoryHistoryFilterQuerySchema,
-    field: z.enum(['message', 'author', 'path', 'content']).optional(),
+    field: z.enum(['message', 'author', 'path', 'content', 'hash']).optional(),
     scope: z.enum(['repository', 'current-branch']).optional(),
   }),
 ]);
@@ -2225,6 +2225,7 @@ export const repositoryRevisionTreeRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
   path: repositoryRevisionPathSchema,
+  offset: z.number().int().nonnegative().max(100_000).optional(),
 });
 
 export const repositoryRevisionTreeEntrySchema = z.strictObject({
@@ -2242,6 +2243,7 @@ export const repositoryRevisionTreeSchema = z.strictObject({
   path: repositoryRevisionPathSchema,
   entries: z.array(repositoryRevisionTreeEntrySchema).max(5_000),
   truncated: z.boolean(),
+  nextOffset: z.number().int().nonnegative().max(100_000).nullable().optional(),
 });
 
 export const repositoryRevisionBlobRequestSchema = z.strictObject({

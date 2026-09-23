@@ -1,3 +1,4 @@
+import { useLayoutEffect, useMemo } from 'react';
 import type {
   DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
@@ -6,6 +7,7 @@ import type {
 } from 'react';
 import type { SelectionModifiers } from '../lib/list-selection';
 import { ChevronDownIcon, ChevronRightIcon } from './Icons';
+import { useVirtualRows } from '../hooks/use-virtual-rows';
 
 const noModifiers: SelectionModifiers = { toggle: false, range: false };
 
@@ -31,11 +33,13 @@ export interface TreeItem {
   readonly unavailable?: boolean | undefined;
   /** Section headings expand and collapse with a single click. */
   readonly toggleOnClick?: boolean | undefined;
+  readonly activateOnClick?: boolean;
   readonly testId?: string | undefined;
   readonly draggable?: boolean | undefined;
 }
 
 interface TreeViewProps {
+  readonly virtualize?: boolean;
   readonly items: readonly TreeItem[];
   readonly label: string;
   readonly activeKey: string | undefined;
@@ -60,6 +64,7 @@ function fromDisclosure(event: ReactMouseEvent<HTMLElement>): boolean {
 }
 
 export function TreeView({
+  virtualize = false,
   items,
   label,
   activeKey,
@@ -76,6 +81,21 @@ export function TreeView({
   children,
 }: TreeViewProps) {
   const activeIndex = items.findIndex((item) => item.key === activeKey);
+  const rows = useVirtualRows(items.length, activeIndex, 24, virtualize);
+  const { reveal } = rows;
+  const siblingPositions = useMemo(() => {
+    const totals = new Map<string | null, number>();
+    const positions = new Map<string | null, number>();
+    for (const item of items) totals.set(item.parentKey, (totals.get(item.parentKey) ?? 0) + 1);
+    return items.map((item) => {
+      const position = (positions.get(item.parentKey) ?? 0) + 1;
+      positions.set(item.parentKey, position);
+      return { position, size: totals.get(item.parentKey)! };
+    });
+  }, [items]);
+  useLayoutEffect(() => {
+    if (activeIndex >= 0) reveal(activeIndex);
+  }, [activeIndex, reveal]);
   const rowId = (item: TreeItem) => `${idPrefix}-${item.key}`;
 
   const moveTo = (index: number, extend = false) => {
@@ -83,7 +103,10 @@ export function TreeView({
     if (!item) return;
     onActiveChange(item.key, { toggle: false, range: extend });
     onSelect?.(item);
-    document.getElementById(rowId(item))?.scrollIntoView({ block: 'nearest' });
+    rows.reveal(Math.max(0, Math.min(items.length - 1, index)));
+    window.requestAnimationFrame(() =>
+      document.getElementById(rowId(item))?.scrollIntoView({ block: 'nearest' }),
+    );
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -123,6 +146,8 @@ export function TreeView({
 
   return (
     <div
+      ref={rows.root}
+      onScroll={rows.update}
       className={className ? `tree ${className}` : 'tree'}
       role="tree"
       aria-label={label}
@@ -135,82 +160,97 @@ export function TreeView({
           onActiveChange(items[0].key, noModifiers);
       }}
     >
-      {items.map((item) => {
-        const selected = selectedKeys ? selectedKeys.has(item.key) : item.key === activeKey;
-        const classes = ['tree-row'];
-        if (item.className) classes.push(item.className);
-        if (selected) classes.push('active');
-        if (selectedKeys && item.key === activeKey) classes.push('focused');
-        if (item.unavailable) classes.push('unavailable');
-        return (
-          <div
-            key={item.key}
-            id={rowId(item)}
-            role="treeitem"
-            className={classes.join(' ')}
-            aria-level={item.level}
-            aria-expanded={item.expandable ? item.expanded : undefined}
-            aria-selected={selected}
-            aria-disabled={item.unavailable ? true : undefined}
-            draggable={item.draggable}
-            title={item.title}
-            data-testid={item.testId}
-            style={{ paddingLeft: 4 + (item.level - 1) * 16 }}
-            onMouseDown={(event) => {
-              if (event.button !== 0 && event.button !== 2) return;
-              // A right click keeps an existing multi-selection the menu is about to act on.
-              const keepSelection = event.button === 2 && selected;
-              if (!keepSelection) onActiveChange(item.key, selectionModifiers(event));
-              if (event.button === 0) onSelect?.(item);
-            }}
-            onClick={(event) => {
-              if (fromDisclosure(event)) return;
-              if (item.expandable && item.toggleOnClick) onToggle(item, !item.expanded);
-            }}
-            onDoubleClick={(event) => {
-              if (fromDisclosure(event)) return;
-              if (item.expandable && !item.toggleOnClick) onToggle(item, !item.expanded);
-              else if (!item.expandable) onActivate?.(item);
-            }}
-            onContextMenu={(event) => {
-              if (!onContextMenu) return;
-              event.preventDefault();
-              onContextMenu(item, event);
-            }}
-            onDragStart={(event) => onDragStart?.(item, event)}
-            onDragOver={(event) => {
-              if (onDrop && item.draggable) event.preventDefault();
-            }}
-            onDrop={(event) => onDrop?.(item, event)}
-          >
-            <span
-              className="tree-disclosure"
-              aria-hidden="true"
-              onMouseDown={(event) => {
-                if (!item.expandable || event.button !== 0) return;
-                event.stopPropagation();
-                onActiveChange(item.key, noModifiers);
-                onToggle(item, !item.expanded);
+      <div
+        className={rows.virtual ? 'virtual-tree-rows' : undefined}
+        style={rows.virtual ? { height: items.length * 24 } : undefined}
+        role="presentation"
+      >
+        {rows.indices.map((index) => {
+          const item = items[index]!;
+          const selected = selectedKeys ? selectedKeys.has(item.key) : item.key === activeKey;
+          const classes = ['tree-row'];
+          if (item.className) classes.push(item.className);
+          if (selected) classes.push('active');
+          if (selectedKeys && item.key === activeKey) classes.push('focused');
+          if (item.unavailable) classes.push('unavailable');
+          return (
+            <div
+              key={item.key}
+              id={rowId(item)}
+              role="treeitem"
+              className={classes.join(' ')}
+              aria-level={item.level}
+              aria-posinset={siblingPositions[index]!.position}
+              aria-setsize={siblingPositions[index]!.size}
+              aria-expanded={item.expandable ? item.expanded : undefined}
+              aria-selected={selected}
+              aria-disabled={item.unavailable ? true : undefined}
+              draggable={item.draggable}
+              title={item.title}
+              data-testid={item.testId}
+              style={{
+                paddingLeft: 4 + (item.level - 1) * 16,
+                ...(rows.virtual
+                  ? { position: 'absolute', top: index * 24, height: 24, left: 0, right: 0 }
+                  : {}),
               }}
+              onMouseDown={(event) => {
+                if (event.button !== 0 && event.button !== 2) return;
+                // A right click keeps an existing multi-selection the menu is about to act on.
+                const keepSelection = event.button === 2 && selected;
+                if (!keepSelection) onActiveChange(item.key, selectionModifiers(event));
+                if (event.button === 0) onSelect?.(item);
+              }}
+              onClick={(event) => {
+                if (fromDisclosure(event)) return;
+                if (item.expandable && item.toggleOnClick) onToggle(item, !item.expanded);
+                else if (item.activateOnClick) onActivate?.(item);
+              }}
+              onDoubleClick={(event) => {
+                if (fromDisclosure(event)) return;
+                if (item.expandable && !item.toggleOnClick) onToggle(item, !item.expanded);
+                else if (!item.expandable) onActivate?.(item);
+              }}
+              onContextMenu={(event) => {
+                if (!onContextMenu) return;
+                event.preventDefault();
+                onContextMenu(item, event);
+              }}
+              onDragStart={(event) => onDragStart?.(item, event)}
+              onDragOver={(event) => {
+                if (onDrop && item.draggable) event.preventDefault();
+              }}
+              onDrop={(event) => onDrop?.(item, event)}
             >
-              {item.expandable ? (
-                item.expanded ? (
-                  <ChevronDownIcon size={11} />
-                ) : (
-                  <ChevronRightIcon size={11} />
-                )
-              ) : null}
-            </span>
-            {item.icon && (
-              <span className="tree-icon" aria-hidden="true">
-                {item.icon}
+              <span
+                className="tree-disclosure"
+                aria-hidden="true"
+                onMouseDown={(event) => {
+                  if (!item.expandable || event.button !== 0) return;
+                  event.stopPropagation();
+                  onActiveChange(item.key, noModifiers);
+                  onToggle(item, !item.expanded);
+                }}
+              >
+                {item.expandable ? (
+                  item.expanded ? (
+                    <ChevronDownIcon size={11} />
+                  ) : (
+                    <ChevronRightIcon size={11} />
+                  )
+                ) : null}
               </span>
-            )}
-            <span className="tree-label">{item.label}</span>
-            {item.meta && <span className="tree-meta">{item.meta}</span>}
-          </div>
-        );
-      })}
+              {item.icon && (
+                <span className="tree-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+              )}
+              <span className="tree-label">{item.label}</span>
+              {item.meta && <span className="tree-meta">{item.meta}</span>}
+            </div>
+          );
+        })}
+      </div>
       {children}
     </div>
   );

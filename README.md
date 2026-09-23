@@ -32,6 +32,14 @@ Filesystem watchers refresh external changes. Missing repositories offer Retry/L
 settings retain recoverable originals. Drafts, tab order and preferences survive restart; reopening a
 closed tab selects HEAD. See the [P02 handoff](docs/reviews/p02-repository-sessions.md) for verified scope.
 
+P03's history and revision browser is complete for the Linux baseline. Search includes Commit SHA
+(full hash or at least four prefix characters) and ten session-only recent queries. Commit summaries
+support inline file expansion; large File Tree directories have Load more and virtualized rows.
+Collapsing merges keeps the selected commit visible. The graph, refs, search and tree are verified on
+100,000 commits/1,003 refs; see the [P03 handoff](docs/reviews/p03-history.md) for measured budgets,
+Fork design comparisons and resource limits. Reproduce the browser benchmark with
+`P03_BENCHMARK=1 npm run test:e2e -- tests/e2e/p03-history.test.ts`.
+
 The earlier feature milestones start F01's local workflow, the first F02 repository-manager slice, the initial
 F03 tab slice, the first F04–F07 history, collapse, filtering, and revision-inspection slices, the
 F08–F11 working-changes, diff, staging, and commit slices, a first F12 branch and tag slice, an initial

@@ -320,6 +320,7 @@ export interface DesktopApi {
     applyPatch(request: RepositoryPatchApplyRequest): Promise<IpcResult<RepositoryOperation>>;
     releasePatch(request: RepositoryPatchApplyRequest): Promise<IpcResult<null>>;
     openPullRequest(request: RepositoryPullRequestHandoff): Promise<IpcResult<null>>;
+    /** Read one immutable directory page; nextOffset continues the same commit/path. */
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     getLfsFile(request: RepositoryLfsFileRequest): Promise<IpcResult<RepositoryLfsFile>>;

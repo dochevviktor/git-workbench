@@ -26,6 +26,7 @@ import {
 } from '../lib/format';
 import { referenceChips } from '../lib/references';
 import { CodePreview } from './CodePreview';
+import { CommitFileSummary } from './CommitFileSummary';
 import { DiffViewer } from './DiffViewer';
 import type { DiffDisplayMode } from './DiffViewer';
 import { FileChangeList } from './FileChangeList';
@@ -374,6 +375,28 @@ function RevisionTree({
         });
         if (open) visit(entry.path, level + 1, key);
       }
+      if (directory.tree.truncated) {
+        const key = `more:${encodeURIComponent(path)}`;
+        byKey.set(key, { path, type: 'more' });
+        rows.push({
+          key,
+          level,
+          parentKey,
+          label: directory.loadingMore
+            ? 'Loading more files…'
+            : directory.moreError
+              ? 'Retry loading more files'
+              : directory.tree.nextOffset != null
+                ? 'Load more files…'
+                : 'Folder display limit reached',
+          expandable: false,
+          expanded: false,
+          activateOnClick: true,
+          unavailable: directory.loadingMore || directory.tree.nextOffset == null,
+          title: directory.moreError,
+          testId: 'revision-tree-more',
+        });
+      }
     };
     visit('', 1, null);
     return { items: rows, entries: byKey };
@@ -384,6 +407,20 @@ function RevisionTree({
     if (entry?.type === 'blob' && blobPath !== entry.path && !blobLoading) void loadBlob(entry.path);
   }, [activeKey, blobLoading, blobPath, entries, loadBlob]);
 
+  useEffect(() => {
+    if (!activeKey?.startsWith('tree:') || entries.has(activeKey)) return;
+    const path = decodeURIComponent(activeKey.slice('tree:'.length));
+    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const directory = directories.get(parent);
+    if (
+      directory?.status === 'loaded' &&
+      directory.tree.nextOffset != null &&
+      !directory.loadingMore &&
+      !directory.moreError
+    )
+      void loadDirectory(parent, true);
+  }, [activeKey, directories, entries, loadDirectory]);
+
   const root = directories.get('');
   if (!root || root.status === 'loading') return <p className="details-empty">Reading the revision tree…</p>;
   if (root.status === 'error')
@@ -392,6 +429,7 @@ function RevisionTree({
 
   return (
     <TreeView
+      virtualize
       className="revision-file-tree"
       items={items}
       label="Files at revision"
@@ -401,6 +439,10 @@ function RevisionTree({
         onActiveChange(key);
         const entry = entries.get(key);
         if (entry?.type === 'blob') void loadBlob(entry.path);
+      }}
+      onActivate={(item) => {
+        const entry = entries.get(item.key);
+        if (entry?.type === 'more') void loadDirectory(entry.path, true);
       }}
       onToggle={(item, expand) => {
         const entry = entries.get(item.key);
@@ -419,11 +461,7 @@ function RevisionTree({
         const entry = entries.get(item.key);
         if (entry?.type === 'blob') onContextMenu(entry.path, event);
       }}
-    >
-      {root.tree.truncated && (
-        <p className="sidebar-note">This folder contains more entries than can be displayed.</p>
-      )}
-    </TreeView>
+    ></TreeView>
   );
 }
 
@@ -710,32 +748,18 @@ export function CommitDetails({
           {changes && changes.changes.length === 0 && (
             <p className="details-empty">No files changed in this commit.</p>
           )}
-          {changes && changes.changes.length > 0 && (
-            <ul className="details-file-list" aria-label={countLabel(changes.changes.length, 'changed file')}>
-              {changes.changes.map((change) => (
-                <li
-                  key={changeKey(change)}
-                  className="details-file"
-                  data-testid="commit-file"
-                  onContextMenu={(event) => openFileContextMenu(change.path, event)}
-                >
-                  <StatusBadge status={change.status} />
-                  <FileIcon size={14} />
-                  <button
-                    type="button"
-                    className="details-file-path"
-                    title="Show in Changes"
-                    onClick={() => {
-                      setSelectedChangeKey(changeKey(change));
-                      setActiveTab('changes');
-                    }}
-                  >
-                    {change.previousPath && <span className="muted">{change.previousPath} → </span>}
-                    {change.path}
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {repositoryId && changes && changes.changes.length > 0 && (
+            <CommitFileSummary
+              key={commit.id}
+              repositoryId={repositoryId}
+              commitId={commit.id}
+              changes={changes.changes}
+              onContextMenu={openFileContextMenu}
+              onShowChanges={(change) => {
+                setSelectedChangeKey(changeKey(change));
+                setActiveTab('changes');
+              }}
+            />
           )}
           {changes?.truncated && <p className="details-empty">The changed file list is truncated.</p>}
         </div>

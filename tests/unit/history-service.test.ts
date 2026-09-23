@@ -398,7 +398,7 @@ describe('repository history service', () => {
       '2026-01-03',
     );
     const search = async (
-      field: 'message' | 'author' | 'path' | 'content',
+      field: 'message' | 'author' | 'path' | 'content' | 'hash',
       query: string,
       scope: 'repository' | 'current-branch' = 'repository',
     ) =>
@@ -413,6 +413,30 @@ describe('repository history service', () => {
     expect(await search('content', 'needle.*')).toEqual([]);
     expect(new Set(await search('message', 'sidebar'))).toEqual(new Set([changed, other]));
     expect(await search('message', 'sidebar', 'current-branch')).toEqual([changed]);
+    expect(await search('hash', changed)).toEqual([changed]);
+    expect(await search('hash', root.slice(0, 9).toUpperCase())).toEqual([root]);
+    expect(await search('hash', other, 'current-branch')).toEqual([]);
+    expect(await search('hash', other)).toEqual([other]);
+    expect(await search('hash', 'HEAD')).toEqual([]);
+    expect(await search('hash', '--all')).toEqual([]);
+    expect(await search('hash', root.slice(0, 3))).toEqual([]);
+    // A full SHA does not widen this scoped search to unreachable objects.
+    const unreachable = (
+      await runner.run(
+        [
+          '-c',
+          'user.name=Other',
+          '-c',
+          'user.email=other@test.invalid',
+          'commit-tree',
+          `${changed}^{tree}`,
+          '-m',
+          'unreachable',
+        ],
+        { cwd: repositoryPath },
+      )
+    ).stdout.trim();
+    expect(await search('hash', unreachable)).toEqual([]);
     expect(
       (await runner.run(['symbolic-ref', '--short', 'HEAD'], { cwd: repositoryPath })).stdout.trim(),
     ).toBe('main');

@@ -192,6 +192,45 @@ async function readNormalHistory(
   stashes: readonly RepositoryStashEntry[],
   emptyCurrentBranch: boolean,
 ): Promise<NormalHistoryPage> {
+  if (filter.kind === 'commit-search' && filter.field === 'hash') {
+    if (!/^[a-f0-9]{4,64}$/iu.test(filter.query) || emptyCurrentBranch)
+      return { commits: [], hasMore: false };
+    // Search only the selected history, including detached HEAD, never arbitrary revision syntax.
+    // Reading IDs first avoids materializing messages for a large repository.
+    const args = historyArguments(
+      { ...input, offset: 0, limit: 200_000 },
+      { ...filter, field: 'hash' },
+      stashes,
+    ).map((argument) => (argument.startsWith('--pretty=format:') ? '--format=%H' : argument));
+    const output = await runner.run(args, readOptions(input.cwd, 14 * 1024 * 1024));
+    const ids = output.stdout.trim().split(/\r?\n/u).filter(Boolean);
+    if (ids.length > 200_000)
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        'Hash search is limited to 200,000 commits. Choose Current Branch to narrow the search.',
+      );
+    if (ids.some((id) => !objectIdPattern.test(id))) throw new Error('Git returned an invalid commit ID.');
+    const matches = ids.filter((id) => id.startsWith(filter.query.toLowerCase()));
+    const page = matches.slice(input.offset, input.offset + input.limit);
+    const raw = page.length
+      ? await runner.run(
+          [
+            'log',
+            '--no-walk=unsorted',
+            '--no-decorate',
+            '--no-color',
+            `--pretty=format:${commitFormat}`,
+            ...page,
+            '--',
+          ],
+          readOptions(input.cwd, historyReadOutputLimit),
+        )
+      : undefined;
+    return {
+      commits: raw ? parseCommits(raw.stdout) : [],
+      hasMore: input.offset + input.limit < matches.length,
+    };
+  }
   const rawHistory = emptyCurrentBranch
     ? ''
     : (
@@ -264,7 +303,7 @@ function historyArguments(
         '--diff-merges=first-parent',
         '--no-patch',
       );
-    } else {
+    } else if (field === 'path') {
       argumentsList.push('--full-history');
     }
   }

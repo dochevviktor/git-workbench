@@ -2790,6 +2790,7 @@ export class RepositoryService {
     id: string,
     commitId: string,
     path: string,
+    offset?: number,
   ): Promise<RepositoryRevisionTree> {
     const summary = await this.refreshOpenRepository(ownerId, id, false);
     try {
@@ -2798,6 +2799,7 @@ export class RepositoryService {
         cwd: summary.worktreePath ?? summary.commonDir,
         commitId,
         path,
+        offset,
       });
     } catch (error) {
       throw this.mapRevisionFailure(error, 'Git could not read the selected revision tree.');

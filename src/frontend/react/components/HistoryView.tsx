@@ -255,8 +255,13 @@ export function HistoryView({
     [collapseAllMode, expandedMergeIds, manualCollapsedMergeIds, mergeCommitIds],
   );
   const projection = useMemo(
-    () => buildCollapsedHistory(loadedCommits, requestedCollapsedMergeIds),
-    [loadedCommits, requestedCollapsedMergeIds],
+    () =>
+      buildCollapsedHistory(
+        loadedCommits,
+        requestedCollapsedMergeIds,
+        new Set(selectedCommitId ? [selectedCommitId] : []),
+      ),
+    [loadedCommits, requestedCollapsedMergeIds, selectedCommitId],
   );
   const commits = projection.commits;
   const collapsedMergeIds = projection.collapsedMergeIds;
@@ -275,6 +280,28 @@ export function HistoryView({
   const headLoaded = headCommit !== null && loadedCommitIds.has(headCommit);
   const currentBranch = references.find((reference) => reference.isHead && reference.kind === 'branch');
   const selectedIndex = commits.findIndex((commit) => commit.id === selectedCommitId);
+  const previousWindow = useRef({ offset: history.windowOffset, commits, listTop: 0 });
+  useLayoutEffect(() => {
+    const previous = previousWindow.current;
+    const element = scrollRef.current;
+    const list = element?.querySelector('.commit-list');
+    const listTop =
+      element && list
+        ? list.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop
+        : 0;
+    // Anchor an actual visible commit, including collapsed rows and the navigation strip's height.
+    if (element && history.windowOffset < previous.offset && commits.length > previous.commits.length) {
+      const oldIndex = Math.max(0, Math.floor((viewport.top - previous.listTop) / graphRowHeight));
+      const anchor = previous.commits[oldIndex]?.id;
+      const nextIndex = commits.findIndex((commit) => commit.id === anchor);
+      if (nextIndex >= 0) {
+        element.scrollTop =
+          viewport.top + listTop - previous.listTop + (nextIndex - oldIndex) * graphRowHeight;
+        setViewport({ top: element.scrollTop, height: element.clientHeight });
+      }
+    }
+    previousWindow.current = { offset: history.windowOffset, commits, listTop };
+  }, [history.windowOffset, commits, viewport.top]);
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || !commits.length || restoreScroll.current === 0) return;
@@ -554,7 +581,28 @@ export function HistoryView({
     [commitMenu, commits, graph, graphMenu, showContextMenu, customCommitItems],
   );
 
+  const pendingPageSelection = useRef<{ readonly from: string; readonly delta: number } | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    const pending = pendingPageSelection.current;
+    if (!pending || loadingMore || history.loading) return;
+    pendingPageSelection.current = undefined;
+    if (history.error || selectedCommitId !== pending.from) return;
+    const from = commits.findIndex((commit) => commit.id === pending.from);
+    const next = commits[Math.max(0, Math.min(commits.length - 1, from + pending.delta))];
+    if (from >= 0 && next) reveal(next.id);
+  }, [commits, history.error, history.loading, loadingMore, reveal, selectedCommitId]);
+
   const moveSelection = (index: number) => {
+    if ((index < 0 && history.windowOffset > 0) || (index >= commits.length && hasMore)) {
+      if (!loadingMore && !history.loading && selectedCommitId) {
+        pendingPageSelection.current = { from: selectedCommitId, delta: index - selectedIndex };
+        if (index < 0) history.loadPrevious();
+        else loadMore();
+      }
+      return;
+    }
     const next = commits[Math.max(0, Math.min(commits.length - 1, index))];
     if (next) reveal(next.id);
   };
@@ -634,6 +682,7 @@ export function HistoryView({
   return (
     <section
       className="history-view"
+      aria-busy={history.loading || history.loadingMore}
       ref={viewRef}
       aria-label={history.mode === 'reflog' ? 'Commit history with reflog' : 'Commit history'}
       style={{ '--history-list-height': `${visibleListHeight}px` } as CSSProperties}
