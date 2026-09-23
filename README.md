@@ -98,28 +98,38 @@ resolved. Recovery entries can be dismissed without changing Git's stash list. B
 Cancel leaves the repository unchanged; after it starts, Close dismisses the dialog and Activity provides
 the operation's cancellation control. Cancellation does not promise rollback.
 
-Explicit network operations use installed Git credential helpers, SSH agents and configured native
-askpass tools. Background operations suppress standard prompts; Git Workbench does not store secrets
-or expose credential text through its renderer API. Clone requires a new destination; failed/cancelled
+GitHub HTTPS operations use a connected account when available. Other network operations use installed
+Git credential helpers, SSH agents and configured native askpass tools. Background operations suppress
+standard prompts; credentials never enter the renderer API. Clone requires a new destination; failed/cancelled
 destinations are retained for inspection. A paused autostashed merge completed through the composer
 retains its saved copy for explicit Recovery Apply.
 
 Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
 browser. It does not submit the form or require storing hosting credentials in this application.
 
-File → Accounts adds GitHub.com account browsing. Select a text file containing a personal access
-token, then open Repositories to page through accessible repositories, filter the current page, open
-repository/PR/issue pages, or select an HTTPS/SSH URL for the existing Clone dialog. Fine-grained tokens
-need access to the intended repositories; enumeration uses read-only repository metadata. Organization
-policies and SSO can further restrict access. The account token is used only for API browsing; Git clone,
-fetch and push continue to use installed Git credential helpers or SSH agents.
+File → Preferences → Accounts provides GitHub login and repository browsing. Copy a personal access
+token and choose **Log in with Access Token**; the main process reads it directly from the clipboard.
+No token file is needed. **Create token on GitHub…** opens token settings in your browser. Open
+Repositories to browse accessible repositories, issues and pull requests, or choose an HTTPS/SSH clone URL.
+
+The same account now authenticates HTTPS clone, Test Connection, fetch, pull and push, including
+automatic fetch. Existing saved accounts work without another login. Fine-grained tokens need access
+to the intended repositories and Contents read permission for fetch/clone, or read/write for push;
+classic tokens generally need `repo` for private repositories. Organization approval and SSO still apply.
+SSH remotes continue to use SSH keys; a GitHub token cannot authenticate SSH.
+
+With multiple accounts, **Use as default for Git** selects the account for GitHub HTTPS URLs without
+a username. Hosted HTTPS clone URLs include the selected public username, so subsequent operations
+keep using that account. You can also use `https://LOGIN@github.com/OWNER/REPO.git` for an existing remote.
+Tokens never appear in URLs or Git configuration, and the app does not install a global Git helper.
 
 Accounts default to session-only storage. Remembering a token requires a secure OS keyring; Linux's
 plaintext fallback is refused. Tokens never enter the renderer, IPC, repository configuration or logs.
-Replace token selects another file and verifies that it belongs to the same account. Sign out removes
-the app's saved credential and cancels its pending reads; it does not delete the original file or revoke
+Update token accepts a newly copied token and verifies that it belongs to the same account. Sign out
+removes the app's credential and cancels its pending API reads. Already authenticated Git transfers
+may finish; future transfers stop using that account. Neither action clears your clipboard nor revokes
 the token on GitHub. There is no background hosting polling. Other providers, self-hosted accounts,
-and OAuth remain unimplemented.
+and OAuth remain unimplemented. See the [accounts correction](docs/reviews/github-accounts-correction.md).
 
 In Accounts, Notifications lists your GitHub inbox with unread/all and participation filters.
 Repositories → Browse issues / Browse pull requests opens paged lists with state, author, assignee

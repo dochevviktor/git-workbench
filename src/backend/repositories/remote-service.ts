@@ -171,6 +171,17 @@ export function isAllowedRemoteUrl(url: string): boolean {
     const parsed = new URL(url);
     if (!['http:', 'https:', 'ssh:', 'git:', 'file:'].includes(parsed.protocol)) return false;
     if (parsed.protocol === 'ssh:' && !parsed.password && !parsed.search) return true;
+    // A public GitHub login selects an account; passwords/tokens remain forbidden in URLs.
+    if (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'github.com' &&
+      !parsed.port &&
+      /^[A-Za-z0-9-]{1,39}$/u.test(parsed.username) &&
+      !parsed.password &&
+      !parsed.search &&
+      !parsed.hash
+    )
+      return true;
   } catch {
     // SCP/local paths are valid; arbitrary remote-helper transports would execute local programs.
     if (/^[^/\\]+::/u.test(url)) return false;

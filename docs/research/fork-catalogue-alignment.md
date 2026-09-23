@@ -546,6 +546,8 @@ other providers and persistent history remain separate scope; P11 remains partia
 
 ## F29 alignment checkpoint — 2026-09-22
 
+Account location, token acquisition and Git transport are superseded by the correction below.
+
 No authenticated hosting workflow is captured in the supplied catalogue. The relevant original
 `P1-012-local-clone-subcase` JSON, screen-0295 (`clone-ready_e769d0`) and Git after-manifest were read
 before implementation. Findings F1–F3 have high confidence for Windows 2.22.0.0 local clone only.
@@ -567,3 +569,29 @@ placeholder is reproduced. New screenshot comparisons are recorded in the [F29 h
 GitHub REST and Electron safeStorage documentation supply independent implementation semantics.
 OAuth, non-GitHub account setup and self-hosted servers remain explicit unknown/unimplemented scope;
 neither this comparison nor the earlier PR browser handoff completes F29/P11.
+
+## Accounts and Preferences correction — 2026-09-23
+
+Evidence rechecked: `P0-013-general-git-subcase:F1–F4`, its original case, screen-0123/screen-0124
+and Git invariance report (Windows 2.22.0.0, 2026-09-19; high confidence for visible composition only).
+Public gap: the indexed Windows dark Accounts image from
+[TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826), 2026-07-31/version unstated,
+reviewed 2026-09-23; medium confidence for visible account layout. The reference cache was refreshed;
+no new images, private-bundle changes or application artwork copies were made.
+
+- Compact preference tabs, grouped controls, account sidebar, identity header, underlined account tabs
+  and aligned label/value rows follow these references. The global Git page now collapses detailed
+  origins while preserving the editable identity and destination. Linux light/dark and narrow account
+  screenshots were reviewed after implementation; section dimensions are independently responsive.
+- Accounts inside Preferences is explicitly requested by the user, not an observed Windows tab.
+  Clipboard PAT login is a deliberate adaptation to keep tokens outside renderer/shared code; the
+  native file picker is removed from login and updates. No OAuth or simulated online status is shown.
+- Account tokens now reach ordinary Git HTTPS operations through a temporary, exact-host helper.
+  Public usernames select accounts; SSH uses native keys. These are independent semantics verified
+  with disposable authenticated Git repositories, not inferred Fork internals.
+
+Sources, confidence and platform differences are in the
+[public correction record](fork-public-surface.md#github-accounts-and-preferences-correction--2026-09-23).
+The [handoff](../reviews/github-accounts-correction.md) records checks and limitations. OAuth, other
+providers, self-hosting, native secure-keyring/platform coverage and full Preferences inventory remain
+partial. Capture coverage and phase-completion status are unchanged.

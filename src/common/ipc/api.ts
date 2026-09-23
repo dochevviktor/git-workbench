@@ -178,6 +178,8 @@ export interface DesktopApi {
     listAccounts(): Promise<IpcResult<HostingAccounts>>;
     connect(request: HostingConnectRequest): Promise<IpcResult<HostingAccount | null>>;
     disconnect(request: { accountId: string }): Promise<IpcResult<null>>;
+    useForGit(request: { accountId: string }): Promise<IpcResult<null>>;
+    openTokenSettings(): Promise<IpcResult<null>>;
     listRepositories(request: HostingRepositoriesRequest): Promise<IpcResult<HostedRepositories>>;
     getCloneTarget(request: HostingCloneSelection): Promise<IpcResult<HostingCloneTarget>>;
     openRepository(request: HostingRepositoryRequest): Promise<IpcResult<null>>;

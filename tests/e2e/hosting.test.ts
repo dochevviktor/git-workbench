@@ -1,13 +1,13 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
+import { createCredentialBroker } from '../../src/backend/git/credential-broker';
+import { GitRunner } from '../../src/backend/git/runner';
 
 test('F29 accounts, paged repositories, browser links, clone selection and sign-out through Electron', async () => {
   const root = await mkdtemp(join(tmpdir(), 'workbench-hosting-e2e-'));
-  const tokenPath = join(root, 'synthetic-token');
   const profile = join(root, 'profile');
-  await writeFile(tokenPath, 'synthetic_github_token_for_e2e', { mode: 0o600 });
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     const env = Object.fromEntries(
@@ -27,8 +27,11 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
       ],
       env,
     });
-    await app.evaluate(({ dialog, shell }, path) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+    await app.evaluate(async ({ dialog, shell, clipboard }) => {
+      dialog.showOpenDialog = async () => {
+        throw new Error('Account login must not select a file');
+      };
+      await clipboard.writeText('synthetic_github_token_for_e2e');
       shell.openExternal = async (url) => {
         (globalThis as unknown as { openedUrl: string }).openedUrl = url;
       };
@@ -89,20 +92,51 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
           { headers: second ? {} : { link: '<https://api.github.com/user/repos?page=2>; rel="next"' } },
         );
       };
-    }, tokenPath);
+    });
     const page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
+    // Exercise the shipped helper with Electron's Node mode, not only the source under Node tests.
+    const broker = await createCredentialBroker({
+      source: {
+        available: async () => true,
+        get: async () => ({ username: 'synthetic-account', password: 'synthetic_github_token_for_e2e' }),
+      },
+      executable: await app.evaluate(() => process.execPath),
+      helperPath: resolve('out/main/credential-helper.cjs'),
+    });
+    try {
+      const result = await new GitRunner().run([...broker.args, 'credential', 'fill'], {
+        cwd: root,
+        env: broker.env,
+        stdin: 'protocol=https\nhost=github.com\npath=example/project.git\n\n',
+      });
+      expect(result.stdout.includes('password=synthetic_github_token_for_e2e')).toBe(true);
+    } finally {
+      await broker.close();
+    }
     const openAccounts = async () => {
       await page.getByRole('menuitem', { name: 'File', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Accounts…', exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: 'Accounts…', exact: true })).toHaveCount(0);
+      await page.getByRole('menuitem', { name: 'Preferences…', exact: true }).click();
+      await page.getByRole('button', { name: 'Accounts', exact: true }).click();
     };
     await openAccounts();
-    let accounts = page.getByRole('dialog', { name: 'Accounts', exact: true });
+    let accounts = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await expect(accounts).toContainText('No connected accounts');
     await expect(accounts.getByRole('checkbox')).toBeDisabled();
-    await accounts.getByRole('button', { name: 'Add GitHub account…' }).click();
+    await page.screenshot({ path: test.info().outputPath('accounts-login-light.png') });
+    await accounts.getByRole('button', { name: 'Log in with Access Token', exact: true }).click();
     await expect(accounts.getByRole('heading', { name: 'synthetic-account' })).toBeVisible();
     await expect(accounts).toContainText('This application session only');
+    await expect(accounts).toContainText('Default account');
+    await expect(accounts).not.toContainText('synthetic_github_token_for_e2e');
+    await accounts.getByRole('button', { name: 'Update token…', exact: true }).click();
+    await app.evaluate(async ({ clipboard }) => {
+      await clipboard.writeText('not a token');
+    });
+    await accounts.getByRole('button', { name: 'Update token from Clipboard', exact: true }).click();
+    await expect(accounts.getByRole('alert')).toContainText('Copy a GitHub personal access token');
+    await accounts.getByRole('button', { name: 'Cancel update', exact: true }).click();
     await accounts.getByRole('button', { name: 'Notifications', exact: true }).click();
     await expect(accounts).toContainText('Notification title');
     await accounts.getByRole('button', { name: '#8 Notification title' }).click();
@@ -135,6 +169,10 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await page.screenshot({ path: test.info().outputPath('f29-account.png') });
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.screenshot({ path: test.info().outputPath('f29-account-dark.png') });
+    await page.setViewportSize({ width: 780, height: 600 });
+    expect(await accounts.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath('accounts-narrow-dark.png') });
+    await page.setViewportSize({ width: 1280, height: 820 });
     await page.emulateMedia({ colorScheme: 'light' });
     await accounts.getByRole('button', { name: 'Repositories', exact: true }).click();
     await expect(accounts).toContainText('example/project');
@@ -160,7 +198,7 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await page.screenshot({ path: test.info().outputPath('f29-clone.png') });
     await clone.getByRole('button', { name: 'Cancel', exact: true }).click();
     await openAccounts();
-    accounts = page.getByRole('dialog', { name: 'Accounts', exact: true });
+    accounts = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await accounts.getByRole('button', { name: 'Repositories', exact: true }).click();
     await app.evaluate(() => {
       (globalThis as unknown as { hostingFailure: boolean }).hostingFailure = true;
@@ -173,8 +211,32 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await expect(accounts).toContainText('No connected accounts');
     await accounts.press('Escape');
     await expect(accounts).toHaveCount(0);
+    // Closing Preferences aborts a pending login; a late identity cannot restore its account.
+    await openAccounts();
+    await app.evaluate(async ({ clipboard }) => {
+      await clipboard.writeText('synthetic_github_token_for_e2e');
+      const original = globalThis.fetch;
+      globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith('/user'))
+          return new Promise<Response>((done) => {
+            (globalThis as unknown as { finishLogin: () => void }).finishLogin = () =>
+              done(Response.json({ id: 42, login: 'synthetic-account' }));
+          });
+        return original(input, init);
+      };
+    });
+    await accounts.getByRole('button', { name: 'Log in with Access Token', exact: true }).click();
+    await expect
+      .poll(() =>
+        app!.evaluate(() => typeof (globalThis as unknown as { finishLogin?: unknown }).finishLogin),
+      )
+      .toBe('function');
+    await accounts.press('Escape');
+    await app.evaluate(() => (globalThis as unknown as { finishLogin: () => void }).finishLogin());
+    await openAccounts();
+    await expect(accounts).toContainText('No connected accounts');
+    await accounts.press('Escape');
     await expect(stat(join(profile, 'hosting-credentials.json'))).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await readFile(tokenPath, 'utf8')).toBe('synthetic_github_token_for_e2e');
   } finally {
     await app?.close();
     await rm(root, { recursive: true, force: true });

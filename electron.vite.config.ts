@@ -29,8 +29,11 @@ export default defineConfig(({ command }) => {
       build: {
         externalizeDeps: false,
         rollupOptions: {
-          input: resolve('src/backend/electron/main.ts'),
-          output: { format: 'cjs', entryFileNames: 'index.cjs' },
+          input: {
+            index: resolve('src/backend/electron/main.ts'),
+            'credential-helper': resolve('src/backend/git/credential-helper.ts'),
+          },
+          output: { format: 'cjs', entryFileNames: '[name].cjs' },
         },
       },
     },

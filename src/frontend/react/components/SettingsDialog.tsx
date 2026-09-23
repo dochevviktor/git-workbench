@@ -7,6 +7,8 @@ import { isNumberBetween, isOneOf, usePersistentState } from '../hooks/use-persi
 import './settings.css';
 import { GitInstanceControl } from './GitInstanceControl';
 import { RepositoryTrustControl } from './RepositoryTrustControl';
+import { HostingAccountsPanel } from './HostingAccountsPanel';
+import type { HostingCloneTarget } from '../../../common/ipc/hosting';
 
 export function SettingsDialog({
   repository,
@@ -16,7 +18,8 @@ export function SettingsDialog({
   onSaved,
   tools,
   commands,
-  accounts,
+  initialPage,
+  onClone,
   ai,
   remotes,
   gitFlow,
@@ -28,13 +31,14 @@ export function SettingsDialog({
   onSaved(): void;
   tools(): void;
   commands(): void;
-  accounts(): void;
+  initialPage?: 'Accounts' | undefined;
+  onClone(target: HostingCloneTarget): void;
   ai(): void;
   remotes(): void;
   gitFlow(): void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [page, setPage] = useState(repository ? 'Git' : 'General');
+  const [page, setPage] = useState(repository ? 'Git' : (initialPage ?? 'General'));
   const [settings, setSettings] = useState<GitSettings>();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,6 +69,7 @@ export function SettingsDialog({
     (value): value is boolean => typeof value === 'boolean',
   );
   const [fetch, setFetch] = useState<boolean>();
+  const EffectiveValues = repository ? 'div' : 'details';
   const id = repository?.id ?? null;
   useEffect(() => {
     const previous = document.activeElement;
@@ -131,7 +136,7 @@ export function SettingsDialog({
   return (
     <dialog
       ref={ref}
-      className="dialog settings-dialog"
+      className={`dialog settings-dialog${page === 'Accounts' ? ' settings-accounts-dialog' : ''}`}
       aria-label={repository ? 'Repository Settings' : 'Preferences'}
       onCancel={(event) => {
         event.preventDefault();
@@ -149,8 +154,14 @@ export function SettingsDialog({
         )}
         {!repository && (
           <nav className="settings-tabs" aria-label="Settings pages">
-            {['General', 'Commit', 'Git', 'Integration', 'Custom Commands'].map((tab) => (
-              <button type="button" key={tab} aria-pressed={page === tab} onClick={() => setPage(tab)}>
+            {['General', 'Commit', 'Git', 'Accounts', 'Integration', 'Custom Commands'].map((tab) => (
+              <button
+                type="button"
+                key={tab}
+                aria-pressed={page === tab}
+                disabled={busy || (Boolean(dirty) && page !== tab)}
+                onClick={() => setPage(tab)}
+              >
                 {tab}
               </button>
             ))}
@@ -158,7 +169,7 @@ export function SettingsDialog({
         )}
         {page === 'General' && (
           <section className="settings-page">
-            <p className="muted">Application profile · these controls apply immediately.</p>
+            <h3>Appearance</h3>
             <label>
               Appearance
               <select value={appearance} onChange={(event) => setAppearance(event.target.value)}>
@@ -167,6 +178,7 @@ export function SettingsDialog({
                 <option value="dark">Dark</option>
               </select>
             </label>
+            <h3 className="settings-section-title">Diff View</h3>
             <label>
               Diff font size
               <select value={font} onChange={(event) => setFont(Number(event.target.value))}>
@@ -183,6 +195,7 @@ export function SettingsDialog({
               />
               Show −/+ marks
             </label>
+            <h3 className="settings-section-title">Network</h3>
             <label className="settings-check">
               <input
                 type="checkbox"
@@ -207,8 +220,7 @@ export function SettingsDialog({
               Fetch remotes automatically
             </label>
             <p className="muted">
-              Per-remote exclusions remain in Remotes. Syntax highlighting, avatars, shortcut customization
-              and Updates are not yet available in Preferences.
+              Changes apply immediately. Per-remote fetch exclusions are available in Remotes.
             </p>
           </section>
         )}
@@ -242,27 +254,18 @@ export function SettingsDialog({
         )}
         {page === 'Git' && (
           <section className="settings-page">
-            {!repository && (
-              <p className="settings-target">
-                Git instance: {gitInfo?.executable ?? 'Unavailable'}
-                <br />
-                {gitInfo?.version ?? 'Check Git installation.'}
-                <br />
-                <span className="muted">
-                  The active Git instance stays fixed until the application restarts.
-                </span>
-              </p>
-            )}
-            {!repository && <GitInstanceControl />}
+            {!repository && <GitInstanceControl gitInfo={gitInfo} />}
             {repository && (
               <RepositoryTrustControl key={repository.id} repository={repository} onChanged={onSaved} />
             )}
-            <h3>{repository ? 'Repository User Information' : 'Global User Information'}</h3>
+            <h3 className={repository ? undefined : 'settings-section-title'}>
+              {repository ? 'Repository User Information' : 'Global User Information'}
+            </h3>
             <p className="muted">
               {repository
                 ? 'Repository-wide, shared by linked worktrees. Blank fields remove overrides from this file; inherited and worktree values remain.'
-                : 'Global Git configuration. Applies to repositories without a higher-priority override. Blank fields remove values from this file.'}{' '}
-              Save applies all fields below; Cancel discards edits.
+                : 'Applies unless a repository overrides it. Clear a field to remove its global value.'}
+              {repository && ' Save applies all fields below; Cancel discards edits.'}
             </p>
             {settings && <p className="settings-target">Write to: {settings.path}</p>}
             <label>
@@ -286,7 +289,8 @@ export function SettingsDialog({
               />
             </label>
             {settings && (
-              <div className="settings-effective">
+              <EffectiveValues className="settings-effective">
+                {!repository && <summary>Effective values and sources</summary>}
                 {[
                   ['Name', settings.effectiveName],
                   ['Email', settings.effectiveEmail],
@@ -303,7 +307,7 @@ export function SettingsDialog({
                     ),
                 )}
                 <p className="muted">Commit author environment variables can override Git configuration.</p>
-              </div>
+              </EffectiveValues>
             )}
             {repository && (
               <>
@@ -364,18 +368,16 @@ export function SettingsDialog({
         )}
         {page === 'Integration' && (
           <section className="settings-page">
-            <p>Configure installed editors, diff/merge tools and terminals, or manage hosting accounts.</p>
+            <p>Configure installed editors, diff/merge tools, terminals and AI integration.</p>
             <button className="button" disabled={Boolean(dirty)} onClick={() => handoff(tools)}>
               External Tools…
-            </button>
-            <button className="button" disabled={Boolean(dirty)} onClick={() => handoff(accounts)}>
-              Accounts…
             </button>
             <button className="button" disabled={Boolean(dirty)} onClick={() => handoff(ai)}>
               AI Integration…
             </button>
           </section>
         )}
+        {page === 'Accounts' && <HostingAccountsPanel onClone={onClone} />}
         {page === 'Custom Commands' && (
           <section className="settings-page">
             <p>Manage contextual commands, input forms and shared definitions.</p>
@@ -400,13 +402,15 @@ export function SettingsDialog({
           </div>
         )}
         <div className="dialog-actions">
-          <button
-            className="button primary"
-            disabled={!dirty || !valid.success || busy}
-            onClick={() => void save()}
-          >
-            Save
-          </button>
+          {(repository || dirty) && (
+            <button
+              className="button primary"
+              disabled={!dirty || !valid.success || busy}
+              onClick={() => void save()}
+            >
+              Save
+            </button>
+          )}
           <button className="button" disabled={busy} onClick={onClose}>
             {dirty ? 'Cancel' : 'Close'}
           </button>

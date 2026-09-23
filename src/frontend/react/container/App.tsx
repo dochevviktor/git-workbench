@@ -26,7 +26,6 @@ import type {
 import { AboutDialog } from '../components/AboutDialog';
 import { PatchImportDialog, PatchExportDialog } from '../components/PatchDialogs';
 import { CloneDialog } from '../components/CloneDialog';
-import { HostingAccountsDialog } from '../components/HostingAccountsDialog';
 import { CustomCommandsDialog, CustomCommandRunDialog } from '../components/CustomCommandsDialog';
 import { useExternalTools } from '../components/external-tools-context';
 import type { CustomCommand, CustomContext } from '../../../common/ipc/custom-commands';
@@ -170,10 +169,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [settingsTarget, setSettingsTarget] = useState<{ repository: RepositorySummary | null }>();
+  const [settingsTarget, setSettingsTarget] = useState<{
+    repository: RepositorySummary | null;
+    page?: 'Accounts';
+  }>();
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
-  const [hostingOpen, setHostingOpen] = useState(false);
   const [customCommandsOpen, setCustomCommandsOpen] = useState(false);
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const [customRun, setCustomRun] = useState<{ command: CustomCommand; context: CustomContext }>();
@@ -1367,7 +1368,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         aboutOpen ||
         quickLaunchOpen ||
         cloneOpen ||
-        hostingOpen ||
         customCommandsOpen ||
         customRun ||
         referenceDialog ||
@@ -1440,7 +1440,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     aboutOpen,
     quickLaunchOpen,
     cloneOpen,
-    hostingOpen,
     customCommandsOpen,
     customRun,
     active,
@@ -1528,7 +1527,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: repositoryBusy,
           run: () => setCloneOpen(true),
         },
-        { id: 'hosting-accounts', label: 'Accounts…', run: () => setHostingOpen(true) },
         {
           id: 'preferences',
           label: 'Preferences…',
@@ -2913,6 +2911,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       {settingsTarget && (
         <SettingsDialog
           repository={settingsTarget.repository}
+          initialPage={settingsTarget.page}
           canNavigate={settingsTarget.repository?.id === active?.id}
           gitInfo={gitInfo}
           onClose={() => setSettingsTarget(undefined)}
@@ -2924,7 +2923,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           }}
           tools={externalTools.settings}
           commands={() => setCustomCommandsOpen(true)}
-          accounts={() => setHostingOpen(true)}
+          onClone={(target) => {
+            setHostedCloneTarget(target);
+            setSettingsTarget(undefined);
+            setCloneOpen(true);
+          }}
           ai={() => setAiSettingsOpen(true)}
           remotes={() => openNetworkDialog({ kind: 'remotes' })}
           gitFlow={() => openGitFlowDialog({ kind: 'initialize' })}
@@ -2943,17 +2946,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onBrowseHosted={() => {
             setCloneOpen(false);
             setHostedCloneTarget(undefined);
-            setHostingOpen(true);
-          }}
-        />
-      )}
-      {hostingOpen && (
-        <HostingAccountsDialog
-          onClose={() => setHostingOpen(false)}
-          onClone={(target) => {
-            setHostedCloneTarget(target);
-            setHostingOpen(false);
-            setCloneOpen(true);
+            setSettingsTarget({ repository: null, page: 'Accounts' });
           }}
         />
       )}

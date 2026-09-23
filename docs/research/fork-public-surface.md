@@ -962,12 +962,12 @@ F38's dated handoff records an independently specified local workflow; Fork exec
 | F26 | Bisect start/good/bad/skip/abort and result                                           | D: [operations][operations]; B: P2-006                                               | Bounded manual workflow verified 2026-09-22; see [F26 handoff](../reviews/f26-bisect.md)                                                                                                                                           | P08 / C05                     |
 | F27 | Binary metadata and side-by-side/swipe/onion-skin/pixel image comparison              | D: [diff][diff], [releases][mac]; B: P0-026, P2-003                                  | Bounded PNG/JPEG four-mode workflow verified 2026-09-22; pixel policy independently specified from public-only evidence; other codecs/SVG/LFS previews remain ([handoff](../reviews/f27-image-diffs.md))                           | P04 fallback, P10 / C02, C05  |
 | F28 | GPG signing/verification and signed tags                                              | D: [product][home], [releases][mac]; public-only                                     | Bounded GPG commit/amend/tag signing, repository key and explicit verification implemented; native pinentry/platform matrix unverified ([handoff](../reviews/f28-signing.md))                                                      | P10                           |
-| F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                            | Partial; GitHub PAT accounts, repository pagination/clone selection and browser links; other providers/OAuth/self-hosting remain                                                                                                   | P11                           |
+| F29 | Hosted accounts/repository lists and PR entry points                                  | D: [operations][operations], [releases][win]; public-only                            | Partial; Preferences PAT login and account-backed HTTPS Git verified 2026-09-23; paged repositories, clone selection and browser links retained; other providers/OAuth/self-hosting remain                                         | P11                           |
 | F30 | Notifications and issue/PR lists/filters                                              | D: [product][home], [releases][win]; public-only                                     | Verified GitHub explicit-refresh slice (2026-09-22): paged lists, state/author/assignee/title filters, recent session searches, notification inbox and safe links; automatic alerts and other providers remain                     | P11                           |
 | F31 | Quick Launch commands and parameter selection; fuzzy lookup                           | D: [Quick Launch][quick]; B: P1-032                                                  | Implemented bounded command/repository/branch/tag/file lookup; [F31 handoff](../reviews/f31-quick-launch.md). Exact ranking/inventory parity unverified.                                                                           | P12 / C05                     |
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                                  | Bounded Linux workflow verified (2026-09-22): editor, five targets, reviewed Bash/process/URL execution, forms, disabled imports/export and cancellation; exact Fork formats/aliases and asynchronous modes remain partial         | P12 / C05                     |
 | F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                                  | Partial; configurable editor/diff/terminal and reviewed text merge handoff implemented; CLI/file-manager verified; non-text/daemon/platform variants remain                                                                        | P02, P12 / C05                |
-| F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016            | Partial; shell and bounded global/repository settings verified (2026-09-22): scoped identity, presentation, Git selection and issue links; full inventory/workspace/platform scope remains                                         | P03, P04, P12, P14 / C01, C06 |
+| F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016            | Partial; Preferences Accounts/layout correction verified 2026-09-23; scoped identity, presentation, Git selection and issue links retained; full inventory/workspace/platform scope remains                                        | P03, P04, P12, P14 / C01, C06 |
 | F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                                       | Bounded slice verified; UTC/raw-author metrics, date chart/contributors and cancellable cached file activity; independent rules and limits in [F35 handoff](../reviews/f35-statistics.md)                                          | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [releases][win], [releases][mac]; B: P2-005                                       | Bounded workflow verified (2026-09-22): file/clipboard preflight, staged three-way apply, conflict diagnostics and save/copy; mailbox, merge-parent and special-path variants remain partial. [Handoff](../reviews/f36-patches.md) | P08 / C05                     |
 | F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only; O: TrackerWin 2808                 | Partial; session-only OpenAI API messages and diff review verified; CLI adapters/platform matrix remain. [Handoff](../reviews/f37-ai.md)                                                                                           | P13                           |
@@ -1327,6 +1327,10 @@ Other signing backends and native protected-key/platform trials are not claimed.
 
 ## F29 GitHub account and repository browser — 2026-09-22
 
+The 2026-09-23 [accounts correction](../reviews/github-accounts-correction.md) supersedes the file-based
+login and API-only Git policy below. Accounts now lives inside Preferences by user request; clipboard
+PAT login and account-backed HTTPS Git are independent implementation decisions, not newly observed Fork behavior.
+
 The supplied Windows 2.22.0.0 catalogue contains no authenticated hosting case. Its
 `P1-012-local-clone-subcase:F1–F3` (2026-09-19, high confidence), original case, screen-0295 and Git
 after-manifest establish only the existing clone form and local clone semantics. They do not establish
@@ -1361,6 +1365,39 @@ default, persistence requires a secure keyring, PAT replacement is manual, and c
 with installed Git helpers/agents. Only fixed GitHub.com origins are supported, so self-hosted URLs are
 not silently accepted. F30 lists/filters/notifications remain separate. See the
 [F29 handoff](../reviews/f29-hosting.md) for verification and limitations.
+
+## GitHub accounts and Preferences correction — 2026-09-23
+
+Re-read `P0-013-general-git-subcase:F1–F4`, original case JSON, screen-0123/screen-0124 and
+`batch02-resume/git-verification.json` (Windows 2.22.0.0, captured 2026-09-19). High confidence for the
+visible General/Git tabs, compact labelled fields, variable height and no-edit Git invariance;
+other preference fields, authentication and factory defaults remain unobserved. Restored the public
+reference index (226 existing images, no downloads) and inspected the Accounts screenshot from
+[TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826), dated 2026-07-31,
+Windows/version unstated/dark. Medium confidence for its account list, identity header,
+Account/Repositories tabs and Update token action. Its reported misleading Online badge is not copied.
+
+Compared generated light/dark login/account, General and Git screenshots against those originals.
+Accounts within Preferences is the user's requested adaptation; the public screenshot shows a
+standalone Accounts window. Initial avatars use independently drawn text. Clipboard PAT login
+preserves the no-renderer-secrets boundary; it is not claimed as observed Fork login or OAuth parity.
+The full Preferences inventory stays partial.
+
+Primary technical sources checked 2026-09-23, high confidence for their API/protocol contracts:
+
+- [Git credentials and helpers](https://git-scm.com/docs/gitcredentials): exact credential contexts,
+  empty helper reset, useHttpPath and helper get/store/erase semantics. Git Workbench supplies a
+  temporary github.com helper without altering global/repository configuration.
+- [GitHub PAT documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens):
+  HTTPS tokens remain limited by repository grants, expiration and organization policies. SSH uses keys.
+- [GitHub OAuth authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps):
+  OAuth/device flow requires an application's registered client ID. None is supplied for this application;
+  PAT login works independently. Fork's client identity is neither borrowed nor reproduced.
+
+The authenticated local TLS fixture verifies real Git clone/fetch/pull/push and credential rejection
+without contacting GitHub. This establishes our implementation, not observed Fork internals or live
+private GitHub transport. Native secure-keyring and Windows/macOS behavior remain unverified.
+See the [correction handoff](../reviews/github-accounts-correction.md).
 
 ## F33 external tools — 2026-09-22
 

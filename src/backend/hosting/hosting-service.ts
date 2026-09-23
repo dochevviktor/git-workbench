@@ -21,6 +21,8 @@ import type { HostingAccountStore } from './account-store';
 import type { StoredAccount } from './account-store';
 import { GitHubProvider } from './github-provider';
 import type { HostingProvider } from './github-provider';
+import { credentialContextSchema } from '../git/credential-broker';
+import type { GitCredentialContext, GitCredentialSource } from '../git/credential-broker';
 
 type Entry = { account: HostingAccount; stored?: StoredAccount; token?: string };
 type Request = { owner: number; accountId?: string; controller: AbortController };
@@ -47,11 +49,63 @@ export class HostingService {
     return {
       accounts: [...this.entries.values()].map((entry) => entry.account),
       secureStorageAvailable: this.store.available(),
+      gitAccountId: this.entries.keys().next().value ?? null,
     };
   }
 
-  /** Native chooser supplies the path. No path or secret is accepted from the renderer. */
+  readonly gitCredentials: GitCredentialSource = {
+    available: async () => {
+      try {
+        await this.load();
+        return this.entries.size > 0;
+      } catch {
+        // Defer store errors until an actual GitHub credential request. Local clones, SSH
+        // and other hosts must remain usable even when the hosting store needs repair.
+        return true;
+      }
+    },
+    get: async (context: GitCredentialContext) => {
+      if (!credentialContextSchema.safeParse(context).success) return null;
+      await this.load();
+      const entries = [...this.entries.values()];
+      const entry = context.username
+        ? entries.find((item) => item.account.login.toLowerCase() === context.username.toLowerCase())
+        : entries[0];
+      if (!entry)
+        throw new ExpectedBackendError(
+          'HOSTING_AUTH',
+          'No matching GitHub account. Log in through Preferences → Accounts.',
+        );
+      return { username: entry.account.login, password: this.token(entry) };
+    },
+  };
+
+  async useForGit(accountId: string) {
+    await this.load();
+    await this.write(async () => {
+      const entry = this.require(accountId);
+      // Preserve the version-1 store: its entry order also records the default Git account.
+      const next = new Map([[accountId, entry], ...[...this.entries].filter(([id]) => id !== accountId)]);
+      await this.persist(next);
+      this.entries = next;
+    });
+    return null;
+  }
+
+  /** Legacy backend-only file adapter, retained for explicitly invoked verification scripts. */
   async connect(owner: number, request: HostingConnectRequest, pickFile: () => Promise<string | null>) {
+    return this.login(owner, request, async () => {
+      const path = await pickFile();
+      return path ? readTokenFile(path) : null;
+    });
+  }
+
+  /** Credential acquisition stays in main. The renderer supplies only account/storage choices. */
+  async login(
+    owner: number,
+    request: HostingConnectRequest,
+    acquire: (signal: AbortSignal) => Promise<string | null>,
+  ) {
     const generation = this.ownerGenerations.get(owner) ?? 0;
     await this.load();
     this.checkOwner(owner, generation);
@@ -67,9 +121,14 @@ export class HostingService {
       owner,
       request.accountId,
       async (signal) => {
-        const path = await pickFile();
-        if (!path || signal.aborted) return null;
-        const token = await readTokenFile(path);
+        const value = await acquire(signal);
+        if (!value || signal.aborted) return null;
+        const token = value.trim();
+        if (!/^[A-Za-z0-9_]{10,4096}$/u.test(token))
+          throw new ExpectedBackendError(
+            'HOSTING_AUTH',
+            'Copy a GitHub personal access token, then choose Log in with Access Token.',
+          );
         const identity = await this.provider.identity(token, signal);
         const account = hostingAccountSchema.parse({
           id: `github-${identity.id}`,
@@ -92,7 +151,7 @@ export class HostingService {
           if (!expected && this.entries.has(account.id))
             throw new ExpectedBackendError(
               'INVALID_REQUEST',
-              'This account is already connected. Use Replace token on that account.',
+              'This account is already connected. Use Update token on that account.',
             );
           if (!expected && this.entries.size >= 20)
             throw new ExpectedBackendError(
@@ -154,11 +213,12 @@ export class HostingService {
 
   cloneTarget(owner: number, request: HostingCloneSelection) {
     const repo = this.repository(owner, request.accountId, request.repositoryId);
+    const account = this.require(request.accountId).account;
     return {
       url:
         request.protocol === 'ssh'
           ? `git@github.com:${repo.fullName}.git`
-          : `https://github.com/${repo.fullName}.git`,
+          : `https://${account.login}@github.com/${repo.fullName}.git`,
       name: repo.fullName.split('/')[1]!,
     };
   }
@@ -220,7 +280,13 @@ export class HostingService {
     return entry;
   }
   private token(entry: Entry) {
-    return entry.token ?? this.store.unseal(entry.stored!);
+    const token = entry.token ?? this.store.unseal(entry.stored!);
+    if (!/^[A-Za-z0-9_]{10,4096}$/u.test(token))
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'The saved GitHub token is invalid. Update it in Preferences → Accounts.',
+      );
+    return token;
   }
   private load() {
     this.loaded ??= this.store

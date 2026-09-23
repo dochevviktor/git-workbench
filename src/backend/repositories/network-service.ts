@@ -8,6 +8,7 @@ import type {
 import { GitCancelledError, GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import type { GitAuthenticationPolicy } from '../git/authentication-policy';
+import { ExpectedBackendError } from '../errors';
 import type { OperationHandle, OperationOutcome } from '../operations/operation-registry';
 
 /** Network work waits on a remote host, so it gets its own long bound rather than a read timeout. */
@@ -177,6 +178,8 @@ export async function runNetworkOperation(
     };
   } catch (error) {
     collector.flush();
+    if (error instanceof ExpectedBackendError && error.code === 'HOSTING_AUTH')
+      return { status: 'failed', message: error.message, output: '', failureReason: 'authentication' };
     if (error instanceof GitCancelledError) {
       return {
         status: 'failed',
@@ -250,13 +253,13 @@ export function classifyNetworkFailure(kind: RepositoryOperationKind, output: st
   });
 
   if (
-    /authentication failed|could not read username|could not read password|permission denied \(publickey|terminal prompts disabled|invalid username or password|access denied|403 forbidden/iu.test(
+    /authentication failed|could not read username|could not read password|unable to get password|credential helper[^\n]*told us to quit|permission denied \(publickey|terminal prompts disabled|invalid username or password|access denied|403 forbidden/iu.test(
       output,
     )
   ) {
     return plain(
       'authentication',
-      'The remote refused the credentials. Check the credential helper or SSH key this remote uses.',
+      'Authentication failed. For GitHub HTTPS, check the token and repository permissions in Preferences → Accounts. Other remotes use your Git credential helper or SSH key.',
     );
   }
   if (

@@ -2349,6 +2349,8 @@ export const requests = {
     hostingAccountSchema.nullable(),
   ),
   disconnectHostingAccount: request('hosting:disconnect-account', hostingAccountRequestSchema, z.null()),
+  useHostingAccountForGit: request('hosting:use-for-git', hostingAccountRequestSchema, z.null()),
+  openHostingTokenSettings: request('hosting:open-token-settings', z.undefined(), z.null()),
   listHostedRepositories: request(
     'hosting:list-repositories',
     hostingRepositoriesRequestSchema,

@@ -4,22 +4,24 @@ import { unwrapResult } from '../../../common/ipc/result';
 import type { HostingActivityRequest } from '../../../common/ipc/hosting';
 import { HostingActivity } from './HostingActivity';
 
-export function HostingAccountsDialog({
-  onClose,
+export function HostingAccountsPanel({
   onClone,
 }: {
-  readonly onClose: () => void;
   readonly onClone: (target: HostingCloneTarget) => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const alive = useRef(true);
   const generation = useRef(0);
-  const [accounts, setAccounts] = useState<HostingAccounts>({ accounts: [], secureStorageAvailable: false });
+  const [accounts, setAccounts] = useState<HostingAccounts>({
+    accounts: [],
+    secureStorageAvailable: false,
+    gitAccountId: null,
+  });
   const [selected, setSelected] = useState('');
   const [tab, setTab] = useState<'account' | 'repositories' | 'activity'>('account');
   const [activity, setActivity] = useState<HostingActivityRequest>();
   const [searches] = useState(() => new Map<string, string[]>());
   const [remember, setRemember] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState<HostedRepositories>();
@@ -30,8 +32,6 @@ export function HostingAccountsDialog({
 
   useEffect(() => {
     alive.current = true;
-    const previousFocus = document.activeElement;
-    dialog.current?.showModal();
     let current = true;
     void window
       .desktop!.hosting.listAccounts()
@@ -40,6 +40,7 @@ export function HostingAccountsDialog({
         if (!current) return;
         setAccounts(result);
         setSelected(result.accounts[0]?.id ?? '');
+        setRemember(result.accounts[0]?.storage === 'keyring');
       })
       .catch((reason: unknown) => {
         if (current) setError(reason instanceof Error ? reason.message : 'Could not load accounts.');
@@ -51,7 +52,6 @@ export function HostingAccountsDialog({
       current = false;
       alive.current = false;
       void window.desktop?.hosting.cancel();
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
   }, []);
 
@@ -80,6 +80,7 @@ export function HostingAccountsDialog({
         setSelected(connected.id);
         setPage(undefined);
         setTab('account');
+        setUpdating(false);
       }
     });
   const repositories = (number: number) =>
@@ -104,19 +105,15 @@ export function HostingAccountsDialog({
         setSelected(result.accounts[0]?.id ?? '');
         setPage(undefined);
         setTab('account');
+        setUpdating(false);
+        setRemember(result.accounts[0]?.storage === 'keyring');
       }
     });
   const visible =
     page?.repositories.filter((repo) => repo.fullName.toLowerCase().includes(filter.toLowerCase())) ?? [];
 
   return (
-    <dialog ref={dialog} className="dialog hosting-dialog" aria-labelledby="hosting-title" onClose={onClose}>
-      <div className="hosting-header">
-        <h2 id="hosting-title">Accounts</h2>
-        <button type="button" className="button" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <section className="hosting-panel" aria-label="Accounts">
       <div className="hosting-layout">
         <aside className="hosting-accounts" aria-label="Hosting accounts">
           {accounts.accounts.map((item) => (
@@ -132,6 +129,8 @@ export function HostingAccountsDialog({
                 setPage(undefined);
                 setError('');
                 setFilter('');
+                setUpdating(false);
+                setRemember(item.storage === 'keyring');
               }}
             >
               <strong>GitHub</strong>
@@ -139,13 +138,31 @@ export function HostingAccountsDialog({
             </button>
           ))}
           {!accounts.accounts.length && <p className="muted">No connected accounts</p>}
-          <button type="button" className="button" disabled={busy} onClick={() => void connect(false)}>
-            Add GitHub account…
+          <button
+            type="button"
+            className="button hosting-add"
+            disabled={busy}
+            onClick={() => {
+              setSelected('');
+              setUpdating(false);
+              setRemember(false);
+              setTab('account');
+              setError('');
+            }}
+          >
+            + Add account
           </button>
         </aside>
         <section className="hosting-detail" aria-busy={busy}>
-          <h3>{account ? account.login : 'Connect to GitHub'}</h3>
-          <p className="muted">github.com</p>
+          <div className="hosting-identity">
+            <span className="hosting-avatar" aria-hidden="true">
+              {account?.login.slice(0, 1).toUpperCase() ?? '+'}
+            </span>
+            <div>
+              <h3>{account ? account.login : 'Log in to GitHub'}</h3>
+              <p className="muted">https://github.com</p>
+            </div>
+          </div>
           {account && (
             <div className="hosting-tabs">
               <button
@@ -189,51 +206,131 @@ export function HostingAccountsDialog({
           {tab === 'account' && (
             <>
               <dl>
-                <dt>Server type</dt>
-                <dd>GitHub.com</dd>
-                <dt>Authentication</dt>
+                <dt>Server Type:</dt>
+                <dd>GitHub</dd>
+                <dt>Authentication Type:</dt>
                 <dd>Personal access token</dd>
                 {account && (
                   <>
-                    <dt>Storage</dt>
+                    <dt>Username:</dt>
+                    <dd>{account.login}</dd>
+                    <dt>Storage:</dt>
                     <dd>
                       {account.storage === 'keyring'
                         ? 'Saved with OS keyring encryption'
                         : 'This application session only'}
                     </dd>
+                    <dt>HTTPS Git:</dt>
+                    <dd>
+                      {accounts.gitAccountId === account.id ? 'Default account' : 'Available by username'}
+                    </dd>
                   </>
                 )}
               </dl>
-              <p>
-                Select a text file containing a GitHub personal access token. The file stays on your computer.
-                Repository access is limited by the token’s permissions and organization authorization.
-              </p>
-              <label className="hosting-remember">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  disabled={busy || !accounts.secureStorageAvailable}
-                  onChange={(event) => setRemember(event.target.checked)}
-                />{' '}
-                Remember new or replacement token in OS keyring
-              </label>
-              {!accounts.secureStorageAvailable && (
-                <p className="muted">Secure storage is unavailable. Accounts can be used for this session.</p>
+              {(!account || updating) && (
+                <div className="hosting-login">
+                  <h4>{updating ? 'Update token' : 'Login'}</h4>
+                  <p>
+                    Copy your personal access token, then log in. This account will be used for GitHub
+                    browsing and HTTPS clone, fetch, pull and push.
+                  </p>
+                  <label className="hosting-remember">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      disabled={busy || !accounts.secureStorageAvailable}
+                      onChange={(event) => setRemember(event.target.checked)}
+                    />{' '}
+                    Remember account securely
+                  </label>
+                  {!accounts.secureStorageAvailable && (
+                    <p className="muted">
+                      Secure storage is unavailable. Accounts can be used for this session.
+                    </p>
+                  )}
+                  <div className="hosting-actions">
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={busy}
+                      onClick={() => void connect(Boolean(account))}
+                    >
+                      {updating ? 'Update token from Clipboard' : 'Log in with Access Token'}
+                    </button>
+                    {updating && (
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setUpdating(false);
+                          setError('');
+                        }}
+                      >
+                        Cancel update
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          unwrapResult(await api().openTokenSettings());
+                        })
+                      }
+                    >
+                      Create token on GitHub…
+                    </button>
+                  </div>
+                  <p className="muted">
+                    Private repositories need repository access. For fine-grained tokens, allow Contents read
+                    access to fetch and read/write access to push. Organization SSO may require authorization.
+                  </p>
+                </div>
               )}
               {account && (
                 <div className="hosting-actions">
-                  <button type="button" className="button" disabled={busy} onClick={() => void connect(true)}>
-                    Replace token…
-                  </button>
+                  {!updating && (
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setUpdating(true);
+                        setError('');
+                      }}
+                    >
+                      Update token…
+                    </button>
+                  )}
+                  {accounts.gitAccountId !== account.id && (
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async (current) => {
+                          unwrapResult(await api().useForGit({ accountId: account.id }));
+                          const result = unwrapResult(await api().listAccounts());
+                          if (current()) setAccounts(result);
+                        })
+                      }
+                    >
+                      Use as default for Git
+                    </button>
+                  )}
                   <button type="button" className="button" disabled={busy} onClick={() => void signOut()}>
                     Sign out
                   </button>
                 </div>
               )}
-              <p className="muted">
-                Signing out removes this app’s saved credential. The original token file and the token on
-                GitHub remain yours to remove or revoke. Tokens are replaced manually when they expire.
-              </p>
+              {account && (
+                <p className="muted hosting-account-note">
+                  HTTPS operations use your token’s repository permissions. SSH remotes use your SSH keys.
+                  Signing out removes this app’s credential; revoke it on GitHub to disable it everywhere.
+                </p>
+              )}
             </>
           )}
           {tab === 'repositories' && account && (
@@ -267,8 +364,9 @@ export function HostingAccountsDialog({
                 </select>
               </label>
               <p className="muted">
-                Cloning uses your installed Git credential helper or SSH agent. This account token is used for
-                repository browsing.
+                {protocol === 'https'
+                  ? 'HTTPS uses this account’s token for clone and future Git operations.'
+                  : 'SSH uses your configured SSH keys and agent.'}
               </p>
               <ul className="hosting-repositories">
                 {visible.map((repo) => (
@@ -414,6 +512,6 @@ export function HostingAccountsDialog({
           )}
         </section>
       </div>
-    </dialog>
+    </section>
   );
 }

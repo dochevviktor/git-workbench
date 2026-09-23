@@ -106,7 +106,8 @@ without losing open paths/order; the legacy orientation channel maps to reposito
 Window geometry uses a separate bounded, versioned atomic file and validates placement against usable
 display workareas, with a fallback for Ozone's 1×1 virtual display.
 
-Authentication remains between Git and installed helpers/agents. Silent runner calls suppress askpass
+GitHub HTTPS authentication uses connected hosting accounts through a per-process credential broker;
+other authentication remains with installed helpers/agents. Silent runner calls suppress askpass
 and standard credential-manager dialogs; explicit network work may prompt through those tools. Secrets
 never enter DTOs or renderer state. P01 now defines explicit repository trust in the
 [infrastructure handoff](reviews/p01-infrastructure.md). Long reads and mutations preserve owner/generation guards, bounded output and job cancellation;
@@ -599,8 +600,11 @@ Directory and selected-code requests do not cross IPC.
 
 ### F29 GitHub account boundary
 
-`desktop.hosting` exposes named account/list/selection/browser/cancel capabilities. A native main-process
-file chooser supplies token files; neither file paths nor credential bytes are accepted from the renderer.
+`desktop.hosting` exposes named account/list/selection/browser/cancel capabilities, plus default Git
+account selection and a fixed GitHub token-settings browser handoff. Preferences embeds the accounts
+panel. Login and update explicitly read a copied PAT from Electron's main-process clipboard API;
+neither file paths nor credential bytes are accepted from the renderer. The legacy file reader remains
+backend-only for explicitly invoked verification scripts. Existing channel names stay stable.
 The provider interface owns authenticated identity and repository reads. The GitHub implementation fixes
 the origin to `https://api.github.com`, denies redirects, builds pagination queries locally, streams at
 most 4 MiB, times out requests, and maps failures without forwarding provider bodies or exceptions.
@@ -614,15 +618,29 @@ blobs. Main alone encrypts/decrypts. The synchronous Electron safeStorage adapte
 availability and an explicit Linux backend allowlist; `basic_text` and `unknown` are rejected. No secret
 appears in ordinary settings, Git configuration or DTOs. Store writes serialize, corrupt stores remain
 untouched, token replacement verifies account identity, and a failed replacement preserves the old
-credential. Sign-out works with a locked keyring because deletion does not require decryption. The
-original token file is never copied, modified or deleted by session-only connection; Remember explicitly
-creates an encrypted credential copy. A credential save already committing is not rolled back by closing
+credential. Sign-out works with a locked keyring because deletion does not require decryption.
+Remember explicitly creates an encrypted credential copy. A credential save already committing is not rolled back by closing
 the dialog; reopening Accounts shows the authoritative state.
 
-This extends the earlier no-secret-store limitation for hosting API credentials only. Git authentication
-remains delegated to installed helpers/agents. PAT renewal is explicit replacement, and remote revocation
-remains a GitHub account action. There is no OAuth client registration, custom-origin/self-hosted policy,
-provider background polling. Linux keyring integration beyond the
+For network Git commands, `GitRunner` starts a private per-operation socket (a named pipe on Windows)
+and injects a GitHub HTTPS-specific helper reset/command and useHttpPath configuration through argv.
+The helper is a separate compiled TypeScript entry run with Electron's Node mode. A random capability
+in the child environment protects the socket. Only exact HTTPS github.com contexts with repository
+paths are accepted; the broker looks up the current account and unlocks its token in main. No token is
+written to argv, environment, Git config or helper files. Store/erase helper calls do nothing, avoiding
+copies into installed credential helpers. Other hosts and SSH retain their native authentication.
+GitHub redirects are refused while this helper is active; renamed/moved repositories need their current URL.
+Process termination closes the broker and removes its temporary directory. Tokens and Basic-auth values
+are redacted from returned output/errors and across progress chunks. Existing trust and cancellation
+boundaries still gate Git execution; inspectors cannot invoke any hosting capability.
+
+Version-1 credential entry order records the default Git account without a migration or another secret
+store. Public usernames in HTTPS clone URLs pin an explicitly chosen account; otherwise the default
+account is used. Replacement and sign-out affect subsequent helper requests, not credentials already
+delivered to an active Git transfer. The backend never retries with a different account after rejection.
+PAT renewal is explicit replacement, and remote revocation remains a GitHub account action.
+There is no OAuth client registration, custom-origin/self-hosted policy or provider background polling.
+Linux keyring integration beyond the
 tested fail-closed adapter and injected-encryption persistence remains a platform verification gate.
 
 ### F30 hosting activity

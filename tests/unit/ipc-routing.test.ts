@@ -246,7 +246,13 @@ describe('IPC sender and window lifecycle', () => {
       }),
     ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     expect(hosting.list).toHaveBeenCalledOnce();
-    for (const contract of [requests.listHostingActivity, requests.openHostingActivity]) {
+    for (const contract of [
+      requests.listHostingActivity,
+      requests.openHostingActivity,
+      requests.useHostingAccountForGit,
+      requests.openHostingTokenSettings,
+      requests.connectHostingAccount,
+    ]) {
       const activityHandler = handlers.get(contract.channel)!;
       expect(await activityHandler(inspector.event(), {})).toMatchObject({
         ok: false,

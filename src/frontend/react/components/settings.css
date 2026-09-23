@@ -12,7 +12,7 @@
   border-bottom: 1px solid var(--border);
 }
 .settings-tabs button {
-  padding: 10px 14px;
+  padding: 10px 11px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
@@ -26,6 +26,33 @@
   display: grid;
   gap: 12px;
   padding: 16px 0;
+}
+.settings-section-title {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.git-instance-control {
+  display: grid;
+  gap: 8px;
+}
+.settings-value-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.settings-effective summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.settings-effective[open] summary {
+  margin-bottom: 8px;
+}
+.dialog.settings-accounts-dialog {
+  width: min(850px, calc(100vw - 32px));
+}
+.settings-accounts-dialog .dialog-content {
+  padding-bottom: 12px;
 }
 .settings-page h3,
 .settings-page p {

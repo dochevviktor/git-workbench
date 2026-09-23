@@ -104,9 +104,11 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       listActivity: (request) => invoke(requests.listHostingActivity, request),
       openActivity: (request) => invoke(requests.openHostingActivity, request),
       listAccounts: () => invoke(requests.listHostingAccounts, undefined),
-      // Native file selection can take longer than a short control request. Main also bounds its lifetime.
+      // Authentication is owned and bounded by main; no credential bytes cross this API.
       connect: (request) => invoke(requests.connectHostingAccount, request, 310_000),
       disconnect: (request) => invoke(requests.disconnectHostingAccount, request),
+      useForGit: (request) => invoke(requests.useHostingAccountForGit, request),
+      openTokenSettings: () => invoke(requests.openHostingTokenSettings, undefined),
       listRepositories: (request) => invoke(requests.listHostedRepositories, request),
       getCloneTarget: (request) => invoke(requests.getHostedCloneTarget, request),
       openRepository: (request) => invoke(requests.openHostedRepository, request),

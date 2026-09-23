@@ -319,15 +319,28 @@ export function registerAppIpc(
     });
     register(requests.listHostingAccounts, () => hostingService.list());
     register(requests.connectHostingAccount, (window, request) =>
-      hostingService.connect(window.webContents.id, request, async () => {
-        const selection = await dialog.showOpenDialog(window, {
-          title: 'Select GitHub token file',
-          properties: ['openFile', 'showHiddenFiles'],
-          buttonLabel: 'Connect',
-        });
-        return selection.canceled || window.isDestroyed() ? null : (selection.filePaths[0] ?? null);
+      hostingService.login(window.webContents.id, request, async () => {
+        if (window.isDestroyed()) return null;
+        const token = await clipboard.readText();
+        if (!token.trim() || token.length > 4096)
+          throw new ExpectedBackendError(
+            'HOSTING_AUTH',
+            'Copy a GitHub personal access token, then choose Log in with Access Token.',
+          );
+        return token;
       }),
     );
+    register(requests.useHostingAccountForGit, (_window, { accountId }) =>
+      hostingService.useForGit(accountId),
+    );
+    register(requests.openHostingTokenSettings, async () => {
+      try {
+        await shell.openExternal('https://github.com/settings/tokens');
+      } catch {
+        throw new ExpectedBackendError('UNAVAILABLE', 'The system browser could not be opened.');
+      }
+      return null;
+    });
     register(requests.disconnectHostingAccount, (_window, { accountId }) =>
       hostingService.disconnect(accountId),
     );

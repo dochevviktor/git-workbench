@@ -6,6 +6,9 @@ import type { ChildProcessWithoutNullStreams, SpawnOptions } from 'node:child_pr
 import { resolveGitExecutable } from './executable';
 import { applyAuthenticationPolicy } from './authentication-policy';
 import type { GitAuthenticationPolicy } from './authentication-policy';
+import { createCredentialBroker, credentialProgress } from './credential-broker';
+import type { GitCredentialBridge } from './credential-broker';
+import { ExpectedBackendError } from '../errors';
 
 const defaultOutputLimit = 2 * 1024 * 1024;
 const defaultTimeout = 30_000;
@@ -212,6 +215,7 @@ export interface GitRunnerOptions {
   readonly maxOutputBytes?: number;
   readonly defaultTimeoutMs?: number;
   readonly logger?: GitLogger;
+  readonly credentials?: GitCredentialBridge;
 }
 
 /** A small, argument-array-only process boundary for Git. */
@@ -220,6 +224,7 @@ export class GitRunner {
   private readonly maxOutputBytes: number;
   private readonly defaultTimeoutMs: number;
   private readonly logger: GitLogger | undefined;
+  private readonly credentials: GitCredentialBridge | undefined;
   private resolvedExecutable: string | null | undefined;
 
   constructor(options: GitRunnerOptions = {}) {
@@ -227,6 +232,7 @@ export class GitRunner {
     this.maxOutputBytes = options.maxOutputBytes ?? defaultOutputLimit;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? defaultTimeout;
     this.logger = options.logger;
+    this.credentials = options.credentials;
   }
 
   get executable(): string {
@@ -242,6 +248,46 @@ export class GitRunner {
   }
 
   async run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult> {
+    let index = 0;
+    while (args[index]?.startsWith('-')) index += args[index] === '-c' ? 2 : 1;
+    if (
+      !this.credentials ||
+      !['clone', 'ls-remote', 'fetch', 'pull', 'push', 'submodule'].includes(args[index] ?? '') ||
+      !(await this.credentials.source.available())
+    )
+      return this.runProcess(args, options);
+    if (options.signal?.aborted) throw new GitCancelledError();
+    const broker = await createCredentialBroker(this.credentials);
+    const progress = credentialProgress(broker.redact, broker.retain, options.onStderr);
+    try {
+      const result = await this.runProcess([...args.slice(0, index), ...broker.args, ...args.slice(index)], {
+        ...options,
+        env: { ...options.env, ...broker.env },
+        onStderr: (value) => progress.write(value),
+      });
+      return { ...result, stdout: broker.redact(result.stdout), stderr: broker.redact(result.stderr) };
+    } catch (error) {
+      if (error instanceof GitCommandError) {
+        if (broker.failure instanceof ExpectedBackendError) throw broker.failure;
+        throw new GitCommandError(
+          args,
+          error.exitCode,
+          error.signal,
+          broker.redact(error.stdout),
+          broker.redact(error.stderr),
+        );
+      }
+      throw error;
+    } finally {
+      try {
+        progress.flush();
+      } finally {
+        await broker.close();
+      }
+    }
+  }
+
+  private async runProcess(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult> {
     if (options.signal?.aborted) throw new GitCancelledError();
     const executable = await this.resolveExecutable();
     if (options.signal?.aborted) throw new GitCancelledError();

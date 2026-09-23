@@ -4487,10 +4487,9 @@ svg.spinning {
   overflow-wrap: anywhere;
 }
 /* F29: independent account browser; public Windows Accounts supplies the two-pane organization. */
-.hosting-dialog {
-  width: min(850px, calc(100vw - 40px));
-  max-height: calc(100vh - 40px);
-  padding: 18px;
+.hosting-panel {
+  margin-top: 14px;
+  border: 1px solid var(--border);
 }
 .hosting-header,
 .hosting-actions,
@@ -4510,13 +4509,16 @@ svg.spinning {
 }
 .hosting-layout {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 205px minmax(0, 1fr);
+  min-height: 340px;
 }
 .hosting-accounts {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
 }
 .hosting-account {
   display: flex;
@@ -4524,7 +4526,7 @@ svg.spinning {
   align-items: flex-start;
   gap: 4px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: transparent;
   color: inherit;
   border-radius: 4px;
@@ -4536,19 +4538,55 @@ svg.spinning {
 }
 .hosting-detail {
   min-width: 0;
+  padding: 12px 18px;
+}
+.hosting-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.hosting-identity p {
+  margin: 4px 0 0;
+}
+.hosting-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  background: var(--row-selected);
+  color: var(--row-selected-text);
+  font-size: 22px;
+}
+.hosting-add {
+  margin-top: auto;
+}
+.hosting-login {
+  padding: 4px 0;
+}
+.hosting-login h4 {
+  margin: 8px 0;
+}
+.hosting-account-note {
+  margin-top: 22px;
 }
 .hosting-detail p {
   line-height: 1.5;
 }
 .hosting-detail dl {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 9px 12px;
+  margin: 18px 0;
 }
 .hosting-detail dd {
   margin: 0;
 }
-.hosting-detail dt,
+.hosting-detail dt {
+  text-align: right;
+  color: var(--text-muted);
+}
 .hosting-error {
   font-weight: 600;
 }
@@ -4572,11 +4610,42 @@ svg.spinning {
   overflow-wrap: anywhere;
 }
 .hosting-tabs {
-  margin-bottom: 15px;
+  margin: 0 -18px 15px;
+  padding: 0 12px;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.hosting-tabs .button {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 9px 12px;
 }
 .hosting-tabs [aria-pressed='true'] {
-  text-decoration: underline;
-  text-underline-offset: 5px;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+@media (max-width: 650px) {
+  .hosting-layout {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+  .hosting-detail {
+    padding: 10px;
+  }
+  .hosting-detail dl {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .hosting-detail dt {
+    text-align: left;
+    margin-top: 6px;
+  }
+  .hosting-tabs {
+    margin: 0 -10px 12px;
+    padding: 0;
+  }
 }
 .hosting-actions {
   margin: 10px 0;

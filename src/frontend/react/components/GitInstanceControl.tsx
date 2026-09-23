@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { GitInstance } from '../../../common/ipc/settings';
+import type { GitInfo } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 
-export function GitInstanceControl() {
+export function GitInstanceControl({ gitInfo }: { gitInfo: GitInfo | undefined }) {
   const [value, setValue] = useState<GitInstance>();
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,8 +28,13 @@ export function GitInstanceControl() {
     };
   }, []);
   return (
-    <div className="settings-page">
-      <p className="settings-target">Next launch: {selected ?? 'System Git (GIT_EXECUTABLE or PATH)'}</p>
+    <div className="git-instance-control">
+      <div className="settings-value-row">
+        <span>Git Instance:</span>
+        <span className="settings-target">
+          {gitInfo?.version ?? 'Unavailable'} · {gitInfo?.executable ?? 'Check Git installation'}
+        </span>
+      </div>
       <div className="settings-links">
         <button
           className="button"
@@ -73,6 +79,9 @@ export function GitInstanceControl() {
           Save Git instance
         </button>
       </div>
+      <p className="settings-target muted">
+        Next launch: {selected ?? 'System Git (GIT_EXECUTABLE or PATH)'}
+      </p>
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
     </div>

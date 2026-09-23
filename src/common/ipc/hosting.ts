@@ -18,6 +18,7 @@ export const hostingAccountSchema = z.strictObject({
 export const hostingAccountsSchema = z.strictObject({
   accounts: z.array(hostingAccountSchema).max(20),
   secureStorageAvailable: z.boolean(),
+  gitAccountId: identifier.nullable().default(null),
 });
 export const hostingAccountRequestSchema = z.strictObject({ accountId: identifier });
 export const hostingConnectRequestSchema = z.strictObject({
@@ -57,7 +58,9 @@ export const hostingCloneTargetSchema = z.strictObject({
   url: z
     .string()
     .max(500)
-    .regex(/^(https:\/\/github\.com\/|git@github\.com:)[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\.git$/u),
+    .regex(
+      /^(https:\/\/(?:[A-Za-z0-9-]+@)?github\.com\/|git@github\.com:)[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\.git$/u,
+    ),
   name: z.string().min(1).max(100),
 });
 export type HostingAccount = z.infer<typeof hostingAccountSchema>;

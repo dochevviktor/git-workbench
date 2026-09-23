@@ -328,6 +328,61 @@ describe('GitHub provider', () => {
 });
 
 describe('hosting lifecycle and credential boundaries', () => {
+  it('logs in without a file and supplies only exact GitHub HTTPS contexts to Git', async () => {
+    const f = await fixture();
+    await expect(f.service.login(1, { remember: false }, async () => 'not a token')).rejects.toThrow('Copy');
+    await f.service.login(1, { remember: false }, async () => token);
+    const context = {
+      protocol: 'https' as const,
+      host: 'github.com' as const,
+      path: 'example/private.git',
+      username: '',
+    };
+    expect(await f.service.gitCredentials.get(context)).toEqual({ username: 'example', password: token });
+    for (const change of [
+      { host: 'github.com.evil.test' },
+      { host: 'github.com:8443' },
+      { protocol: 'http' },
+      { path: '../private.git' },
+    ])
+      expect(await f.service.gitCredentials.get({ ...context, ...change } as never)).toBeNull();
+    await expect(f.service.gitCredentials.get({ ...context, username: 'other' })).rejects.toThrow(
+      'No matching',
+    );
+    await f.service.disconnect('github-42');
+    expect(await f.service.gitCredentials.available()).toBe(false);
+    await expect(f.service.gitCredentials.get(context)).rejects.toThrow('No matching');
+  });
+  it('remembers a default Git account and pins selected clones by public username', async () => {
+    const f = await fixture();
+    await f.connect(true);
+    vi.mocked(f.provider.identity).mockResolvedValueOnce({ id: '99', login: 'second-user' });
+    await f.service.login(1, { remember: true }, async () => 'second_synthetic_token');
+    await f.service.useForGit('github-99');
+    const restarted = new HostingService(f.store, f.provider);
+    expect((await restarted.list()).gitAccountId).toBe('github-99');
+    const context = {
+      protocol: 'https' as const,
+      host: 'github.com' as const,
+      path: 'org/private.git',
+      username: '',
+    };
+    expect(await restarted.gitCredentials.get(context)).toEqual({
+      username: 'second-user',
+      password: 'second_synthetic_token',
+    });
+    expect(await restarted.gitCredentials.get({ ...context, username: 'EXAMPLE' })).toEqual({
+      username: 'example',
+      password: token,
+    });
+    await restarted.listRepositories(1, { accountId: 'github-42', page: 1 });
+    expect(
+      restarted.cloneTarget(1, { accountId: 'github-42', repositoryId: '12', protocol: 'https' }),
+    ).toEqual({ url: 'https://example@github.com/example/project.git', name: 'project' });
+    await restarted.disconnect('github-99');
+    expect((await restarted.list()).gitAccountId).toBe('github-42');
+    expect(JSON.stringify(await restarted.list())).not.toContain(token);
+  });
   it('keeps session tokens in main memory and maps only owner-discovered repository IDs', async () => {
     const f = await fixture();
     const account = await f.connect();
@@ -459,6 +514,8 @@ describe('hosting lifecycle and credential boundaries', () => {
     const f = await fixture();
     await writeFile(f.path, 'broken');
     await expect(f.service.list()).rejects.toThrow('left unchanged');
+    // Installing the scoped helper is safe; only a GitHub request should surface this error.
+    expect(await f.service.gitCredentials.available()).toBe(true);
     expect(await readFile(f.path, 'utf8')).toBe('broken');
     await expect(readTokenFile(f.root)).rejects.toThrow('regular');
     const link = join(f.root, 'link');
