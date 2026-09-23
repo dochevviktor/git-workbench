@@ -836,7 +836,11 @@ test('production build loads its isolated preload and renderer', async () => {
       ok: true,
       value: {
         sourceDirectories: [{ path: fixtureRoot, repositoryCount: 1 }],
-        repositories: [{ path: fixtureRepository, kind: 'worktree' }],
+        repositories: expect.arrayContaining(
+          [{ path: fixtureRepository, kind: 'worktree' }].map((repository) =>
+            expect.objectContaining(repository),
+          ),
+        ),
       },
     });
     await page.reload();

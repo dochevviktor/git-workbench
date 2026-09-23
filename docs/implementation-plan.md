@@ -140,7 +140,7 @@ outside this slice; F38 Lean Branching remains separate.
 | ----- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                                                      | —                                     |
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                        | P00                                   |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Partial; clone, additive tabs/reorder/reopen, CLI and window persistence verified (2026-09-20); manager/watcher scope remains                                                                              | P01 runner/jobs                       |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                           | P01 runner/jobs                       |
 | P03   | History graph, references, commit details, revision tree             | Partial; history/search, first-parent details and resize/hide/pop-out verified (2026-09-20); browser scale gates remain                                                                                    | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                                                                                       | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; GitHub account-backed HTTPS Git verified with authenticated local transport (2026-09-23), alongside annotated tags, clone/Test Connection and global fetch; live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
@@ -415,6 +415,29 @@ Acceptance:
   duplicated unintentionally. No repository is modified just by opening it.
 - Switching tabs while a slow request completes cannot display data from the previous repository.
 - Tests isolate preferences, watchers, repository fixtures, and local clone destinations.
+
+Completion checkpoint (2026-09-23): all five P02 requirements and four acceptance criteria are verified
+for the Linux baseline. Manager hierarchy/display names/default sources, actual repository summaries,
+cancellable scan jobs, debounced filesystem invalidation and owner cleanup now accompany the retained
+open/init/clone/CLI/tab foundation. Initialize has a normal/bare form with Cancel. Per-session caches
+retain state while switching and clear on close; delayed reads cannot restore closed tabs or overwrite
+another repository. Missing/moved tabs and damaged settings have visible recovery controls; aliases,
+order and drafts survive relocation, including at tab capacity. Renderer settings migrate to versioned
+atomic entries; recent writes serialize. The asset-protocol evaluation retains bounded typed content
+reads and the existing document/sandbox/CSP boundary.
+
+The [P02 handoff](reviews/p02-repository-sessions.md) records acceptance, resource limits, catalogue/public
+sources, visual comparisons, tests and deliberate adaptations. F01's live provider/platform matrix is
+still P05/P14; named workspaces, multiple main windows and further tab customization stay in P12.
+Historical started-slice paragraphs below describe their dates, not the current P02 status.
+
+Verification: `npm run check` passes **504 tests** (one existing opt-in skip); production build passes;
+the full headless Electron suite passes **40 scenarios** (one existing opt-in statistics skip), including
+four new P02 workflows. Light/dark/880×600 manager captures were compared with the referenced originals.
+The previously recorded Quick Launch chooser race reproduced on untouched starting commit `ef55ca2`,
+but the final full suite passes it; the handoff retains that intermittent P12 issue without claiming a fix.
+After the final committed-diff cache cleanup correction, the six P02/history/desktop Electron scenarios
+also pass on the rebuilt application.
 
 Verified local F01 slice (2026-09-16, Fedora Linux x64, Git 2.55.0): open an existing repository,
 initialize a normal or bare directory, canonicalize nested paths/symlinks, retain separate worktree,
@@ -1118,7 +1141,8 @@ Acceptance:
 
 ## P12 — Productivity and workspace completion
 
-Coverage: F02–F03 completion, F31–F34, F38. C01 brings shell work forward; C05 covers productivity.
+Coverage: F02–F03 workspace extensions beyond completed P02, F31–F34, F38. C01 brings shell work forward;
+C05 covers productivity.
 Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
 
 F38 checkpoint (2026-09-22): Branch and Repository menus expose reviewed Start/Sync/Finish,

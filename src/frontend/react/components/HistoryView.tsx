@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { repositorySessionMap } from '../lib/repository-session';
 import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
@@ -74,7 +75,7 @@ interface HistoryPresentation {
   readonly expanded: ReadonlySet<string>;
 }
 // Session-only view memory deliberately resets on normal application restart (P2-015).
-const historyPresentations = new Map<string, HistoryPresentation>();
+const historyPresentations = repositorySessionMap<HistoryPresentation>();
 
 function authorName(commit: RepositoryHistoryCommit): string {
   return commit.author.name || commit.author.email || 'Unknown author';

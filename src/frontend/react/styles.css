@@ -379,6 +379,13 @@ p {
   background: var(--toolbar-center-bg);
 }
 
+@media (max-width: 1000px) {
+  .toolbar-repository {
+    min-width: 176px;
+    margin-inline: 4px;
+  }
+}
+
 .toolbar-activity {
   display: grid;
   place-items: center;

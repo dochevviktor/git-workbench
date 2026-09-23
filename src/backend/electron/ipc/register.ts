@@ -608,6 +608,33 @@ export function registerAppIpc(
     register(requests.listRepositoryManager, (window) =>
       repositoryService.listManager(window.webContents.id),
     );
+    register(requests.startRepositoryManagerScan, (window) =>
+      repositoryService.startManagerScan(window.webContents.id),
+    );
+    register(requests.getRepositoryManagerScan, (window) =>
+      repositoryService.getManagerScan(window.webContents.id),
+    );
+    register(requests.cancelRepositoryManagerScan, (window) =>
+      repositoryService.cancelManagerScan(window.webContents.id),
+    );
+    register(requests.editRepositoryManager, (window, request) =>
+      repositoryService.editManager(window.webContents.id, request),
+    );
+    register(requests.getRepositoryManagerOverview, (window, request) =>
+      repositoryService.getManagerOverview(window.webContents.id, request),
+    );
+    register(requests.getWorkspaceRecovery, (window) =>
+      repositoryService.getWorkspaceRecovery(window.webContents.id),
+    );
+    register(requests.recoverRepositoryTab, (window, request) =>
+      repositoryService.recoverTab(window.webContents.id, request),
+    );
+    register(requests.revealWorkspaceStorage, async () => {
+      const failure = await shell.openPath(repositoryService.workspaceStorageDirectory);
+      if (failure)
+        throw new ExpectedBackendError('OPERATION_FAILED', 'The settings folder could not be opened.');
+      return null;
+    });
     register(requests.addSourceDirectory, (window, { path }) =>
       repositoryService.addSourceDirectory(window.webContents.id, path),
     );
@@ -873,6 +900,13 @@ export function registerAppIpc(
     if (!isTrustedDocument(entry.window.webContents.getURL(), entry.url)) return;
     entry.window.webContents.send(events.repositoryOperationChanged.channel, operation);
   });
+  const releaseInvalidations = repositoryService?.subscribeInvalidations((ownerId, event) => {
+    const entry = windows.get(ownerId);
+    if (!entry || entry.window.isDestroyed()) return;
+    const contents = entry.window.webContents;
+    if (contents.isDestroyed() || !isTrustedDocument(contents.getURL(), entry.url)) return;
+    contents.send(events.repositoryInvalidated.channel, events.repositoryInvalidated.payload.parse(event));
+  });
 
   return {
     publishRepositoryActivated(window: BrowserWindow, repository: RepositorySummary) {
@@ -887,6 +921,7 @@ export function registerAppIpc(
       if (disposed) return;
       disposed = true;
       releaseOperations?.();
+      releaseInvalidations?.();
       for (const channel of channels) ipcMain.removeHandler(channel);
       for (const entry of [...windows.values()]) entry.cleanup();
     },

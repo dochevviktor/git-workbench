@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { repositorySessionMap } from '../lib/repository-session';
 import { IssueLinks } from './IssueLinks';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type {
@@ -53,7 +54,7 @@ interface DetailPresentation {
   readonly treeActiveKey: string | undefined;
   readonly expandedFolders: ReadonlySet<string>;
 }
-const detailPresentations = new Map<string, DetailPresentation>();
+const detailPresentations = repositorySessionMap<DetailPresentation>();
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;

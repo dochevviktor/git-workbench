@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { repositorySessionMap } from '../lib/repository-session';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type {
   RepositoryCommitChange,
@@ -39,7 +40,7 @@ import type { DiscardRequest } from './DiscardDialog';
 import { ConflictResolver } from './ConflictResolver';
 import { SubmodulePreview } from './SubmodulePreview';
 
-const sessionSelections = new Map<string, ListSelection>();
+const sessionSelections = repositorySessionMap<ListSelection>();
 
 const fileListModes = ['tree', 'list'] as const;
 const diffDisplayModes = ['unified', 'split'] as const;

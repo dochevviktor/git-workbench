@@ -4,12 +4,16 @@ import type {
   RecentRepository,
   RepositoryManagerRepository,
   RepositoryManagerSnapshot,
+  RepositoryManagerScan,
+  WorkspaceRecovery,
   RepositorySummary,
   RepositoryTabOrientation,
   RepositoryTabPreferences,
 } from '../../../common/ipc/contracts';
 import type { DesktopApi } from '../../../common/ipc/api';
 import { unwrapResult } from '../../../common/ipc/result';
+import { clearRepositorySession, restoreRepositorySession } from '../lib/repository-session';
+import { relocateRepositoryPreferences } from './use-persistent-state';
 
 type RepositoryBusyState =
   | 'opening'
@@ -42,6 +46,9 @@ export function useRepositories() {
   const [recent, setRecent] = useState<RecentRepository[]>([]);
   const [open, setOpen] = useState<RepositorySummary[]>([]);
   const [manager, setManager] = useState<RepositoryManagerSnapshot>();
+  const [scan, setScan] = useState<RepositoryManagerScan>();
+  const [recovery, setRecovery] = useState<WorkspaceRecovery>({ tabs: [], settings: [] });
+  const [invalidations, setInvalidations] = useState<Record<string, number>>({});
   const [tabPreferences, setTabPreferences] = useState<RepositoryTabPreferences>(defaultTabPreferences);
   const [recentlyClosed, setRecentlyClosed] = useState<Pick<RepositorySummary, 'id' | 'path' | 'name'>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,23 +77,28 @@ export function useRepositories() {
 
     setLoading(true);
     try {
-      const [gitResult, recentResult, openResult, managerResult, preferencesResult] = await Promise.all([
-        api.repository.getGitInfo(),
-        api.repository.listRecent(),
-        api.repository.listOpen(),
-        api.repository.listManager(),
-        api.repository.getTabPreferences(),
-      ]);
+      const [gitResult, recentResult, openResult, managerResult, preferencesResult, recoveryResult] =
+        await Promise.all([
+          api.repository.getGitInfo(),
+          api.repository.listRecent(),
+          api.repository.listOpen(),
+          api.repository.startManagerScan(),
+          api.repository.getTabPreferences(),
+          api.repository.getWorkspaceRecovery(),
+        ]);
       if (!mounted.current || generation.current !== requestGeneration) return;
       const nextGitInfo = unwrapResult(gitResult);
       const nextRecent = unwrapResult(recentResult);
       const nextOpen = unwrapResult(openResult);
+      for (const repository of nextOpen) restoreRepositorySession(repository.id);
       const nextManager = unwrapResult(managerResult);
       const nextPreferences = unwrapResult(preferencesResult);
       setGitInfo(nextGitInfo);
       setRecent(nextRecent);
       setOpen(nextOpen);
-      setManager(nextManager);
+      setScan(nextManager);
+      if (nextManager.snapshot) setManager(nextManager.snapshot);
+      setRecovery(unwrapResult(recoveryResult));
       setTabPreferences(nextPreferences);
       setRecentlyClosed(nextPreferences.recentlyClosed);
       setActiveId((current) => {
@@ -106,6 +118,45 @@ export function useRepositories() {
       if (mounted.current && generation.current === requestGeneration) setLoading(false);
     }
   }, []);
+
+  const refreshManager = useCallback(async () => {
+    const api = desktopApi();
+    if (!api) return;
+    try {
+      const next = unwrapResult(await api.repository.startManagerScan());
+      if (mounted.current) {
+        setScan(next);
+        if (next.snapshot) setManager(next.snapshot);
+      }
+    } catch (reason) {
+      if (mounted.current) setError(actionError(reason));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (scan?.state !== 'scanning') return;
+    let disposed = false;
+    let reading = false;
+    const interval = window.setInterval(async () => {
+      if (reading || !window.desktop) return;
+      reading = true;
+      try {
+        const next = unwrapResult(await window.desktop.repository.getManagerScan());
+        if (disposed) return;
+        setScan(next);
+        if (next.snapshot) setManager(next.snapshot);
+        if (next.error) setError(next.error);
+      } catch (reason) {
+        if (!disposed) setError(actionError(reason));
+      } finally {
+        reading = false;
+      }
+    }, 200);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [scan?.state]);
 
   const refreshOpen = useCallback(async () => {
     const api = desktopApi();
@@ -140,6 +191,19 @@ export function useRepositories() {
     const interval = window.setInterval(() => void refreshOpen(), 5_000);
     return () => window.clearInterval(interval);
   }, [refreshOpen]);
+
+  useEffect(
+    () =>
+      desktopApi()?.repository.onInvalidated((event) => {
+        if (event.kind === 'manager') {
+          void refreshManager();
+          return;
+        }
+        setInvalidations((current) => ({ ...current, [event.id]: event.revision }));
+        void refreshOpen();
+      }),
+    [refreshManager, refreshOpen],
+  );
 
   useEffect(
     () =>
@@ -235,6 +299,7 @@ export function useRepositories() {
       setError(undefined);
       try {
         unwrapResult(await api.repository.close({ id }));
+        clearRepositorySession(id);
         if (closing) {
           setRecentlyClosed((current) =>
             [closing, ...current.filter((candidate) => candidate.id !== closing.id)].slice(0, 20),
@@ -267,6 +332,7 @@ export function useRepositories() {
       try {
         for (const repository of closing) {
           unwrapResult(await api.repository.close({ id: repository.id }));
+          clearRepositorySession(repository.id);
           closed.unshift(repository);
         }
         if (keepId) {
@@ -331,6 +397,27 @@ export function useRepositories() {
     [load],
   );
 
+  const locateRecent = useCallback(
+    async (id: string) => {
+      const api = desktopApi();
+      if (!api) return;
+      setBusy('opening');
+      setError(undefined);
+      try {
+        const path = unwrapResult(await api.repository.pickDirectory());
+        if (!path) return;
+        const repository = unwrapResult(await api.repository.recoverTab({ id, path }));
+        if (repository && repository.id !== id) relocateRepositoryPreferences(id, repository.id);
+        await load();
+      } catch (reason) {
+        if (mounted.current) setError(actionError(reason));
+      } finally {
+        if (mounted.current) setBusy(undefined);
+      }
+    },
+    [load],
+  );
+
   const setTabOrientation = useCallback(
     async (orientation: RepositoryTabOrientation) => {
       const api = desktopApi();
@@ -387,7 +474,7 @@ export function useRepositories() {
     try {
       const pickedPath = unwrapResult(await api.repository.pickDirectory());
       if (pickedPath === null) return;
-      unwrapResult(await api.repository.addSourceDirectory({ path: pickedPath }));
+      unwrapResult(await api.repository.editManager({ kind: 'add-source', path: pickedPath }));
       await load();
     } catch (reason: unknown) {
       if (mounted.current) setError(actionError(reason));
@@ -421,15 +508,15 @@ export function useRepositories() {
       setBusy('scanning');
       setError(undefined);
       try {
-        unwrapResult(await api.repository.rescanSourceDirectory({ id }));
-        await load();
+        if (!id) return;
+        await refreshManager();
       } catch (reason: unknown) {
         if (mounted.current) setError(actionError(reason));
       } finally {
         if (mounted.current) setBusy(undefined);
       }
     },
-    [load],
+    [refreshManager],
   );
 
   const select = useCallback(
@@ -464,36 +551,22 @@ export function useRepositories() {
 
   useEffect(() => {
     if (!managerActive) return;
-    let disposed = false;
-    let refreshing = false;
-    const refreshManager = async () => {
-      const api = desktopApi();
-      if (!api || refreshing || busyRef.current || document.hidden) return;
-      refreshing = true;
-      try {
-        const snapshot = unwrapResult(await api.repository.listManager());
-        if (!disposed) setManager(snapshot);
-      } catch (reason) {
-        if (!disposed) setError(actionError(reason));
-      } finally {
-        refreshing = false;
-      }
-    };
     const onFocus = () => void refreshManager();
-    const interval = window.setInterval(onFocus, 15_000);
     window.addEventListener('focus', onFocus);
     return () => {
-      disposed = true;
-      window.clearInterval(interval);
       window.removeEventListener('focus', onFocus);
     };
-  }, [managerActive]);
+  }, [managerActive, refreshManager]);
 
   return {
     gitInfo,
     recent,
     open,
     manager,
+    scan,
+    recovery,
+    invalidations,
+    refreshManager,
     managerActive,
     managerTabOpen: open.length === 0 || managerTab.open,
     openManagerTab,
@@ -518,6 +591,7 @@ export function useRepositories() {
     closeRepository,
     reopenClosed,
     removeRecent,
+    locateRecent,
     addSourceDirectory,
     removeSourceDirectory,
     rescanSourceDirectory,

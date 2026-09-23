@@ -1,6 +1,13 @@
 import type { Statistics, StatisticsRequest } from './statistics';
 import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
+  RepositoryManagerScan,
+  RepositoryManagerAction,
+  RepositoryManagerLocation,
+  RepositoryManagerOverview,
+  RepositoryInvalidation,
+  WorkspaceRecovery,
+  RecoverRepositoryTab,
   RepositorySigningSettings,
   RepositorySigningSettingsRequest,
   RepositoryVerifySignatureRequest,
@@ -230,6 +237,15 @@ export interface DesktopApi {
     selectTab(request: RepositorySession): Promise<IpcResult<RepositoryTabPreferences>>;
     removeRecent(request: RepositorySession): Promise<IpcResult<null>>;
     listManager(): Promise<IpcResult<RepositoryManagerSnapshot>>;
+    startManagerScan(): Promise<IpcResult<RepositoryManagerScan>>;
+    getManagerScan(): Promise<IpcResult<RepositoryManagerScan>>;
+    cancelManagerScan(): Promise<IpcResult<null>>;
+    editManager(request: RepositoryManagerAction): Promise<IpcResult<null>>;
+    getManagerOverview(request: RepositoryManagerLocation): Promise<IpcResult<RepositoryManagerOverview>>;
+    getWorkspaceRecovery(): Promise<IpcResult<WorkspaceRecovery>>;
+    recoverTab(request: RecoverRepositoryTab): Promise<IpcResult<RepositorySummary | null>>;
+    revealWorkspaceStorage(): Promise<IpcResult<null>>;
+    onInvalidated(listener: (event: RepositoryInvalidation) => void): Unsubscribe;
     addSourceDirectory(request: SourceDirectoryRequest): Promise<IpcResult<RepositoryManagerSnapshot>>;
     removeSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<null>>;
     rescanSourceDirectory(request: SourceDirectorySession): Promise<IpcResult<RepositoryManagerSnapshot>>;

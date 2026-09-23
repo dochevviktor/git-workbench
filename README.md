@@ -26,7 +26,13 @@ The long-term target is Fork's captured Windows workflows and publicly documente
 implemented independently with Electron, shared TypeScript contracts, and React. The Windows 2.22.0.0
 black-box catalogue now guides the Linux UI; documented platform-specific extensions remain separate.
 
-The current milestone starts F01's local workflow, the first F02 repository-manager slice, the initial
+P02's repository/session foundation is complete for Linux: Repository Manager supports nested logical
+folders, display names, filtering, source discovery and a default clone folder; scans can be cancelled.
+Filesystem watchers refresh external changes. Missing repositories offer Retry/Locate, and damaged
+settings retain recoverable originals. Drafts, tab order and preferences survive restart; reopening a
+closed tab selects HEAD. See the [P02 handoff](docs/reviews/p02-repository-sessions.md) for verified scope.
+
+The earlier feature milestones start F01's local workflow, the first F02 repository-manager slice, the initial
 F03 tab slice, the first F04–F07 history, collapse, filtering, and revision-inspection slices, the
 F08–F11 working-changes, diff, staging, and commit slices, a first F12 branch and tag slice, an initial
 F13 remote and network slice with the F14 operation surface it needs, and an initial F34 workspace-chrome
@@ -88,7 +94,7 @@ preference, native authentication helper policy, captured stash-new-file semanti
 modes. The corrected workflows are verified together; the broader feature families remain partial.
 Conflict-editor parity beyond the bounded F17 text slice, F18 merge-preserving/dependent-reference
 variants, F19 batch/edge history operations, F20 reflog expiry/named-recovery variants, hunk/line stashes and patch import, syntax/rich image viewers,
-custom manager folders and filesystem watchers remain later work.
+and the remaining workspace/platform variants retain their later-phase scope.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.

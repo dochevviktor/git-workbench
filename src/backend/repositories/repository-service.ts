@@ -2,14 +2,22 @@ import { createHash } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { PatchPreviews, validatePatch } from './patch-service';
 import type { RepositoryPatchPreview, RepositoryPatchApplyRequest } from '../../common/ipc/contracts';
-import { lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { DirectoryWatcher } from './directory-watcher';
 import { ReadCoordinator } from '../git/read-coordinator';
 import { RepositoryTrustStore } from '../git/trust-store';
 import { RepositoryGitRunner } from '../git/repository-runner';
 import { gitCapabilities, minimumGitVersion } from '../git/capabilities';
 import type {
+  RepositoryManagerAction,
+  RepositoryManagerScan,
+  RepositoryManagerLocation,
+  RepositoryManagerOverview,
+  RepositoryInvalidation,
+  WorkspaceRecovery,
+  RecoverRepositoryTab,
   RepositorySigningSettingsRequest,
   RepositoryVerifySignatureRequest,
   GitInfo,
@@ -268,6 +276,7 @@ export class RepositoryService {
   private readonly sourceScanOptions: SourceScanOptions;
   private readonly maxOpenTabs: number;
   private readonly sessions = new Map<number, Map<string, RepositorySummary>>();
+  private readonly sessionGenerations = new Map<string, number>();
   private readonly diffReads = new Map<string, AbortController>();
   private readonly statistics = new StatisticsService();
   private readonly statisticsReads = new Map<string, AbortController>();
@@ -283,8 +292,29 @@ export class RepositoryService {
   private readonly releaseOperationSubscription: () => void;
   private gitInfoPromise: Promise<GitInfo> | undefined;
   private readonly topologyKeys = new Map<string, string>();
+  private readonly invalidationListeners = new Set<
+    (ownerId: number, event: RepositoryInvalidation) => void
+  >();
+  private readonly watches = new Map<string, { watcher: DirectoryWatcher; owners: Set<number> }>();
+  private readonly sourceWatches = new Map<string, DirectoryWatcher>();
+  private readonly managerOwners = new Set<number>();
+  private readonly managerRescanPending = new Set<number>();
+  private readonly managerScans = new Map<
+    number,
+    { state: RepositoryManagerScan; controller: AbortController }
+  >();
+  private readonly settingsFiles: readonly string[];
+  readonly workspaceStorageDirectory: string;
+  private invalidationRevision = 0;
 
   constructor(options: RepositoryServiceOptions) {
+    this.workspaceStorageDirectory = dirname(options.storagePath);
+    this.settingsFiles = [
+      options.storagePath,
+      options.managerStoragePath ?? `${options.storagePath}.manager`,
+      options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
+      join(this.workspaceStorageDirectory, 'window-state.json'),
+    ];
     this.store = new RecentRepositoryStore({
       filePath: options.storagePath,
       maxEntries: options.maxRecentEntries ?? 20,
@@ -380,8 +410,13 @@ export class RepositoryService {
   async open(ownerId: number, inputPath: string, displayName?: string): Promise<RepositorySummary> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
+    const generation = this.ownerGenerations.get(ownerId);
+    if (!this.sessions.has(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     const directory = await this.canonicalDirectory(inputPath);
     const summary = await this.discover(directory, displayName);
+    if (generation !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     if (
       !this.sessions.get(ownerId)?.has(summary.id) &&
       this.listOpenCached(ownerId).length >= this.maxOpenTabs
@@ -394,6 +429,8 @@ export class RepositoryService {
     await this.remember(summary);
     await this.tabStore.addTab({ id: summary.id, path: summary.path });
     await this.tabStore.setActiveRepositoryId(summary.id);
+    if (generation !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.addSession(ownerId, summary);
     void this.refreshBackgroundFetch(ownerId, summary);
     return summary;
@@ -402,7 +439,18 @@ export class RepositoryService {
   async initialize(ownerId: number, inputPath: string, bare: boolean): Promise<RepositorySummary> {
     await this.requireGit();
     await this.ensureSessions(ownerId);
+    const generation = this.ownerGenerations.get(ownerId);
+    if (!this.sessions.has(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     const directory = await this.canonicalDirectory(inputPath);
+    if (
+      this.listOpenCached(ownerId).length >= this.maxOpenTabs &&
+      !this.listOpenCached(ownerId).some((entry) => entry.path === directory)
+    )
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Close a repository tab before initializing another one.',
+      );
     const existing = await lstat(join(directory, bare ? 'HEAD' : '.git')).then(
       () => true,
       (error: NodeJS.ErrnoException) => {
@@ -437,6 +485,8 @@ export class RepositoryService {
     await this.remember(summary);
     await this.tabStore.addTab({ id: summary.id, path: summary.path });
     await this.tabStore.setActiveRepositoryId(summary.id);
+    if (generation !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.addSession(ownerId, summary);
     void this.refreshBackgroundFetch(ownerId, summary);
     return summary;
@@ -445,10 +495,12 @@ export class RepositoryService {
   async listRecent(ownerId: number): Promise<RecentRepository[]> {
     await this.ensureSessions(ownerId);
     const entries = await this.store.list();
+    const configuration = await this.managerStore.configuration();
     return Promise.all(
       entries.map(async (entry) => ({
         id: entry.id,
-        name: entry.name,
+        name:
+          configuration.repositories.find((repository) => repository.path === entry.path)?.name || entry.name,
         path: entry.path,
         lastOpenedAt: entry.lastOpenedAt,
         status: await recentPathStatus(entry.path),
@@ -623,13 +675,22 @@ export class RepositoryService {
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
     if (!ownerSessions) return [];
-
+    const ownerGeneration = this.ownerGenerations.get(ownerId);
     const current = [...ownerSessions.values()];
+    const generations = new Map(
+      current.map((summary) => [summary.id, this.sessionGenerations.get(`${ownerId}:${summary.id}`) ?? 0]),
+    );
     const refreshed = await Promise.all(current.map((summary) => this.refreshSummary(summary)));
+    const sessions = this.sessions.get(ownerId);
+    if (!sessions || ownerGeneration !== this.ownerGenerations.get(ownerId)) return [];
     for (const summary of refreshed) {
-      if (ownerSessions.get(summary.id)?.path === summary.path) ownerSessions.set(summary.id, summary);
+      if (
+        sessions.get(summary.id)?.path === summary.path &&
+        generations.get(summary.id) === (this.sessionGenerations.get(`${ownerId}:${summary.id}`) ?? 0)
+      )
+        sessions.set(summary.id, summary);
     }
-    return [...ownerSessions.values()];
+    return [...sessions.values()];
   }
 
   async close(ownerId: number, id: string): Promise<void> {
@@ -657,6 +718,12 @@ export class RepositoryService {
     for (const operationId of this.backgroundFetch.remove(ownerId, id))
       this.operations.cancel(ownerId, operationId);
     ownerSessions.delete(id);
+    this.runner.invalidate();
+    this.sessionGenerations.set(
+      `${ownerId}:${id}`,
+      (this.sessionGenerations.get(`${ownerId}:${id}`) ?? 0) + 1,
+    );
+    this.releaseWatch(ownerId, id);
   }
 
   async getTabPreferences(ownerId: number): Promise<RepositoryTabPreferences> {
@@ -749,7 +816,6 @@ export class RepositoryService {
         'That repository is no longer open in this window.',
       );
     }
-    ownerSessions?.set(id, summary);
 
     try {
       return await readRepositoryHistory(this.runner, {
@@ -2910,8 +2976,269 @@ export class RepositoryService {
     await this.store.remove(id);
   }
 
-  async listManager(ownerId: number): Promise<RepositoryManagerSnapshot> {
+  subscribeInvalidations(listener: (ownerId: number, event: RepositoryInvalidation) => void): () => void {
+    this.invalidationListeners.add(listener);
+    return () => {
+      this.invalidationListeners.delete(listener);
+    };
+  }
+
+  private publishInvalidation(ownerId: number, event: RepositoryInvalidation): void {
+    for (const listener of this.invalidationListeners) listener(ownerId, event);
+  }
+
+  private watchRepository(ownerId: number, summary: RepositorySummary): void {
+    const existing = this.watches.get(summary.id);
+    if (existing) {
+      existing.owners.add(ownerId);
+      return;
+    }
+    const owners = new Set([ownerId]);
+    const roots: { path: string; kind: 'worktree' | 'git' }[] = [{ path: summary.gitDir, kind: 'git' }];
+    if (summary.commonDir !== summary.gitDir) roots.push({ path: summary.commonDir, kind: 'git' });
+    if (summary.worktreePath) roots.push({ path: summary.worktreePath, kind: 'worktree' });
+    const watcher = new DirectoryWatcher(roots, (watching) => {
+      this.runner.invalidate();
+      for (const owner of owners)
+        this.publishInvalidation(owner, {
+          kind: 'repository',
+          id: summary.id,
+          revision: ++this.invalidationRevision,
+          watching,
+        });
+    });
+    this.watches.set(summary.id, { watcher, owners });
+  }
+
+  private releaseWatch(ownerId: number, id: string): void {
+    const entry = this.watches.get(id);
+    if (!entry) return;
+    entry.owners.delete(ownerId);
+    if (!entry.owners.size) {
+      entry.watcher.dispose();
+      this.watches.delete(id);
+    }
+  }
+
+  private invalidateManager(): void {
+    for (const owner of this.managerOwners) {
+      if (this.managerScans.get(owner)?.state.state === 'scanning') this.managerRescanPending.add(owner);
+      this.publishInvalidation(owner, { kind: 'manager', revision: ++this.invalidationRevision });
+    }
+  }
+
+  startManagerScan(ownerId: number): RepositoryManagerScan {
+    const previous = this.managerScans.get(ownerId);
+    if (previous?.state.state === 'scanning') return previous.state;
+    const state: RepositoryManagerScan = {
+      generation: (previous?.state.generation ?? 0) + 1,
+      state: 'scanning',
+      snapshot: previous?.state.snapshot ?? null,
+      error: null,
+    };
+    const job = { state, controller: new AbortController() };
+    this.managerScans.set(ownerId, job);
+    void this.listManager(ownerId, job.controller.signal).then(
+      (snapshot) => {
+        if (job.controller.signal.aborted || this.managerScans.get(ownerId) !== job) return;
+        job.state = { ...state, state: 'complete', snapshot };
+        if (this.managerRescanPending.delete(ownerId)) this.startManagerScan(ownerId);
+      },
+      (error: unknown) => {
+        if (job.controller.signal.aborted || this.managerScans.get(ownerId) !== job) return;
+        job.state = {
+          ...state,
+          state: 'failed',
+          error:
+            error instanceof ExpectedBackendError
+              ? error.message
+              : 'Source directories could not be scanned.',
+        };
+      },
+    );
+    return state;
+  }
+
+  getManagerScan(ownerId: number): RepositoryManagerScan {
+    return (
+      this.managerScans.get(ownerId)?.state ?? { generation: 0, state: 'idle', snapshot: null, error: null }
+    );
+  }
+
+  cancelManagerScan(ownerId: number): null {
+    this.managerRescanPending.delete(ownerId);
+    const job = this.managerScans.get(ownerId);
+    if (job?.state.state === 'scanning') {
+      job.controller.abort();
+      job.state = { ...job.state, state: 'cancelled' };
+    }
+    return null;
+  }
+
+  async editManager(ownerId: number, action: RepositoryManagerAction): Promise<null> {
+    if (action.kind === 'add-source') {
+      const path = await this.canonicalDirectory(action.path);
+      await this.managerStore.add({ id: this.sourceDirectoryId(path), path });
+      this.invalidateManager();
+      return null;
+    }
+    const path =
+      action.kind === 'edit-repository'
+        ? await this.managerLocationPath(ownerId, action.location)
+        : undefined;
+    await this.managerStore.edit(action, path);
+    if (path && action.kind === 'edit-repository') {
+      for (const [owner, sessions] of this.sessions)
+        for (const [id, summary] of sessions)
+          if (summary.path === path) {
+            sessions.set(id, { ...summary, name: action.name || basename(path) });
+            this.publishInvalidation(owner, {
+              kind: 'repository',
+              id,
+              revision: ++this.invalidationRevision,
+              watching: 'active',
+            });
+          }
+    }
+    this.invalidateManager();
+    return null;
+  }
+
+  private async managerLocationPath(ownerId: number, location: RepositoryManagerLocation): Promise<string> {
+    const path =
+      location.kind === 'recent'
+        ? (await this.store.list()).find((entry) => entry.id === location.id)?.path
+        : this.managerRepositoryPaths.get(ownerId)?.get(location.id);
+    if (!path) throw new ExpectedBackendError('PATH_NOT_FOUND', 'That repository is no longer listed.');
+    return path;
+  }
+
+  async getManagerOverview(
+    ownerId: number,
+    location: RepositoryManagerLocation,
+  ): Promise<RepositoryManagerOverview> {
+    const path = await this.managerLocationPath(ownerId, location);
+    const summary = await this.discover(await this.canonicalDirectory(path));
+    const cwd = summary.path;
+    const refs = async (prefix: string) => {
+      const result = await this.runRead(
+        [
+          'for-each-ref',
+          '--count=20',
+          '--sort=-committerdate',
+          '--format=%(refname:short)%00%(subject)%00%(authorname)%00%(committerdate:iso-strict)',
+          prefix,
+        ],
+        cwd,
+      );
+      return result.stdout
+        .trimEnd()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [name = '', subject = '', author = '', date = ''] = line.split('\0');
+          return { name, subject, author, date };
+        });
+    };
+    const [count, first, last, branches, tags, remotes] = await Promise.all([
+      this.runRead(['rev-list', '--all', '--count'], cwd),
+      this.runRead(['log', '--all', '--max-parents=0', '--format=%aI'], cwd),
+      this.runRead(['log', '--all', '-1', '--format=%aI'], cwd),
+      refs('refs/heads'),
+      refs('refs/tags'),
+      readRemotes(this.runner, cwd),
+    ]);
+    return {
+      name: summary.name,
+      path: summary.path,
+      workingTree: summary.workingTree,
+      commitCount: Number(count.stdout.trim()),
+      firstCommitAt: first.stdout.trim().split('\n').filter(Boolean).sort()[0] ?? null,
+      lastCommitAt: last.stdout.trim() || null,
+      branches,
+      tags,
+      remotes: remotes.slice(0, 100).map((remote) => ({ name: remote.name, url: remote.fetchUrl })),
+    };
+  }
+
+  async getWorkspaceRecovery(ownerId: number): Promise<WorkspaceRecovery> {
     await this.ensureSessions(ownerId);
+    await Promise.all([this.store.list(), this.managerStore.configuration()]);
+    const tabs: WorkspaceRecovery['tabs'] = [];
+    for (const tab of await this.tabStore.listTabs()) {
+      if (!this.sessions.get(ownerId)?.has(tab.id) || (await recentPathStatus(tab.path)) !== 'available')
+        tabs.push({
+          ...tab,
+          name: basename(tab.path),
+          reason:
+            'The saved repository could not be opened. Retry, locate its new folder, or remove the saved tab.',
+        });
+    }
+    const settings: WorkspaceRecovery['settings'] = [];
+    for (const file of this.settingsFiles) {
+      const names = await readdir(dirname(file)).catch(() => [] as string[]);
+      for (const name of names)
+        if (name.startsWith(`${basename(file)}.corrupt-`) || name.startsWith(`${basename(file)}.invalid-`))
+          settings.push({ name: basename(file), path: join(dirname(file), name) });
+    }
+    return { tabs, settings: settings.slice(0, 100) };
+  }
+
+  async recoverTab(ownerId: number, request: RecoverRepositoryTab): Promise<RepositorySummary | null> {
+    await this.ensureSessions(ownerId);
+    const generation = this.ownerGenerations.get(ownerId);
+    const savedTab = (await this.tabStore.listTabs()).find((tab) => tab.id === request.id);
+    const previous = savedTab ?? (await this.store.list()).find((entry) => entry.id === request.id);
+    if (!previous) throw new ExpectedBackendError('INVALID_REQUEST', 'That saved tab is no longer listed.');
+    if (!request.path) {
+      this.sessions.get(ownerId)?.delete(request.id);
+      this.releaseWatch(ownerId, request.id);
+      await this.tabStore.forget(request.id);
+      return null;
+    }
+    await this.requireGit();
+    const directory = await this.canonicalDirectory(request.path);
+    const alias = (await this.managerStore.configuration()).repositories.find(
+      (entry) => entry.path === previous.path,
+    )?.name;
+    const summary = await this.discover(directory, alias || undefined);
+    if (generation !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
+    if (summary.id !== previous.id) {
+      if (savedTab) await this.tabStore.replace(previous.id, { id: summary.id, path: summary.path });
+      else await this.tabStore.addTab({ id: summary.id, path: summary.path });
+      this.sessions.get(ownerId)?.delete(previous.id);
+      this.releaseWatch(ownerId, previous.id);
+      await this.store.remove(previous.id);
+      await this.managerStore.relocate(previous.path, summary.path);
+    } else if (!savedTab) {
+      await this.tabStore.addTab({ id: summary.id, path: summary.path });
+    }
+    await this.remember(summary);
+    await this.tabStore.setActiveRepositoryId(summary.id);
+    if (generation !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
+    this.addSession(ownerId, summary);
+    const sessions = this.sessions.get(ownerId)!;
+    const order = await this.tabStore.listTabs();
+    if (this.sessions.get(ownerId) === sessions)
+      this.sessions.set(
+        ownerId,
+        new Map(
+          order.flatMap((tab) => (sessions.has(tab.id) ? [[tab.id, sessions.get(tab.id)!] as const] : [])),
+        ),
+      );
+    void this.refreshBackgroundFetch(ownerId, summary);
+    return summary;
+  }
+
+  async listManager(ownerId: number, signal?: AbortSignal): Promise<RepositoryManagerSnapshot> {
+    await this.ensureSessions(ownerId);
+    signal?.throwIfAborted();
+    if (!this.sessions.has(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
+    const ownerGeneration = this.ownerGenerations.get(ownerId);
+    this.managerOwners.add(ownerId);
     const sourceDirectories = await this.managerStore.list();
     const openRepositories = this.listOpenCached(ownerId);
     const openByPath = new Map(
@@ -2928,9 +3255,50 @@ export class RepositoryService {
     };
 
     for (const sourceDirectory of sourceDirectories) {
-      const scan = await this.scanSource(sourceDirectory);
+      signal?.throwIfAborted();
+      if (ownerGeneration !== this.ownerGenerations.get(ownerId))
+        throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
+      if (!this.sourceWatches.has(sourceDirectory.id))
+        this.sourceWatches.set(
+          sourceDirectory.id,
+          new DirectoryWatcher([{ path: sourceDirectory.path, kind: 'source' }], () =>
+            this.invalidateManager(),
+          ),
+        );
+      const scan = await this.scanSource(sourceDirectory, signal);
       this.addManagerSource(snapshot, sourceDirectory, scan);
     }
+    const configuration = await this.managerStore.configuration();
+    for (const saved of configuration.repositories) {
+      signal?.throwIfAborted();
+      const existing = snapshot.repositories.find(
+        (entry) => this.pathKey(entry.path) === this.pathKey(saved.path),
+      );
+      if (existing) {
+        existing.name = saved.name || existing.name;
+        existing.groupId = saved.groupId;
+        continue;
+      }
+      if (snapshot.repositories.length >= managerMaxRepositories) break;
+      snapshot.repositories.push({
+        id: this.managerRepositoryId(saved.path),
+        sourceDirectoryId: null,
+        folderId: null,
+        name: saved.name || basename(saved.path),
+        path: saved.path,
+        relativePath: '',
+        kind: await lstat(join(saved.path, '.git')).then(
+          () => 'worktree' as const,
+          () => 'bare' as const,
+        ),
+        sessionId: openByPath.get(this.pathKey(saved.path)) ?? null,
+        groupId: saved.groupId,
+        status: await recentPathStatus(saved.path),
+      });
+    }
+    signal?.throwIfAborted();
+    if (ownerGeneration !== this.ownerGenerations.get(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.managerRepositoryPaths.set(
       ownerId,
       new Map(snapshot.repositories.map((repository) => [repository.id, repository.path])),
@@ -2941,17 +3309,23 @@ export class RepositoryService {
       folders: snapshot.folders,
       repositories: snapshot.repositories,
       warnings: snapshot.warnings,
+      groups: configuration.groups,
+      defaultSourceId: configuration.defaultSourceId,
     };
   }
 
   async addSourceDirectory(ownerId: number, inputPath: string): Promise<RepositoryManagerSnapshot> {
     const directory = await this.canonicalDirectory(inputPath);
     await this.managerStore.add({ id: this.sourceDirectoryId(directory), path: directory });
+    this.invalidateManager();
     return this.listManager(ownerId);
   }
 
   async removeSourceDirectory(id: string): Promise<void> {
     const removed = await this.managerStore.remove(id);
+    this.sourceWatches.get(id)?.dispose();
+    this.sourceWatches.delete(id);
+    this.invalidateManager();
     if (!removed) {
       throw new ExpectedBackendError(
         'SOURCE_DIRECTORY_NOT_FOUND',
@@ -3030,6 +3404,15 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.cancelManagerScan(ownerId);
+    this.managerScans.delete(ownerId);
+    this.managerOwners.delete(ownerId);
+    this.managerRescanPending.delete(ownerId);
+    for (const id of this.watches.keys()) this.releaseWatch(ownerId, id);
+    if (!this.managerOwners.size) {
+      for (const watcher of this.sourceWatches.values()) watcher.dispose();
+      this.sourceWatches.clear();
+    }
     this.ai.cancel(ownerId);
     this.patches.release(ownerId);
     for (const [key, controller] of this.statisticsReads)
@@ -3052,6 +3435,15 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    for (const entry of this.watches.values()) entry.watcher.dispose();
+    this.watches.clear();
+    for (const watcher of this.sourceWatches.values()) watcher.dispose();
+    this.sourceWatches.clear();
+    for (const job of this.managerScans.values()) job.controller.abort();
+    this.managerScans.clear();
+    this.managerOwners.clear();
+    this.managerRescanPending.clear();
+    this.invalidationListeners.clear();
     this.runner.dispose();
     this.ai.disable();
     this.patches.clear();
@@ -3063,6 +3455,7 @@ export class RepositoryService {
     this.ownerGenerations.clear();
     this.restorePromises.clear();
     this.sessions.clear();
+    this.sessionGenerations.clear();
     this.managerRepositoryPaths.clear();
     this.mutationQueues.clear();
     this.topologyKeys.clear();
@@ -3215,12 +3608,15 @@ export class RepositoryService {
     const head = await this.discoverHead(directory);
     const workingTree = await this.inspectWorkingTree(bare ? null : worktreePath);
     const displayPath = worktreePath ?? commonDir;
+    const alias = (await this.managerStore.configuration()).repositories.find(
+      (entry) => entry.path === displayPath,
+    )?.name;
     const id = this.repositoryId(worktreePath, commonDir);
 
     const summary: RepositorySummary = {
       trusted: await this.trust.isTrusted(commonDir),
       id,
-      name: (displayName ?? basename(displayPath)) || displayPath,
+      name: alias || displayName || basename(displayPath) || displayPath,
       path: displayPath,
       worktreePath,
       gitDir: absoluteGitDir,
@@ -3317,6 +3713,8 @@ export class RepositoryService {
     await this.ensureSessions(ownerId);
     const ownerSessions = this.sessions.get(ownerId);
     const cached = ownerSessions?.get(id);
+    const generation = this.sessionGenerations.get(`${ownerId}:${id}`) ?? 0;
+    const ownerGeneration = this.ownerGenerations.get(ownerId);
     if (!ownerSessions || !cached) {
       throw new ExpectedBackendError(
         'REPOSITORY_NOT_OPEN',
@@ -3344,7 +3742,17 @@ export class RepositoryService {
         'That repository is no longer open in this window.',
       );
     }
-    ownerSessions.set(id, summary);
+    if (
+      this.ownerGenerations.get(ownerId) !== ownerGeneration ||
+      !this.sessions.get(ownerId)?.has(id) ||
+      generation !== (this.sessionGenerations.get(`${ownerId}:${id}`) ?? 0)
+    )
+      throw new ExpectedBackendError(
+        'REPOSITORY_NOT_OPEN',
+        'That repository tab was closed while it was being read.',
+      );
+    // This request owns its read snapshot. listOpen owns the published tab summary; writing this
+    // snapshot back could roll its HEAD/trust/name backwards after a newer refresh or mutation.
     return summary;
   }
 
@@ -3527,6 +3935,7 @@ export class RepositoryService {
   }
 
   private async remember(summary: RepositorySummary): Promise<void> {
+    await this.managerStore.remember(summary.path);
     await this.store.add({
       id: summary.id,
       name: summary.name,
@@ -3537,8 +3946,14 @@ export class RepositoryService {
 
   private addSession(ownerId: number, summary: RepositorySummary): void {
     const ownerSessions = this.sessions.get(ownerId) ?? new Map<string, RepositorySummary>();
+    if (!ownerSessions.has(summary.id))
+      this.sessionGenerations.set(
+        `${ownerId}:${summary.id}`,
+        (this.sessionGenerations.get(`${ownerId}:${summary.id}`) ?? 0) + 1,
+      );
     ownerSessions.set(summary.id, summary);
     this.sessions.set(ownerId, ownerSessions);
+    this.watchRepository(ownerId, summary);
   }
 
   private listOpenCached(ownerId: number): RepositorySummary[] {
@@ -3578,7 +3993,10 @@ export class RepositoryService {
     }
     if (this.ownerGenerations.get(ownerId) === generation) {
       this.sessions.set(ownerId, restored);
-      for (const summary of restored.values()) void this.refreshBackgroundFetch(ownerId, summary);
+      for (const summary of restored.values()) {
+        this.watchRepository(ownerId, summary);
+        void this.refreshBackgroundFetch(ownerId, summary);
+      }
     }
   }
 
@@ -3589,6 +4007,7 @@ export class RepositoryService {
 
   private async scanSource(
     sourceDirectory: SourceDirectoryRecord,
+    signal?: AbortSignal,
   ): Promise<SourceScanResult & { readonly status: RepositoryManagerSourceDirectory['status'] }> {
     const status = await this.sourceDirectoryStatus(sourceDirectory.path);
     if (status !== 'available') {
@@ -3602,7 +4021,7 @@ export class RepositoryService {
       };
     }
 
-    const scan = await scanSourceDirectory(sourceDirectory.path, this.sourceScanOptions);
+    const scan = await scanSourceDirectory(sourceDirectory.path, this.sourceScanOptions, signal);
     return { ...scan, status: scan.rootReadable ? 'available' : 'unreadable' };
   }
 

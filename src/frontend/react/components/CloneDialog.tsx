@@ -11,16 +11,18 @@ export function CloneDialog({
   operations,
   onClose,
   initialTarget,
+  defaultParentPath,
   onBrowseHosted,
 }: {
   readonly platform: Platform;
   readonly operations: readonly RepositoryOperation[];
   readonly onClose: () => void;
   readonly initialTarget?: HostingCloneTarget | undefined;
+  readonly defaultParentPath?: string | undefined;
   readonly onBrowseHosted: () => void;
 }) {
   const [url, setUrl] = useState(initialTarget?.url ?? '');
-  const [parentPath, setParentPath] = useState('');
+  const [parentPath, setParentPath] = useState(defaultParentPath ?? '');
   const [name, setName] = useState(initialTarget?.name ?? '');
   const nameEdited = useRef(false);
   const [accepted, setAccepted] = useState<RepositoryOperation>();

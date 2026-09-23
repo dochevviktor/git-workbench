@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { opendir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -47,6 +47,7 @@ const defaultOptions: Required<SourceScanOptions> = {
 export async function scanSourceDirectory(
   sourcePath: string,
   options: SourceScanOptions = {},
+  signal?: AbortSignal,
 ): Promise<SourceScanResult> {
   const limits = { ...defaultOptions, ...options };
   const repositories: SourceScanRepository[] = [];
@@ -72,10 +73,20 @@ export async function scanSourceDirectory(
   };
 
   const visit = async (directory: string, depth: number): Promise<void> => {
-    let entries: Dirent[];
+    signal?.throwIfAborted();
+    const entries: Dirent[] = [];
     try {
-      entries = await readdir(directory, { withFileTypes: true });
+      const stream = await opendir(directory);
+      for await (const entry of stream) {
+        signal?.throwIfAborted();
+        if (entries.length >= limits.maxEntries - scannedEntries) {
+          markLimit(directory, 'The source scan reached its entry limit.');
+          break;
+        }
+        entries.push(entry);
+      }
     } catch {
+      signal?.throwIfAborted();
       if (directory === sourcePath) rootReadable = false;
       addWarning({
         code: 'unreadable',
@@ -114,6 +125,7 @@ export async function scanSourceDirectory(
     }
 
     for (const entry of sortEntries(entries)) {
+      signal?.throwIfAborted();
       if (scannedEntries >= limits.maxEntries) {
         markLimit(directory, 'The source scan reached its safety limit.');
         return;

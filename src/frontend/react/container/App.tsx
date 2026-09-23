@@ -54,6 +54,7 @@ import { StashDialogs } from '../components/StashDialogs';
 import type { StashDialogRequest } from '../components/StashDialogs';
 import type { ReferenceDialogRequest, ReferenceTarget } from '../components/ReferenceDialogs';
 import { RepositoryManagerView } from '../components/RepositoryManagerView';
+import { InitializeDialog } from '../components/InitializeDialog';
 import { RepositorySidebar } from '../components/RepositorySidebar';
 import { SettingsDialog } from '../components/SettingsDialog';
 import type { RepositorySummary } from '../../../common/ipc/contracts';
@@ -138,7 +139,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     retry: retryRepositories,
     refreshOpen,
     openExisting,
-    initialize,
     openRecent,
     closeRepository,
     closeRepositoryTabs,
@@ -153,6 +153,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     select,
     setTabOrientation,
   } = repositories;
+  const [initializeOpen, setInitializeOpen] = useState(false);
+  const initialize = useCallback(() => setInitializeOpen(true), []);
   // History stays loaded for the last repository tab while the Repository Manager tab is in front.
   const history = useRepositoryHistory(lastActive?.id);
   const { refresh: refreshHistory, references, setFilter: setHistoryFilter, requestReveal } = history;
@@ -168,6 +170,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     isNumberBetween(180, 520),
   );
   const [views, setViews] = useState<Readonly<Record<string, RepositoryView>>>({});
+  useEffect(() => {
+    const closed = (event: Event) => {
+      const id: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof id === 'string')
+        setViews((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)));
+    };
+    window.addEventListener('workbench-repository-closed', closed);
+    return () => window.removeEventListener('workbench-repository-closed', closed);
+  }, []);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState<{
     repository: RepositorySummary | null;
@@ -247,7 +258,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const stashes = useRepositoryStashes(lastActive?.id, refreshSignal);
   const activeRepositoryId = useRef(active?.id);
   activeRepositoryId.current = active?.id;
-  const repositoryRevision = `${lastActive?.head.name ?? ''}:${lastActive?.head.commit ?? ''}:${lastActive?.referenceVersion ?? ''}`;
+  const repositoryRevision = `${lastActive?.id ?? ''}:${lastActive?.head.name ?? ''}:${lastActive?.head.commit ?? ''}:${lastActive?.referenceVersion ?? ''}:${repositories.invalidations[lastActive?.id ?? ''] ?? 0}`;
   const lastRevision = useRef(repositoryRevision);
   useEffect(() => {
     if (lastRevision.current === repositoryRevision) return;
@@ -2744,6 +2755,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onCancelOperation={cancelOperation}
       />
       {tabStrip('horizontal')}
+      {!managerActive &&
+        (repositories.recovery.tabs.length > 0 || repositories.recovery.settings.length > 0) && (
+          <div className="workspace-recovery-notice" role="status">
+            Some saved workspace items need attention.{' '}
+            <button className="link-button" onClick={openManagerTab}>
+              Open Workspace Recovery
+            </button>
+          </div>
+        )}
       {active && active.trusted === false && (
         <RepositoryTrustControl key={active.id} repository={active} onChanged={refresh} />
       )}
@@ -2766,6 +2786,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             gitInfo={gitInfo}
             loading={repositoriesLoading}
             busy={repositoryBusy}
+            scan={repositories.scan}
+            recovery={repositories.recovery}
+            onChanged={() => void retryRepositories()}
             onOpenPath={(path) => void openRecent(path)}
             onSwitchTo={select}
             onOpenExisting={() => void openExisting()}
@@ -2775,6 +2798,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             onRescanSource={(id) => void rescanSourceDirectory(id)}
             onRemoveSource={(id) => void removeSourceDirectory(id)}
             onRemoveRecent={(id) => void removeRecent(id)}
+            onLocateRecent={(id) => void repositories.locateRecent(id)}
             onOpenInFileManager={openInFileManager}
           />
         ) : (
@@ -2934,9 +2958,22 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         />
       )}
       {aboutOpen && <AboutDialog info={info} gitInfo={gitInfo} onClose={() => setAboutOpen(false)} />}
+      {initializeOpen && (
+        <InitializeDialog
+          platform={platform}
+          onClose={() => setInitializeOpen(false)}
+          onCreated={(repository) => {
+            setInitializeOpen(false);
+            void openRecent(repository.path);
+          }}
+        />
+      )}
       {cloneOpen && (
         <CloneDialog
           platform={platform}
+          defaultParentPath={
+            manager?.sourceDirectories.find((source) => source.id === manager.defaultSourceId)?.path
+          }
           operations={operations}
           initialTarget={hostedCloneTarget}
           onClose={() => {

@@ -119,6 +119,7 @@ describe('IPC sender and window lifecycle', () => {
     const service = {
       disposeWindow: vi.fn(),
       subscribeOperations: () => releaseOperations,
+      subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
     const hosting = { cancel: vi.fn() } as unknown as HostingService;
     const ipc = registerAppIpc(service, hosting);
@@ -167,6 +168,7 @@ describe('IPC sender and window lifecycle', () => {
     const service = {
       disposeWindow: vi.fn(),
       subscribeOperations: () => releaseOperations,
+      subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
     const ipc = registerAppIpc(service);
     const parent = new TestWindow(62);
@@ -198,6 +200,7 @@ describe('IPC sender and window lifecycle', () => {
       },
       disposeWindow: vi.fn(),
       subscribeOperations: () => () => undefined,
+      subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
     const ipc = registerAppIpc(service);
     const window = new TestWindow(50);
@@ -273,6 +276,7 @@ describe('IPC sender and window lifecycle', () => {
     const service = {
       disposeWindow: vi.fn(),
       subscribeOperations: () => () => undefined,
+      subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
     const ipc = registerAppIpc(service);
     const inspector = new TestWindow(8);
@@ -448,6 +452,7 @@ describe('IPC sender and window lifecycle', () => {
       resolveLocation,
       disposeWindow: vi.fn(),
       subscribeOperations: vi.fn(() => () => undefined),
+      subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
     const ipc = registerAppIpc(service);
     const window = new TestWindow(4);

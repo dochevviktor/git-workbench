@@ -118,6 +118,12 @@ export const repositoryIdSchema = z.string().regex(/^repo-[a-f0-9]{64}$/);
 export const sourceDirectoryIdSchema = z.string().regex(/^source-[a-f0-9]{64}$/);
 export const repositoryManagerFolderIdSchema = z.string().regex(/^folder-[a-f0-9]{64}$/);
 export const repositoryManagerRepositoryIdSchema = z.string().regex(/^manager-repo-[a-f0-9]{64}$/);
+export const repositoryGroupIdSchema = z.string().uuid();
+export const repositoryGroupSchema = z.strictObject({
+  id: repositoryGroupIdSchema,
+  name: z.string().trim().min(1).max(100),
+  parentId: repositoryGroupIdSchema.nullable(),
+});
 export const gitObjectIdSchema = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
 
 export const repositoryHeadSchema = z.strictObject({
@@ -207,13 +213,15 @@ export const repositoryManagerFolderSchema = z.strictObject({
 
 export const repositoryManagerRepositorySchema = z.strictObject({
   id: repositoryManagerRepositoryIdSchema,
-  sourceDirectoryId: sourceDirectoryIdSchema,
+  sourceDirectoryId: sourceDirectoryIdSchema.nullable(),
   folderId: repositoryManagerFolderIdSchema.nullable(),
   name: z.string().min(1).max(512),
   path: repositoryPathSchema,
   relativePath: z.string().max(32_768),
   kind: z.enum(['worktree', 'bare']),
   sessionId: repositoryIdSchema.nullable(),
+  groupId: repositoryGroupIdSchema.nullable().optional(),
+  status: sourceDirectoryStatusSchema.optional(),
 });
 
 export const repositoryManagerWarningSchema = z.strictObject({
@@ -227,7 +235,87 @@ export const repositoryManagerSnapshotSchema = z.strictObject({
   folders: z.array(repositoryManagerFolderSchema).max(20_000),
   repositories: z.array(repositoryManagerRepositorySchema).max(5_000),
   warnings: z.array(repositoryManagerWarningSchema).max(100),
+  groups: z.array(repositoryGroupSchema).max(200).default([]),
+  defaultSourceId: sourceDirectoryIdSchema.nullable().default(null),
 });
+
+export const repositoryManagerScanSchema = z.strictObject({
+  generation: z.number().int().nonnegative(),
+  state: z.enum(['idle', 'scanning', 'complete', 'cancelled', 'failed']),
+  snapshot: repositoryManagerSnapshotSchema.nullable(),
+  error: z.string().max(512).nullable(),
+});
+export const repositoryManagerLocationSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('recent'), id: repositoryIdSchema }),
+  z.strictObject({ kind: z.literal('manager-repository'), id: repositoryManagerRepositoryIdSchema }),
+]);
+export const repositoryManagerActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('add-source'), path: repositoryPathSchema }),
+  z.strictObject({
+    kind: z.literal('add-group'),
+    name: z.string().trim().min(1).max(100),
+    parentId: repositoryGroupIdSchema.nullable(),
+  }),
+  z.strictObject({
+    kind: z.literal('rename-group'),
+    id: repositoryGroupIdSchema,
+    name: z.string().trim().min(1).max(100),
+  }),
+  z.strictObject({
+    kind: z.literal('move-group'),
+    id: repositoryGroupIdSchema,
+    parentId: repositoryGroupIdSchema.nullable(),
+  }),
+  z.strictObject({ kind: z.literal('remove-group'), id: repositoryGroupIdSchema }),
+  z.strictObject({
+    kind: z.literal('edit-repository'),
+    location: repositoryManagerLocationSchema,
+    name: z.string().trim().max(512),
+    groupId: repositoryGroupIdSchema.nullable(),
+  }),
+  z.strictObject({ kind: z.literal('set-default-source'), id: sourceDirectoryIdSchema.nullable() }),
+]);
+export const repositoryManagerOverviewSchema = z.strictObject({
+  name: z.string().max(512),
+  path: repositoryPathSchema,
+  workingTree: repositoryWorkingTreeSchema,
+  commitCount: z.number().int().nonnegative().nullable(),
+  firstCommitAt: z.string().nullable(),
+  lastCommitAt: z.string().nullable(),
+  branches: z
+    .array(z.strictObject({ name: z.string(), subject: z.string(), author: z.string(), date: z.string() }))
+    .max(20),
+  tags: z
+    .array(z.strictObject({ name: z.string(), subject: z.string(), author: z.string(), date: z.string() }))
+    .max(20),
+  remotes: z.array(z.strictObject({ name: z.string(), url: z.string() })).max(100),
+});
+export const workspaceRecoverySchema = z.strictObject({
+  tabs: z
+    .array(
+      z.strictObject({
+        id: repositoryIdSchema,
+        path: repositoryPathSchema,
+        name: z.string(),
+        reason: z.string(),
+      }),
+    )
+    .max(20),
+  settings: z.array(z.strictObject({ name: z.string(), path: repositoryPathSchema })).max(100),
+});
+export const recoverRepositoryTabSchema = z.strictObject({
+  id: repositoryIdSchema,
+  path: repositoryPathSchema.nullable(),
+});
+export const repositoryInvalidationSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('repository'),
+    id: repositoryIdSchema,
+    revision: z.number().int().nonnegative(),
+    watching: z.enum(['active', 'fallback']),
+  }),
+  z.strictObject({ kind: z.literal('manager'), revision: z.number().int().nonnegative() }),
+]);
 
 export const gitInfoSchema = z.strictObject({
   status: z.enum(['available', 'missing', 'unsupported', 'error']),
@@ -2450,6 +2538,30 @@ export const requests = {
   ),
   removeRecentRepository: request('repository:remove-recent', repositorySessionSchema, z.null()),
   listRepositoryManager: request('repository-manager:list', z.undefined(), repositoryManagerSnapshotSchema),
+  startRepositoryManagerScan: request(
+    'repository-manager:start-scan',
+    z.undefined(),
+    repositoryManagerScanSchema,
+  ),
+  getRepositoryManagerScan: request(
+    'repository-manager:get-scan',
+    z.undefined(),
+    repositoryManagerScanSchema,
+  ),
+  cancelRepositoryManagerScan: request('repository-manager:cancel-scan', z.undefined(), z.null()),
+  editRepositoryManager: request('repository-manager:edit', repositoryManagerActionSchema, z.null()),
+  getRepositoryManagerOverview: request(
+    'repository-manager:overview',
+    repositoryManagerLocationSchema,
+    repositoryManagerOverviewSchema,
+  ),
+  getWorkspaceRecovery: request('repository:get-workspace-recovery', z.undefined(), workspaceRecoverySchema),
+  recoverRepositoryTab: request(
+    'repository:recover-tab',
+    recoverRepositoryTabSchema,
+    repositorySummarySchema.nullable(),
+  ),
+  revealWorkspaceStorage: request('repository:reveal-workspace-storage', z.undefined(), z.null()),
   addSourceDirectory: request(
     'repository-manager:add-source-directory',
     sourceDirectoryRequestSchema,
@@ -2749,6 +2861,7 @@ export const events = {
   settingsChanged: { channel: 'settings:changed', payload: z.null() },
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
   repositoryActivated: { channel: 'repository:activated', payload: repositorySummarySchema },
+  repositoryInvalidated: { channel: 'repository:invalidated', payload: repositoryInvalidationSchema },
   repositoryOperationChanged: {
     channel: 'repository:operation-changed',
     payload: repositoryOperationSchema,
@@ -2777,6 +2890,14 @@ export type RepositoryManagerFolder = z.infer<typeof repositoryManagerFolderSche
 export type RepositoryManagerRepository = z.infer<typeof repositoryManagerRepositorySchema>;
 export type RepositoryManagerWarning = z.infer<typeof repositoryManagerWarningSchema>;
 export type RepositoryManagerSnapshot = z.infer<typeof repositoryManagerSnapshotSchema>;
+export type RepositoryGroup = z.infer<typeof repositoryGroupSchema>;
+export type RepositoryManagerAction = z.infer<typeof repositoryManagerActionSchema>;
+export type RepositoryManagerLocation = z.infer<typeof repositoryManagerLocationSchema>;
+export type RepositoryManagerOverview = z.infer<typeof repositoryManagerOverviewSchema>;
+export type RepositoryManagerScan = z.infer<typeof repositoryManagerScanSchema>;
+export type WorkspaceRecovery = z.infer<typeof workspaceRecoverySchema>;
+export type RecoverRepositoryTab = z.infer<typeof recoverRepositoryTabSchema>;
+export type RepositoryInvalidation = z.infer<typeof repositoryInvalidationSchema>;
 export type RepositoryOpenRequest = z.infer<typeof repositoryOpenSchema>;
 export type RepositoryInitializeRequest = z.infer<typeof repositoryInitializeSchema>;
 export type RepositorySession = z.infer<typeof repositorySessionSchema>;

@@ -78,6 +78,22 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   }>({ repositoryId: undefined, mode: 'normal' });
   const [reveal, setReveal] = useState<HistoryRevealRequest>();
   const sessions = useRef(new Map<string, HistorySession>());
+  useEffect(() => {
+    const close = (event: Event) => {
+      const id: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof id !== 'string') return;
+      sessions.current.delete(id);
+      setOwnedFilter((current) =>
+        current.repositoryId === id ? { repositoryId: undefined, filter: allHistoryFilter } : current,
+      );
+      setOwnedMode((current) =>
+        current.repositoryId === id ? { repositoryId: undefined, mode: 'normal' } : current,
+      );
+      if (id === repositoryId) generation.current++;
+    };
+    window.addEventListener('workbench-repository-closed', close);
+    return () => window.removeEventListener('workbench-repository-closed', close);
+  }, [repositoryId]);
   const revealToken = useRef(0);
   const generation = useRef(0);
   const mounted = useRef(true);

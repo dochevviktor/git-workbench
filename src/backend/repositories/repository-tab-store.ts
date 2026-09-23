@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute } from 'node:path';
 import { z } from 'zod';
+import { ExpectedBackendError } from '../errors';
 import {
   repositoryIdSchema,
   repositoryPathSchema,
@@ -79,7 +80,12 @@ export class RepositoryTabStore {
       if (existingIndex >= 0) {
         this.tabs![existingIndex] = tab;
       } else {
-        this.tabs = [...(this.tabs ?? []), tab].slice(-this.maxTabs);
+        if ((this.tabs ?? []).length >= this.maxTabs)
+          throw new ExpectedBackendError(
+            'OPERATION_FAILED',
+            'Close or remove a saved repository tab before opening another.',
+          );
+        this.tabs = [...(this.tabs ?? []), tab];
       }
       await this.save();
     });
@@ -106,6 +112,28 @@ export class RepositoryTabStore {
       await this.load();
       if (this.activeRepositoryId === id) return;
       this.activeRepositoryId = id;
+      await this.save();
+    });
+  }
+
+  async forget(id: string): Promise<void> {
+    await this.mutate(async () => {
+      await this.load();
+      this.tabs = this.tabs!.filter((tab) => tab.id !== id);
+      this.recentlyClosed = this.recentlyClosed.filter((tab) => tab.id !== id);
+      if (this.activeRepositoryId === id) this.activeRepositoryId = this.tabs[0]?.id ?? null;
+      await this.save();
+    });
+  }
+
+  async replace(id: string, replacement: RepositoryTabRecord): Promise<void> {
+    await this.mutate(async () => {
+      await this.load();
+      this.tabs = this.tabs!.filter((tab) => tab.id !== replacement.id).map((tab) =>
+        tab.id === id ? replacement : tab,
+      );
+      this.recentlyClosed = this.recentlyClosed.filter((tab) => tab.id !== id && tab.id !== replacement.id);
+      if (this.activeRepositoryId === id) this.activeRepositoryId = replacement.id;
       await this.save();
     });
   }

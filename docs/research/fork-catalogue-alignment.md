@@ -9,6 +9,24 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P02 implementation (2026-09-23): the [repository-session handoff](../reviews/p02-repository-sessions.md)
+closes repository sessions/persistence/manager requirements for Linux. Its before/after comparison uses
+`P0-004-close-restore-subcase:F1`, `P0-004-reorder-subcase:F1–F2`,
+`P0-005-tab-sidebar-subcase:F1`, `P2-015-layout-selection-restart-subcase:F1–F4`,
+`P2-016:F1` and `P1-012-local-clone-subcase:F1–F3`, with original screenshots/cases/Git evidence.
+Confidence is high for those observed Windows 2.22.0.0 states; no watcher mechanism or latency is inferred.
+P0-002's pristine-manager gap remains. Existing public images
+[Summary](https://fork.dev/images/carousel/carousel_repomanagerWin1.jpg) and
+[Statistics](https://fork.dev/images/carousel/carousel_repomanagerWin2.jpg) supplement its tree/title/path/
+Open/metadata/branch/tag composition (Windows, light, version/date unstated, accessed 2026-09-23).
+The [1.0.79 article](https://git-fork.com/blog/posts/fork-1.0.79/) (2019-06-12, Mac) documents source
+hierarchy/rescan/default outcomes. Logical metadata folders/aliases, default-source context action,
+scan jobs/limits, filesystem invalidation, missing/corrupt recovery and the single Workspace heading
+are explicit project choices; Statistics retains its F35 inspector. Normal close/reopen now resets
+selection to HEAD/Commit, while switching retains per-repository presentation and durable drafts.
+Manager light/dark/880×600 captures are compared in the handoff; private evidence remains unchanged.
+P12 named workspaces/multiple windows and P14 native-platform/scaling gates are not promoted.
+
 P01 implementation (2026-09-22): the [infrastructure handoff](../reviews/p01-infrastructure.md) closes
 the phase's Git discovery/capabilities, runner, operation registry, cancellation, common-directory queues,
 trust policy and fixture requirements for the Linux baseline. Activity was compared before/after with

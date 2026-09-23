@@ -242,6 +242,35 @@ unknown behavior or public-only research are historical wherever the current cat
 above supersedes them. They are not new parity claims. In particular, initial vertical-tab assumptions,
 blank-message tag behavior and blanket persistence rules must not be reused as requirements.
 
+### P02 completion and F01–F03 source refresh — 2026-09-23
+
+P02's Linux repository/session scope is now complete within the
+[P02 handoff](../reviews/p02-repository-sessions.md). It covers manager logical folders/display aliases,
+default sources and real summaries, cancellable bounded discovery, backend filesystem invalidation,
+session/read ownership, init/clone/CLI routes, persistent drafts/preferences and missing/corrupt settings
+recovery. Broader F01 authentication/provider validation remains P05; F02/F03 named workspaces and
+native platform extensions remain P12/P14.
+
+**B, high confidence:** Windows 2.22.0.0 `P0-004-close-restore-subcase:F1`,
+`P0-004-reorder-subcase:F1–F2`, `P0-005-tab-sidebar-subcase:F1`,
+`P2-015-layout-selection-restart-subcase:F1–F4`, `P2-016:F1`, and
+`P1-012-local-clone-subcase:F1–F3` establish the captured tab, restart, refresh and local-clone states.
+Their original cases/screenshots and linked Git snapshots remain primary. No watcher implementation or
+latency is inferred from those observations, and P0-002's pristine manager gap stays unresolved.
+
+**O/D, accessed 2026-09-23:** the official undated/unversioned light Windows
+[manager Summary image](https://fork.dev/images/carousel/carousel_repomanagerWin1.jpg) and
+[Statistics image](https://fork.dev/images/carousel/carousel_repomanagerWin2.jpg), already listed in the
+public asset manifest, guide the tree, title/path/Open, metadata and branch/tag rows. The
+[1.0.79 Mac article](https://git-fork.com/blog/posts/fork-1.0.79/) (2019-06-12) documents source hierarchy
+import/rescan/default selection. These give high confidence for pictured presentation and advertised
+outcomes, without establishing exact Windows folder-edit behavior or Linux support. The Linux metadata
+editor, resource limits, source-default context action, recovery controls and watcher policy are **I**
+choices. Statistics keeps its existing F35 inspector. Light/dark/880×600 comparisons and test evidence
+are in the handoff; no private bundle assets changed or entered the application.
+
+The older F01–F03 slices below are historical where this completion record supersedes them.
+
 ### F01 source refresh
 
 Accessed **2026-09-16**. The [Fork product page][home] explicitly advertises creating, cloning, or
@@ -934,9 +963,9 @@ F38's dated handoff records an independently specified local workflow; Fork exec
 
 | ID  | Target                                                                                | Evidence                                                                             | Project status (2026-09-20)                                                                                                                                                                                                        | Owner                         |
 | --- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| F01 | Initialize/open/clone/recent repositories                                             | D: [product][home]; B: P0-002, P1-012                                                | Partial; clone/Test Connection and CLI opening verified; live auth/platform variants remain                                                                                                                                        | P02, P05 / C03                |
-| F02 | Manager hierarchy, source directories and discovery                                   | D: [manager][manager], [releases][win]; B: P0-002 (opening only)                     | Partial; bounded scans and visible-manager rediscovery; custom grouping/scan jobs remain                                                                                                                                           | P02, P12                      |
-| F03 | Horizontal tabs, optional workspace repository list, dirty indicators, reorder/reopen | D: [releases][win]; B: P0-004–005, P2-015                                            | Partial; additive list, reorder/reopen and persistence verified; workspace polish remains                                                                                                                                          | P02, P12 / C01                |
+| F01 | Initialize/open/clone/recent repositories                                             | D: [product][home]; B: P0-002, P1-012                                                | P02 complete for Linux (2026-09-23): open/init/clone/recent/session recovery verified; P05/P14 provider and platform matrix remains                                                                                                | P02, P05 / C03                |
+| F02 | Manager hierarchy, source directories and discovery                                   | D: [manager][manager], [releases][win]; B: P0-002 (opening only)                     | P02 complete for Linux (2026-09-23): hierarchy, aliases, default sources, summaries, scan jobs and discovery verified; P12 workspace extensions remain                                                                             | P02, P12                      |
+| F03 | Horizontal tabs, optional workspace repository list, dirty indicators, reorder/reopen | D: [releases][win]; B: P0-004–005, P2-015                                            | P02 complete for Linux (2026-09-23): additive list, order/reopen, watchers, isolated state and restart recovery verified; P12 workspace extensions remain                                                                          | P02, P12 / C01                |
 | F04 | History graph, labels, authors, hashes, dates and selection                           | O: [history][history-image]; B: P0-003, P0-006–007, P2-017                           | Partial; virtualized/direct navigation and backend scale verified; browser performance remains                                                                                                                                     | P03 / C01                     |
 | F05 | Graph merge collapse/expand                                                           | D: [graph][graph]; no focused catalogue trial                                        | Partial; collapse/connectivity regressions verified with new paging                                                                                                                                                                | P03                           |
 | F06 | Ref/file filters and scoped commit/path/content search                                | D: [diff][diff], [releases][mac]; B: P1-029                                          | Partial; four captured fields/scopes/highlights verified; query-history/hash extension remain                                                                                                                                      | P03, P08 / C05                |

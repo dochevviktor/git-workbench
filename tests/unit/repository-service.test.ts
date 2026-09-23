@@ -442,7 +442,11 @@ describe('repository service', () => {
     expect(firstSnapshot.repositories.map((repository) => repository.path)).toEqual(
       expect.arrayContaining([teamRepository, secondTeamRepository, bareRepository]),
     );
-    expect(firstSnapshot.repositories.map((repository) => repository.path)).not.toContain(outsideRepository);
+    // Explicitly opened repositories remain listed independently of source discovery; the symlink
+    // must not import this repository into the source tree.
+    expect(
+      firstSnapshot.repositories.find((repository) => repository.path === outsideRepository),
+    ).toMatchObject({ sourceDirectoryId: null });
     expect(firstSnapshot.repositories.find((repository) => repository.path === alpha.path)?.sessionId).toBe(
       alpha.id,
     );
@@ -474,7 +478,7 @@ describe('repository service', () => {
     expect(overlapping.sourceDirectories.map((sourceDirectory) => sourceDirectory.repositoryCount)).toEqual([
       2, 1,
     ]);
-    expect(overlapping.repositories).toHaveLength(3);
+    expect(overlapping.repositories).toHaveLength(4);
     await reopened.removeSourceDirectory(overlapping.sourceDirectories[0]!.id);
     const secondSource = join(directory, 'second source');
     await mkdir(secondSource);
@@ -488,8 +492,10 @@ describe('repository service', () => {
     await expect(reopened.listManager(2)).resolves.toMatchObject({
       sourceDirectories: [],
       folders: [],
-      repositories: [],
     });
+    expect((await reopened.listManager(2)).repositories).toHaveLength(4);
+    service.dispose();
+    reopened.dispose();
   });
 
   it('reports missing roots and bounds source scans without following links', async () => {

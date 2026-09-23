@@ -1,5 +1,26 @@
 # Architecture and implementation decisions
 
+P02 completion (2026-09-23): the [repository-session handoff](reviews/p02-repository-sessions.md)
+supersedes the initial F01–F03 descriptions below. Profile-owned manager configuration now stores
+logical folders, display aliases and a default source, with version-1 migration. The renderer uses
+named validated scan start/status/cancel and metadata/overview/recovery capabilities; source discovery
+stays asynchronous and filesystem-only. Backend-issued locations retain owner checks, and inspectors
+cannot invoke these capabilities. Missing-tab recovery replaces the saved slot, preserves order and
+aliases, and leaves trust attached to the original canonical identity.
+
+Shared, bounded native watchers invalidate worktree/common-Git/source state through owner-scoped events.
+Debounce, topology reconciliation, inode replacement, fallback polling and disposal are backend-owned.
+Session generations prevent reads from reviving closed/reopened tabs; published summaries are updated
+by the tab refresh path, without writeback from unrelated reads. Renderer caches retain selection/scroll
+only within an open session and clear on close. Existing drafts and presentation keys read legacy values,
+write versioned atomic localStorage entries, and retain invalid originals for recovery. This keeps the
+application origin stable. Recent/profile writes serialize with atomic replacement and schema validation.
+
+The asset-protocol evaluation retains the existing application document and narrow content DTOs:
+repository files never become navigable privileged documents. Text is inert, raster data is allowlisted,
+and exact document/frame/owner checks, CSP, sandboxing and context isolation are unchanged. A future
+streaming protocol would require a separate token/owner/type allowlist and renderer-origin migration.
+
 Status: foundation, the local F01 repository slice, the first F02 manager scan slice, the initial
 F03 tab slice, the initial F04 history/selection slice, the initial F07 revision-inspection slice, the
 initial F08 working-changes slice, the initial F09 text-diff slice, the initial F10 staging slice, the
@@ -465,9 +486,10 @@ permits Vite's local WebSocket and inline refresh/style bootstrap. Remote conten
 the privileged application window. Repository text and metadata must remain text, including SVG/HTML
 files and commit messages. New image or syntax-rendering features require a review of their rendering path.
 
-The current local bundle is loaded through `file:` with exact document authorization. Before handling
-arbitrary repository content, P02 must evaluate a restricted custom asset protocol to reduce file-origin
-exposure; repository files must never become navigable privileged documents.
+The current local bundle is loaded through `file:` with exact document authorization. P02's
+[asset-boundary evaluation](reviews/p02-repository-sessions.md#asset-boundary-evaluation) retains bounded
+content DTOs and inert text/allowlisted raster rendering. No repository-serving protocol is needed for
+these workflows; repository files never become navigable privileged documents.
 
 The main process owns the single-instance lock, startup failures, native menus, window restoration, and
 macOS activation behavior. Closing the last window quits on Linux/Windows and leaves macOS activation
@@ -519,7 +541,7 @@ active selection, and orientation; its status probe uses bounded NUL-delimited p
 disables Git's fsmonitor and untracked-cache helpers. The first F02 manager slice uses a separate
 versioned source-root store and a bounded filesystem-marker scanner; it does not execute Git, follow
 directory symlinks, or descend into a found repository. Remote clone and trust were added by later
-slices and P01; filesystem watcher invalidation remains later work. Background fetches require repository
+slices and P01; P02 now supplies filesystem invalidation as described above. Background fetches require repository
 trust and the runner's silent authentication policy; explicit network work may invoke native helpers.
 The initial F04 history service uses bounded `git log`, `for-each-ref`, and `show-ref --dereference` reads;
 the F06 slice adds only validated reference-target and literal commit-message filters to that same
@@ -667,7 +689,8 @@ and context menus are implemented.
 The F01–F16 pass adds clone/Test Connection, installed native authentication helpers, global automatic
 fetch, durable closed-tab/order/window state, author/path/diff-content search, tracked-file discard,
 tag push/details and merge modes. The bounded F19 slice adds single-commit cherry-pick/revert and
-soft/mixed/hard reset with preview/CAS and Recovery safeguards. There is still no filesystem watcher, custom manager folder editor,
+soft/mixed/hard reset with preview/CAS and Recovery safeguards. P02 adds filesystem watchers and logical
+manager folder editing. There is still no
 hash-search extension, commit-and-push, multiple-reference selection, application-managed
 credential/password dialog or secret store, full conflict-family parity, merge-preserving/dependent-ref
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting

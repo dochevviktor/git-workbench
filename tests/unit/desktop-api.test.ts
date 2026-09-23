@@ -26,6 +26,38 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates manager jobs and invalidations and removes the exact event listener', async () => {
+    const { api, emitter, invoke } = fixture();
+    const listener = vi.fn();
+    const release = api.repository.onInvalidated(listener);
+    emitter.emit(
+      events.repositoryInvalidated.channel,
+      {},
+      { kind: 'repository', id: 'invalid', revision: 1, watching: 'active' },
+    );
+    expect(listener).not.toHaveBeenCalled();
+    const event = { kind: 'repository', id: `repo-${'a'.repeat(64)}`, revision: 3, watching: 'active' };
+    emitter.emit(events.repositoryInvalidated.channel, {}, event);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(event);
+    release();
+    release();
+    expect(emitter.listenerCount(events.repositoryInvalidated.channel)).toBe(0);
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { generation: 1, state: 'scanning', snapshot: null, error: null },
+    });
+    expect(await api.repository.startManagerScan()).toMatchObject({ ok: true, value: { state: 'scanning' } });
+    expect(invoke).toHaveBeenLastCalledWith('repository-manager:start-scan', undefined);
+    invoke.mockResolvedValueOnce({ ok: true, value: { state: 'complete', path: '/etc' } });
+    expect(await api.repository.getManagerScan()).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    expect(await api.repository.editManager({ kind: 'remove-group', path: '/etc' } as never)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+  });
   it('validates Lean Branching requests and backend results through fixed channels', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;

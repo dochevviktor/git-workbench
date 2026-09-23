@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { repositorySessionMap } from '../lib/repository-session';
 import type { CSSProperties, ReactNode } from 'react';
 import type {
   RepositoryDiff,
@@ -44,7 +45,12 @@ interface DiffViewerProps {
   readonly positionKey?: string | undefined;
 }
 
-const positions = new Map<string, { top: number; left: number; line: string | undefined; offset: number }>();
+const positions = repositorySessionMap<{
+  top: number;
+  left: number;
+  line: string | undefined;
+  offset: number;
+}>();
 
 interface InlineRange {
   readonly start: number;
