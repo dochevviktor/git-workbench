@@ -376,7 +376,7 @@ export function ChangesView({
   );
   const [filesWidth, setFilesWidth] = usePersistentState(
     'changes.filesWidth',
-    380,
+    280,
     isNumberBetween(200, 1600),
   );
   const [unstagedHeight, setUnstagedHeight] = usePersistentState(
@@ -393,6 +393,20 @@ export function ChangesView({
   const [conflictPath, setConflictPath] = useState<string>();
   const [discard, setDiscard] = useState<DiscardRequest>();
   const viewRef = useRef<HTMLElement>(null);
+  const [viewSize, setViewSize] = useState({ width: 1000, height: 700 });
+  useEffect(() => {
+    const node = viewRef.current;
+    if (!node) return;
+    const update = () => setViewSize({ width: node.clientWidth, height: node.clientHeight });
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    update();
+    return () => observer.disconnect();
+  }, []);
+  const maximumFilesWidth = Math.max(200, Math.min(1600, viewSize.width - 320));
+  const visibleFilesWidth = Math.min(filesWidth, maximumFilesWidth);
+  const maximumUnstagedHeight = Math.max(72, viewSize.height - 140);
+  const visibleUnstagedHeight = Math.min(unstagedHeight, maximumUnstagedHeight);
   const [amend, setAmend] = usePersistentState(
     `repository.${repository.id}.commit.amend`,
     false,
@@ -838,8 +852,8 @@ export function ChangesView({
       }}
       style={
         {
-          '--changes-files-width': `${filesWidth}px`,
-          '--changes-unstaged-height': `${unstagedHeight}px`,
+          '--changes-files-width': `${visibleFilesWidth}px`,
+          '--changes-unstaged-height': `${visibleUnstagedHeight}px`,
         } as CSSProperties
       }
     >
@@ -923,9 +937,9 @@ export function ChangesView({
         <Splitter
           orientation="horizontal"
           label="Resize unstaged and staged files"
-          value={unstagedHeight}
+          value={visibleUnstagedHeight}
           minimum={72}
-          maximum={4000}
+          maximum={maximumUnstagedHeight}
           onChange={setUnstagedHeight}
         />
         <ChangesPane
@@ -980,9 +994,9 @@ export function ChangesView({
       <Splitter
         orientation="vertical"
         label="Resize local changes file list"
-        value={filesWidth}
+        value={visibleFilesWidth}
         minimum={200}
-        maximum={1600}
+        maximum={maximumFilesWidth}
         onChange={setFilesWidth}
       />
       <div className="changes-detail">
@@ -1006,7 +1020,7 @@ export function ChangesView({
               onWorkingAction={(action, lines, snapshot) => {
                 const target = workingTarget(selected, stagedByPath);
                 if (action === 'discard' && target) {
-                  setDiscard({ targets: [target], selection: lines });
+                  setDiscard({ targets: [target], selection: lines, snapshot });
                   return Promise.resolve(false);
                 }
                 return target ? applyAction(action, [target], lines, snapshot) : Promise.resolve(false);

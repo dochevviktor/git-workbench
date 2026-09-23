@@ -10,7 +10,7 @@ its panel or reloading the renderer; cancellation does not promise rollback. See
 
 F37 adds optional AI messages and diff reviews. File → AI Integration (or Preferences → Integration)
 lets you enter an OpenAI API text model ID and select a text file containing your API key. Setup is
-session-only and makes no network request. In Local Changes, Generate Message previews staged changes;
+session-only and makes no network request. In Local Changes, Commit options → Generate Message previews staged changes;
 Repository → AI Code Review previews a branch or commit range. Review the exact material and explicitly
 Send before any code leaves the machine. Generated messages are editable drafts; reviews cannot execute
 commands or change Git state. Disable forgets the app's key and cancels pending work. Provider billing
@@ -31,6 +31,12 @@ folders, display names, filtering, source discovery and a default clone folder; 
 Filesystem watchers refresh external changes. Missing repositories offer Retry/Locate, and damaged
 settings retain recoverable originals. Drafts, tab order and preferences survive restart; reopening a
 closed tab selects HEAD. See the [P02 handoff](docs/reviews/p02-repository-sessions.md) for verified scope.
+
+P04's working-changes workflow adds syntax colors, text-selection staging/unstaging/discard, one-line
+context controls and a compact composer aligned with the Windows catalogue. Commit options contains
+Signing and Generate Message. Discard previews the exact selected changes and keeps a tracked Recovery
+copy; external edits require a refresh. See the [P04 handoff](docs/reviews/p04-working-changes.md) for
+verified Git semantics, screenshots and resource limits.
 
 P03's history and revision browser is complete for the Linux baseline. Search includes Commit SHA
 (full hash or at least four prefix characters) and ten session-only recent queries. Commit summaries

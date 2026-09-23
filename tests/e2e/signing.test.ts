@@ -28,6 +28,8 @@ test('F28 signing key, signed commit, verification and signed tag through Electr
     await page.reload();
     await page.getByRole('button', { name: /^Local Changes/ }).click();
     const composer = page.getByTestId('commit-composer');
+    await composer.getByRole('button', { name: 'Commit options' }).click();
+    await page.getByRole('menuitem', { name: 'Signing…', exact: true }).click();
     await composer.getByRole('button', { name: 'Signing key…' }).click();
     let settings = page.getByRole('dialog', { name: 'Repository signing key' });
     await expect(settings).toContainText(f.fingerprint);
@@ -40,6 +42,10 @@ test('F28 signing key, signed commit, verification and signed tag through Electr
     await settings.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(settings).toHaveCount(0);
     await composer.getByRole('combobox', { name: 'Signing mode' }).selectOption('gpg');
+    await page
+      .getByRole('dialog', { name: 'Commit signing', exact: true })
+      .getByRole('button', { name: 'Done', exact: true })
+      .click();
     await composer.getByTestId('commit-subject').fill('Signed from Electron');
     await page.screenshot({ path: test.info().outputPath('f28-composer.png') });
     await composer.getByTestId('commit-submit').click();

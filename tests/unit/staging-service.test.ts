@@ -1,4 +1,16 @@
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -70,6 +82,146 @@ afterEach(async () => {
 });
 
 describe('working-change staging service', () => {
+  it('unstages only text in a staged rename with CRLF and a missing final newline', async () => {
+    const { root, git } = await fixtureRepository();
+    await git.run(['config', 'core.autocrlf', 'false'], { cwd: root });
+    const base = Array.from({ length: 30 }, (_, index) => `line ${index}`).join('\r\n');
+    await commit(git, root, 'old name.txt', base);
+    await git.run(['mv', '--', 'old name.txt', 'new name.txt'], { cwd: root });
+    const changed = base.replace('line 3\r\n', 'changed 3\r\n');
+    await writeFile(join(root, 'new name.txt'), changed);
+    await git.run(['add', '--', 'new name.txt'], { cwd: root });
+    const target = {
+      kind: 'working' as const,
+      area: 'staged' as const,
+      path: 'new name.txt',
+      previousPath: 'old name.txt',
+    };
+    const diff = await readRepositoryDiff(git, { repositoryId, cwd: root, target, whitespace: 'normal' });
+    await apply(git, root, 'unstage', target, diff.snapshot!, { kind: 'hunk', hunk: 0 });
+    expect((await git.run(['show', ':new name.txt'], { cwd: root })).stdout).toBe(base);
+    expect((await git.run(['diff', '--cached', '--name-status'], { cwd: root })).stdout).toContain(
+      'R100\told name.txt\tnew name.txt',
+    );
+    expect(await readFile(join(root, 'new name.txt'), 'utf8')).toBe(changed);
+  });
+
+  it('discards only selected deleted lines by restoring that subset with an exact preview', async () => {
+    const { root, git } = await fixtureRepository();
+    await commit(git, root, 'file.txt', 'one\ntwo\nthree\n');
+    await unlink(join(root, 'file.txt'));
+    const { diff, target } = await diffFor(git, root, 'unstaged');
+    const selection = { kind: 'lines' as const, hunk: 0, lineIndexes: [1] };
+    const preview = await previewDiscard(git, { repositoryId, cwd: root, targets: [target], selection });
+    expect(preview.files[0]!.content).toContain('-two\n');
+    await apply(git, root, 'discard', target, diff.snapshot!, selection);
+    expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe('two\n');
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe('one\ntwo\nthree\n');
+  });
+
+  it('unstages selected lines of a new file while keeping its other staged lines', async () => {
+    const { root, git } = await fixtureRepository();
+    await commit(git, root, 'base.txt', 'base\n');
+    await writeFile(join(root, 'file.txt'), 'one\ntwo\nthree\n');
+    await git.run(['add', '--', 'file.txt'], { cwd: root });
+    const { diff, target } = await diffFor(git, root, 'staged');
+    await apply(git, root, 'unstage', target, diff.snapshot!, { kind: 'lines', hunk: 0, lineIndexes: [1] });
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe('one\nthree\n');
+    expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+  });
+
+  it('partially stages text without staging an unrelated executable-bit change', async () => {
+    const { root, git } = await fixtureRepository();
+    await git.run(['config', 'core.filemode', 'true'], { cwd: root });
+    await commit(git, root, 'file.txt', 'one\ntwo\nthree\n');
+    await writeFile(join(root, 'file.txt'), 'one\nTWO\nthree\n');
+    await chmod(join(root, 'file.txt'), 0o755);
+    const { diff, target } = await diffFor(git, root, 'unstaged');
+    await apply(git, root, 'stage', target, diff.snapshot!, { kind: 'hunk', hunk: 0 });
+    expect((await git.run(['ls-files', '--stage', 'file.txt'], { cwd: root })).stdout).toMatch(/^100644 /u);
+    expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe('one\nTWO\nthree\n');
+  });
+
+  it.each(['stage', 'discard'] as const)(
+    '%s preserves a staged rename and an unrelated file recreated at its old path',
+    async (action) => {
+      const { root, git } = await fixtureRepository();
+      await commit(git, root, 'old.txt', 'rename baseline\n');
+      await git.run(['mv', '--', 'old.txt', 'new.txt'], { cwd: root });
+      await writeFile(join(root, 'new.txt'), 'rename baseline\nedit\n');
+      // Reusing the source name must never stage or discard this unrelated untracked file.
+      await writeFile(join(root, 'old.txt'), 'unrelated new work\n');
+      const target = { area: 'unstaged' as const, path: 'new.txt', previousPath: 'old.txt' };
+      const snapshot =
+        action === 'discard'
+          ? (await previewDiscard(git, { repositoryId, cwd: root, targets: [target] })).snapshot
+          : null;
+      await applyWorkingChange(git, {
+        repositoryId,
+        cwd: root,
+        action,
+        targets: [target],
+        snapshot,
+        selection: { kind: 'file' },
+      });
+      expect(await readFile(join(root, 'old.txt'), 'utf8')).toBe('unrelated new work\n');
+      expect((await git.run(['ls-files', '--', 'old.txt'], { cwd: root })).stdout).toBe('');
+      expect((await git.run(['show', ':new.txt'], { cwd: root })).stdout).toBe(
+        action === 'stage' ? 'rename baseline\nedit\n' : 'rename baseline\n',
+      );
+      expect(await readFile(join(root, 'new.txt'), 'utf8')).toBe(
+        action === 'stage' ? 'rename baseline\nedit\n' : 'rename baseline\n',
+      );
+    },
+  );
+
+  it.each(['unstage', 'discard'] as const)(
+    '%s selects either side of a replacement without absorbing its unselected partner',
+    async (action) => {
+      const { root, git } = await fixtureRepository();
+      const base = 'start\none\ntwo\nend\n';
+      const changed = 'start\nONE\nTWO\nend\n';
+      await commit(git, root, 'file.txt', base);
+      await writeFile(join(root, 'file.txt'), changed);
+      if (action === 'unstage') await git.run(['add', '--', 'file.txt'], { cwd: root });
+      const initialHead = (await git.run(['rev-parse', 'HEAD'], { cwd: root })).stdout;
+      const first = await diffFor(git, root, action === 'unstage' ? 'staged' : 'unstaged');
+      const lines = parseUnifiedDiff(first.diff.content).hunks[0]!.lines;
+      const selection = {
+        kind: 'lines' as const,
+        hunk: 0,
+        lineIndexes: [lines.findIndex((line) => line.kind === 'add' && line.text === 'ONE')],
+      };
+      if (action === 'discard') {
+        const preview = await previewDiscard(git, {
+          repositoryId,
+          cwd: root,
+          targets: [first.target],
+          selection,
+        });
+        expect(preview.files[0]!.content).not.toContain('-one\n');
+        expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe(changed);
+      }
+      await apply(git, root, action, first.target, first.diff.snapshot!, selection);
+      const readResult = async () =>
+        action === 'unstage'
+          ? (await git.run(['show', ':file.txt'], { cwd: root })).stdout
+          : readFile(join(root, 'file.txt'), 'utf8');
+      expect(await readResult()).toBe('start\nTWO\nend\n');
+      const second = await diffFor(git, root, action === 'unstage' ? 'staged' : 'unstaged');
+      const remaining = parseUnifiedDiff(second.diff.content).hunks[0]!.lines;
+      await apply(git, root, action, second.target, second.diff.snapshot!, {
+        kind: 'lines',
+        hunk: 0,
+        lineIndexes: [remaining.findIndex((line) => line.kind === 'remove' && line.text === 'one')],
+      });
+      expect(await readResult()).toBe('start\none\nTWO\nend\n');
+      expect((await git.run(['rev-parse', 'HEAD'], { cwd: root })).stdout).toBe(initialHead);
+      if (action === 'unstage') expect(await readFile(join(root, 'file.txt'), 'utf8')).toBe(changed);
+      else expect((await git.run(['show', ':file.txt'], { cwd: root })).stdout).toBe(base);
+    },
+  );
+
   it('previews multi-file discard without mutation, rejects stale bytes, and retains a recoverable copy', async () => {
     const { root, git } = await fixtureRepository();
     await git.run(['config', 'user.name', 'Discard Author'], { cwd: root });
@@ -436,6 +588,34 @@ describe('working-change staging service', () => {
     expect(stagedNames).toContain('delete.txt');
     expect(stagedNames).toContain('binary.bin');
     if (process.platform !== 'win32') expect(stagedNames).toContain('mode.txt');
+    expect((await git.run(['diff', '--exit-code'], { cwd: root })).stdout).toBe('');
+    const stagedTree = (await git.run(['write-tree'], { cwd: root })).stdout;
+    await git.run([...author, 'commit', '--quiet', '-m', 'Record all file types'], { cwd: root });
+    expect((await git.run(['rev-parse', 'HEAD^{tree}'], { cwd: root })).stdout).toBe(stagedTree);
+    // Re-create the staged set against its parent without changing any working bytes.
+    await git.run(['reset', '--soft', 'HEAD^'], { cwd: root });
+    const current = await readWorkingChanges(git, {
+      repositoryId: repositoryIdForFixture,
+      cwd: root,
+      includeUntracked: true,
+      includeIgnored: false,
+    });
+    await applyWorkingChange(git, {
+      repositoryId: repositoryIdForFixture,
+      cwd: root,
+      action: 'unstage',
+      targets: current.staged.map(({ area, path, previousPath }) => ({ area, path, previousPath })),
+      snapshot: null,
+      selection: { kind: 'file' },
+    });
+    expect((await git.run(['write-tree'], { cwd: root })).stdout).toBe(
+      (await git.run(['rev-parse', 'HEAD^{tree}'], { cwd: root })).stdout,
+    );
+    expect(await readFile(join(root, 'new name.txt'), 'utf8')).toBe('rename me\n');
+    expect(await readlink(join(root, 'link.txt'))).toBe('link-target-two.txt');
+    expect(await readFile(join(root, 'binary.bin'))).toEqual(Buffer.from([0, 1, 2, 9]));
+    await expect(lstat(join(root, 'delete.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+    if (process.platform !== 'win32') expect((await lstat(join(root, 'mode.txt'))).mode & 0o111).toBe(0o111);
   });
 
   it('stages several selected files in one action and leaves the rest alone', async () => {

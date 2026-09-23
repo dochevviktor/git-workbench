@@ -142,7 +142,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                        | P00                                   |
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                           | P01 runner/jobs                       |
 | P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                               | P02 sessions                          |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Partial; diff hover/scroll and local workflow corrections verified (2026-09-20); richer syntax/signing scope remains                                                                                       | P01 writes, P02/P03 views             |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                             | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Partial; GitHub account-backed HTTPS Git verified with authenticated local transport (2026-09-23), alongside annotated tags, clone/Test Connection and global fetch; live provider/platform matrix remains | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                             | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                                      | P06                                   |
@@ -716,6 +716,26 @@ Acceptance:
 - Repeated partial staging reconstructs the intended tree exactly, not merely a visually plausible diff.
 - Match insertion-only staging, partial-hunk focus/viewport retention, amend/cancel and merge-amend parent
   preservation to their cases. Test file/view/repository/diff-layout switches without assuming restart parity.
+
+Completion checkpoint (2026-09-23): P04 is complete for the Linux baseline within its five requirements
+and four acceptance criteria. The [P04 handoff](reviews/p04-working-changes.md) maps F08–F11 to original
+case/PNG/Git evidence, independent index/worktree/commit assertions and before/after light/dark/narrow
+captures. Added bounded inert syntax colors, text-drag line selection, paired line numbers, one-line
+context steps and a compact composer. Corrected reverse line patches, partial new/deleted-file actions,
+unintended mode staging, staged-rename target leakage and combined ignored/untracked visibility.
+External edits reject stale discard; hook failures retain subject/body and file selection. Existing
+merge-amend parents, full-file viewport/focus, popup/layout/view/repository retention and explicit bounded
+Load Diff are reverified. Signing remains available through Commit options; broader P10 signing and P05
+commit-and-push scope is not promoted.
+
+`npm run check` passes 518 tests with one existing opt-in skip; production build and P04/catalogue,
+desktop smoke, conflict, image, signing and AI scenarios pass. The full headless Electron run reports
+38 passed, two opt-in skips and four failures. Rebuilt focused P04/catalogue and both history scenarios
+pass; Quick Launch still fails and Bisect is intermittent. An untouched archive of starting commit
+`5b5637f98f4713131a2898eecaf1b6cf44cdcaa4` reproduces the same history-position, Quick Launch and Bisect
+failures. The handoff records exact results and artifact paths; the full suite is not claimed green.
+No P04 acceptance criterion is left unverified for the stated baseline. Broader public assistance,
+unobserved catalogue variants and native-platform gates remain explicitly unclaimed.
 
 ## P05 — References, remotes, and network operations
 

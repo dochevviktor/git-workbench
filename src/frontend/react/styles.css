@@ -3136,7 +3136,7 @@ p {
 .changes-view {
   display: grid;
   flex: 1;
-  grid-template-columns: min(var(--changes-files-width, 380px), calc(100% - 260px)) 1px minmax(0, 1fr);
+  grid-template-columns: min(var(--changes-files-width, 280px), calc(100% - 260px)) 1px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: var(--list-bg);
@@ -3220,7 +3220,7 @@ p {
 .commit-composer {
   display: grid;
   flex: none;
-  gap: 8px;
+  gap: 7px;
   padding: 10px 12px 12px;
   border-top: 1px solid var(--border);
   background: var(--list-bg);
@@ -3273,7 +3273,7 @@ p {
 }
 
 .composer-message textarea {
-  min-height: 52px;
+  min-height: 28px;
   padding: 6px 8px;
   resize: none;
   overflow-y: auto;
@@ -3288,7 +3288,7 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .composer-amend {

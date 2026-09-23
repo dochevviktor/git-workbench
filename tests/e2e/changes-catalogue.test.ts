@@ -85,7 +85,7 @@ test('catalogue Local Changes selection, full-file hunk focus, popup, discard an
     await expect(page.getByTestId('diff-hunk-stage')).toHaveCount(3);
     await page.screenshot({ path: testInfo.outputPath('catalogue-local-changes-before.png') });
     await page.getByRole('button', { name: 'Increase diff context', exact: true }).click();
-    await expect(page.locator('.diff-context-controls')).toContainText('6');
+    await expect(page.locator('.diff-context-controls')).toContainText('4');
     await page.getByRole('button', { name: 'Diff options', exact: true }).click();
     await page.getByRole('menuitemcheckbox', { name: 'Show Entire File', exact: true }).click();
     await expect(page.getByTestId('diff-content')).toContainText('Line 300 original');

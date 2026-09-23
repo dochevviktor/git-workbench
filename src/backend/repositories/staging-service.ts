@@ -115,7 +115,7 @@ export async function applyWorkingChange(
       current.message ?? 'Only textual changes can be selected by hunk or line.',
     );
   }
-  const patch = selectPatch(current.content, input.selection);
+  const patch = selectPatch(current.content, input.selection, input.action !== 'stage');
   if (!patch) throw new WorkingChangeActionError('Select at least one changed line.');
   if (Buffer.byteLength(patch, 'utf8') > maximumPatchBytes) {
     throw new WorkingChangeActionError('The selected patch is too large to apply safely.');
@@ -174,7 +174,7 @@ export async function previewDiscard(
       );
     files.push(
       selection && selection.kind !== 'file'
-        ? { ...diff, content: selectPatch(diff.content, selection) }
+        ? { ...diff, content: selectPatch(diff.content, selection, true) }
         : diff,
     );
   }
@@ -212,13 +212,15 @@ async function saveBeforeDiscard(
 export function selectPatch(
   content: string,
   selection: Exclude<RepositoryWorkingChangeSelection, { readonly kind: 'file' }>,
+  reverse = false,
 ): string {
   const parsed = parsePatch(content);
+  const preamble = selectedPreamble(parsed, selection, reverse);
   if (selection.kind === 'hunk') {
     const hunk = parsed.hunks[selection.hunk];
     if (!hunk)
       throw new WorkingChangeActionError('That diff hunk is no longer available. Refresh and try again.');
-    return finishPatch(parsed.preamble, [hunk.header, ...hunk.lines.map((line) => line.raw)]);
+    return finishPatch(preamble, [hunk.header, ...hunk.lines.map((line) => line.raw)]);
   }
 
   const hunk = parsed.hunks[selection.hunk];
@@ -260,13 +262,52 @@ export function selectPatch(
       index += 1;
       continue;
     }
-    output.push(...selectedGroupLines(hunk.lines, group.start, group.end, selected));
+    output.push(...selectedGroupLines(hunk.lines, group.start, group.end, selected, reverse));
     index = group.end;
   }
   const changedOutput = output.filter((line) => line.kind === 'add' || line.kind === 'remove');
   if (changedOutput.length === 0) return '';
   const header = selectedHunkHeader(hunk, output);
-  return finishPatch(parsed.preamble, [header, ...output.map((line) => line.raw)]);
+  return finishPatch(preamble, [header, ...output.map((line) => line.raw)]);
+}
+
+/** Text selections do not select a rename or mode change. Partial creations/deletions keep the file. */
+function selectedPreamble(
+  parsed: ParsedPatch,
+  selection: Exclude<RepositoryWorkingChangeSelection, { readonly kind: 'file' }>,
+  reverse: boolean,
+): readonly string[] {
+  const indexes = selection.kind === 'lines' ? new Set(selection.lineIndexes) : undefined;
+  const complete =
+    parsed.hunks.length === 1 &&
+    (selection.kind === 'hunk' ||
+      parsed.hunks[0]!.lines.every(
+        (line, index) => (line.kind !== 'add' && line.kind !== 'remove') || indexes!.has(index),
+      ));
+  const renamed = parsed.preamble.some(
+    (line) => line.startsWith('rename from ') || line.startsWith('copy from '),
+  );
+  const keepFile =
+    !complete &&
+    parsed.preamble.some((line) => line.startsWith(reverse ? 'new file mode ' : 'deleted file mode '));
+  const target = parsed.preamble.find((line) => line.startsWith(reverse ? '+++ ' : '--- '))?.slice(4);
+  if ((renamed || keepFile) && (!target || target === '/dev/null'))
+    throw new WorkingChangeActionError('Select the whole file for this metadata change.');
+  const pathFor = (prefix: 'a' | 'b') => target!.replace(/^("?)[ab]\//u, `$1${prefix}/`);
+  return parsed.preamble.flatMap((line) => {
+    if (/^(?:old mode |new mode |index )/u.test(line)) return [];
+    if (!renamed && !keepFile) return [line];
+    if (
+      /^(?:similarity index |dissimilarity index |rename |copy |new file mode |deleted file mode )/u.test(
+        line,
+      )
+    )
+      return [];
+    if (line.startsWith('diff --git ')) return [`diff --git ${pathFor('a')} ${pathFor('b')}`];
+    if (line.startsWith('--- ')) return [`--- ${pathFor('a')}`];
+    if (line.startsWith('+++ ')) return [`+++ ${pathFor('b')}`];
+    return [line];
+  });
 }
 
 function validateAction(
@@ -306,9 +347,8 @@ async function applyFileTargets(runner: StagingRunner, input: ApplyWorkingChange
     // A concurrent external edit during backup must not be overwritten.
     if ((await previewDiscard(runner, input)).snapshot !== input.snapshot)
       throw new StaleWorkingSnapshotError();
-    const paths = [
-      ...new Set(input.targets.flatMap((target) => uniquePaths(target.previousPath, target.path))),
-    ];
+    // The index already contains staged renames. Its old path may now be unrelated untracked work.
+    const paths = [...new Set(input.targets.map((target) => target.path))];
     await runMutation(runner, input.cwd, ['restore', '--worktree', '--', ...paths]);
     return;
   }
@@ -326,7 +366,11 @@ async function applyFileTargets(runner: StagingRunner, input: ApplyWorkingChange
   }
 
   const paths = [
-    ...new Set(input.targets.flatMap((target) => uniquePaths(target.previousPath, target.path))),
+    ...new Set(
+      input.targets.flatMap((target) =>
+        input.action === 'unstage' ? uniquePaths(target.previousPath, target.path) : [target.path],
+      ),
+    ),
   ];
   // `git reset <paths>` needs a HEAD. An unborn repository has only index additions, which can be
   // safely removed from the index with `rm --cached` while leaving the working file intact.
@@ -564,6 +608,7 @@ function selectedGroupLines(
   start: number,
   end: number,
   selected: ReadonlySet<number>,
+  reverse: boolean,
 ): PatchLine[] {
   const removals = lines
     .slice(start, end)
@@ -593,7 +638,9 @@ function selectedGroupLines(
   for (let pair = 0; pair < pairCount; pair += 1) {
     const removal = removals[pair];
     const addition = additions[pair];
-    if (removal) {
+    // Forward patches keep unselected old lines; reverse patches keep unselected new lines.
+    // Otherwise selecting half a replacement demands context absent from the target tree.
+    if (removal && (!reverse || selected.has(removal.index))) {
       const removalSelected = selected.has(removal.index);
       const rendered = removalSelected
         ? removal.line
@@ -606,8 +653,17 @@ function selectedGroupLines(
       output.push(rendered);
       output.push(...(notes.get(removal.index) ?? []));
     }
-    if (addition && selected.has(addition.index)) {
-      output.push(addition.line);
+    if (addition && (reverse || selected.has(addition.index))) {
+      output.push(
+        selected.has(addition.index)
+          ? addition.line
+          : {
+              ...addition.line,
+              kind: 'context',
+              raw: ` ${addition.line.raw.slice(1)}`,
+              oldLine: addition.line.newLine,
+            },
+      );
       output.push(...(notes.get(addition.index) ?? []));
     }
   }

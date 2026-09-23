@@ -56,7 +56,7 @@ export async function readWorkingChanges(
     '--no-optional-locks',
     'status',
     '--porcelain=v2',
-    input.includeUntracked ? '--untracked-files=all' : '--untracked-files=no',
+    input.includeUntracked || input.includeIgnored ? '--untracked-files=all' : '--untracked-files=no',
   ];
   if (input.includeIgnored) args.push('--ignored=matching');
   args.push('-z', '--');
@@ -75,7 +75,7 @@ export async function readWorkingChanges(
 
   for (const record of records) {
     if (record.kind === 'untracked') {
-      untracked.push(toChange(record, 'untracked', '?'));
+      if (input.includeUntracked) untracked.push(toChange(record, 'untracked', '?'));
       continue;
     }
     if (record.kind === 'ignored') {

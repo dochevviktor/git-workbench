@@ -9,6 +9,7 @@ import { unwrapResult } from '../../../common/ipc/result';
 export interface DiscardRequest {
   readonly targets: readonly RepositoryWorkingChangeTarget[];
   readonly selection: RepositoryWorkingChangeSelection;
+  readonly snapshot?: string | undefined;
 }
 
 /** The preview is read-only; mutation happens only after the user confirms this exact snapshot. */
@@ -39,6 +40,10 @@ export function DiscardDialog({
       .previewDiscard({ id: repositoryId, targets: [...request.targets], selection: request.selection })
       .then(unwrapResult)
       .then((result) => {
+        if (request.snapshot && result.snapshot !== request.snapshot)
+          throw new Error(
+            'The file changed after selecting these lines. Close this dialog, refresh the diff and select the changes again.',
+          );
         if (active) setPreview(result);
       })
       .catch((reason: unknown) => {
@@ -59,6 +64,7 @@ export function DiscardDialog({
         event.preventDefault();
         if (!busy) onClose();
       }}
+      onKeyDown={(event) => event.stopPropagation()}
     >
       <div className="dialog-content">
         <h2>Discard changes</h2>

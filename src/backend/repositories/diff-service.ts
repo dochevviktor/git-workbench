@@ -50,7 +50,12 @@ export async function readRepositoryDiff(
     const validated = await ensureWorkingTarget(runner, input);
     workingChange = validated.change;
     snapshot = await createWorkingSnapshot(input.cwd, input.target, workingChange);
-    if (validated.conflict) return unavailable(input, 'Conflict diffs are not available yet.', snapshot);
+    if (validated.conflict)
+      return unavailable(
+        input,
+        'This file has conflicts. Choose Resolve conflict to review and stage a resolution.',
+        snapshot,
+      );
   }
 
   let result: GitCommandResult;
@@ -157,7 +162,7 @@ function diffArguments(
   if (target.area === 'untracked' || target.area === 'ignored') {
     return args.concat(['--no-index', '--', devNull, target.path]);
   }
-  return args.concat(['--', ...pathsForTarget(target)]);
+  return args.concat(['--', ...(target.area === 'unstaged' ? [target.path] : pathsForTarget(target))]);
 }
 
 function pathsForTarget(target: { readonly path: string; readonly previousPath: string | null }): string[] {

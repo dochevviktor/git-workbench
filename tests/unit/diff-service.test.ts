@@ -305,7 +305,7 @@ describe('repository diff service', () => {
     expect(diff).toMatchObject({
       state: 'unavailable',
       content: '',
-      message: 'Conflict diffs are not available yet.',
+      message: 'This file has conflicts. Choose Resolve conflict to review and stage a resolution.',
     });
   });
 });

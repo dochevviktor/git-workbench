@@ -9,6 +9,8 @@ import type {
 } from '../../../common/ipc/contracts';
 import { diffHighlightRegions, parseUnifiedDiff } from '../lib/diff';
 import type { ParsedDiffLine, ParsedUnifiedDiff } from '../lib/diff';
+import { highlightDiff } from '../lib/diff-syntax';
+import type { SyntaxRange } from '../lib/diff-syntax';
 import { ListOptionsIcon } from './Icons';
 import { ImageDiffViewer } from './ImageDiffViewer';
 import { MenuButton } from './menu/MenuButton';
@@ -72,6 +74,8 @@ interface DiffCellProps {
   readonly lineIndex?: number | undefined;
   readonly lineSelected?: boolean | undefined;
   readonly onToggleLine?: (() => void) | undefined;
+  readonly syntax: readonly SyntaxRange[] | undefined;
+  readonly hunkIndex: number;
 }
 
 const whitespaceLabels: Record<RepositoryDiffWhitespace, string> = {
@@ -171,6 +175,7 @@ function highlightedText(
   showWhitespace: boolean,
   cursor: MatchCursor,
   activeMatch: number,
+  syntax: readonly SyntaxRange[] = [],
 ): ReactNode {
   const matches = searchRanges(text, query).map((range) => ({ ...range, index: cursor.next++ }));
   const boundaries = new Set<number>([0, text.length]);
@@ -182,15 +187,24 @@ function highlightedText(
     boundaries.add(match.start);
     boundaries.add(match.end);
   }
+  for (const token of syntax) {
+    boundaries.add(token.start);
+    boundaries.add(token.end);
+  }
   const ordered = [...boundaries].sort((left, right) => left - right);
   if (ordered.length <= 1) return displayWhitespace(text, showWhitespace);
-
+  let tokenIndex = 0;
+  let matchIndex = 0;
   return ordered.slice(0, -1).map((start, index) => {
     const end = ordered[index + 1]!;
     if (start === end) return null;
     const changed = inlineRange ? start < inlineRange.end && end > inlineRange.start : false;
-    const match = matches.find((candidate) => start < candidate.end && end > candidate.start);
+    while (matches[matchIndex] && matches[matchIndex]!.end <= start) matchIndex += 1;
+    while (syntax[tokenIndex] && syntax[tokenIndex]!.end <= start) tokenIndex += 1;
+    const match = matches[matchIndex] && matches[matchIndex]!.start < end ? matches[matchIndex] : undefined;
+    const token = syntax[tokenIndex] && syntax[tokenIndex]!.start < end ? syntax[tokenIndex] : undefined;
     const className = ['diff-text-segment'];
+    if (token) className.push(`syntax-${token.kind}`);
     if (changed) className.push('inline-change');
     if (match) className.push('search-match');
     return (
@@ -217,6 +231,8 @@ function DiffCell({
   lineIndex,
   lineSelected,
   onToggleLine,
+  syntax,
+  hunkIndex,
 }: DiffCellProps) {
   if (!line) return <div className={`diff-cell ${side} empty`} aria-hidden="true" />;
   const sign = line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' ';
@@ -227,6 +243,8 @@ function DiffCell({
       className={`diff-cell ${side} ${line.kind}`}
       data-testid="diff-line"
       data-line-anchor={line.newLine ?? line.oldLine ?? undefined}
+      data-hunk-index={hunkIndex}
+      data-change-index={selectable ? lineIndex : undefined}
     >
       <span className="diff-line-select">
         {selectable ? (
@@ -239,14 +257,25 @@ function DiffCell({
           />
         ) : null}
       </span>
-      <span className="diff-line-number">{side === 'old' ? (line.oldLine ?? '') : (line.newLine ?? '')}</span>
+      <span className={`diff-line-number${side === 'unified' ? ' paired' : ''}`}>
+        {side === 'unified' ? (
+          <>
+            <span>{line.oldLine ?? ''}</span>
+            <span>{line.newLine ?? ''}</span>
+          </>
+        ) : side === 'old' ? (
+          (line.oldLine ?? '')
+        ) : (
+          (line.newLine ?? '')
+        )}
+      </span>
       <span className="diff-line-sign" aria-hidden="true">
         {sign}
       </span>
       <code className="diff-line-text">
         {line.kind === 'note'
           ? displayWhitespace(line.text, showWhitespace)
-          : highlightedText(line.text, query, inlineRange, showWhitespace, cursor, activeMatch)}
+          : highlightedText(line.text, query, inlineRange, showWhitespace, cursor, activeMatch, syntax)}
       </code>
     </div>
   );
@@ -442,7 +471,7 @@ function DiffToolbar({
             aria-label="Decrease diff context"
             title="Decrease context"
             disabled={controls.entireFile || controls.contextLines === 0}
-            onClick={() => controls.setContextLines(controls.contextLines - 3)}
+            onClick={() => controls.setContextLines(controls.contextLines - 1)}
           >
             −
           </button>
@@ -452,7 +481,7 @@ function DiffToolbar({
             aria-label="Increase diff context"
             title="Increase context"
             disabled={controls.entireFile || controls.contextLines >= 100}
-            onClick={() => controls.setContextLines(controls.contextLines + 3)}
+            onClick={() => controls.setContextLines(controls.contextLines + 1)}
           >
             +
           </button>
@@ -550,6 +579,10 @@ export function DiffViewer({
     [value],
   );
   const inline = useMemo(() => (document ? inlineRanges(document) : new Map()), [document]);
+  const syntax = useMemo(
+    () => (document ? highlightDiff(document, value?.target.path ?? '') : new Map()),
+    [document, value?.target.path],
+  );
   const longestLine = useMemo(
     () =>
       document?.hunks.reduce(
@@ -701,6 +734,38 @@ export function DiffViewer({
     });
   };
 
+  const selectTextLines = () => {
+    const selection = window.getSelection();
+    const body = bodyRef.current;
+    if (!body || !selection || selection.isCollapsed || !selection.rangeCount || workingActions.length === 0)
+      return;
+    const range = selection.getRangeAt(0);
+    if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return;
+    const selected = [...body.querySelectorAll<HTMLElement>('[data-change-index]')].filter((line) => {
+      const text = line.querySelector('code');
+      if (!text || !range.intersectsNode(text)) return false;
+      const content = window.document.createRange();
+      content.selectNodeContents(text);
+      const startsBefore = range.compareBoundaryPoints(Range.START_TO_START, content) < 0;
+      const endsAfter = range.compareBoundaryPoints(Range.END_TO_END, content) > 0;
+      // A DOM range can intersect an element while ending at its first text character.
+      // Only actual selected text (or a fully crossed empty line) selects a changed line.
+      const overlap = range.cloneRange();
+      if (startsBefore) overlap.setStart(content.startContainer, content.startOffset);
+      if (endsAfter) overlap.setEnd(content.endContainer, content.endOffset);
+      return overlap.toString().length > 0 || (!text.textContent && startsBefore && endsAfter);
+    });
+    const hunk = selected[0]?.dataset.hunkIndex;
+    if (!hunk || selected.some((line) => line.dataset.hunkIndex !== hunk)) {
+      setSelectedLines(undefined);
+      return;
+    }
+    setSelectedLines({
+      hunk: Number(hunk),
+      indexes: new Set(selected.map((line) => Number(line.dataset.changeIndex))),
+    });
+  };
+
   const applySelection = async (
     workingAction: DiffWorkingAction,
     selection: RepositoryWorkingChangeSelection,
@@ -723,8 +788,10 @@ export function DiffViewer({
                 entireFile: controls?.entireFile ?? false,
               },
         )
-      )
+      ) {
         setSelectedLines(undefined);
+        window.getSelection()?.removeAllRanges();
+      }
     } finally {
       setApplyingAction(undefined);
     }
@@ -916,6 +983,10 @@ export function DiffViewer({
         ref={bodyRef}
         data-testid="diff-content"
         aria-busy={loading}
+        onMouseUp={selectTextLines}
+        onKeyUp={(event) => {
+          if (event.key === 'Shift' || event.shiftKey) selectTextLines();
+        }}
         style={
           {
             fontSize: `${fontSize}px`,
@@ -947,7 +1018,7 @@ export function DiffViewer({
             const cursor: MatchCursor = { next: searchRows.hunks[hunkIndex]?.[start]?.start ?? 0 };
             const renderCell = (line: ParsedDiffLine | undefined, side: DiffCellProps['side']) => (
               <DiffCell
-                key={line?.key ?? side}
+                key={`${side}:${line?.key ?? 'empty'}`}
                 line={line}
                 side={side}
                 inlineRange={line ? inline.get(line.key) : undefined}
@@ -955,6 +1026,12 @@ export function DiffViewer({
                 showWhitespace={showWhitespace}
                 cursor={cursor}
                 activeMatch={activeMatch}
+                hunkIndex={hunkIndex}
+                syntax={
+                  line
+                    ? syntax.get(`${side === 'old' || line.kind === 'remove' ? 'old' : 'new'}:${line.key}`)
+                    : undefined
+                }
                 lineIndex={workingActions.length > 0 && line ? indexes.get(line.key) : undefined}
                 lineSelected={Boolean(
                   line &&
@@ -993,14 +1070,18 @@ export function DiffViewer({
               const first = Math.max(start, region.firstRow);
               const last = Math.min(end, region.endRow);
               content.push(...renderRows(nextRow, first));
-              const selection: RepositoryWorkingChangeSelection =
-                !controls?.entireFile || regions.length === 1
+              const hasLineSelection =
+                selectedLines?.hunk === hunkIndex &&
+                region.changedLineIndexes.some((index) => selectedLines.indexes.has(index));
+              const selection: RepositoryWorkingChangeSelection = hasLineSelection
+                ? { kind: 'lines', hunk: hunkIndex, lineIndexes: [...selectedLines.indexes] }
+                : !controls?.entireFile || regions.length === 1
                   ? { kind: 'hunk', hunk: hunkIndex }
                   : { kind: 'lines', hunk: hunkIndex, lineIndexes: [...region.changedLineIndexes] };
               content.push(
                 <div
                   key={`${hunk.key}-region-${regionIndex}`}
-                  className="diff-change-region"
+                  className={`diff-change-region${hasLineSelection ? ' has-selection' : ''}`}
                   tabIndex={workingActions.length > 0 ? 0 : undefined}
                   role={workingActions.length > 0 ? 'group' : undefined}
                   aria-label={
@@ -1029,7 +1110,7 @@ export function DiffViewer({
                               title={action.disabledReason ?? actionsDisabledReason}
                               onClick={() => void applySelection(action, selection)}
                             >
-                              {actionLabel(action.action, 'hunk')}
+                              {actionLabel(action.action, hasLineSelection ? 'lines' : 'hunk')}
                             </button>
                           ))}
                         </span>

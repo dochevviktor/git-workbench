@@ -18,7 +18,7 @@ import { menuSeparator, planned } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 const recentMessageLabelLength = 72;
-const descriptionMinimumHeight = 52;
+const descriptionMinimumHeight = 28;
 const descriptionMaximumHeight = 220;
 
 type CommitFailure = Extract<RepositoryCommitResult, { readonly status: 'failed' }>;
@@ -130,6 +130,7 @@ export function CommitComposer({
   const [committing, setCommitting] = useState(false);
   const [aiDraft, setAiDraft] = useState<{ subject: string; body: string; token: string; id: string }>();
   const [signing, setSigning] = useState<RepositorySigningMode>('inherit');
+  const [signingOpen, setSigningOpen] = useState(false);
   const mounted = useRef(true);
   const currentDraft = useRef({ subject, body });
   currentDraft.current = { subject, body };
@@ -336,18 +337,38 @@ export function CommitComposer({
   const commitOptions = useMemo<MenuEntry[]>(
     () => [
       {
+        id: 'generate-message',
+        label: 'Generate Message…',
+        disabled: busy || committing || amend || stagedCount === 0 || conflictedCount > 0,
+        run: () => setAiDraft({ subject, body, token: changeToken, id: repository.id }),
+      },
+      { id: 'commit-signing', label: 'Signing…', disabled: committing, run: () => setSigningOpen(true) },
+      menuSeparator,
+      {
         id: 'commit-skip-hooks',
         label: 'Commit Without Hooks',
-        disabled: Boolean(blockedReason) || (value?.hooks.length ?? 0) === 0,
+        disabled: Boolean(blockedReason) || !failure?.canSkipHooks,
         disabledReason:
-          blockedReason ??
-          ((value?.hooks.length ?? 0) === 0 ? 'This repository has no commit hooks.' : undefined),
+          blockedReason ?? (!failure?.canSkipHooks ? 'Available after a commit hook fails.' : undefined),
         run: () => void commit(true),
       },
       menuSeparator,
       { id: 'commit-and-push', label: 'Commit and Push…', ...planned('Pushing', 'P05') },
     ],
-    [blockedReason, commit, value?.hooks.length],
+    [
+      blockedReason,
+      commit,
+      failure?.canSkipHooks,
+      busy,
+      committing,
+      amend,
+      stagedCount,
+      conflictedCount,
+      subject,
+      body,
+      changeToken,
+      repository.id,
+    ],
   );
 
   const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
@@ -359,6 +380,9 @@ export function CommitComposer({
   const notices = [
     value ? identityNotice(value) : undefined,
     value ? pendingOperationNotice(value) : undefined,
+    !amend && value?.head.state === 'detached'
+      ? 'HEAD is detached. This commit will not move a branch.'
+      : undefined,
     amend && value ? amendNotice(value) : undefined,
     value?.signing
       ? 'Git signs commits by default. Passphrase prompts are handled by the native signing agent.'
@@ -447,6 +471,7 @@ export function CommitComposer({
         </div>
         <textarea
           ref={descriptionRef}
+          rows={1}
           value={body}
           placeholder="Description"
           aria-label="Commit description"
@@ -456,19 +481,6 @@ export function CommitComposer({
         />
       </div>
       <div className="composer-actions">
-        <button
-          type="button"
-          className="button button-small"
-          disabled={busy || committing || amend || stagedCount === 0 || conflictedCount > 0}
-          title={
-            amend
-              ? 'AI generation currently uses staged changes for a new commit.'
-              : 'Preview staged changes to generate an editable message'
-          }
-          onClick={() => setAiDraft({ subject, body, token: changeToken, id: repository.id })}
-        >
-          Generate Message…
-        </button>
         <label
           className="composer-amend"
           title={amendAvailable ? undefined : (value?.amendBlockedReason ?? undefined)}
@@ -482,12 +494,9 @@ export function CommitComposer({
           />
           Amend
         </label>
-        <SigningControls
-          repositoryId={repository.id}
-          value={signing}
-          onChange={setSigning}
-          disabled={committing}
-        />
+        {signing !== 'inherit' && (
+          <span className="composer-signing-state">{signing === 'gpg' ? 'Sign with GPG' : 'Unsigned'}</span>
+        )}
         <div className="composer-commit">
           <button
             type="button"
@@ -510,6 +519,32 @@ export function CommitComposer({
           </MenuButton>
         </div>
       </div>
+      {signingOpen && (
+        <dialog
+          className="dialog reference-dialog"
+          aria-label="Commit signing"
+          ref={(node) => {
+            if (node && !node.open) node.showModal();
+          }}
+          onKeyDown={(event) => event.stopPropagation()}
+          onClose={() => setSigningOpen(false)}
+        >
+          <div className="dialog-content">
+            <h2>Commit signing</h2>
+            <SigningControls
+              repositoryId={repository.id}
+              value={signing}
+              onChange={setSigning}
+              disabled={committing}
+            />
+            <div className="dialog-actions">
+              <button type="button" className="button" onClick={() => setSigningOpen(false)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
       {aiDraft && aiDraft.id === repository.id && (
         <AiRequestDialog
           repository={repository}

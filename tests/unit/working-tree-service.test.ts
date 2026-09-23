@@ -145,5 +145,14 @@ describe('working-tree status service', () => {
     expect(trackedOnly.staged.map((change) => change.path)).toEqual(
       expect.arrayContaining(['partial.txt', 'new name.txt']),
     );
+    const ignoredOnly = await readWorkingChanges(git, {
+      repositoryId,
+      cwd: repository,
+      includeUntracked: false,
+      includeIgnored: true,
+    });
+    expect(ignoredOnly.untracked).toEqual([]);
+    expect(ignoredOnly.ignored).toEqual([expect.objectContaining({ path: 'ignored.txt' })]);
+    expect(ignoredOnly.unstaged).toEqual(trackedOnly.unstaged);
   });
 });

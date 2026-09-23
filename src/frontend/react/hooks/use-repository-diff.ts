@@ -6,6 +6,7 @@ import type {
   RepositoryDiffOptions,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { repositorySessionMap } from '../lib/repository-session';
 
 interface RepositoryDiffState {
   readonly value: RepositoryDiff | undefined;
@@ -24,7 +25,7 @@ export interface DiffControls {
   readonly setEntireFile: (value: boolean) => void;
 }
 
-const sessionOptions = new Map<string, RepositoryDiffOptions>();
+const sessionOptions = repositorySessionMap<RepositoryDiffOptions>();
 
 function actionError(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'The selected diff could not be loaded.';

@@ -1,5 +1,14 @@
 # Architecture and implementation decisions
 
+P04 completion (2026-09-23): the [working-changes handoff](reviews/p04-working-changes.md) covers
+the Linux status/diff/staging/commit/discard requirements. Syntax coloring is a bounded renderer-only
+lexer emitting inert text spans, with separate before/after hunk state and plain-text fallbacks.
+Native text selection maps to the existing validated hunk/line DTOs. Reverse patches retain unselected
+new-side context; text-only patch headers preserve rename/mode metadata and partial file existence.
+Working edits after a staged rename target only the index path. Discard previews retain the selected
+snapshot and existing backend Recovery/CAS checks. Ignored visibility can coexist with hidden untracked
+files. No new IPC/privilege is introduced. The handoff specifies bounds, design choices and verification.
+
 P03 completion (2026-09-23): the [history handoff](reviews/p03-history.md) closes the Linux history,
 graph, scoped search and revision-inspection requirements. SHA-prefix search reads bounded reachable
 IDs and then exact commit metadata, without accepting revision expressions. The existing revision-tree

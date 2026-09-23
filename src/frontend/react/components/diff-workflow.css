@@ -4,6 +4,66 @@
   gap: 3px;
   margin-left: auto;
 }
+.diff-text-segment.syntax-keyword {
+  color: light-dark(#8b259b, #cfa3ed);
+}
+.diff-text-segment.syntax-string {
+  color: light-dark(#9a3923, #e8b28c);
+}
+.diff-text-segment.syntax-number {
+  color: light-dark(#145cd1, #90bcff);
+}
+.diff-text-segment.syntax-comment {
+  color: light-dark(#55764a, #9eaf89);
+}
+.diff-line-number.paired {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+.diff-line-select input:not(:checked) {
+  opacity: 0;
+}
+.diff-cell:hover .diff-line-select input,
+.diff-line-select input:focus-visible {
+  opacity: 1;
+}
+.diff-change-region.has-selection > .diff-highlight-track > .diff-hunk-highlight {
+  visibility: visible;
+}
+.diff-toolbar {
+  flex-wrap: wrap;
+}
+.diff-selection-actions {
+  flex-wrap: wrap;
+}
+.changes-pane-header h2 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.changes-pane-header > button {
+  flex-shrink: 0;
+}
+.commit-composer {
+  max-height: 65%;
+  overflow: auto;
+}
+.composer-message input {
+  min-width: 0;
+}
+.composer-actions {
+  flex-wrap: wrap;
+}
+.composer-commit {
+  margin-left: auto;
+}
+.composer-signing-state {
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .diff-context-controls button {
   border: 0;
   background: transparent;

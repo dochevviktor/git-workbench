@@ -9,6 +9,27 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P04 implementation (2026-09-23): the [working-changes handoff](../reviews/p04-working-changes.md)
+closes the Linux phase requirements and acceptance. `P0-014:F1–F2`, `P0-022:F1–F2`,
+`P0-023-hunk-subcase:F1`, `P0-025-untracked-toggle-subcase:F1–F3`, `P0-026:F1`,
+`P0-027-whitespace-context-wrap-subcase:F1`, `P0-028-scroll-persistence-subcase:F1–F4`,
+`P0-030:F1`, `P0-031-submit-subcase:F1` and `P0-032-scroll-focus-staging-subcase:F1–F3`
+anchor original case/PNG/Git inspection (Windows 2.22.0.0, 2026-09-19–20, 96 DPI; high confidence
+for those states). Before/after light/dark and 880×600 Linux captures now show syntax colors, dual
+line numbers, hover/focus line controls, one-line context steps, bounded panes and the compact composer.
+Text dragging reaches the insertion-only index state and inverse. Tests also exposed and corrected
+reverse replacement/new-file patch failures, accidental mode staging, staged-rename source targeting
+and the ignored-visible/untracked-hidden combination; these are independent Git findings.
+
+Public supplements: [Windows 1.38](https://fork.dev/blog/posts/forkwin-1.38/) (2019-08-27) and
+[Windows 2.20 notes](https://fork.dev/releasenoteswin) (2026-06-05), accessed 2026-09-23, support
+search/split and token-oriented highlighting descriptions. The independently authored lexical colorizer
+does not claim Fork's grammar coverage or exact palette. Labelled diff controls, keyboard checkboxes,
+280 px initial file column, bounded sizing, Signing/Generate Message in Commit options, and exact discard
+previews/Recovery are deliberate adaptations. Untracked deletion, Combined List, restart anchors,
+native platform and broader codec/signing/assistance variants stay unclaimed. The private bundle and
+its case-level unknowns are unchanged; reference images remain outside application assets.
+
 P03 implementation (2026-09-23): the [history handoff](../reviews/p03-history.md) closes the Linux
 history/graph/revision phase. `P0-003-baseline-subcase:F1–F2`, `P0-006:F1`, `P0-007:F1–F3`,
 `P1-029:F1` and `P2-017:F1` anchor the original case/PNG/Git comparisons (Windows 2.22.0.0,

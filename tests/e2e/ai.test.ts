@@ -91,7 +91,8 @@ test('F37 opt-in setup, exact preview, editable draft, range review, cancellatio
     await page.reload();
     await page.getByRole('button', { name: /^Local Changes/u }).click();
     await page.getByTestId('commit-subject').fill('Existing draft');
-    await page.getByRole('button', { name: 'Generate Message…' }).click();
+    await page.getByRole('button', { name: 'Commit options' }).click();
+    await page.getByRole('menuitem', { name: 'Generate Message…' }).click();
     const generated = page.getByRole('dialog', { name: 'Generate Commit Message', exact: true });
     await generated.getByRole('button', { name: 'Preview material' }).click();
     await expect(generated.getByLabel('Material to send')).toContainText('+staged change');
@@ -116,7 +117,8 @@ test('F37 opt-in setup, exact preview, editable draft, range review, cancellatio
     expect(request.store).toBe(false);
     expect(request.tools).toEqual([]);
     // A draft edited while generation is open must not be overwritten by a late result.
-    await page.getByRole('button', { name: 'Generate Message…' }).click();
+    await page.getByRole('button', { name: 'Commit options' }).click();
+    await page.getByRole('menuitem', { name: 'Generate Message…' }).click();
     await generated.getByRole('button', { name: 'Preview material' }).click();
     await generated.getByRole('checkbox', { name: /I reviewed this material/u }).check();
     await generated.getByRole('button', { name: 'Send to OpenAI' }).click();
