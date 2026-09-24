@@ -38,6 +38,7 @@ import { copyText } from '../lib/clipboard';
 import { DiscardDialog } from './DiscardDialog';
 import type { DiscardRequest } from './DiscardDialog';
 import { ConflictResolver } from './ConflictResolver';
+import { ConflictPreview } from './ConflictPreview';
 import { SubmodulePreview } from './SubmodulePreview';
 
 const sessionSelections = repositorySessionMap<ListSelection>();
@@ -201,6 +202,10 @@ function ChangesPane({
 }
 
 interface ChangePreviewProps {
+  readonly repositoryId: string;
+  readonly refreshSignal: number;
+  readonly onResolved: () => void;
+  readonly onStashSelection: (selection: RepositoryWorkingChangeSelection, snapshot: string) => void;
   readonly entry: PaneEntry;
   readonly diff: ReturnType<typeof useRepositoryDiff>;
   readonly mode: DiffDisplayMode;
@@ -223,6 +228,10 @@ interface ChangePreviewProps {
 }
 
 function ChangePreview({
+  repositoryId,
+  refreshSignal,
+  onResolved,
+  onStashSelection,
   entry,
   diff,
   mode,
@@ -251,13 +260,34 @@ function ChangePreview({
           : area === 'untracked'
             ? ['stage']
             : [];
-    return actions.map((action) => ({
+    const result: DiffWorkingAction[] = actions.map((action) => ({
       action,
       disabled: busy,
       disabledReason: busy ? 'Another working-tree action is in progress.' : undefined,
       onApply: (selection) => onWorkingAction(action, selection, diff.value?.snapshot ?? undefined),
     }));
-  }, [area, busy, change.status, diff.value?.snapshot, onWorkingAction]);
+    if (area && area !== 'ignored' && change.status !== 'unmerged' && diff.value?.snapshot)
+      result.push({
+        action: 'stash',
+        disabled: busy,
+        onApply: (selection) => {
+          onStashSelection(selection, diff.value!.snapshot!);
+          return Promise.resolve(false);
+        },
+      });
+    return result;
+  }, [area, busy, change.status, diff.value, onWorkingAction, onStashSelection]);
+  if (entry.kind === 'working' && change.status === 'unmerged')
+    return (
+      <ConflictPreview
+        repositoryId={repositoryId}
+        path={change.path}
+        refreshSignal={refreshSignal}
+        busy={busy}
+        onMerge={onOpenConflict}
+        onResolved={onResolved}
+      />
+    );
   if (entry.kind === 'working' && entry.submodule) {
     return (
       <SubmodulePreview
@@ -322,6 +352,11 @@ function ChangePreview({
 }
 
 interface ChangesViewProps {
+  readonly onStashSelection?: (
+    target: RepositoryWorkingChangeTarget,
+    selection: RepositoryWorkingChangeSelection,
+    snapshot: string,
+  ) => void;
   readonly customFileItems?: (path: string) => MenuEntry[];
   readonly operationBusy?: boolean;
   readonly repository: RepositorySummary;
@@ -345,6 +380,7 @@ interface ChangesViewProps {
 }
 
 export function ChangesView({
+  onStashSelection,
   customFileItems,
   repository,
   refreshSignal,
@@ -1003,6 +1039,16 @@ export function ChangesView({
         <div className="preview-pane">
           {selected ? (
             <ChangePreview
+              repositoryId={repository.id}
+              refreshSignal={refreshSignal}
+              onResolved={() => {
+                void refresh();
+                onCommitted();
+              }}
+              onStashSelection={(selection, snapshot) => {
+                const target = workingTarget(selected, stagedByPath);
+                if (target) onStashSelection?.(target, selection, snapshot);
+              }}
               entry={selected}
               diff={diff}
               mode={diffMode}
@@ -1135,7 +1181,6 @@ export function ChangesView({
           busy={operationBusy || actionBusy}
           onClose={() => setConflictPath(undefined)}
           onResolved={() => {
-            setConflictPath(undefined);
             void refresh();
             refreshDiff();
             onCommitted();

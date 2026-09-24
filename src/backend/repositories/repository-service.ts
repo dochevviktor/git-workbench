@@ -195,7 +195,10 @@ import {
 } from './conflict-service';
 import { pullRequestUrl } from './hosting-service';
 import { readPatch, readStashDetails, readStashes, StashNotFoundError } from './stash-service';
-import { MergeRebaseRequestError, runMergeRebase } from './merge-rebase-service';
+import { beginStashApplication, finishStashApplication, readStashApplication } from './stash-application';
+import { savePartialStash, saveSelectedFileStash } from './partial-stash-service';
+import { MergeRebaseRequestError, runMergeRebase, readMergeRebasePreview } from './merge-rebase-service';
+import type { RepositoryMergeRebasePreviewRequest } from '../../common/ipc/contracts';
 import {
   HistoryOperationRequestError,
   StaleHistoryOperationError,
@@ -957,7 +960,7 @@ export class RepositoryService {
     ownerId: number,
   ): Promise<RepositoryConflictState> {
     const cached = await this.requireWorktree(ownerId, request.id);
-    if (this.operations.isBusyForRepository(request.id))
+    if (!this.operationScope.getStore() && this.operations.isBusyForRepository(request.id))
       throw new ExpectedBackendError(
         'OPERATION_FAILED',
         'Wait for the current Git operation to finish before staging a conflict resolution.',
@@ -969,6 +972,7 @@ export class RepositoryService {
           this.runner,
           { repositoryId: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir },
           request,
+          this.operationScope.getStore(),
         );
       } catch (error) {
         if (error instanceof StaleConflictSnapshotError)
@@ -978,6 +982,23 @@ export class RepositoryService {
         throw this.mapGitFailure(error, 'Git could not stage the conflict resolution.');
       }
     });
+  }
+
+  startConflictResolution(ownerId: number, request: RepositoryResolveConflictRequest): RepositoryOperation {
+    this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'resolve-conflict',
+        title: `Resolve ${request.path}`,
+        command: 'Stage conflict resolution',
+      },
+      async () => {
+        await this.resolveConflict(request, ownerId);
+        return { status: 'succeeded', message: `Resolved and staged ${request.path}.`, output: '' };
+      },
+    );
   }
 
   async applyWorkingChange(
@@ -2340,6 +2361,21 @@ export class RepositoryService {
     });
   }
 
+  async getMergeRebasePreview(ownerId: number, request: RepositoryMergeRebasePreviewRequest) {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    return readMergeRebasePreview(
+      this.runner,
+      {
+        repositoryId: request.id,
+        cwd: summary.worktreePath,
+        gitDir: summary.gitDir,
+        worktreePath: summary.worktreePath,
+        head: summary.head,
+      },
+      request,
+    );
+  }
+
   async listStashes(ownerId: number, id: string): Promise<RepositoryStashEntry[]> {
     const summary = await this.requireWorktree(ownerId, id);
     try {
@@ -2368,18 +2404,20 @@ export class RepositoryService {
     const cached = this.operationRepository(ownerId, request.id);
     const action = request.request;
     const title =
-      action.kind === 'save'
-        ? action.paths.length > 0
-          ? 'Save selected changes as stash'
-          : 'Save changes as stash'
-        : `${action.kind[0]!.toUpperCase()}${action.kind.slice(1)} stash`;
+      action.kind === 'save-selection'
+        ? 'Save selected changes as stash'
+        : action.kind === 'save'
+          ? action.paths.length > 0
+            ? 'Save selected changes as stash'
+            : 'Save changes as stash'
+          : `${action.kind[0]!.toUpperCase()}${action.kind.slice(1)} stash`;
     return this.startOperation(
       {
         ownerId,
         repositoryId: request.id,
         kind: 'stash',
         title,
-        command: `git stash ${action.kind}`,
+        command: action.kind === 'save-selection' ? 'git stash store' : `git stash ${action.kind}`,
       },
       (handle) =>
         this.withRepositoryMutation(cached.commonDir, async () => {
@@ -2559,6 +2597,17 @@ export class RepositoryService {
       gitDir: summary.gitDir,
       head: summary.head,
     };
+    if ((action.kind === 'save' || action.kind === 'save-selection') && !context.head.commit)
+      return {
+        status: 'failed',
+        failureReason: 'other',
+        message: 'Create the first commit before saving a stash.',
+        output: '',
+      };
+    if (action.kind === 'save-selection') {
+      await savePartialStash(this.runner, context, action, handle.signal);
+      return { status: 'succeeded', message: 'Saved the selected changes as a stash.', output: '' };
+    }
     if (action.kind === 'save') {
       const preview = await previewLocalChanges(this.runner, context);
       if (action.changesSnapshot && action.changesSnapshot !== preview.snapshot)
@@ -2612,28 +2661,47 @@ export class RepositoryService {
       const args = ['stash', 'push'];
       if (action.message.trim()) args.push(`--message=${action.message.trim()}`);
       if (action.includeUntracked && !action.stageNewFiles) args.push('--include-untracked');
-      args.push('--', ...selectedPaths);
+      const stashPaths = [
+        ...new Set(
+          selectedPaths.flatMap((path) => {
+            const change = [...working.staged, ...working.unstaged].find((entry) => entry.path === path);
+            return change?.previousPath ? [change.previousPath, path] : [path];
+          }),
+        ),
+      ];
+      args.push('--', ...stashPaths.map((path) => `:(literal)${path}`));
       handle.setCommand?.(['git', 'stash', 'push'].join(' '));
       const newPaths = action.stageNewFiles ? selectedPaths.filter((path) => untracked.has(path)) : [];
       try {
-        // The captured checkbox stages new files before stash, producing an index parent and two
-        // parents total. It deliberately differs from Git's three-parent --include-untracked form.
-        if (newPaths.length)
-          await this.runner.run(['add', '--', ...newPaths], {
+        if (action.paths.length > 0) {
+          await saveSelectedFileStash(this.runner, {
+            cwd: context.cwd,
+            paths: stashPaths,
+            newPaths,
+            message: action.message,
+            includeUntracked: action.includeUntracked && !action.stageNewFiles,
+            signal: handle.signal,
+          });
+        } else {
+          // The captured checkbox stages new files before stash, producing an index parent and two
+          // parents total. It deliberately differs from Git's three-parent --include-untracked form.
+          if (newPaths.length)
+            await this.runner.run(['add', '--', ...newPaths], {
+              cwd: context.cwd,
+              signal: handle.signal,
+              timeoutMs: 120_000,
+              maxOutputBytes: 64 * 1024,
+            });
+          await this.runner.run(args, {
             cwd: context.cwd,
             signal: handle.signal,
             timeoutMs: 120_000,
-            maxOutputBytes: 64 * 1024,
+            maxOutputBytes: 4 * 1024 * 1024,
           });
-        await this.runner.run(args, {
-          cwd: context.cwd,
-          signal: handle.signal,
-          timeoutMs: 120_000,
-          maxOutputBytes: 4 * 1024 * 1024,
-        });
+        }
       } catch (error) {
         // Unstage only paths that were untracked in the reviewed snapshot. Their files stay present.
-        if (newPaths.length && context.head.commit)
+        if (!action.paths.length && newPaths.length && context.head.commit)
           await this.runner
             .run(['reset', '--quiet', 'HEAD', '--', ...newPaths], { cwd: context.cwd })
             .catch(() => undefined);
@@ -2665,6 +2733,12 @@ export class RepositoryService {
         output: '',
       };
     const recovery = await readRecovery(this.runner, context);
+    const application = await readStashApplication(context.gitDir);
+    if (application?.source === entry.commitId && ['drop', 'rename', 'pop'].includes(action.kind))
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Finish or abort the unfinished stash application before deleting or renaming its saved stash.',
+      );
     const isRecoveryCopy = recovery.copies.some((copy) => copy.commitId === entry.commitId);
     if (isRecoveryCopy && (action.kind === 'drop' || action.kind === 'pop' || action.kind === 'rename'))
       return {
@@ -2753,12 +2827,14 @@ export class RepositoryService {
       };
     handle.setCommand?.(['git', 'stash', 'apply', '--index', JSON.stringify(entry.selector)].join(' '));
     try {
-      await this.runner.run(['stash', 'apply', '--index', entry.selector], {
+      await beginStashApplication(this.runner, context.cwd, context.gitDir, entry.commitId);
+      await this.runner.run(['stash', 'apply', '--index', entry.commitId], {
         cwd: context.cwd,
         signal: handle.signal,
         timeoutMs: 120_000,
         maxOutputBytes: 4 * 1024 * 1024,
       });
+      await finishStashApplication(context.gitDir);
     } catch (error) {
       return this.stashCommandFailure(
         error,
@@ -2769,6 +2845,12 @@ export class RepositoryService {
     }
     if (action.kind === 'pop') {
       try {
+        const currentEntries = await readStashes(this.runner, context.cwd);
+        if (JSON.stringify(currentEntries) !== JSON.stringify(entries))
+          throw new ExpectedBackendError(
+            'STALE_SNAPSHOT',
+            'The stash list changed while applying. The applied stash was retained.',
+          );
         await this.runner.run(['stash', 'drop', entry.selector], {
           cwd: context.cwd,
           signal: handle.signal,
@@ -2827,12 +2909,23 @@ export class RepositoryService {
       (handle) =>
         this.withRepositoryMutation(cached.commonDir, async () => {
           const summary = await this.requireWorktree(ownerId, request.id);
-          await recover(
-            this.runner,
-            { id: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir, head: summary.head },
-            request,
-            handle.signal,
-          );
+          try {
+            await recover(
+              this.runner,
+              { id: request.id, cwd: summary.worktreePath, gitDir: summary.gitDir, head: summary.head },
+              request,
+              handle.signal,
+            );
+          } catch (error) {
+            if (!(error instanceof GitCommandError)) throw error;
+            const output = displayOutput(error.stdout, error.stderr);
+            return {
+              status: 'failed',
+              failureReason: 'other',
+              message: output.slice(0, 400) || 'Git could not finish this recovery action.',
+              output,
+            };
+          }
           return {
             status: 'succeeded',
             message: 'Recovery action completed. Saved Git stashes are retained.',

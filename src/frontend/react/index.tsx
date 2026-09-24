@@ -5,6 +5,7 @@ import BlameInspector from './container/BlameInspector';
 import CommitInspector from './container/CommitInspector';
 import FileHistoryInspector from './container/FileHistoryInspector';
 import './styles.css';
+import './components/p06-workflows.css';
 import { ExternalToolsProvider } from './components/ExternalTools';
 
 const root = document.getElementById('root');

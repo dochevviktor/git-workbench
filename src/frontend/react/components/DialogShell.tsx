@@ -18,6 +18,7 @@ export function DialogShell({
   onClose,
   children,
   className,
+  status,
 }: {
   readonly title: string;
   readonly subtitle: string;
@@ -32,6 +33,7 @@ export function DialogShell({
   readonly onClose: () => void;
   readonly children: ReactNode;
   readonly className?: string;
+  readonly status?: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -90,6 +92,7 @@ export function DialogShell({
         </div>
         <dl className="reference-dialog-fields">{children}</dl>
         <div className="reference-dialog-actions">
+          {status}
           <p className="reference-dialog-warning" role="alert" data-testid="reference-dialog-warning">
             {warning && (
               <>

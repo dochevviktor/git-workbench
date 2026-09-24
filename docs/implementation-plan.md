@@ -31,6 +31,15 @@ checkpoint after the outstanding P01–P05 daily-use prerequisites are verified;
 parity. Later phases cover the remaining captured and publicly documented families.
 Unknown behavior is recorded in research and must not be invented and labeled equivalent.
 
+P06 completion checkpoint (2026-09-24): merge/rebase conflict previews, the catalogue-aligned top
+operation banner and side cards, wide two-input/result helper, text/delete/rename/binary/submodule
+choices, file/hunk/line stashes, durable stash application recovery, no-commit/empty history-operation
+recovery, mainline selection and safe reset variants are verified for Linux. The
+[P06 handoff](reviews/p06-merge-recovery.md) supersedes the earlier bounded F15/F17/F19 descriptions
+within the phase requirements. P07 interactive-rebase extensions and P14 platform/parity questions
+remain separate. Its verification record also retains unrelated full-suite failures rather than
+claiming a completely green application-wide UI matrix.
+
 Review checkpoint (2026-09-19): the audit reproduced mutation-target, operation-lifetime, refresh,
 credential-display, and layout defects, and identified missing checkout/pull/fast-forward workflows.
 The research correction adds public checkout evidence and records that the complete Pull screenshot
@@ -144,7 +153,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                            | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                          | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                               | P01 jobs, P02/P04, P06 recovery       |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                          | P01/P04/P05 capabilities              |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                          | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                                   | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06/F20/F21 and F26 manual Bisect verified; F36 bounded patch import/export/clipboard verified (2026-09-22); directory/code history and broader patch variants remain                          | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                     | P02/P05, common-repo queue            |
@@ -961,6 +970,20 @@ Acceptance:
 - Test merge modes independently: FF moves a ref, No-FF produces two parents, Squash stages before a
   single-parent commit, and the captured non-FF Don't Commit leaves MERGE_HEAD until completion.
   Extend manual/multi-region editing beyond the one-region capture using an explicit project specification.
+
+Completion (2026-09-24): all four requirements and five acceptance criteria are verified for the Linux
+phase scope in the [P06 handoff](reviews/p06-merge-recovery.md). It maps P1-006/P1-013–022/P1-025–027
+to original screenshots/Git outcomes, independently specified multi-region/non-text behavior, and
+disposable CLI/Electron checks. Source choices preserve exact index objects; Resolve is a queryable,
+cancellable operation. Stash selection excludes unrelated staged files, keeps Stage new files semantics,
+and journals conflicted application for restart/Abort. Ordinary rebase, no-commit cherry-pick/revert,
+mainline parents, empty-pick Skip, reset-to-HEAD and untracked/ignored hard-reset guards are tested.
+
+`npm run check` passes **581 tests** (one existing opt-in skip), and production build passes. All five
+new P06 headless workflows and the existing conflict/history/Pull/stash/external-tool smoke flows pass.
+The full UI run reports **48 passed, 3 failed, 2 opt-in skips**; the handoff records the P03 scroll and
+Quick Launch baseline reproductions and the separate Bisect retry outcome. These do not promote any
+broader feature or platform scope. Historical started-slice paragraphs above retain their original dates.
 
 ## P07 — Interactive rebase and history editing
 

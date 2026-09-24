@@ -201,10 +201,13 @@ export class ExternalToolService {
         if (
           !file ||
           file.kind !== 'text' ||
-          [file.base, file.ours, file.theirs, file.result].some((side) => side.state !== 'text')
+          file.result.state !== 'text' ||
+          (['base', 'ours', 'theirs'] as const).some(
+            (side) => file.stages[side].objectId && file[side].state !== 'text',
+          )
         )
           unavailable(
-            'External merge review currently supports bounded text conflicts with all three stages.',
+            'External merge review supports bounded text conflicts. Select a source version for binary or submodule entries.',
           );
         await materialize('BASE', file.base.content);
         await materialize('LOCAL', file.ours.content);

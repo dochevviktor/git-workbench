@@ -23,7 +23,7 @@ import './diff-workflow.css';
 export type DiffDisplayMode = 'unified' | 'split';
 
 export interface DiffWorkingAction {
-  readonly action: RepositoryWorkingChangeAction;
+  readonly action: RepositoryWorkingChangeAction | 'stash';
   readonly onApply: (selection: RepositoryWorkingChangeSelection) => Promise<boolean>;
   readonly disabled?: boolean | undefined;
   readonly disabledReason?: string | undefined;
@@ -349,7 +349,7 @@ function DiffToolbar({
   readonly selectedLineCount: number;
   readonly workingActions: readonly DiffWorkingAction[];
   readonly actionsDisabledReason: string | undefined;
-  readonly applyingAction: RepositoryWorkingChangeAction | undefined;
+  readonly applyingAction: DiffWorkingAction['action'] | undefined;
   readonly onApplySelection: (action: DiffWorkingAction) => void;
   readonly onClearSelection: () => void;
   readonly controls: DiffControls | undefined;
@@ -525,7 +525,7 @@ function DiffToolbar({
   );
 }
 
-function actionLabel(action: RepositoryWorkingChangeAction, selection: 'hunk' | 'lines'): string {
+function actionLabel(action: DiffWorkingAction['action'], selection: 'hunk' | 'lines'): string {
   const verb = action[0]!.toLocaleUpperCase() + action.slice(1);
   return `${verb} ${selection === 'hunk' ? 'hunk' : 'selected lines'}`;
 }
@@ -567,7 +567,7 @@ export function DiffViewer({
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
   const [selectedLines, setSelectedLines] = useState<{ hunk: number; indexes: ReadonlySet<number> }>();
-  const [applyingAction, setApplyingAction] = useState<RepositoryWorkingChangeAction>();
+  const [applyingAction, setApplyingAction] = useState<DiffWorkingAction['action']>();
   const [wrap, setWrap] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);

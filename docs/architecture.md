@@ -1,5 +1,23 @@
 # Architecture and implementation decisions
 
+P06 completion (2026-09-24): the [merge/recovery handoff](reviews/p06-merge-recovery.md) supersedes
+the bounded F15/F17/F19 limitations below for the Linux phase. Named merge/rebase tree previews bind
+execution to a reviewed source object; named conflict-resolution starts use the operation registry
+instead of holding a filter/stage operation inside the preload deadline. Existing conflict requests
+now support explicit source, working-result and deletion choices, with text/binary/gitlink metadata,
+operation/HEAD/worktree snapshots, ancestor-path checks and validated results. File/index resolution
+remains separate from Commit/Continue. Binary bytes and submodule mutation stay out of the renderer.
+
+Selected-file and hunk/line stashes use backend-owned temporary indexes. The runner exposes an internal
+absolute-index option while still removing inherited `GIT_INDEX_FILE`; no index path crosses IPC.
+Only selected changes enter the saved delta, and unrelated real-index entries remain intact. A
+versioned per-worktree stash-application journal retains source, HEAD and affected paths across restart.
+Recovery restores that scope, preserves original untracked files and retains the stash. Native Git
+sequencers remain authoritative for external operations, with rebase precedence and single no-commit
+finish handling. Reset protects ignored/untracked obstacles and does not recurse into submodules.
+The handoff records resource bounds, independent multi-region behavior, visual comparisons and the
+separate preexisting P03/P12 test failures; all document/frame/owner/trust/sandbox/CSP policies remain.
+
 Account authentication correction (2026-09-24): the [provider accounts handoff](reviews/provider-accounts.md)
 supersedes the clipboard-only F29 acquisition and GitHub-only destination policy below. The user's
 explicit request for direct token fields introduces a narrow exception to the earlier prohibition on

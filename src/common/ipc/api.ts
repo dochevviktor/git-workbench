@@ -48,6 +48,8 @@ import type {
   RepositoryOperation,
   RepositoryLocalChangesPreview,
   RepositoryMergeRebaseRequest,
+  RepositoryMergeRebasePreviewRequest,
+  RepositoryMergeRebasePreview,
   RepositoryRecoveryState,
   RepositoryRecoveryRequest,
   RepositoryResolveConflictRequest,
@@ -265,6 +267,9 @@ export interface DesktopApi {
     getWorkingChanges(request: RepositoryWorkingChangesRequest): Promise<IpcResult<RepositoryWorkingChanges>>;
     getConflicts(request: RepositoryConflictRequest): Promise<IpcResult<RepositoryConflictState>>;
     resolveConflict(request: RepositoryResolveConflictRequest): Promise<IpcResult<RepositoryConflictState>>;
+    startConflictResolution(
+      request: RepositoryResolveConflictRequest,
+    ): Promise<IpcResult<RepositoryOperation>>;
     applyWorkingChange(
       request: RepositoryWorkingChangeActionRequest,
     ): Promise<IpcResult<RepositoryWorkingChangeActionResult>>;
@@ -294,6 +299,9 @@ export interface DesktopApi {
     ): Promise<IpcResult<RepositoryOperation>>;
     openSubmodule(request: RepositoryOpenSubmoduleRequest): Promise<IpcResult<RepositorySummary>>;
     startMergeRebase(request: RepositoryMergeRebaseRequest): Promise<IpcResult<RepositoryOperation>>;
+    getMergeRebasePreview(
+      request: RepositoryMergeRebasePreviewRequest,
+    ): Promise<IpcResult<RepositoryMergeRebasePreview>>;
     getHistoryOperationPreview(
       request: RepositoryHistoryOperationPreviewRequest,
     ): Promise<IpcResult<RepositoryHistoryOperationPreview>>;

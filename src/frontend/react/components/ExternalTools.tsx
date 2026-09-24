@@ -448,8 +448,9 @@ export function ExternalToolsProvider({ children }: { children: ReactNode }) {
   }, [settings]);
   const context: ToolContext = {
     settings: () => setSettings(true),
-    items: (repositoryId, target, onDraft) =>
+    items: (repositoryId, target, onDraft, kinds) =>
       tools
+        .filter((tool) => !kinds || kinds.includes(tool.kind))
         .filter((tool) =>
           target.kind === 'repository'
             ? tool.kind === 'terminal'

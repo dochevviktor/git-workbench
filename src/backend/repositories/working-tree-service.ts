@@ -86,7 +86,6 @@ export async function readWorkingChanges(
     if (record.kind === 'unmerged') {
       const key = `${record.path}\0${record.previousPath ?? ''}`;
       conflicted.add(key);
-      staged.push(toChange(record, 'staged', 'U'));
       unstaged.push(toChange(record, 'unstaged', 'U'));
       continue;
     }

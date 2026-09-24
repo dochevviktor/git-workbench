@@ -496,15 +496,12 @@ export function HistoryView({
         {
           id: 'reset',
           label: `Reset '${currentBranch?.name ?? 'HEAD'}' to Here…`,
-          disabled:
-            !referenceCommands.ready || currentBranch === undefined || currentBranch.target === commit.id,
+          disabled: !referenceCommands.ready || currentBranch === undefined,
           disabledReason: !referenceCommands.ready
             ? 'The branches and tags of this repository are still loading.'
             : currentBranch === undefined
               ? 'Check out a branch before resetting its history.'
-              : currentBranch.target === commit.id
-                ? 'The current branch already points at this commit.'
-                : undefined,
+              : undefined,
           run: () => referenceCommands.reset(commit),
         },
         menuSeparator,

@@ -1,0 +1,307 @@
+/* P1-006/P1-013–027: compact operation controls and two inputs above an editable result. */
+.dialog.conflict-resolver {
+  width: min(1020px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+  max-width: none;
+  border-radius: 2px;
+  background: var(--sidebar-bg);
+}
+.conflict-resolver-content {
+  padding: 12px 16px;
+}
+.conflict-resolver-header {
+  padding: 0 0 6px;
+  border: 0;
+}
+.conflict-resolver-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+.conflict-resolver-header h2 span {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.conflict-resolver-status {
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 0 6px;
+  font-size: 12px;
+}
+.conflict-resolver-status > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-resolver-status .conflict-count {
+  color: var(--danger);
+  font-size: 11px;
+}
+.conflict-resolver-status .conflict-count.resolved {
+  color: var(--success);
+}
+.conflict-source-grid {
+  gap: 0;
+  flex: 3 1 0;
+  min-height: 100px;
+}
+.conflict-source + .conflict-source {
+  border-left: 0;
+}
+.conflict-source header {
+  min-height: 34px;
+  background: var(--list-bg);
+}
+.conflict-source header strong {
+  flex: 1;
+}
+.conflict-source.theirs header {
+  border-top: 2px solid var(--lane-6);
+}
+.conflict-source.ours header {
+  border-top: 2px solid var(--lane-5);
+}
+.conflict-source .code-line-highlight {
+  display: inline-block;
+  min-width: 100%;
+  background: color-mix(in srgb, var(--lane-6) 15%, transparent);
+}
+.conflict-source.ours .code-line-highlight {
+  background: color-mix(in srgb, var(--lane-5) 15%, transparent);
+}
+.conflict-source .conflict-content-message {
+  overflow: auto;
+}
+.conflict-content-message code {
+  overflow-wrap: anywhere;
+}
+.conflict-result {
+  flex: 2 1 0;
+  min-height: 90px;
+  margin: 0;
+  border-top: 0;
+}
+.conflict-result header {
+  min-height: 24px;
+  padding: 2px 7px;
+}
+.conflict-region-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.conflict-resolver-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+}
+.conflict-external-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.conflict-resolution-summary {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-top: 0;
+  background: var(--list-bg);
+}
+.conflict-resolver button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.conflict-cards-content {
+  flex: 1;
+  padding: 20px 24px;
+  overflow: auto;
+  text-align: center;
+}
+.conflict-cards-content h3 {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 14px;
+}
+.conflict-cards-content > .muted {
+  margin: 6px 0 20px;
+}
+.conflict-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 64px;
+  width: min(760px, 100%);
+  margin: 26px auto 0;
+}
+.conflict-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+.conflict-card.selected {
+  border-color: var(--accent);
+}
+.conflict-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.conflict-card-title strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-card-description {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.conflict-card-connector {
+  position: relative;
+  width: 64px;
+  height: 30px;
+  margin: -43px auto 45px;
+  border-top: 1px solid var(--accent);
+  pointer-events: none;
+}
+.conflict-card-connector::after {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 58px;
+  border-left: 1px solid var(--accent);
+  content: '';
+}
+.recovery-panel {
+  padding: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--list-bg);
+}
+.recovery-content {
+  gap: 0;
+  padding: 0;
+}
+.operation-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.operation-banner > p {
+  flex: 1;
+  min-width: 160px;
+  margin: 0;
+}
+.operation-banner > svg {
+  color: var(--warning);
+}
+.recovery-copies {
+  padding: 5px 10px;
+  background: var(--sidebar-bg);
+}
+.recovery-copy {
+  margin-top: 6px;
+}
+.dialog.p06-dialog {
+  width: min(570px, calc(100vw - 32px));
+}
+.integration-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.integration-status.clean > svg {
+  color: var(--success);
+}
+.integration-status.conflicts {
+  color: var(--warning);
+}
+.p06-dialog .reference-dialog-warning:empty {
+  display: none;
+}
+.p06-dialog .reference-dialog-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: -76px;
+}
+.dialog.p06-stash-dialog {
+  width: min(590px, calc(100vw - 32px));
+  border-radius: 2px;
+  background: var(--sidebar-bg);
+}
+.p06-stash-dialog .dialog-content {
+  position: relative;
+  gap: 16px;
+  padding: 26px 20px 18px 96px;
+}
+.p06-stash-dialog .reference-dialog-mark {
+  position: absolute;
+  left: 22px;
+  top: 28px;
+  width: 52px;
+  height: 52px;
+}
+.p06-stash-dialog h2 {
+  font-size: 14px;
+}
+.p06-stash-dialog .stash-dialog-fields {
+  gap: 7px;
+}
+.p06-stash-dialog .stash-dialog-fields > label:first-child {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.p06-stash-dialog .stash-path-preview {
+  max-height: 100px;
+  overflow: auto;
+}
+.p06-stash-dialog .reference-dialog-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 900px) {
+  .conflict-cards-content {
+    padding: 16px 10px;
+  }
+  .conflict-cards {
+    gap: 24px;
+  }
+  .conflict-card-connector {
+    width: 24px;
+  }
+  .conflict-resolver-content {
+    padding: 8px;
+  }
+  .conflict-source header {
+    flex-wrap: wrap;
+  }
+}

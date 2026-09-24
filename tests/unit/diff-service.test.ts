@@ -299,7 +299,7 @@ describe('repository diff service', () => {
     const diff = await readRepositoryDiff(git, {
       repositoryId,
       cwd: repository,
-      target: { kind: 'working', area: 'staged', path: 'conflict.txt', previousPath: null },
+      target: { kind: 'working', area: 'unstaged', path: 'conflict.txt', previousPath: null },
       whitespace: 'normal',
     });
     expect(diff).toMatchObject({

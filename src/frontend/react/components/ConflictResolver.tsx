@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RepositoryConflictFile, RepositoryConflictState } from '../../../common/ipc/contracts';
+import { chooseConflictRegion, conflictTextRegions, hasConflictMarkers } from '../../../common/conflict-text';
 import { unwrapResult } from '../../../common/ipc/result';
 import { CodePreview } from './CodePreview';
 import { useExternalTools } from './external-tools-context';
+import { BranchIcon, CloseIcon } from './Icons';
+import { stageConflictResolution } from '../lib/conflicts';
 
 interface ConflictResolverProps {
   readonly repositoryId: string;
@@ -11,114 +14,45 @@ interface ConflictResolverProps {
   readonly onClose: () => void;
   readonly onResolved: () => void;
 }
-
-interface EditableRegion {
-  readonly startLine: number;
-  readonly endLine: number;
-  readonly ours: string;
-  readonly theirs: string;
-}
-
-function markerRegions(content: string): EditableRegion[] {
-  const lines = content.split('\n');
-  const regions: EditableRegion[] = [];
-  let cursor = 0;
-  while (cursor < lines.length) {
-    if (!/^<{7}(?: .*)?$/u.test(lines[cursor] ?? '')) {
-      cursor += 1;
-      continue;
-    }
-    const startLine = cursor;
-    cursor += 1;
-    const oursStart = cursor;
-    while (
-      cursor < lines.length &&
-      !/^\|{7}(?: .*)?$/u.test(lines[cursor] ?? '') &&
-      lines[cursor] !== '======='
-    ) {
-      cursor += 1;
-    }
-    const ours = lines.slice(oursStart, cursor).join('\n');
-    if (/^\|{7}(?: .*)?$/u.test(lines[cursor] ?? '')) {
-      cursor += 1;
-      while (cursor < lines.length && lines[cursor] !== '=======') cursor += 1;
-    }
-    if (lines[cursor] !== '=======') break;
-    cursor += 1;
-    const theirsStart = cursor;
-    while (cursor < lines.length && !/^>{7}(?: .*)?$/u.test(lines[cursor] ?? '')) cursor += 1;
-    if (!/^>{7}(?: .*)?$/u.test(lines[cursor] ?? '')) break;
-    regions.push({
-      startLine,
-      endLine: cursor + 1,
-      ours,
-      theirs: lines.slice(theirsStart, cursor).join('\n'),
-    });
-    cursor += 1;
-  }
-  return regions;
-}
-
-function conflictMarkerCount(content: string): number {
-  return markerRegions(content).length;
-}
-
-function contentText(content: RepositoryConflictFile['base']): string {
-  return content.state === 'text' ? content.content : '';
-}
-
-function contentMessage(content: RepositoryConflictFile['base']): string | undefined {
-  return content.state === 'text' ? undefined : (content.message ?? 'This side is unavailable.');
-}
-
-function replaceRegion(content: string, region: EditableRegion, replacement: string): string {
-  const lines = content.split('\n');
-  return [
-    ...lines.slice(0, region.startLine),
-    ...replacement.split('\n'),
-    ...lines.slice(region.endLine),
-  ].join('\n');
-}
-
-function displayResolution(
-  file: RepositoryConflictFile,
-  content: string,
-): { resolved: number; total: number } {
-  const total = Math.max(file.regions.length, markerRegions(file.result.content).length);
-  return { resolved: Math.max(0, total - conflictMarkerCount(content)), total };
-}
+type Choice = 'ours' | 'theirs' | 'delete' | 'working';
 
 export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved }: ConflictResolverProps) {
   const externalTools = useExternalTools();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const [state, setState] = useState<RepositoryConflictState>();
   const [activePath, setActivePath] = useState(path);
   const [content, setContent] = useState('');
+  const [choice, setChoice] = useState<Choice>();
+  const [regionIndex, setRegionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-
+  const [refresh, setRefresh] = useState(0);
+  const alive = useRef(true);
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    alive.current = true;
+    if (dialogRef.current && !dialogRef.current.open) dialogRef.current.showModal();
+    return () => {
+      alive.current = false;
+    };
   }, []);
-
   useEffect(() => {
     let active = true;
-    setActivePath(path);
     setLoading(true);
     setError(undefined);
     void window.desktop?.repository
-      .getConflicts({ id: repositoryId, path })
+      .getConflicts({ id: repositoryId, path: activePath })
       .then((result) => {
         if (!active) return;
         const next = unwrapResult(result);
         setState(next);
         setContent(next.selected?.result.content ?? '');
+        setChoice(undefined);
+        setRegionIndex(0);
       })
       .catch((reason: unknown) => {
-        if (active)
-          setError(reason instanceof Error ? reason.message : 'The conflict could not be inspected.');
+        if (active) setError(reason instanceof Error ? reason.message : 'The conflict could not be read.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -126,57 +60,60 @@ export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved
     return () => {
       active = false;
     };
-  }, [path, repositoryId]);
+  }, [activePath, refresh, repositoryId]);
 
   const file = state?.selected;
-  const regions = useMemo(() => markerRegions(content), [content]);
-  const resolution = file ? displayResolution(file, content) : { resolved: 0, total: 0 };
+  const regions = useMemo(() => conflictTextRegions(content), [content]);
+  const selectedRegion = regions[Math.min(regionIndex, Math.max(0, regions.length - 1))];
+  const total = file?.regions.length ?? 0;
   const textCapable = file?.kind === 'text' && file.result.state === 'text';
-  const canResolve = Boolean(textCapable && !busy && !saving && !loading && regions.length === 0);
-
+  const disabled = busy || saving || loading;
+  const canResolve = Boolean(file && !disabled && (choice || (textCapable && !hasConflictMarkers(content))));
   const close = () => {
-    if (!saving) dialogRef.current?.close();
+    dialogRef.current?.close();
   };
-
-  const chooseWholeSide = (side: 'ours' | 'theirs') => {
-    if (!file || file[side].state !== 'text') return;
-    setContent(file[side].content);
+  const choose = (side: Choice) => {
+    setChoice(side);
+    if (file && (side === 'ours' || side === 'theirs') && file[side].state === 'text')
+      setContent(file[side].content);
   };
-
-  const chooseRegion = (region: EditableRegion, side: 'ours' | 'theirs') => {
-    setContent((current) => replaceRegion(current, region, side === 'ours' ? region.ours : region.theirs));
-  };
-
   const resolve = async () => {
-    const api = window.desktop;
-    if (!api || !state || !file || !canResolve) return;
+    if (!state || !file || !canResolve || !window.desktop) return;
     setSaving(true);
     setError(undefined);
     try {
-      const next = unwrapResult(
-        await api.repository.resolveConflict({
-          id: repositoryId,
-          path: file.path,
-          snapshot: state.snapshot,
-          content,
-        }),
+      const common = { id: repositoryId, path: file.path, snapshot: state.snapshot };
+      const next = await stageConflictResolution(
+        window.desktop,
+        choice ? { ...common, choice } : { ...common, content },
       );
-      setState(next);
-      if (next.conflictedCount === 0) {
-        dialogRef.current?.close();
-        onResolved();
-      } else {
-        const nextFile = next.selected;
-        if (nextFile) setActivePath(nextFile.path);
-        setContent(nextFile?.result.content ?? '');
+      if (!alive.current) return;
+      onResolved();
+      if (!next.selected) dialogRef.current?.close();
+      else {
+        setState(next);
+        setActivePath(next.selected.path);
+        setContent(next.selected.result.content);
+        setChoice(undefined);
+        setRegionIndex(0);
       }
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : 'The conflict could not be staged.');
+    } catch (reason) {
+      if (alive.current)
+        setError(reason instanceof Error ? reason.message : 'The resolution could not be staged.');
     } finally {
-      setSaving(false);
+      if (alive.current) setSaving(false);
     }
   };
-
+  const navigate = (direction: number) => {
+    const next = Math.max(0, Math.min(regions.length - 1, regionIndex + direction));
+    setRegionIndex(next);
+    const region = regions[next];
+    if (region && editorRef.current) {
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(region.startOffset, region.endOffset);
+      editorRef.current.scrollTop = Math.max(0, region.startLine * 18 - 36);
+    }
+  };
   return (
     <dialog
       ref={dialogRef}
@@ -185,72 +122,20 @@ export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved
       aria-busy={loading || saving}
       data-testid="conflict-resolver"
       onClose={onClose}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && saving) event.preventDefault();
-      }}
     >
       <div className="conflict-resolver-content">
         <header className="conflict-resolver-header">
-          <div>
-            <h2>Resolve conflict</h2>
-            <p className="muted">
-              {state?.operationLabel ?? 'Inspecting the unfinished Git operation'} · {activePath}
-            </p>
-          </div>
-          <button type="button" className="button button-small" onClick={close} disabled={saving}>
-            Cancel
+          <h2>
+            Merge <span>{activePath}</span>
+          </h2>
+          <button type="button" className="pane-icon-button" aria-label="Close resolver" onClick={close}>
+            <CloseIcon size={14} />
           </button>
         </header>
-        {state && file && textCapable && (
-          <div className="dialog-actions">
-            {externalTools
-              .items(
-                repositoryId,
-                { kind: 'conflict', path: file.path, snapshot: state.snapshot },
-                (draft) => {
-                  if (draft.path === file.path && draft.snapshot === state.snapshot)
-                    setContent(draft.content);
-                },
-              )
-              .map(
-                (item) =>
-                  item.type !== 'separator' && (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="button"
-                      disabled={busy || saving || loading}
-                      onClick={item.run}
-                    >
-                      {item.label}
-                    </button>
-                  ),
-              )}
-          </div>
-        )}
         {error && (
           <div className="inline-alert" role="alert">
             <span>{error}</span>
-            <button
-              type="button"
-              className="button button-small"
-              onClick={() => {
-                setError(undefined);
-                void window.desktop?.repository
-                  .getConflicts({ id: repositoryId, path: activePath })
-                  .then((result) => {
-                    if (!result.ok) {
-                      setError(result.error.message);
-                      return;
-                    }
-                    setState(result.value);
-                    setContent(result.value.selected?.result.content ?? '');
-                  });
-              }}
-            >
+            <button className="button button-small" onClick={() => setRefresh((value) => value + 1)}>
               Refresh
             </button>
           </div>
@@ -258,120 +143,271 @@ export function ConflictResolver({ repositoryId, path, busy, onClose, onResolved
         {loading ? (
           <p className="conflict-resolver-empty">Reading conflict stages…</p>
         ) : !file ? (
-          <p className="conflict-resolver-empty">This file is no longer conflicted.</p>
+          <p>No conflicted file remains.</p>
         ) : (
           <>
             <div className="conflict-resolver-status" role="status">
-              <strong>
-                {resolution.resolved}/{resolution.total} conflict regions resolved
+              <span>{state?.operationLabel}</span>
+              <strong className={canResolve ? 'conflict-count resolved' : 'conflict-count'}>
+                {textCapable
+                  ? `${choice ? total : Math.max(0, total - regions.length)}/${total} conflict regions resolved`
+                  : choice
+                    ? 'Resolution selected'
+                    : 'Choose a resolution'}
               </strong>
-              <span>
-                {state?.conflictedCount ?? 0} conflicted file{state?.conflictedCount === 1 ? '' : 's'} remain
-                in the index.
-              </span>
+              <button
+                className="button button-small"
+                aria-label="Previous conflict"
+                disabled={disabled || regionIndex === 0}
+                onClick={() => navigate(-1)}
+              >
+                ‹
+              </button>
+              <button
+                className="button button-small"
+                aria-label="Next conflict"
+                disabled={disabled || regionIndex >= regions.length - 1}
+                onClick={() => navigate(1)}
+              >
+                ›
+              </button>
             </div>
-            {file.kind !== 'text' && (
-              <div className="conflict-resolver-limitation" role="alert">
-                {file.kind === 'binary'
-                  ? 'Binary conflict content is shown as metadata only. Resolve it with an external tool, then stage it in Local Changes.'
-                  : file.kind === 'submodule'
-                    ? 'Submodule conflicts are represented as gitlink stages. Resolve them outside the built-in text helper, then stage the selected commit.'
-                    : 'This conflict shape is not a bounded text file. Resolve it with an external tool, then stage it in Local Changes.'}
-              </div>
-            )}
             <div className="conflict-source-grid">
-              <section className="conflict-source" aria-label={state?.oursLabel}>
-                <header>
-                  <strong>{state?.oursLabel ?? 'Current'}</strong>
-                  <button
-                    type="button"
-                    className="button button-small"
-                    disabled={!textCapable || file.ours.state !== 'text' || saving || busy}
-                    onClick={() => chooseWholeSide('ours')}
-                  >
-                    Use current
-                  </button>
-                </header>
-                {contentMessage(file.ours) ? (
-                  <p className="conflict-content-message">{contentMessage(file.ours)}</p>
-                ) : (
-                  <CodePreview content={contentText(file.ours)} testId="conflict-ours" />
-                )}
-              </section>
-              <section className="conflict-source" aria-label={state?.theirsLabel}>
-                <header>
-                  <strong>{state?.theirsLabel ?? 'Incoming'}</strong>
-                  <button
-                    type="button"
-                    className="button button-small"
-                    disabled={!textCapable || file.theirs.state !== 'text' || saving || busy}
-                    onClick={() => chooseWholeSide('theirs')}
-                  >
-                    Use incoming
-                  </button>
-                </header>
-                {contentMessage(file.theirs) ? (
-                  <p className="conflict-content-message">{contentMessage(file.theirs)}</p>
-                ) : (
-                  <CodePreview content={contentText(file.theirs)} testId="conflict-theirs" />
-                )}
-              </section>
+              {(['theirs', 'ours'] as const).map((side) => (
+                <section
+                  key={side}
+                  className={`conflict-source ${side}`}
+                  aria-label={side === 'ours' ? state?.oursLabel : state?.theirsLabel}
+                >
+                  <header>
+                    <BranchIcon size={13} />
+                    <strong>{side === 'ours' ? state?.oursLabel : state?.theirsLabel}</strong>
+                    <button
+                      className="button button-small"
+                      disabled={disabled}
+                      aria-pressed={choice === side}
+                      onClick={() => choose(side)}
+                    >
+                      {side === 'ours' ? 'Use current' : 'Use incoming'}
+                    </button>
+                  </header>
+                  {file[side].state === 'text' ? (
+                    <CodePreview
+                      content={file[side].content}
+                      testId={`conflict-${side}`}
+                      highlightedLines={sourceHighlights(file, side)}
+                    />
+                  ) : (
+                    <div className="conflict-content-message">
+                      <p>{sideDescription(file, side)}</p>
+                      {file.stages[side].objectId && <code>{file.stages[side].objectId}</code>}
+                    </div>
+                  )}
+                </section>
+              ))}
             </div>
-            <section className="conflict-result" aria-label="Editable conflict result">
-              <header>
-                <strong>Result — edit and stage</strong>
-                {regions.length > 0 && (
-                  <span className="conflict-unresolved">{regions.length} unresolved</span>
-                )}
-              </header>
-              <textarea
-                value={content}
-                readOnly={!textCapable}
-                spellCheck={false}
-                aria-label="Editable conflict result"
-                data-testid="conflict-result"
-                onChange={(event) => setContent(event.target.value)}
-              />
-            </section>
-            {regions.length > 0 && textCapable && (
-              <div className="conflict-region-actions" aria-label="Conflict region choices">
-                {regions.map((region, index) => (
-                  <div className="conflict-region-action" key={`${region.startLine}:${region.endLine}`}>
-                    <span>Conflict {index + 1}</span>
+            {textCapable ? (
+              <>
+                <section className="conflict-result" aria-label="Editable conflict result">
+                  <header>
+                    <strong>Result</strong>
+                    <span>Editing allowed</span>
                     <button
-                      type="button"
-                      className="button button-small"
-                      disabled={saving || busy}
-                      onClick={() => chooseRegion(region, 'ours')}
+                      className="link-button"
+                      disabled={disabled}
+                      onClick={() => {
+                        setContent(file.result.content);
+                        setChoice(undefined);
+                      }}
                     >
-                      Use current
+                      Reset choices
                     </button>
-                    <button
-                      type="button"
-                      className="button button-small"
-                      disabled={saving || busy}
-                      onClick={() => chooseRegion(region, 'theirs')}
-                    >
-                      Use incoming
-                    </button>
+                  </header>
+                  <textarea
+                    ref={editorRef}
+                    value={content}
+                    spellCheck={false}
+                    aria-label="Editable conflict result"
+                    data-testid="conflict-result"
+                    disabled={disabled}
+                    onChange={(event) => {
+                      const original = file.result.content;
+                      setContent(
+                        original.includes('\r\n') && !/(?<!\r)\n/u.test(original)
+                          ? event.target.value.replace(/\r?\n/gu, '\r\n')
+                          : event.target.value,
+                      );
+                      setChoice(undefined);
+                    }}
+                  />
+                </section>
+                {selectedRegion && !choice && (
+                  <div className="conflict-region-actions" aria-label="Conflict region choices">
+                    <span>
+                      Conflict {Math.min(regionIndex + 1, regions.length)} of {regions.length} remaining
+                    </span>
+                    {(['theirs', 'ours', 'both'] as const).map((side) => (
+                      <button
+                        key={side}
+                        className="button button-small"
+                        disabled={disabled}
+                        onClick={() => {
+                          setContent((current) => chooseConflictRegion(current, selectedRegion, side));
+                          setRegionIndex((index) => Math.max(0, index - 1));
+                        }}
+                      >
+                        {side === 'both'
+                          ? 'Use both'
+                          : side === 'ours'
+                            ? 'Use current region'
+                            : 'Use incoming region'}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                )}
+              </>
+            ) : (
+              <div className="conflict-resolution-summary">
+                <p>
+                  {choice === 'ours' || choice === 'theirs'
+                    ? `${sideDescription(file, choice)} will be staged.`
+                    : choice === 'delete'
+                      ? 'This path will be removed from the index.'
+                      : choice === 'working'
+                        ? 'The current worktree result will be staged.'
+                        : 'Select a source version, the working result, or deletion.'}
+                </p>
+                {file.kind === 'submodule' && (
+                  <p className="muted">
+                    Selecting a source stages its submodule commit. The checked-out submodule and its local
+                    changes stay in place.
+                  </p>
+                )}
+                <button
+                  className="button button-small"
+                  disabled={
+                    disabled ||
+                    (file.kind === 'submodule' && !file.workingCommitId) ||
+                    (file.kind !== 'submodule' && !['text', 'binary'].includes(file.result.state))
+                  }
+                  onClick={() => choose('working')}
+                  aria-pressed={choice === 'working'}
+                >
+                  {file.kind === 'submodule'
+                    ? `Use checked-out commit ${file.workingCommitId?.slice(0, 7) ?? '(unavailable)'}`
+                    : 'Use working file'}
+                </button>
+                <button
+                  className="button button-small"
+                  disabled={disabled}
+                  onClick={() => choose('delete')}
+                  aria-pressed={choice === 'delete'}
+                >
+                  Delete file
+                </button>
               </div>
             )}
             <footer className="conflict-resolver-actions">
-              <span className="muted">Resolve writes this result to the worktree and stages it.</span>
-              <button
-                type="button"
-                className="button primary"
-                disabled={!canResolve}
-                onClick={() => void resolve()}
-              >
-                {saving ? 'Staging…' : 'Resolve and Stage'}
-              </button>
+              <div className="conflict-external-actions">
+                {file.kind === 'binary' &&
+                  externalTools
+                    .items(
+                      repositoryId,
+                      { kind: 'working', path: file.path, area: 'unstaged', line: 1 },
+                      undefined,
+                      ['editor'],
+                    )
+                    .map(
+                      (item) =>
+                        item.type !== 'separator' && (
+                          <button
+                            key={item.id}
+                            className="button button-small"
+                            disabled={disabled}
+                            onClick={item.run}
+                          >
+                            {item.label}
+                          </button>
+                        ),
+                    )}
+                {textCapable &&
+                  externalTools
+                    .items(
+                      repositoryId,
+                      { kind: 'conflict', path: file.path, snapshot: state!.snapshot },
+                      (draft) => {
+                        if (alive.current && draft.path === file.path && draft.snapshot === state?.snapshot) {
+                          setContent(draft.content);
+                          setChoice(undefined);
+                        }
+                      },
+                    )
+                    .map(
+                      (item) =>
+                        item.type !== 'separator' && (
+                          <button
+                            key={item.id}
+                            className="button button-small"
+                            disabled={disabled}
+                            onClick={item.run}
+                          >
+                            {item.label}
+                          </button>
+                        ),
+                    )}
+                <button
+                  className="button button-small"
+                  disabled={disabled}
+                  onClick={() => setRefresh((value) => value + 1)}
+                >
+                  Refresh file
+                </button>
+                <button className="button button-small" disabled={disabled} onClick={externalTools.settings}>
+                  External tools…
+                </button>
+                <span className="muted">
+                  {state?.conflictedCount} file{state?.conflictedCount === 1 ? '' : 's'} remaining
+                </span>
+              </div>
+              <div className="dialog-actions">
+                <button className="button primary" disabled={!canResolve} onClick={() => void resolve()}>
+                  {saving ? 'Staging…' : 'Resolve and Stage'}
+                </button>
+                <button className="button" onClick={close}>
+                  {saving ? 'Close' : 'Cancel'}
+                </button>
+              </div>
             </footer>
           </>
         )}
       </div>
     </dialog>
   );
+}
+
+function sideDescription(file: RepositoryConflictFile, side: 'ours' | 'theirs') {
+  if (!file.stages[side].objectId) return 'Deleted';
+  if (file.stages[side].mode === '160000') return 'Submodule commit';
+  if (file.stages[side].mode === '120000') return 'Symbolic link';
+  if (file[side].state === 'binary') return `Binary file · ${file[side].byteLength ?? 0} bytes`;
+  if (file[side].state === 'too-large') return `Large file · ${file[side].byteLength ?? 0} bytes`;
+  return 'Modified file';
+}
+
+function sourceHighlights(file: RepositoryConflictFile, side: 'ours' | 'theirs'): number[] {
+  const lines: number[] = [];
+  let offset = 0;
+  let line = 1;
+  for (const region of file.regions) {
+    const fragment = region[side];
+    if (!fragment) continue;
+    const found = file[side].content.indexOf(fragment, offset);
+    if (found < 0) continue;
+    line += file[side].content.slice(offset, found).split('\n').length - 1;
+    const count = fragment.split('\n').length - (fragment.endsWith('\n') ? 1 : 0);
+    for (let i = 0; i < count && lines.length < 5_000; i += 1) lines.push(line + i);
+    line += fragment.split('\n').length - 1;
+    offset = found + fragment.length;
+  }
+  return lines;
 }

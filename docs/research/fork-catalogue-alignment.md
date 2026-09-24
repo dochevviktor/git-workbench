@@ -9,6 +9,29 @@ Subsequent implementation: the user requested a single F01–F16 correction pass
 planned status and current-code descriptions in this historical audit for those completed corrections.
 The original observations, topic coverage, unknowns and crosswalk remain unchanged.
 
+P06 implementation (2026-09-24): the [merge/recovery handoff](../reviews/p06-merge-recovery.md)
+closes the Linux phase requirements. The original P1-006 mode cases, P1-013–020 stash/conflict cases,
+P1-021/P1-022 ordinary-rebase cases and P1-025–027 history-operation cases anchor the implementation.
+Windows 2.22.0.0, 2026-09-19–20, 96 DPI; high confidence within each captured trial. The handoff lists
+the exact PNG/Git paths and before/after Linux captures. Compact action forms, an operation banner above
+the workspace, paired side cards, incoming-left/current-right sources, a 1020×720 preferred resolver,
+source highlights, resolution count, editable result and later Commit/Continue follow those observations.
+Unmerged files no longer appear in Staged before resolution.
+
+The Linux helper remains an owned modal with independent assets and real editable markers. Multi-region
+Both order, non-text/gitlink choices, explicit Skip, stash journals/Abort, hunk/line selection and
+ignored/untracked reset protections are tested project specifications, not newly observed Fork behavior.
+File-limited stashes now exclude unrelated staged entries through a temporary index; Stage new files
+retains the captured two-parent/index-parent shape. Conflict resolution has an owned Activity lifetime
+and is separate from history completion. External native sequencers survive restart; marker-free external
+stash provenance stays generic. Public supplements are the official
+[Windows 1.48 article](https://git-fork.com/blog/posts/forkwin-1.48/) (2020-05-05) and Git's
+[stash](https://git-scm.com/docs/git-stash), [cherry-pick](https://git-scm.com/docs/git-cherry-pick),
+[revert](https://git-scm.com/docs/git-revert) and [reset](https://git-scm.com/docs/git-reset) manuals,
+accessed 2026-09-24; confidence is high for documented Git capabilities. The public image index was
+restored, the private bundle is unchanged, and no reference asset is shipped. Full-suite P03/P12 baseline
+failures and the Bisect retry outcome remain explicit in the handoff. P07/P14 scope is not promoted.
+
 P05 implementation (2026-09-23): the [reference/network handoff](../reviews/p05-network.md) closes
 the Linux phase requirements and acceptance, retaining broader provider/platform and public reference
 organization limits. `P1-001-create-rename-delete-subcase:F1–F2`, `P1-004-create-delete-tag-subcase:F1–F2`,

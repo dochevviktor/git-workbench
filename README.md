@@ -45,6 +45,16 @@ deletion and stale-branch review; remote deletion retains the local reference if
 Pull → Options adds Fast-forward only. See the [P05 handoff](docs/reviews/p05-network.md) for verified
 scope, authentication tests and deliberate design adaptations.
 
+P06 completes the Linux merge/conflict/stash/recovery workflow. Merge and rebase dialogs check for
+conflicts before starting; a banner above the workspace keeps Resolve, Continue, Skip and Abort
+available after restart. Local Changes offers paired source cards and a wide merge helper with
+per-region choices and an editable result. Binary, deleted, renamed and submodule entries have explicit
+resolution choices. Diff controls can stash a hunk or selected lines, and selected-file stashes exclude
+unrelated staged work. Conflicted stash applications retain their stash and can be finished or aborted.
+Cherry-pick/revert supports merge-parent and no-commit choices; Hard reset keeps Recovery copies and
+refuses untracked/ignored obstacles. See the [P06 handoff](docs/reviews/p06-merge-recovery.md) for scope,
+Fork comparisons, verification and retained platform limits.
+
 P03's history and revision browser is complete for the Linux baseline. Search includes Commit SHA
 (full hash or at least four prefix characters) and ten session-only recent queries. Commit summaries
 support inline file expansion; large File Tree directories have Load more and virtualized rows.
@@ -113,15 +123,16 @@ search with graph highlights and direct distant navigation, full-file/context/wr
 explicit bounded Load Diff, confirmed tracked-file discard with recovery, a global automatic-fetch
 preference, native authentication helper policy, captured stash-new-file semantics, and all four merge
 modes. The corrected workflows are verified together; the broader feature families remain partial.
-Conflict-editor parity beyond the bounded F17 text slice, F18 merge-preserving/dependent-reference
-variants, F19 batch/edge history operations, F20 reflog expiry/named-recovery variants, hunk/line stashes and patch import, syntax/rich image viewers,
-and the remaining workspace/platform variants retain their later-phase scope.
+F18 merge-preserving/dependent-reference variants, batch history selection, F20 reflog expiry/named-recovery
+variants, additional image formats, and the remaining workspace/platform variants retain their later-phase
+scope. P04 syntax, P06 conflict/partial-stash and F36 patch import are covered by their newer handoffs.
 
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.
 Recovery provides merge/rebase continue/abort and saved-change restoration, including after restart.
-Resolve conflicted files externally, stage them in Local Changes, then continue or mark saved changes
-resolved. Recovery entries can be dismissed without changing Git's stash list. Before an action starts,
+Resolve files through the built-in helper or an external tool, then Commit/Continue or mark saved changes
+resolved. A submodule source choice stages its revision without changing the child checkout. Recovery
+entries can be dismissed without changing Git's stash list. Before an action starts,
 Cancel leaves the repository unchanged; after it starts, Close dismisses the dialog and Activity provides
 the operation's cancellation control. Cancellation does not promise rollback.
 

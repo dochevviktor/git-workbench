@@ -3,6 +3,8 @@ import type {
   RepositoryMergeRebaseAction,
   RepositoryOperationFailureReason,
   RepositoryReferenceContext,
+  RepositoryMergeRebasePreviewRequest,
+  RepositoryMergeRebasePreview,
 } from '../../common/ipc/contracts';
 import { GitCancelledError, GitCommandError, GitTimeoutError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
@@ -12,6 +14,7 @@ import { readReferenceContext, StaleReferenceSnapshotError } from './reference-s
 import { withLocalChanges } from './recovery-service';
 import { detectPendingOperation } from './commit-service';
 import { readWorkingChanges } from './working-tree-service';
+import { previewIntegration } from './integration-preview';
 
 const mergeRebaseTimeoutMs = 10 * 60 * 1000;
 const mergeRebaseOutputLimit = 8 * 1024 * 1024;
@@ -88,6 +91,8 @@ export async function runMergeRebase(
   }
 
   const sourceCommit = await resolveSourceCommit(runner, input.cwd, context, input.action.sourceFullName);
+  if (input.action.sourceCommitId && input.action.sourceCommitId !== sourceCommit)
+    throw new StaleReferenceSnapshotError();
   const sourceLabel = displayReference(input.action.sourceFullName);
   const currentLabel = context.head.name;
   if (input.action.sourceFullName === `refs/heads/${context.head.name}`) {
@@ -187,6 +192,24 @@ export async function runMergeRebase(
     }
     throw error;
   }
+}
+
+export async function readMergeRebasePreview(
+  runner: MergeRebaseRunner,
+  context: Parameters<typeof readReferenceContext>[1],
+  request: RepositoryMergeRebasePreviewRequest,
+): Promise<RepositoryMergeRebasePreview> {
+  const reference = await readReferenceContext(runner, context);
+  const sourceCommitId = await resolveSourceCommit(runner, context.cwd, reference, request.sourceFullName);
+  const prediction =
+    reference.head.commit && !reference.pendingOperation
+      ? await previewIntegration(runner, context.cwd, {
+          kind: request.kind,
+          head: reference.head.commit,
+          target: sourceCommitId,
+        })
+      : { state: 'unknown' as const, message: 'Finish the current Git operation before starting another.' };
+  return { ...prediction, sourceCommitId, snapshot: reference.snapshot };
 }
 
 function createPlan(

@@ -8,6 +8,7 @@ import type {
 import type { Platform } from '../lib/platform';
 import { CommitIcon } from './Icons';
 import { DialogShell } from './DialogShell';
+import { IntegrationStatus } from './IntegrationStatus';
 
 export type HistoryOperationDialogRequest = {
   readonly kind: 'cherry-pick' | 'revert' | 'reset';
@@ -58,7 +59,12 @@ export function HistoryOperationDialog({
     const input =
       request.kind === 'reset'
         ? { kind: 'reset' as const, id: repositoryId, targetCommitId: request.commit.id, mode }
-        : { kind: request.kind, id: repositoryId, commitId: request.commit.id };
+        : {
+            kind: request.kind,
+            id: repositoryId,
+            commitId: request.commit.id,
+            ...(request.commit.parents.length > 1 ? { mainlineParent } : {}),
+          };
     void window.desktop?.repository
       .getHistoryOperationPreview(input)
       .then((result) => {
@@ -72,7 +78,7 @@ export function HistoryOperationDialog({
     return () => {
       active = false;
     };
-  }, [mode, repositoryId, request]);
+  }, [mode, mainlineParent, repositoryId, request]);
 
   const target = preview?.targetCommitId ?? request.commit.id;
   const targetSubject = preview?.targetSubject ?? request.commit.subject;
@@ -134,11 +140,13 @@ export function HistoryOperationDialog({
 
   return (
     <DialogShell
+      className="p05-dialog p06-dialog"
       title={title}
       subtitle={subtitle}
       icon={<CommitIcon size={26} />}
       platform={platform}
       warning={warning}
+      status={request.kind !== 'reset' ? <IntegrationStatus value={preview?.integration} /> : undefined}
       submitLabel={submitLabel}
       submitDisabled={submitDisabled}
       danger={request.kind === 'reset' && mode === 'hard'}
@@ -171,25 +179,29 @@ export function HistoryOperationDialog({
               <option value="hard">Hard — discard tracked local changes</option>
             </select>
           </dd>
-          <dt />
-          <dd className="reference-dialog-options">
-            <label className="reference-checkbox">
-              <input
-                type="checkbox"
-                checked={confirmDiscard}
-                disabled={!needsHardConfirmation}
-                onChange={(event) => setConfirmDiscard(event.target.checked)}
-              />
-              Confirm saving a Recovery copy before discarding tracked changes
-            </label>
-            <p className="dialog-inline-note">
-              {mode === 'hard'
-                ? 'Untracked files are left in place; tracked changes are retained in Recovery before reset.'
-                : mode === 'soft'
-                  ? 'HEAD moves while the index and worktree stay unchanged.'
-                  : 'HEAD and the index move while worktree files stay unchanged.'}
-            </p>
-          </dd>
+          {needsHardConfirmation && (
+            <>
+              <dt />
+              <dd className="reference-dialog-options">
+                <label className="reference-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={confirmDiscard}
+                    disabled={!needsHardConfirmation}
+                    onChange={(event) => setConfirmDiscard(event.target.checked)}
+                  />
+                  Confirm saving a Recovery copy before discarding tracked changes
+                </label>
+                <p className="dialog-inline-note">
+                  {mode === 'hard'
+                    ? 'Untracked files are left in place; tracked changes are retained in Recovery before reset.'
+                    : mode === 'soft'
+                      ? 'HEAD moves while the index and worktree stay unchanged.'
+                      : 'HEAD and the index move while worktree files stay unchanged.'}
+                </p>
+              </dd>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -235,25 +247,29 @@ export function HistoryOperationDialog({
               </dd>
             </>
           )}
-          <dt>Local changes:</dt>
-          <dd className="reference-dialog-options">
-            <label className="reference-checkbox">
-              <input
-                type="checkbox"
-                checked={autostash}
-                disabled={!hasChanges}
-                onChange={(event) => setAutostash(event.target.checked)}
-              />
-              Stash and reapply local changes
-            </label>
-            <p className="dialog-inline-note">
-              {loading
-                ? 'Checking the working tree…'
-                : hasChanges
-                  ? `${preview?.workingChanges.paths.length ?? 0} tracked and ${preview?.workingChanges.untrackedPaths.length ?? 0} untracked path${(preview?.workingChanges.paths.length ?? 0) + (preview?.workingChanges.untrackedPaths.length ?? 0) === 1 ? '' : 's'} will be preserved.`
-                  : 'No local changes detected.'}
-            </p>
-          </dd>
+          {hasChanges && (
+            <>
+              <dt>Local changes:</dt>
+              <dd className="reference-dialog-options">
+                <label className="reference-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={autostash}
+                    disabled={!hasChanges}
+                    onChange={(event) => setAutostash(event.target.checked)}
+                  />
+                  Stash and reapply local changes
+                </label>
+                <p className="dialog-inline-note">
+                  {loading
+                    ? 'Checking the working tree…'
+                    : hasChanges
+                      ? `${preview?.workingChanges.paths.length ?? 0} tracked and ${preview?.workingChanges.untrackedPaths.length ?? 0} untracked path${(preview?.workingChanges.paths.length ?? 0) + (preview?.workingChanges.untrackedPaths.length ?? 0) === 1 ? '' : 's'} will be preserved.`
+                      : 'No local changes detected.'}
+                </p>
+              </dd>
+            </>
+          )}
         </>
       )}
     </DialogShell>

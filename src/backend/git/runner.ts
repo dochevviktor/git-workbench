@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ChildProcessWithoutNullStreams, SpawnOptions } from 'node:child_process';
 import { resolveGitExecutable } from './executable';
@@ -21,6 +21,8 @@ export interface GitRunOptions {
   readonly maxOutputBytes?: number;
   readonly signal?: AbortSignal | undefined;
   readonly env?: NodeJS.ProcessEnv;
+  /** Main-owned temporary index; inherited GIT_INDEX_FILE remains rejected. Never accepted over IPC. */
+  readonly indexFile?: string;
   /** Only explicit user network operations may invoke configured native authentication prompts. */
   readonly authentication?: GitAuthenticationPolicy;
   /** Optional patch data supplied by a backend Git service, never by the renderer. */
@@ -289,6 +291,11 @@ export class GitRunner {
 
   private async runProcess(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult> {
     if (options.signal?.aborted) throw new GitCancelledError();
+    if (options.indexFile && (!isAbsolute(options.indexFile) || options.indexFile.includes('\0')))
+      throw new ExpectedBackendError(
+        'INVALID_REQUEST',
+        'A temporary Git index needs an absolute backend-owned path.',
+      );
     const executable = await this.resolveExecutable();
     if (options.signal?.aborted) throw new GitCancelledError();
     if (!executable) throw new GitExecutableError(this.configuredExecutable);
@@ -309,7 +316,10 @@ export class GitRunner {
       try {
         child = spawn(executable, commandArgs, {
           cwd: options.cwd,
-          env: controlledEnvironment(options.env, options.authentication),
+          env: {
+            ...controlledEnvironment(options.env, options.authentication),
+            ...(options.indexFile ? { GIT_INDEX_FILE: options.indexFile } : {}),
+          },
           shell: false,
           windowsHide: true,
           // A POSIX child leads its own process group, so cancelling a fetch also stops the transport

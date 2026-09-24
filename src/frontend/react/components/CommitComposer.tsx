@@ -42,6 +42,8 @@ function truncate(value: string, length: number): string {
 
 function pendingOperationNotice(context: RepositoryCommitContext): string | undefined {
   switch (context.pendingOperation) {
+    case 'stash':
+      return 'Resolve the applied stash before committing. The original stash is retained.';
     case 'merge':
       return 'A merge is in progress. Committing records the merge with its recorded parents.';
     case 'squash':
@@ -148,6 +150,7 @@ export function CommitComposer({
 
   const context = useCommitContext(repository.id, changeToken);
   const value = context.value;
+  const rebaseContinue = value?.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend' && !amend;
   const refreshContext = context.refresh;
 
   const prefillKey = value
@@ -211,7 +214,7 @@ export function CommitComposer({
       setFailure(undefined);
       setError(undefined);
       try {
-        if (value.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend) {
+        if (value.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend' && !amend) {
           const recovery = unwrapResult(await api.repository.getRecovery({ id: repository.id }));
           const operation = await waitForOperation(
             api,
@@ -224,6 +227,16 @@ export function CommitComposer({
             ),
           );
           if (operation.status !== 'succeeded') throw new Error(operation.message);
+          if (!mounted.current) return;
+          const prepared = value.pendingMessage ? splitMessage(value.pendingMessage) : undefined;
+          if (
+            prepared &&
+            currentDraft.current.subject === prepared.subject &&
+            currentDraft.current.body === prepared.body
+          ) {
+            setSubject('');
+            setBody('');
+          }
           refreshContext();
           onCommitted();
           return;
@@ -289,8 +302,7 @@ export function CommitComposer({
       return 'Configure user.name and user.email before committing.';
     }
     if (conflictedCount > 0) return 'Resolve the conflicted files before committing.';
-    if (value.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend)
-      return undefined;
+    if (value.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend' && !amend) return undefined;
     if (!subject.trim()) return 'Enter a commit subject.';
     if (value.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend')
       return 'Continue the rebase from Recovery after staging the resolution.';
@@ -304,7 +316,7 @@ export function CommitComposer({
   const amendAvailable = Boolean(value?.amend);
   const commitLabel = committing
     ? 'Committing…'
-    : value?.pendingOperation === 'rebase' && value.rebaseEdit === 'ready-to-continue' && !amend
+    : value?.pendingOperation === 'rebase' && value.rebaseEdit !== 'needs-amend' && !amend
       ? 'Continue Rebase'
       : amend
         ? 'Amend Last Commit'
@@ -447,6 +459,12 @@ export function CommitComposer({
             aria-label="Commit subject"
             spellCheck={spellCheck}
             data-testid="commit-subject"
+            readOnly={rebaseContinue}
+            title={
+              rebaseContinue
+                ? 'Rebase preserves the original commit message; an existing draft is retained.'
+                : undefined
+            }
             onChange={(event) => setSubject(event.target.value)}
           />
           <span
@@ -464,6 +482,7 @@ export function CommitComposer({
             aria-label="Recent commit messages"
             title="Recent commit messages"
             menuLabel="Recent commit messages"
+            disabled={rebaseContinue}
             items={recentItems}
           >
             <RecentMessagesIcon size={14} />
@@ -477,6 +496,7 @@ export function CommitComposer({
           aria-label="Commit description"
           spellCheck={spellCheck}
           data-testid="commit-description"
+          readOnly={rebaseContinue}
           onChange={(event) => setBody(event.target.value)}
         />
       </div>
@@ -513,6 +533,7 @@ export function CommitComposer({
             aria-label="Commit options"
             title="Commit options"
             menuLabel="Commit options"
+            disabled={rebaseContinue}
             items={commitOptions}
           >
             <ChevronDownIcon size={12} />

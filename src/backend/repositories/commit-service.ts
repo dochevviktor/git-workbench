@@ -23,6 +23,7 @@ import { GitCommandError, GitTimeoutError, redactUrlCredentials } from '../git/r
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { parseRawChanges, resolveAmendBase } from './revision-service';
 import { readWorkingChanges } from './working-tree-service';
+import { finishStashApplication, readStashApplication } from './stash-application';
 
 const commitReadTimeoutMs = 10_000;
 const commitReadOutputLimit = 1024 * 1024;
@@ -234,6 +235,14 @@ export async function commitChanges(
   }
 
   const commitId = await readHeadCommitId(runner, input.cwd);
+  if (context.pendingOperation === 'stash') await finishStashApplication(input.gitDir);
+  const noCommit = await readSingleNoCommitOperation(input.gitDir);
+  if (noCommit && noCommit === context.pendingOperation)
+    await runner.run([noCommit, '--quit'], {
+      cwd: input.cwd,
+      timeoutMs: commitReadTimeoutMs,
+      maxOutputBytes: commitReadOutputLimit,
+    });
   return repositoryCommitResultSchema.parse({
     status: 'committed',
     repositoryId: input.repositoryId,
@@ -518,6 +527,7 @@ async function readPendingOperation(gitDir: string): Promise<{
   readonly message: string | null;
 }> {
   const operation = await detectPendingOperation(gitDir);
+  if (operation === 'stash') return { operation, message: null };
   const message =
     (await readGitDirText(gitDir, 'MERGE_MSG')) ??
     (await readGitDirText(gitDir, 'CHERRY_PICK_MSG')) ??
@@ -527,17 +537,31 @@ async function readPendingOperation(gitDir: string): Promise<{
   return { operation, message: operation ? message : null };
 }
 
+export async function readSingleNoCommitOperation(gitDir: string): Promise<'cherry-pick' | 'revert' | null> {
+  const opts = await readGitDirText(gitDir, 'sequencer/opts');
+  if (!/no-commit\s*=\s*true/u.test(opts ?? '')) return null;
+  const todo =
+    (await readGitDirText(gitDir, 'sequencer/todo'))
+      ?.split('\n')
+      .filter((line) => /^(pick|revert) /u.test(line)) ?? [];
+  return todo.length === 1 ? (todo[0]!.startsWith('pick ') ? 'cherry-pick' : 'revert') : null;
+}
+
 /** Shared with the reference workflows, which must not check out while a sequencer is running. */
 export async function detectPendingOperation(
   gitDir: string,
 ): Promise<RepositoryCommitPendingOperation | null> {
+  // Rebase owns replay conflicts even when Git also leaves CHERRY_PICK_HEAD.
+  if ((await pathExists(join(gitDir, 'rebase-merge'))) || (await pathExists(join(gitDir, 'rebase-apply'))))
+    return 'rebase';
   if (await pathExists(join(gitDir, 'MERGE_HEAD'))) return 'merge';
   if (await pathExists(join(gitDir, 'CHERRY_PICK_HEAD'))) return 'cherry-pick';
   if (await pathExists(join(gitDir, 'REVERT_HEAD'))) return 'revert';
-  if ((await pathExists(join(gitDir, 'rebase-merge'))) || (await pathExists(join(gitDir, 'rebase-apply')))) {
-    return 'rebase';
-  }
+  const todo = await readGitDirText(gitDir, 'sequencer/todo');
+  if (/^pick /mu.test(todo ?? '')) return 'cherry-pick';
+  if (/^revert /mu.test(todo ?? '')) return 'revert';
   if (await pathExists(join(gitDir, 'SQUASH_MSG'))) return 'squash';
+  if (await readStashApplication(gitDir)) return 'stash';
   return null;
 }
 
@@ -549,6 +573,12 @@ export async function readRebaseEditState(
   headCommit: string | null,
 ): Promise<'none' | 'needs-amend' | 'ready-to-continue'> {
   if (!headCommit) return 'none';
+  const done = await readGitDirText(gitDir, 'rebase-merge/done');
+  const last = done
+    ?.split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .at(-1);
+  if (!last || !/^edit /u.test(last)) return 'none';
   const stopped =
     (await readGitDirText(gitDir, 'rebase-merge/stopped-sha')) ??
     (await readGitDirText(gitDir, 'rebase-apply/stopped-sha'));
@@ -570,6 +600,8 @@ function normalizeEditSignature(value: string): string {
 
 function pendingOperationLabel(operation: RepositoryCommitPendingOperation): string {
   switch (operation) {
+    case 'stash':
+      return 'A stash application';
     case 'merge':
       return 'A merge';
     case 'squash':

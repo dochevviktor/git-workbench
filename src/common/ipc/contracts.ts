@@ -657,12 +657,7 @@ export const repositoryWorkingChangesSchema = z.strictObject({
 export const repositoryConflictContentSchema = z.strictObject({
   state: z.enum(['text', 'binary', 'too-large', 'unavailable']),
   content: z.string().max(2 * 1024 * 1024),
-  byteLength: z
-    .number()
-    .int()
-    .nonnegative()
-    .max(8 * 1024 * 1024)
-    .nullable(),
+  byteLength: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
   message: z.string().max(512).nullable(),
 });
 
@@ -693,6 +688,16 @@ export const repositoryConflictFileSummarySchema = z.strictObject({
 });
 
 export const repositoryConflictFileSchema = repositoryConflictFileSummarySchema.extend({
+  workingCommitId: gitObjectIdSchema.nullable(),
+  shape: z.enum([
+    'both-modified',
+    'add-add',
+    'delete-modify',
+    'both-deleted',
+    'rename',
+    'symlink',
+    'submodule',
+  ]),
   stages: z.strictObject({
     base: repositoryConflictStageSchema,
     ours: repositoryConflictStageSchema,
@@ -731,14 +736,19 @@ export const repositoryConflictStateSchema = z.strictObject({
   snapshot: repositoryDiffSnapshotSchema,
 });
 
-export const repositoryResolveConflictRequestSchema = z
-  .strictObject({
-    id: repositoryIdSchema,
-    path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A conflict path is required.'),
-    snapshot: repositoryDiffSnapshotSchema,
-    content: z.string().max(2 * 1024 * 1024),
-  })
-  .refine((request) => !request.content.includes('\0'), 'A text conflict result cannot contain NUL bytes.');
+const repositoryConflictTargetSchema = z.strictObject({
+  id: repositoryIdSchema,
+  path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'A conflict path is required.'),
+  snapshot: repositoryDiffSnapshotSchema,
+});
+export const repositoryResolveConflictRequestSchema = z.union([
+  repositoryConflictTargetSchema
+    .extend({
+      content: z.string().max(2 * 1024 * 1024),
+    })
+    .refine((request) => !request.content.includes('\0'), 'A text conflict result cannot contain NUL bytes.'),
+  repositoryConflictTargetSchema.extend({ choice: z.enum(['ours', 'theirs', 'delete', 'working']) }),
+]);
 
 export const repositoryWorkingChangeActionSchema = z.enum(['stage', 'unstage', 'discard']);
 
@@ -833,6 +843,7 @@ export const repositoryCommitAmendTargetSchema = z.strictObject({
 });
 
 export const repositoryCommitPendingOperationSchema = z.enum([
+  'stash',
   'merge',
   'squash',
   'cherry-pick',
@@ -1160,6 +1171,7 @@ export const repositoryMergeRebaseActionSchema = z
     z.strictObject({
       kind: z.literal('merge'),
       mode: z.enum(['default', 'no-ff', 'squash', 'no-commit']).optional(),
+      sourceCommitId: gitObjectIdSchema.optional(),
       sourceFullName: repositoryMergeSourceSchema,
       snapshot: repositoryDiffSnapshotSchema,
       autostash: z.boolean(),
@@ -1168,6 +1180,7 @@ export const repositoryMergeRebaseActionSchema = z
     z.strictObject({
       kind: z.literal('rebase'),
       sourceFullName: repositoryMergeSourceSchema,
+      sourceCommitId: gitObjectIdSchema.optional(),
       snapshot: repositoryDiffSnapshotSchema,
       autostash: z.boolean(),
       changesSnapshot: repositoryDiffSnapshotSchema.optional(),
@@ -1181,6 +1194,20 @@ export const repositoryMergeRebaseActionSchema = z
 export const repositoryMergeRebaseRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   action: repositoryMergeRebaseActionSchema,
+});
+
+export const repositoryIntegrationPreviewSchema = z.strictObject({
+  state: z.enum(['clean', 'conflicts', 'unknown']),
+  message: z.string().max(512),
+});
+export const repositoryMergeRebasePreviewRequestSchema = z.strictObject({
+  id: repositoryIdSchema,
+  kind: z.enum(['merge', 'rebase']),
+  sourceFullName: repositoryMergeSourceSchema,
+});
+export const repositoryMergeRebasePreviewSchema = repositoryIntegrationPreviewSchema.extend({
+  sourceCommitId: gitObjectIdSchema,
+  snapshot: repositoryDiffSnapshotSchema,
 });
 
 export const repositoryReferenceFailureReasonSchema = z.enum([
@@ -1801,6 +1828,7 @@ export type RepositoryBisectContext = z.infer<typeof repositoryBisectContextSche
 export type RepositoryBisectActionRequest = z.infer<typeof repositoryBisectActionRequestSchema>;
 
 export const repositoryOperationKindSchema = z.enum([
+  'resolve-conflict',
   'lean-branching',
   'patch',
   'external-tool',
@@ -1997,11 +2025,13 @@ export const repositoryHistoryOperationPreviewRequestSchema = z.discriminatedUni
     kind: z.literal('cherry-pick'),
     id: repositoryIdSchema,
     commitId: gitObjectIdSchema,
+    mainlineParent: z.number().int().positive().max(128).optional(),
   }),
   z.strictObject({
     kind: z.literal('revert'),
     id: repositoryIdSchema,
     commitId: gitObjectIdSchema,
+    mainlineParent: z.number().int().positive().max(128).optional(),
   }),
   z.strictObject({
     kind: z.literal('reset'),
@@ -2021,6 +2051,7 @@ export const repositoryHistoryOperationChangesSchema = z.strictObject({
 
 /** A fresh, read-only plan for one selected commit operation. The renderer sends this token back. */
 export const repositoryHistoryOperationPreviewSchema = z.strictObject({
+  integration: repositoryIntegrationPreviewSchema.optional(),
   repositoryId: repositoryIdSchema,
   kind: repositoryHistoryOperationKindSchema,
   currentHead: repositoryHeadSchema,
@@ -2141,6 +2172,7 @@ export const repositoryRecoveryCopySchema = z.strictObject({
   pending: z.boolean(),
 });
 export const repositoryRecoveryStateSchema = z.strictObject({
+  operationLabel: z.string().max(512).optional(),
   snapshot: repositoryDiffSnapshotSchema,
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
   copies: z.array(repositoryRecoveryCopySchema).max(100),
@@ -2187,6 +2219,16 @@ export const repositoryStashDetailsSchema = z.strictObject({
   message: z.string().max(512).nullable(),
 });
 export const repositoryStashActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('save-selection'),
+    message: z.string().max(512),
+    target: repositoryWorkingChangeTargetSchema,
+    selection: repositoryWorkingChangeSelectionSchema.refine(
+      (value) => value.kind !== 'file',
+      'Choose a hunk or lines.',
+    ),
+    snapshot: repositoryDiffSnapshotSchema,
+  }),
   z.strictObject({
     kind: z.literal('save'),
     message: z.string().max(512),
@@ -2663,6 +2705,11 @@ export const requests = {
     repositoryResolveConflictRequestSchema,
     repositoryConflictStateSchema,
   ),
+  startRepositoryConflictResolution: request(
+    'repository:start-conflict-resolution',
+    repositoryResolveConflictRequestSchema,
+    repositoryOperationSchema,
+  ),
   applyRepositoryWorkingChange: request(
     'repository:apply-working-change',
     repositoryWorkingChangeActionRequestSchema,
@@ -2763,6 +2810,11 @@ export const requests = {
     'repository:start-merge-rebase',
     repositoryMergeRebaseRequestSchema,
     repositoryOperationSchema,
+  ),
+  getRepositoryMergeRebasePreview: request(
+    'repository:get-merge-rebase-preview',
+    repositoryMergeRebasePreviewRequestSchema,
+    repositoryMergeRebasePreviewSchema,
   ),
   getRepositoryHistoryOperationPreview: request(
     'repository:get-history-operation-preview',
@@ -3064,6 +3116,9 @@ export type RepositoryGitFlowFailureReason = z.infer<typeof repositoryGitFlowFai
 export type RepositoryGitFlowActionResult = z.infer<typeof repositoryGitFlowActionResultSchema>;
 export type RepositoryMergeRebaseAction = z.infer<typeof repositoryMergeRebaseActionSchema>;
 export type RepositoryMergeRebaseRequest = z.infer<typeof repositoryMergeRebaseRequestSchema>;
+export type RepositoryMergeRebasePreviewRequest = z.infer<typeof repositoryMergeRebasePreviewRequestSchema>;
+export type RepositoryMergeRebasePreview = z.infer<typeof repositoryMergeRebasePreviewSchema>;
+export type RepositoryIntegrationPreview = z.infer<typeof repositoryIntegrationPreviewSchema>;
 export type RepositoryInteractiveRebaseCommand = z.infer<typeof repositoryInteractiveRebaseCommandSchema>;
 export type RepositoryInteractiveRebaseCommit = z.infer<typeof repositoryInteractiveRebaseCommitSchema>;
 export type RepositoryInteractiveRebasePlan = z.infer<typeof repositoryInteractiveRebasePlanSchema>;

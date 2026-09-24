@@ -15,6 +15,7 @@ import { displayOutput } from './network-service';
 import { readReferenceContext } from './reference-service';
 import { previewLocalChanges, saveDiscardRecovery, withLocalChanges } from './recovery-service';
 import type { RepositoryReferenceContext } from '../../common/ipc/contracts';
+import { previewIntegration } from './integration-preview';
 
 const historyOperationTimeoutMs = 10 * 60 * 1000;
 const historyOperationOutputLimit = 8 * 1024 * 1024;
@@ -80,9 +81,20 @@ export async function readHistoryOperationPreview(
   const mode = input.kind === 'reset' ? input.mode : null;
   const snapshot = operationSnapshot(reference, changes.snapshot, input.kind, target.id, mode);
   const message = previewMessage(input.kind, reference, changes, target, context.head);
+  const obstacles = mode === 'hard' ? await hardResetObstacles(runner, context.cwd, target.id) : [];
+  const integration =
+    input.kind !== 'reset' && reference.head.commit && !reference.pendingOperation
+      ? await previewIntegration(runner, context.cwd, {
+          kind: input.kind,
+          head: reference.head.commit,
+          target: target.id,
+          parent: target.parents[(input.mainlineParent ?? 1) - 1],
+        })
+      : undefined;
 
   return repositoryHistoryOperationPreviewSchema.parse({
     repositoryId: input.id,
+    ...(integration ? { integration } : {}),
     kind: input.kind,
     currentHead: reference.head,
     currentBranch: reference.head.state === 'branch' ? reference.head.name : null,
@@ -92,8 +104,13 @@ export async function readHistoryOperationPreview(
     mode,
     workingChanges: changesDto(changes, reference.conflictedCount),
     snapshot,
-    canStart: canStart(input.kind, reference, target, context.head),
-    message,
+    canStart: canStart(input.kind, reference, target, context.head) && obstacles.length === 0,
+    message: obstacles.length
+      ? `Hard reset would overwrite untracked or ignored files: ${obstacles.slice(0, 3).join(', ')}. Move or save them first.`.slice(
+          0,
+          512,
+        )
+      : message,
   } satisfies RepositoryHistoryOperationPreview);
 }
 
@@ -179,7 +196,8 @@ async function runCherryOrRevert(
   const args = [action.kind, action.commitChanges ? '--no-edit' : '--no-commit'];
   if (action.kind === 'cherry-pick' && action.appendOrigin) args.push('-x');
   if (action.mainlineParent !== undefined) args.push('-m', String(action.mainlineParent));
-  args.push(target.id);
+  // Revision-set form keeps Git's sequencer/opts for interrupted --no-commit operations.
+  args.push(action.commitChanges ? target.id : `${target.id}^!`);
   input.handle.setCommand?.(displayCommand(args));
 
   try {
@@ -214,18 +232,15 @@ async function runReset(
     throw new StaleHistoryOperationError();
 
   const trackedChanges = reviewed.changes.paths.length > 0;
+  if (action.mode === 'hard' && (await hardResetObstacles(runner, input.cwd, reviewed.target.id)).length)
+    throw new HistoryOperationRequestError(
+      'Hard reset would overwrite untracked or ignored files. Move or save them before resetting.',
+    );
   if (action.mode === 'hard' && trackedChanges && !action.confirmDiscard) {
     return {
       status: 'failed',
       failureReason: 'local-changes',
       message: 'Confirm Hard reset to save a Recovery copy and discard tracked local changes.',
-      output: '',
-    };
-  }
-  if (reviewed.target.id === input.head.commit) {
-    return {
-      status: 'succeeded',
-      message: `Already at '${reviewed.target.subject || reviewed.target.id.slice(0, 7)}'.`,
       output: '',
     };
   }
@@ -240,7 +255,7 @@ async function runReset(
     recoverySaved = true;
   }
 
-  const args = ['reset', `--${action.mode}`, reviewed.target.id];
+  const args = ['reset', '--no-recurse-submodules', `--${action.mode}`, reviewed.target.id];
   input.handle.setCommand?.(displayCommand(args));
   try {
     const result = await runner.run(args, {
@@ -259,6 +274,33 @@ async function runReset(
   } catch (error) {
     return resetFailure(error);
   }
+}
+
+async function hardResetObstacles(
+  runner: HistoryOperationRunner,
+  cwd: string,
+  target: string,
+): Promise<string[]> {
+  const options = { cwd, timeoutMs: historyReadTimeoutMs, maxOutputBytes: historyReadOutputLimit };
+  const [untracked, tree] = await Promise.all([
+    runner.run(['ls-files', '--others', '-z', '--'], options),
+    runner.run(['ls-tree', '-r', '--name-only', '-z', target], options),
+  ]);
+  const destinations = new Set(tree.stdout.split('\0').filter(Boolean));
+  const directories = new Set<string>();
+  for (const path of destinations) {
+    const parts = path.split('/');
+    for (let i = 1; i < parts.length; i += 1) directories.add(parts.slice(0, i).join('/'));
+  }
+  return untracked.stdout
+    .split('\0')
+    .filter(Boolean)
+    .filter((path) => {
+      const normalized = path.replace(/\/$/u, '');
+      if (destinations.has(normalized) || directories.has(normalized)) return true;
+      const parts = normalized.split('/');
+      return parts.some((_part, i) => destinations.has(parts.slice(0, i + 1).join('/')));
+    });
 }
 
 async function readTargetCommit(
@@ -338,7 +380,6 @@ function canStart(
   if (reference.pendingOperation || reference.conflictedCount > 0) return false;
   if (head.state !== 'branch' || !head.name || !head.commit) return false;
   if (kind === 'cherry-pick' && target.id === head.commit) return false;
-  if (kind === 'reset' && target.id === head.commit) return false;
   return true;
 }
 
@@ -356,7 +397,6 @@ function previewMessage(
     return 'Check out a branch with a commit before changing its history.';
   if (kind === 'cherry-pick' && target.id === head.commit)
     return 'The current commit cannot be cherry-picked onto itself.';
-  if (kind === 'reset' && target.id === head.commit) return 'The branch already points at this revision.';
   return changes.paths.length + changes.untrackedPaths.length > 0
     ? 'Local changes are present. Choose Stash and reapply, or review the reset mode carefully.'
     : 'Ready to review and start.';
@@ -378,8 +418,6 @@ function ensureRunnable(
     throw new HistoryOperationRequestError('Check out a branch with a commit before changing its history.');
   if (kind === 'cherry-pick' && target.id === head.commit)
     throw new HistoryOperationRequestError('The current commit cannot be cherry-picked onto itself.');
-  if (kind === 'reset' && target.id === head.commit)
-    throw new HistoryOperationRequestError('The current branch already points at the selected revision.');
 }
 
 function historyCommandFailure(kind: 'cherry-pick' | 'revert', error: unknown): OperationOutcome {

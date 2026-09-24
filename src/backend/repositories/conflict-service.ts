@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
-import { lstat, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { lstat, mkdir, readFile, readlink, rename, symlink, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve, sep } from 'node:path';
 import type {
   RepositoryConflictContent,
   RepositoryConflictFile,
@@ -14,9 +15,11 @@ import type {
   RepositoryResolveConflictRequest,
 } from '../../common/ipc/contracts';
 import { repositoryConflictStateSchema } from '../../common/ipc/contracts';
-import { GitCommandError } from '../git/runner';
+import { GitCancelledError, GitCommandError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { detectPendingOperation } from './commit-service';
+import { conflictTextRegions, hasConflictMarkers } from '../../common/conflict-text';
+import { finishStashApplication, readStashApplication } from './stash-application';
 
 const conflictReadTimeoutMs = 15_000;
 const conflictWriteTimeoutMs = 120_000;
@@ -92,16 +95,45 @@ export async function readConflictState(
     const group = groups.find((candidate) => candidate.path === selectedPath);
     if (!group) throw new ConflictRequestError('There are no conflicted files to inspect.');
     selected = await readConflictFile(runner, context.cwd, group);
+    const origins = groups.filter(
+      (candidate) =>
+        candidate.path !== group.path &&
+        candidate.stages.has(1) &&
+        [group.stages.get(2)?.objectId, group.stages.get(3)?.objectId].includes(
+          candidate.stages.get(1)?.objectId,
+        ),
+    );
+    if (!group.stages.has(1) && origins.length === 1)
+      selected = { ...selected, shape: 'rename', previousPath: origins[0]!.path };
   }
 
   const selectedKind = selected?.kind;
   const files: RepositoryConflictFileSummary[] = groups.slice(0, conflictFileLimit).map((group) => ({
     path: group.path,
-    previousPath: null,
+    previousPath: group.path === selectedPath ? (selected?.previousPath ?? null) : null,
     kind: group.path === selectedPath && selectedKind ? selectedKind : classifyStageKind(group),
     unresolvedRegions: group.path === selectedPath && selected ? selected.unresolvedRegions : null,
   }));
-  const snapshot = conflictSnapshot(operation, groups, selectedPath, selected?.result ?? null);
+  const anchors = await Promise.all([
+    optionalOutput(runner, context.cwd, ['rev-parse', '--verify', 'HEAD']),
+    ...[
+      'MERGE_HEAD',
+      'REBASE_HEAD',
+      'CHERRY_PICK_HEAD',
+      'REVERT_HEAD',
+      'rebase-merge/onto',
+      'sequencer/head',
+    ].map((name) => gitDirText(context.gitDir, name)),
+  ]);
+  const snapshot = conflictSnapshot(
+    operation,
+    groups,
+    selectedPath,
+    selected?.result ?? null,
+    selectedPath
+      ? `${await workingFingerprint(context.cwd, selectedPath)}:${selected?.workingCommitId ?? ''}:${JSON.stringify(anchors)}`
+      : JSON.stringify(anchors),
+  );
   return repositoryConflictStateSchema.parse({
     repositoryId: context.repositoryId,
     operation: operation.operation,
@@ -120,14 +152,20 @@ export async function resolveConflict(
   runner: ConflictRunner,
   context: ConflictContext,
   request: RepositoryResolveConflictRequest,
+  signal?: AbortSignal,
 ): Promise<RepositoryConflictState> {
   const before = await readConflictState(runner, context, {
     id: request.id,
     path: request.path,
   });
   if (before.snapshot !== request.snapshot) throw new StaleConflictSnapshotError();
+  if (signal?.aborted) throw new GitCancelledError();
   const selected = before.selected;
   if (!selected) throw new ConflictRequestError('That file is no longer conflicted. Refresh Local Changes.');
+  if ('choice' in request) {
+    await resolveChoice(runner, context, selected, request.choice, signal);
+    return afterResolution(runner, context, request.id);
+  }
   if (selected.kind !== 'text' || selected.result.state !== 'text') {
     throw new ConflictRequestError(
       'This conflict is not a bounded text file. Resolve it with an external tool, then stage it in Local Changes.',
@@ -141,20 +179,25 @@ export async function resolveConflict(
     throw new ConflictRequestError('The resolved file is too large for the built-in conflict helper.');
   }
 
-  const target = safeWorktreePath(context.cwd, request.path);
+  const target = await checkedWorktreePath(context.cwd, request.path);
   const original = await readSafeWorkingFile(target);
   if (!original) throw new ConflictRequestError('The conflicted worktree file is no longer available.');
   if (original.bytes.toString('utf8') !== selected.result.content) throw new StaleConflictSnapshotError();
   try {
-    await writeFile(target, bytes, { mode: original.mode });
+    await replaceWorkingFile(target, bytes, original.mode);
     await runner.run(['add', '--', request.path], {
       cwd: context.cwd,
       timeoutMs: conflictWriteTimeoutMs,
       maxOutputBytes: 1024 * 1024,
+      signal,
     });
   } catch (error) {
-    // A failed stage must not leave the user with a half-applied editor result.
-    await writeFile(target, original.bytes, { mode: original.mode }).catch(() => undefined);
+    // A stopped process may have committed the index already. Never put markers back into a
+    // resolved file, or overwrite an external edit made while a filter was running.
+    if (await stillUnmerged(runner, context.cwd, request.path)) {
+      const current = await readSafeWorkingFile(target);
+      if (current?.bytes.equals(bytes)) await replaceWorkingFile(target, original.bytes, original.mode);
+    }
     if (error instanceof GitCommandError) {
       throw new ConflictRequestError(
         'Git could not stage the resolved conflict. Review the file and try again.',
@@ -162,7 +205,151 @@ export async function resolveConflict(
     }
     throw error;
   }
-  return readConflictState(runner, context, { id: request.id });
+  return afterResolution(runner, context, request.id);
+}
+
+async function afterResolution(runner: ConflictRunner, context: ConflictContext, id: string) {
+  const state = await readConflictState(runner, context, { id });
+  if (state.conflictedCount === 0 && state.operation === 'stash')
+    await finishStashApplication(context.gitDir);
+  return state;
+}
+
+/** Whole-side choices are explicit, including binary/gitlink/deletion cases with no text markers. */
+async function resolveChoice(
+  runner: ConflictRunner,
+  context: ConflictContext,
+  file: RepositoryConflictFile,
+  choice: 'ours' | 'theirs' | 'delete' | 'working',
+  signal?: AbortSignal,
+): Promise<void> {
+  const target = await checkedWorktreePath(context.cwd, file.path);
+  const options = {
+    cwd: context.cwd,
+    timeoutMs: conflictWriteTimeoutMs,
+    maxOutputBytes: 1024 * 1024,
+    signal,
+  };
+  const stage = choice === 'ours' || choice === 'theirs' ? file.stages[choice] : null;
+  if (choice === 'working') {
+    if (file.kind === 'submodule') {
+      const root = (
+        await runner.run(['rev-parse', '--show-toplevel'], { ...options, cwd: target })
+      ).stdout.trim();
+      if (resolve(root) !== target)
+        throw new ConflictRequestError('Initialize this submodule before selecting its checked-out commit.');
+      const id = (
+        await runner.run(['rev-parse', '--verify', 'HEAD^{commit}'], { ...options, cwd: target })
+      ).stdout.trim();
+      if (!objectIdPattern.test(id))
+        throw new ConflictRequestError('The submodule has no checked-out commit.');
+      if (id !== file.workingCommitId) throw new StaleConflictSnapshotError();
+      await stageObject(runner, context.cwd, file.path, '160000', id, signal);
+    } else {
+      if (file.result.state === 'text' && hasConflictMarkers(file.result.content))
+        throw new ConflictRequestError('Resolve every conflict marker before staging this file.');
+      if (file.result.state === 'too-large' || file.result.state === 'unavailable')
+        throw new ConflictRequestError(
+          'Choose a source version or deletion for this unavailable worktree result.',
+        );
+      await runner.run(['add', '--', file.path], options);
+    }
+    return;
+  }
+  if (stage?.mode === '160000' && stage.objectId) {
+    // Selecting a gitlink never checks out or modifies the child repository.
+    await stageObject(runner, context.cwd, file.path, stage.mode, stage.objectId, signal);
+    return;
+  }
+  const details = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (details?.isDirectory()) {
+    if (file.kind !== 'submodule' || stage?.objectId)
+      throw new ConflictRequestError(
+        'A directory occupies this path. Move its contents before resolving this entry.',
+      );
+    await runner.run(['update-index', '--force-remove', '--', file.path], options);
+    return;
+  }
+  if (details && !details.isFile() && !details.isSymbolicLink())
+    throw new ConflictRequestError('This worktree entry cannot be replaced safely.');
+  if (details && details.size > conflictReadOutputLimit)
+    throw new ConflictRequestError('Use an external tool for worktree conflict files larger than 8 MiB.');
+  const original = details?.isFile() ? await readFile(target) : undefined;
+  const originalLink = details?.isSymbolicLink() ? await readlink(target, { encoding: 'buffer' }) : undefined;
+  let bytes: Buffer | undefined;
+  if (stage?.objectId && stage.mode) {
+    if (!['100644', '100755', '120000'].includes(stage.mode))
+      throw new ConflictRequestError('This index mode cannot be selected as a file.');
+    const size = Number((await runner.run(['cat-file', '-s', stage.objectId], options)).stdout.trim());
+    if (!Number.isSafeInteger(size) || size < 0 || size > conflictReadOutputLimit)
+      throw new ConflictRequestError('Use an external tool for conflict sources larger than 8 MiB.');
+    bytes = Buffer.from(
+      (
+        await runner.run(['cat-file', 'blob', stage.objectId], {
+          ...options,
+          maxOutputBytes: conflictReadOutputLimit,
+          stdoutEncoding: 'base64',
+        })
+      ).stdout,
+      'base64',
+    );
+  }
+  if (signal?.aborted) throw new GitCancelledError();
+  if (stage?.objectId) await checkedWorktreePath(context.cwd, file.path, true);
+  try {
+    if (!stage?.objectId || !stage.mode) {
+      if (details) await unlink(target);
+      await runner.run(['update-index', '--force-remove', '--', file.path], options);
+    } else {
+      if (stage.mode === '120000') {
+        if (details) await unlink(target);
+        await symlink(bytes!, target);
+      } else await replaceWorkingFile(target, bytes!, stage.mode === '100755' ? 0o755 : 0o644);
+      await stageObject(runner, context.cwd, file.path, stage.mode, stage.objectId, signal);
+    }
+  } catch (error) {
+    if (!(await stillUnmerged(runner, context.cwd, file.path))) throw error;
+    if (original) await replaceWorkingFile(target, original, details!.mode & 0o777);
+    else if (originalLink !== undefined) {
+      await unlink(target).catch(() => undefined);
+      await symlink(originalLink, target);
+    } else await unlink(target).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function stageObject(
+  runner: ConflictRunner,
+  cwd: string,
+  path: string,
+  mode: string,
+  id: string,
+  signal?: AbortSignal,
+) {
+  await runner.run(['update-index', '-z', '--index-info'], {
+    cwd,
+    timeoutMs: conflictWriteTimeoutMs,
+    maxOutputBytes: 1024 * 1024,
+    stdin: `${mode} ${id}\t${path}\0`,
+    signal,
+  });
+}
+
+async function stillUnmerged(runner: ConflictRunner, cwd: string, path: string) {
+  return (await readUnmergedGroups(runner, cwd)).some((group) => group.path === path);
+}
+
+async function replaceWorkingFile(path: string, bytes: Buffer, mode: number) {
+  const temporary = join(dirname(path), `.git-workbench-resolve-${randomUUID()}`);
+  try {
+    await writeFile(temporary, bytes, { flag: 'wx', mode });
+    await rename(temporary, path);
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
 }
 
 async function readUnmergedGroups(runner: ConflictRunner, cwd: string): Promise<ConflictGroup[]> {
@@ -224,6 +411,8 @@ async function readConflictFile(
   return {
     path: group.path,
     previousPath: null,
+    workingCommitId: kind === 'submodule' ? await workingSubmoduleCommit(runner, cwd, group.path) : null,
+    shape: conflictShape(group),
     kind,
     unresolvedRegions: regions.length,
     stages: {
@@ -239,6 +428,24 @@ async function readConflictFile(
   } satisfies RepositoryConflictFile;
 }
 
+async function workingSubmoduleCommit(
+  runner: ConflictRunner,
+  cwd: string,
+  path: string,
+): Promise<string | null> {
+  try {
+    const target = await checkedWorktreePath(cwd, path);
+    if (!(await lstat(target)).isDirectory()) return null;
+    const options = { cwd: target, timeoutMs: conflictReadTimeoutMs, maxOutputBytes: 32768 };
+    if (resolve((await runner.run(['rev-parse', '--show-toplevel'], options)).stdout.trim()) !== target)
+      return null;
+    const id = (await runner.run(['rev-parse', '--verify', 'HEAD^{commit}'], options)).stdout.trim();
+    return objectIdPattern.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 function conflictKind(
   group: ConflictGroup,
   base: RepositoryConflictContent,
@@ -248,17 +455,34 @@ function conflictKind(
 ): RepositoryConflictKind {
   if ([...group.stages.values()].some((stage) => stage.mode === '160000')) return 'submodule';
   if ([...group.stages.values()].some((stage) => stage.mode === '120000')) return 'unsupported';
-  if ([1, 2, 3].some((stage) => !group.stages.has(stage))) return 'unsupported';
-  if ([base, ours, theirs, result].some((content) => content.state === 'binary')) return 'binary';
-  if ([base, ours, theirs, result].some((content) => content.state !== 'text')) return 'unsupported';
+  const present = [
+    baseStageContent(group, 1, base),
+    baseStageContent(group, 2, ours),
+    baseStageContent(group, 3, theirs),
+    result,
+  ].filter((side) => side !== null);
+  if (present.some((content) => content.state === 'binary')) return 'binary';
+  if (present.some((content) => content.state !== 'text')) return 'unsupported';
   return 'text';
 }
 
 function classifyStageKind(group: ConflictGroup): RepositoryConflictKind {
   if ([...group.stages.values()].some((stage) => stage.mode === '160000')) return 'submodule';
   if ([...group.stages.values()].some((stage) => stage.mode === '120000')) return 'unsupported';
-  if ([1, 2, 3].some((stage) => !group.stages.has(stage))) return 'unsupported';
   return 'text';
+}
+
+function baseStageContent(group: ConflictGroup, stage: number, content: RepositoryConflictContent) {
+  return group.stages.has(stage) ? content : null;
+}
+
+function conflictShape(group: ConflictGroup): RepositoryConflictFile['shape'] {
+  if ([...group.stages.values()].some((stage) => stage.mode === '160000')) return 'submodule';
+  if ([...group.stages.values()].some((stage) => stage.mode === '120000')) return 'symlink';
+  if (!group.stages.has(2) && !group.stages.has(3)) return 'both-deleted';
+  if (!group.stages.has(2) || !group.stages.has(3)) return 'delete-modify';
+  if (!group.stages.has(1)) return 'add-add';
+  return 'both-modified';
 }
 
 function stageDto(stage: RawStage | undefined): RepositoryConflictStage {
@@ -286,9 +510,11 @@ async function readStageContent(
       cwd,
       timeoutMs: conflictReadTimeoutMs,
       maxOutputBytes: conflictContentLimit,
+      stdoutEncoding: 'base64',
     });
-    const content = result.stdout;
-    if (isBinaryText(content, byteLength)) return binary(byteLength);
+    const bytes = Buffer.from(result.stdout, 'base64');
+    const content = bytes.toString('utf8');
+    if (isBinaryText(content, bytes)) return binary(byteLength);
     return { state: 'text', content, byteLength, message: null };
   } catch (error) {
     if (error instanceof GitCommandError) return unavailable('The staged conflict blob could not be read.');
@@ -299,14 +525,17 @@ async function readStageContent(
 async function readWorktreeContent(cwd: string, path: string): Promise<RepositoryConflictContent> {
   let file: SafeWorkingFile | undefined;
   try {
-    file = await readSafeWorkingFile(safeWorktreePath(cwd, path));
+    const target = await checkedWorktreePath(cwd, path);
+    const details = await lstat(target).catch(() => undefined);
+    if (details?.isFile() && details.size > conflictContentLimit) return tooLarge(details.size);
+    file = await readSafeWorkingFile(target);
   } catch {
     return unavailable('The conflicted worktree file could not be read.');
   }
   if (!file) return unavailable('The conflicted worktree file is missing.');
   if (file.bytes.byteLength > conflictContentLimit) return tooLarge(file.bytes.byteLength);
   const content = file.bytes.toString('utf8');
-  if (isBinaryText(content, file.bytes.byteLength)) return binary(file.bytes.byteLength);
+  if (isBinaryText(content, file.bytes)) return binary(file.bytes.byteLength);
   return { state: 'text', content, byteLength: file.bytes.byteLength, message: null };
 }
 
@@ -315,13 +544,14 @@ async function readSafeWorkingFile(path: string): Promise<SafeWorkingFile | unde
     if (error.code === 'ENOENT') return undefined;
     throw error;
   });
-  if (!details || !details.isFile()) return undefined;
+  if (!details || !details.isFile() || details.size > conflictReadOutputLimit) return undefined;
   const bytes = await readFile(path);
   return { bytes, mode: details.mode & 0o777 };
 }
 
 function safeWorktreePath(cwd: string, path: string): string {
-  if (!safeConflictPath.test(path)) throw new ConflictRequestError('The conflict path is not valid.');
+  if (!safeConflictPath.test(path) || path.split('/').some((part) => part.toLowerCase() === '.git'))
+    throw new ConflictRequestError('The conflict path is not valid.');
   const root = resolve(cwd);
   const target = resolve(root, path);
   if (target !== root && !target.startsWith(`${root}${sep}`)) {
@@ -330,13 +560,49 @@ function safeWorktreePath(cwd: string, path: string): string {
   return target;
 }
 
-function isBinaryText(content: string, byteLength: number): boolean {
-  return content.includes('\0') || Buffer.byteLength(content, 'utf8') !== byteLength;
+async function checkedWorktreePath(cwd: string, path: string, createParents = false): Promise<string> {
+  const target = safeWorktreePath(cwd, path);
+  const parts = path.split('/');
+  let parent = resolve(cwd);
+  for (const part of parts.slice(0, -1)) {
+    parent = join(parent, part);
+    if (createParents)
+      await mkdir(parent).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
+    const details = await lstat(parent).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (details && (!details.isDirectory() || details.isSymbolicLink()))
+      throw new ConflictRequestError('A parent of the conflict path is no longer a regular directory.');
+  }
+  return target;
+}
+
+async function workingFingerprint(cwd: string, path: string): Promise<string> {
+  const target = await checkedWorktreePath(cwd, path);
+  const details = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (!details) return 'missing';
+  const hash = createHash('sha256').update(
+    `${details.mode}:${details.size}:${details.mtimeMs}:${details.ctimeMs}:`,
+  );
+  if (details.isSymbolicLink()) hash.update(await readlink(target, { encoding: 'buffer' }));
+  else if (details.isFile() && details.size <= 256 * 1024 * 1024)
+    for await (const chunk of createReadStream(target)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
+
+function isBinaryText(content: string, bytes: Buffer): boolean {
+  return content.includes('\0') || !Buffer.from(content, 'utf8').equals(bytes);
 }
 
 function parseByteLength(value: string): number {
   const byteLength = Number(value);
-  if (!Number.isSafeInteger(byteLength) || byteLength < 0 || byteLength > 8 * 1024 * 1024) {
+  if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
     throw new Error('Git returned an invalid conflict blob size.');
   }
   return byteLength;
@@ -366,62 +632,22 @@ function tooLarge(byteLength: number): RepositoryConflictContent {
 
 /** Parses Git's standard and diff3 conflict markers into ranges the renderer can replace safely. */
 export function parseConflictRegions(content: string): RepositoryConflictRegion[] {
-  const lines = content.split('\n');
-  const regions: RepositoryConflictRegion[] = [];
-  let cursor = 0;
-  while (cursor < lines.length) {
-    if (!isStartMarker(lines[cursor] ?? '')) {
-      cursor += 1;
-      continue;
-    }
-    const startLine = cursor;
-    cursor += 1;
-    const oursStart = cursor;
-    while (cursor < lines.length && !isBaseMarker(lines[cursor] ?? '') && !isSeparator(lines[cursor] ?? '')) {
-      cursor += 1;
-    }
-    const ours = lines.slice(oursStart, cursor).join('\n');
-    let base: string | null = null;
-    if (isBaseMarker(lines[cursor] ?? '')) {
-      cursor += 1;
-      const baseStart = cursor;
-      while (cursor < lines.length && !isSeparator(lines[cursor] ?? '')) cursor += 1;
-      base = lines.slice(baseStart, cursor).join('\n');
-    }
-    if (!isSeparator(lines[cursor] ?? '')) break;
-    cursor += 1;
-    const theirsStart = cursor;
-    while (cursor < lines.length && !isEndMarker(lines[cursor] ?? '')) cursor += 1;
-    if (!isEndMarker(lines[cursor] ?? '')) break;
-    const theirs = lines.slice(theirsStart, cursor).join('\n');
-    const endLine = cursor + 1;
-    regions.push({ id: regions.length, startLine, endLine, base, ours, theirs });
-    cursor = endLine;
-  }
-  return regions;
+  return conflictTextRegions(content)
+    .slice(0, 1_000)
+    .map(({ id, startLine, endLine, base, ours, theirs }) => ({
+      id,
+      startLine,
+      endLine,
+      base,
+      ours,
+      theirs,
+    }));
 }
 
-function hasConflictMarkers(content: string): boolean {
-  return parseConflictRegions(content).length > 0 || /^(?:<{7}|={7}|>{7})/mu.test(content);
-}
-
-function isStartMarker(line: string): boolean {
-  return /^<{7}(?: .*)?$/u.test(line);
-}
-
-function isBaseMarker(line: string): boolean {
-  return /^\|{7}(?: .*)?$/u.test(line);
-}
-
-function isSeparator(line: string): boolean {
-  return /^={7}$/u.test(line);
-}
-
-function isEndMarker(line: string): boolean {
-  return /^>{7}(?: .*)?$/u.test(line);
-}
-
-async function readOperationInfo(runner: ConflictRunner, context: ConflictContext): Promise<OperationInfo> {
+export async function readOperationInfo(
+  runner: ConflictRunner,
+  context: ConflictContext,
+): Promise<OperationInfo> {
   const pending = await detectPendingOperation(context.gitDir);
   const currentBranch = await optionalOutput(runner, context.cwd, ['branch', '--show-current']);
   const rebaseBranch =
@@ -430,6 +656,22 @@ async function readOperationInfo(runner: ConflictRunner, context: ConflictContex
         (await gitDirText(context.gitDir, 'rebase-apply/head-name')))
       : null;
   const current = shortReference(currentBranch ?? rebaseBranch ?? 'current branch');
+  if (pending === 'stash') {
+    const application = await readStashApplication(context.gitDir);
+    return {
+      operation: 'stash',
+      operationLabel: `Applying stash ${application?.source.slice(0, 7) ?? ''} to '${current}'`,
+      oursLabel: `Current '${current}'`,
+      theirsLabel: 'Stashed changes',
+    };
+  }
+  if (pending === 'squash')
+    return {
+      operation: 'merge',
+      operationLabel: `Squashing commits into '${current}'`,
+      oursLabel: `Current '${current}'`,
+      theirsLabel: 'Squashed changes',
+    };
   if (pending === 'merge') {
     const incoming = await gitDirText(context.gitDir, 'MERGE_HEAD');
     const incomingLabel = incoming
@@ -442,7 +684,7 @@ async function readOperationInfo(runner: ConflictRunner, context: ConflictContex
       : 'incoming branch';
     return {
       operation: 'merge',
-      operationLabel: `Merge conflict on '${current}'`,
+      operationLabel: `Merging branch '${shortReference(incomingLabel)}' into '${current}'`,
       oursLabel: `Current '${current}'`,
       theirsLabel: `Merged '${shortReference(incomingLabel)}'`,
     };
@@ -519,6 +761,9 @@ async function optionalOutput(
 
 async function gitDirText(gitDir: string, path: string): Promise<string | null> {
   try {
+    const details = await lstat(join(gitDir, path));
+    if (!details.isFile() || details.size > 65_536)
+      throw new ConflictRequestError('Git operation metadata could not be read safely.');
     const file = await readFile(join(gitDir, path), 'utf8');
     return file.trim() || null;
   } catch (error) {
@@ -528,7 +773,10 @@ async function gitDirText(gitDir: string, path: string): Promise<string | null> 
 }
 
 function shortReference(value: string): string {
-  return value.replace(/^refs\/(heads|remotes|tags)\//u, '').replace(/^undefined\s+/u, '');
+  return value
+    .replace(/^refs\/(heads|remotes|tags)\//u, '')
+    .replace(/^undefined\s+/u, '')
+    .slice(0, 200);
 }
 
 function conflictSnapshot(
@@ -536,6 +784,7 @@ function conflictSnapshot(
   groups: readonly ConflictGroup[],
   selectedPath: string | undefined,
   result: RepositoryConflictContent | null,
+  workingHash: string,
 ): string {
   const hash = createHash('sha256');
   hash.update(
@@ -544,6 +793,7 @@ function conflictSnapshot(
       operation.oursLabel,
       operation.theirsLabel,
       selectedPath ?? null,
+      workingHash,
       groups.map((group) => [
         group.path,
         [...group.stages.values()].map((stage) => [stage.stage, stage.mode, stage.objectId]),

@@ -97,12 +97,14 @@ describe('P01 execution boundary', () => {
     const f = await fixture();
     const trace = join(f.root, 'trace');
     vi.stubEnv('GIT_DIR', f.bare);
+    vi.stubEnv('GIT_INDEX_FILE', join(f.root, 'foreign-index'));
     vi.stubEnv('GIT_TRACE', trace);
     vi.stubEnv('GIT_CONFIG_COUNT', '1');
     vi.stubEnv('GIT_CONFIG_KEY_0', 'user.name');
     vi.stubEnv('GIT_CONFIG_VALUE_0', 'injected');
     expect(await f.run('config', 'user.name')).toBe('Operation Fixture');
     expect(await f.run('rev-parse', '--show-toplevel')).toBe(f.cwd);
+    expect(await f.run('ls-files', '-z')).toContain('-file café');
     await expect(access(trace)).rejects.toThrow();
   });
 

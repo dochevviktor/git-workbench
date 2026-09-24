@@ -26,6 +26,58 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates P06 previews, explicit conflict choices and partial stash coordinates', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    const request = { id, kind: 'merge' as const, sourceFullName: 'refs/heads/topic' };
+    const value = {
+      state: 'conflicts',
+      message: 'Merge will cause conflicts.',
+      sourceCommitId: 'b'.repeat(40),
+      snapshot: 'c'.repeat(64),
+    };
+    invoke.mockResolvedValueOnce({ ok: true, value });
+    expect(await api.repository.getMergeRebasePreview(request)).toEqual({ ok: true, value });
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-merge-rebase-preview', request);
+    expect(
+      await api.repository.getMergeRebasePreview({ ...request, sourceFullName: 'HEAD; echo danger' }),
+    ).toMatchObject({ ok: false });
+    expect(
+      await api.repository.resolveConflict({
+        id,
+        path: '../outside',
+        snapshot: 'c'.repeat(64),
+        choice: 'ours',
+      }),
+    ).toMatchObject({ ok: false });
+    expect(
+      await api.repository.resolveConflict({
+        id,
+        path: 'file',
+        snapshot: 'c'.repeat(64),
+        choice: 'ours',
+        content: 'ambiguous',
+      } as never),
+    ).toMatchObject({ ok: false });
+    expect(
+      await api.repository.startStashOperation({
+        id,
+        request: {
+          kind: 'save-selection',
+          message: '',
+          target: { area: 'unstaged', path: 'file', previousPath: null },
+          snapshot: 'c'.repeat(64),
+          selection: { kind: 'lines', hunk: 0, lineIndexes: [-1] },
+        },
+      }),
+    ).toMatchObject({ ok: false });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    invoke.mockResolvedValueOnce({ ok: true, value: { ...value, state: 'invented' } });
+    expect(await api.repository.getMergeRebasePreview(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('keeps P03 directory paging inside the validated revision capability', async () => {
     const { api, invoke } = fixture();
     const request = { id: `repo-${'a'.repeat(64)}`, commitId: 'a'.repeat(40), path: '', offset: 5_000 };

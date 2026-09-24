@@ -14,11 +14,18 @@ import { repositoryRecoveryCopySchema } from '../../common/ipc/contracts';
 import { ExpectedBackendError } from '../errors';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { GitCancelledError, GitCommandError } from '../git/runner';
-import { detectPendingOperation, readRebaseEditState } from './commit-service';
+import { detectPendingOperation, readRebaseEditState, readSingleNoCommitOperation } from './commit-service';
 import { displayOutput } from './network-service';
 import { readWorkingChanges } from './working-tree-service';
 import { createWorkingSnapshot } from './working-snapshot';
 import { cleanupInteractiveRebaseArtifacts } from './interactive-rebase-artifacts';
+import {
+  abortStashApplication,
+  beginStashApplication,
+  finishStashApplication,
+  readStashApplication,
+} from './stash-application';
+import { readOperationInfo } from './conflict-service';
 
 interface RecoveryRunner {
   run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult>;
@@ -104,6 +111,10 @@ export async function readRecovery(
       'rebase-apply/onto',
       'rebase-apply/orig-head',
       'rebase-apply/next',
+      'sequencer/todo',
+      'sequencer/opts',
+      'sequencer/head',
+      'git-workbench-stash-apply.json',
     ].map(async (name) => {
       const path = join(context.gitDir, name);
       try {
@@ -118,13 +129,47 @@ export async function readRecovery(
       }
     }),
   );
+  const fingerprints: string[] = [];
+  if (pendingOperation) {
+    let hashedBytes = 0;
+    for (const change of [...changes.staged, ...changes.unstaged]) {
+      const files = await Promise.all(
+        [change.path, ...(change.previousPath ? [change.previousPath] : [])].map(async (path) => {
+          const details = await lstat(join(context.cwd, path)).catch(() => undefined);
+          return {
+            path,
+            mode: details?.mode,
+            size: details?.size ?? 0,
+            modified: details?.mtimeMs,
+            changed: details?.ctimeMs,
+          };
+        }),
+      );
+      const size = files.reduce((total, file) => total + file.size, 0);
+      // Ordinary idle polling must not hash the entire working tree. Active recovery fingerprints
+      // are bounded; very large files retain their status, size, mode and change-time guards.
+      if (size <= 8 * 1024 * 1024 && hashedBytes + size <= 64 * 1024 * 1024) {
+        hashedBytes += size;
+        fingerprints.push(await createWorkingSnapshot(context.cwd, change, change));
+      } else fingerprints.push(JSON.stringify([change, files]));
+    }
+  }
+  const operation =
+    pendingOperation || changes.counts.conflicted
+      ? await readOperationInfo(runner, {
+          repositoryId: context.id,
+          cwd: context.cwd,
+          gitDir: context.gitDir,
+        })
+      : { operationLabel: 'No operation in progress' };
   return {
     copies,
+    operationLabel: operation.operationLabel,
     pendingOperation,
     conflictedCount: changes.counts.conflicted,
     rebaseEdit,
     snapshot: createHash('sha256')
-      .update(JSON.stringify([copies, pendingOperation, rebaseEdit, anchors]))
+      .update(JSON.stringify([context.head, copies, pendingOperation, rebaseEdit, anchors, fingerprints]))
       .digest('hex'),
   };
 }
@@ -246,9 +291,17 @@ export async function withLocalChanges<T>(
   const result = await work();
   if (signal?.aborted) throw new GitCancelledError();
   // A no-commit/squash merge deliberately pauses. Reapply only after Commit/Continue/Abort.
-  if (policy === 'stash' && !(await detectPendingOperation(context.gitDir)))
-    await reapply(runner, context, saved);
-  else if (policy === 'stash') return result;
+  if (policy === 'stash' && !(await detectPendingOperation(context.gitDir))) {
+    const remaining = await readWorkingChanges(runner, {
+      repositoryId: context.id,
+      cwd: context.cwd,
+      includeUntracked: false,
+      includeIgnored: false,
+    });
+    // No-commit operations leave intentional staged changes. Keep the saved copy pending until
+    // those changes have been reviewed and committed, instead of applying over their index.
+    if (remaining.counts.staged + remaining.counts.unstaged === 0) await reapply(runner, context, saved);
+  } else if (policy === 'stash') return result;
   else
     await save(
       context,
@@ -294,7 +347,9 @@ async function reapply(
       'No completed stash was found for this entry. Inspect Git stashes before dismissing it.',
     );
   try {
+    await beginStashApplication(runner, context.cwd, context.gitDir, copy.commitId);
     await runner.run(['stash', 'apply', '--index', copy.commitId], options(context.cwd));
+    await finishStashApplication(context.gitDir);
   } catch (error) {
     const detail =
       error instanceof GitCommandError ? displayOutput(error.stdout, error.stderr).slice(0, 240) : '';
@@ -326,7 +381,7 @@ export async function recover(
   if (request.action === 'continue' || request.action === 'skip' || request.action === 'abort') {
     if (!state.pendingOperation)
       throw new ExpectedBackendError('OPERATION_FAILED', 'No Git operation is waiting for recovery.');
-    if (request.action === 'skip' && state.pendingOperation !== 'rebase')
+    if (request.action === 'skip' && !['rebase', 'cherry-pick', 'revert'].includes(state.pendingOperation))
       throw new ExpectedBackendError(
         'OPERATION_FAILED',
         `Git does not support skipping a ${state.pendingOperation} from Recovery.`,
@@ -341,10 +396,29 @@ export async function recover(
         'OPERATION_FAILED',
         'Amend the paused interactive-rebase commit in Local Changes before continuing.',
       );
-    const args =
-      state.pendingOperation === 'squash'
+    if (state.pendingOperation === 'stash') {
+      const application = await readStashApplication(context.gitDir);
+      if (request.action === 'abort') await abortStashApplication(runner, context.cwd, context.gitDir);
+      else await finishStashApplication(context.gitDir);
+      // Do not reapply the recovery copy which was just resolved or aborted.
+      await save(
+        context,
+        state.copies.map((item) =>
+          item.commitId === application?.source ? { ...item, pending: false } : item,
+        ),
+      );
+      return;
+    }
+    // Git's single --no-commit conflict can retain a todo without CHERRY_PICK_HEAD. Replaying
+    // --continue would try the same change again over the user's staged resolution.
+    const noCommitResolved =
+      request.action === 'continue' &&
+      (await readSingleNoCommitOperation(context.gitDir)) === state.pendingOperation;
+    const args = noCommitResolved
+      ? [state.pendingOperation, '--quit']
+      : state.pendingOperation === 'squash'
         ? request.action === 'abort'
-          ? ['reset', '--merge', 'HEAD']
+          ? ['reset', '--no-recurse-submodules', '--merge', 'HEAD']
           : ['commit', '--no-edit']
         : [state.pendingOperation, `--${request.action}`];
     await runner.run(args, {
@@ -358,13 +432,26 @@ export async function recover(
       });
     if (!(await detectPendingOperation(context.gitDir))) {
       const pending = state.copies.find((item) => item.pending);
-      if (pending) await reapply(runner, context, pending);
+      if (pending && !noCommitResolved) await reapply(runner, context, pending);
       await cleanupInteractiveRebaseArtifacts(runner, context.cwd, context.gitDir);
     }
     return;
   }
   if (!copy)
     throw new ExpectedBackendError('OPERATION_FAILED', 'That saved recovery entry no longer exists.');
+  if (
+    request.action === 'finish' &&
+    state.pendingOperation === 'stash' &&
+    !state.conflictedCount &&
+    (await readStashApplication(context.gitDir))?.source === copy.commitId
+  ) {
+    await finishStashApplication(context.gitDir);
+    await save(
+      context,
+      state.copies.map((item) => (item.id === copy.id ? { ...item, pending: false } : item)),
+    );
+    return;
+  }
   if (state.pendingOperation)
     throw new ExpectedBackendError(
       'OPERATION_FAILED',

@@ -600,14 +600,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   const openStashSave = useCallback(
-    (paths: readonly string[] = []) => {
+    (
+      paths: readonly string[] = [],
+      selection?: Omit<Extract<RepositoryStashAction, { kind: 'save-selection' }>, 'kind' | 'message'>,
+    ) => {
       if (!active || active.bare) return;
       const repositoryId = active.id;
-      setStashDialog({ kind: 'save', paths: [...paths] });
+      setStashDialog({ kind: 'save', paths: [...paths], ...(selection ? { selection } : {}) });
       void window.desktop?.repository.previewLocalChanges({ id: repositoryId }).then((result) => {
-        if (activeRepositoryId.current !== repositoryId || !result.ok) return;
+        if (activeRepositoryId.current !== repositoryId) return;
         setStashDialog((current) =>
-          current?.kind === 'save' ? { ...current, snapshot: result.value.snapshot } : current,
+          current?.kind === 'save'
+            ? result.ok
+              ? { ...current, snapshot: result.value.snapshot }
+              : { ...current, previewError: result.error.message }
+            : current,
         );
       });
     },
@@ -621,10 +628,12 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       setStashDialog({ kind: 'action', action, entry });
       if (action === 'drop' || action === 'rename') return;
       void window.desktop?.repository.previewLocalChanges({ id: repositoryId }).then((result) => {
-        if (activeRepositoryId.current !== repositoryId || !result.ok) return;
+        if (activeRepositoryId.current !== repositoryId) return;
         setStashDialog((current) =>
           current?.kind === 'action' && current.entry.commitId === entry.commitId
-            ? { ...current, snapshot: result.value.snapshot }
+            ? result.ok
+              ? { ...current, snapshot: result.value.snapshot }
+              : { ...current, previewError: result.error.message }
             : current,
         );
       });
@@ -1072,9 +1081,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     });
     if (
       active &&
-      ['merge', 'rebase', 'cherry-pick', 'revert', 'pull', 'stash', 'recovery', 'reset', 'patch'].includes(
-        completed.kind,
-      )
+      [
+        'merge',
+        'rebase',
+        'cherry-pick',
+        'revert',
+        'pull',
+        'stash',
+        'recovery',
+        'reset',
+        'patch',
+        'resolve-conflict',
+      ].includes(completed.kind)
     ) {
       const id = active.id;
       void window.desktop?.repository.getRecovery({ id }).then((result) => {
@@ -2788,6 +2806,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onCancelOperation={cancelOperation}
       />
       {tabStrip('horizontal')}
+      {active && !active.bare && active.trusted !== false && (
+        <RecoveryPanel
+          key={active.id}
+          repositoryId={active.id}
+          refreshSignal={refreshSignal}
+          busy={Boolean(activeOperation)}
+          onRecovered={refresh}
+          onResolve={() => setView('changes')}
+          platform={platform}
+        />
+      )}
       {!managerActive &&
         (repositories.recovery.tabs.length > 0 || repositories.recovery.settings.length > 0) && (
           <div className="workspace-recovery-notice" role="status">
@@ -2918,6 +2947,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   onOpenSubmodule={openSubmodule}
                   onUpdateSubmodule={updateSubmodule}
                   onStashPaths={openStashSave}
+                  onStashSelection={(target, selection, snapshot) => {
+                    if (selection.kind !== 'file')
+                      openStashSave([target.path], { target, selection, snapshot });
+                  }}
                   onSavePatch={(paths) =>
                     savePatch({ kind: 'working', paths: [...paths], includeUntracked: true })
                   }
@@ -2952,15 +2985,6 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             Dismiss
           </button>
         </div>
-      )}
-      {active && !active.bare && active.trusted !== false && (
-        <RecoveryPanel
-          key={active.id}
-          repositoryId={active.id}
-          refreshSignal={refreshSignal}
-          busy={Boolean(activeOperation)}
-          onRecovered={refresh}
-        />
       )}
       {error && (
         <div className="error-banner" role="alert">
@@ -3139,8 +3163,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onClose={() => setQuickLaunchOpen(false)}
         />
       )}
-      {mergeRebaseDialog && (
+      {mergeRebaseDialog && active && (
         <MergeRebaseDialog
+          repositoryId={active.id}
           request={mergeRebaseDialog}
           referenceSnapshot={dialogSnapshot}
           preview={localChangesPreview}

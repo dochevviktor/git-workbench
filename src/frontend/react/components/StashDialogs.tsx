@@ -12,11 +12,17 @@ import { StashIcon, StashItemIcon, WarningIcon } from './Icons';
 export type StashDialogRequest =
   | {
       readonly kind: 'save';
+      readonly previewError?: string;
       readonly paths: readonly string[];
       readonly snapshot?: string | undefined;
+      readonly selection?: Omit<
+        Extract<RepositoryStashAction, { kind: 'save-selection' }>,
+        'kind' | 'message'
+      >;
     }
   | {
       readonly kind: 'action';
+      readonly previewError?: string;
       readonly action: 'apply' | 'pop' | 'drop' | 'rename';
       readonly entry: RepositoryStashEntry;
       readonly snapshot?: string | undefined;
@@ -47,7 +53,7 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
   const title = save
     ? request.paths.length > 0
       ? 'Stash selected changes'
-      : 'Save changes as stash'
+      : 'Save stash'
     : action === 'apply'
       ? 'Apply Stash'
       : action === 'pop'
@@ -66,7 +72,7 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
   const subtitle = save
     ? request.paths.length > 0
       ? 'Only the selected files will be saved; other local changes stay in place.'
-      : 'Save the supported local changes so the working tree can be changed safely.'
+      : 'Save your local changes to a new stash'
     : entry
       ? `${entry.selector}${entry.branch ? ` on ${entry.branch}` : ''}`
       : '';
@@ -81,13 +87,17 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
       />
     );
   }
+  const waitingForPreview =
+    request.kind === 'save'
+      ? !request.selection && !request.snapshot
+      : (request.action === 'apply' || request.action === 'pop') && !request.snapshot;
 
   return (
     <dialog
       ref={(node) => {
         if (node && !node.open) node.showModal();
       }}
-      className="dialog stash-dialog"
+      className="dialog stash-dialog p06-stash-dialog"
       aria-label={title}
       aria-busy={busy}
       data-testid="stash-dialog"
@@ -100,16 +110,18 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
         className="dialog-content"
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy) return;
+          if (busy || waitingForPreview) return;
           if (save) {
-            onSubmit({
-              kind: 'save',
-              message,
-              includeUntracked: false,
-              stageNewFiles,
-              paths: [...request.paths],
-              changesSnapshot: request.snapshot,
-            });
+            if (request.selection) onSubmit({ kind: 'save-selection', message, ...request.selection });
+            else
+              onSubmit({
+                kind: 'save',
+                message,
+                includeUntracked: false,
+                stageNewFiles,
+                paths: [...request.paths],
+                changesSnapshot: request.snapshot,
+              });
           } else if (entry && action === 'rename') {
             if (message.trim())
               onSubmit({ kind: 'rename', stashId: entry.commitId, message: message.trim() });
@@ -142,12 +154,12 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                 value={message}
                 maxLength={512}
                 autoFocus
-                placeholder="Work in progress"
+                placeholder="Stash message (optional)"
                 spellCheck={false}
                 onChange={(event) => setMessage(event.target.value)}
               />
             </label>
-            {save && (
+            {save && !request.selection && (
               <>
                 <label className="reference-checkbox">
                   <input
@@ -158,22 +170,30 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                   <span>Stage new files</span>
                 </label>
                 <p className="muted">By default stash ignores new files until you stage them.</p>
-                <div className="stash-path-preview">
-                  <strong>{request.paths.length > 0 ? 'Selected files' : 'Files to save'}</strong>
-                  {request.paths.length > 0 ? (
-                    <ul>
-                      {request.paths.map((path) => (
-                        <li key={path}>{path}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">
-                      Tracked changes{stageNewFiles ? ' and newly staged files' : ''}; ignored files stay
-                      outside the stash.
-                    </p>
-                  )}
-                </div>
+                {request.paths.length > 0 && (
+                  <div className="stash-path-preview">
+                    <strong>{request.paths.length > 0 ? 'Selected files' : 'Files to save'}</strong>
+                    {request.paths.length > 0 ? (
+                      <ul>
+                        {request.paths.map((path) => (
+                          <li key={path}>{path}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">
+                        Tracked changes{stageNewFiles ? ' and newly staged files' : ''}; ignored files stay
+                        outside the stash.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
+            )}
+            {save && request.selection && (
+              <p className="muted">
+                {request.selection.selection.kind === 'hunk' ? 'Selected hunk' : 'Selected lines'} in{' '}
+                {request.selection.target.path}. Other changes stay in place.
+              </p>
             )}
             {action === 'rename' && (
               <p className="muted">
@@ -216,7 +236,9 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
           </div>
         )}
         <div className="reference-dialog-actions">
-          <p className="reference-dialog-warning" role="alert" />
+          <p className="reference-dialog-warning" role="alert">
+            {request.previewError ?? (waitingForPreview ? 'Checking local changes…' : '')}
+          </p>
           <div className="dialog-actions">
             {platform === 'darwin' ? (
               <>
@@ -226,7 +248,7 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                 <button
                   type="submit"
                   className={danger ? 'button primary danger' : 'button primary'}
-                  disabled={busy}
+                  disabled={busy || waitingForPreview || (action === 'rename' && !message.trim())}
                 >
                   {submitLabel}
                 </button>
@@ -236,7 +258,7 @@ function StashDialog({ repositoryId, request, platform, busy, onSubmit, onClose 
                 <button
                   type="submit"
                   className={danger ? 'button primary danger' : 'button primary'}
-                  disabled={busy}
+                  disabled={busy || waitingForPreview || (action === 'rename' && !message.trim())}
                 >
                   {submitLabel}
                 </button>

@@ -675,6 +675,9 @@ export function registerAppIpc(
     register(requests.resolveRepositoryConflict, (window, request) =>
       repositoryService.resolveConflict(request, window.webContents.id),
     );
+    register(requests.startRepositoryConflictResolution, (window, request) =>
+      repositoryService.startConflictResolution(window.webContents.id, request),
+    );
     register(requests.applyRepositoryWorkingChange, (window, request) =>
       repositoryService.applyWorkingChange(window.webContents.id, request),
     );
@@ -852,6 +855,9 @@ export function registerAppIpc(
     });
     register(requests.startRepositoryMergeRebase, (window, request) =>
       repositoryService.startMergeRebase(window.webContents.id, request),
+    );
+    register(requests.getRepositoryMergeRebasePreview, (window, request) =>
+      repositoryService.getMergeRebasePreview(window.webContents.id, request),
     );
     register(requests.getRepositoryHistoryOperationPreview, (window, request) =>
       repositoryService.getHistoryOperationPreview(window.webContents.id, request),
