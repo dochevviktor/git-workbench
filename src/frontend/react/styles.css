@@ -4713,6 +4713,25 @@ svg.spinning {
   border-right: 1px solid var(--border);
   background: var(--sidebar-bg);
 }
+.hosting-account-list {
+  flex: 1;
+  min-height: 240px;
+  max-height: 450px;
+  overflow: auto;
+}
+.hosting-account-controls {
+  display: flex;
+  margin: 0 -6px -6px;
+  border-top: 1px solid var(--border);
+}
+.hosting-account-controls .button {
+  min-width: 32px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  font-size: 19px;
+  line-height: 1;
+}
 .hosting-account {
   display: flex;
   flex-direction: column;
@@ -4724,6 +4743,8 @@ svg.spinning {
   color: inherit;
   border-radius: 4px;
   overflow-wrap: anywhere;
+  width: 100%;
+  text-align: left;
 }
 .hosting-account[aria-pressed='true'] {
   background: var(--row-selected);
@@ -4752,11 +4773,42 @@ svg.spinning {
   color: var(--row-selected-text);
   font-size: 22px;
 }
-.hosting-add {
-  margin-top: auto;
-}
 .hosting-login {
   padding: 4px 0;
+}
+.hosting-login-fields {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.hosting-login-fields > label:not(.hosting-form-wide) {
+  text-align: right;
+  color: var(--text-muted);
+}
+.hosting-login-fields > input,
+.hosting-login-fields > select {
+  min-width: 0;
+  width: 100%;
+  height: 29px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+}
+.hosting-form-wide {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.hosting-device-code {
+  white-space: nowrap;
+  letter-spacing: 2px;
 }
 .hosting-login h4 {
   margin: 8px 0;
@@ -4830,6 +4882,13 @@ svg.spinning {
   .hosting-detail dl {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+  .hosting-login-fields {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+  .hosting-login-fields > label:not(.hosting-form-wide) {
+    text-align: left;
   }
   .hosting-detail dt {
     text-align: left;

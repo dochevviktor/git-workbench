@@ -140,6 +140,9 @@ import type {
   HostingActivityRequest,
   HostingActivityPage,
   HostingActivitySelection,
+  HostingOAuthRequest,
+  HostingOAuthState,
+  HostingOAuthResult,
 } from './hosting';
 
 import type { SettingsTarget, SaveGitSettings, GitSettings, GitInstance } from './settings';
@@ -186,6 +189,8 @@ export interface DesktopApi {
     openActivity(request: HostingActivitySelection): Promise<IpcResult<null>>;
     listAccounts(): Promise<IpcResult<HostingAccounts>>;
     connect(request: HostingConnectRequest): Promise<IpcResult<HostingAccount | null>>;
+    beginOAuth(request: HostingOAuthRequest): Promise<IpcResult<HostingOAuthState>>;
+    pollOAuth(): Promise<IpcResult<HostingOAuthResult>>;
     disconnect(request: { accountId: string }): Promise<IpcResult<null>>;
     useForGit(request: { accountId: string }): Promise<IpcResult<null>>;
     openTokenSettings(): Promise<IpcResult<null>>;

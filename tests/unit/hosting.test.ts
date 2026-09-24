@@ -330,7 +330,7 @@ describe('GitHub provider', () => {
 describe('hosting lifecycle and credential boundaries', () => {
   it('logs in without a file and supplies only exact GitHub HTTPS contexts to Git', async () => {
     const f = await fixture();
-    await expect(f.service.login(1, { remember: false }, async () => 'not a token')).rejects.toThrow('Copy');
+    await expect(f.service.login(1, { remember: false }, async () => 'not a token')).rejects.toThrow('Enter');
     await f.service.login(1, { remember: false }, async () => token);
     const context = {
       protocol: 'https' as const,
@@ -351,7 +351,7 @@ describe('hosting lifecycle and credential boundaries', () => {
     );
     await f.service.disconnect('github-42');
     expect(await f.service.gitCredentials.available()).toBe(false);
-    await expect(f.service.gitCredentials.get(context)).rejects.toThrow('No matching');
+    expect(await f.service.gitCredentials.get(context)).toBeNull();
   });
   it('remembers a default Git account and pins selected clones by public username', async () => {
     const f = await fixture();
@@ -386,7 +386,14 @@ describe('hosting lifecycle and credential boundaries', () => {
   it('keeps session tokens in main memory and maps only owner-discovered repository IDs', async () => {
     const f = await fixture();
     const account = await f.connect();
-    expect(account).toEqual({ id: 'github-42', login: 'example', provider: 'github', storage: 'session' });
+    expect(account).toEqual({
+      id: 'github-42',
+      login: 'example',
+      provider: 'github',
+      storage: 'session',
+      serverUrl: 'https://github.com',
+      authentication: 'token',
+    });
     expect(JSON.stringify(await f.service.list())).not.toContain(token);
     await expect(stat(f.path)).rejects.toMatchObject({ code: 'ENOENT' });
     await f.service.listRepositories(1, { accountId: account!.id, page: 1 });
@@ -526,9 +533,12 @@ describe('hosting lifecycle and credential boundaries', () => {
     await writeFile(f.tokenPath, 'x'.repeat(4097));
     await expect(readTokenFile(f.tokenPath)).rejects.toThrow('regular');
   });
-  it('rejects renderer-supplied tokens, paths, provider origins and invalid pages', () => {
-    for (const extra of [{ token }, { path: '/etc/passwd' }, { origin: 'https://evil.example' }])
-      expect(hostingConnectRequestSchema.safeParse({ remember: false, ...extra }).success).toBe(false);
+  it('accepts only provider-scoped token entry and rejects paths, origin overrides and invalid pages', () => {
+    const request = { remember: false, provider: 'github', token };
+    expect(hostingConnectRequestSchema.safeParse(request).success).toBe(true);
+    for (const extra of [{ path: '/etc/passwd' }, { origin: 'https://evil.example' }])
+      expect(hostingConnectRequestSchema.safeParse({ ...request, ...extra }).success).toBe(false);
+    expect(hostingConnectRequestSchema.safeParse({ remember: false, token }).success).toBe(false);
     expect(hostingRepositoriesRequestSchema.safeParse({ accountId: 'github-42', page: -1 }).success).toBe(
       false,
     );

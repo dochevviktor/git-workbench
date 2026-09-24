@@ -30,7 +30,7 @@ async function main() {
     path: fields.get('path') ?? '',
     username: fields.get('username') ?? '',
   };
-  if (context.protocol !== 'https' || !['github.com', 'github.com:443'].includes(context.host ?? '')) return;
+  if (context.protocol !== 'https') return;
   await new Promise<void>((resolve) => {
     const socket = connect(address);
     let response = '';
@@ -49,10 +49,10 @@ async function main() {
           credential !== null &&
           'username' in credential &&
           typeof credential.username === 'string' &&
-          /^[A-Za-z0-9-]{1,100}$/u.test(credential.username) &&
+          /^[A-Za-z0-9_.-]{1,100}$/u.test(credential.username) &&
           'password' in credential &&
           typeof credential.password === 'string' &&
-          /^[A-Za-z0-9_]{10,4096}$/u.test(credential.password)
+          /^[\x21-\x7e]{10,4096}$/u.test(credential.password)
         ) {
           process.stdout.write(`username=${credential.username}\npassword=${credential.password}\n\n`);
         } else {

@@ -125,38 +125,54 @@ resolved. Recovery entries can be dismissed without changing Git's stash list. B
 Cancel leaves the repository unchanged; after it starts, Close dismisses the dialog and Activity provides
 the operation's cancellation control. Cancellation does not promise rollback.
 
-GitHub HTTPS operations use a connected account when available. Other network operations use installed
+HTTPS operations use a connected account for its configured server when available. Other network operations use installed
 Git credential helpers, SSH agents and configured native askpass tools. Background operations suppress
-standard prompts; credentials never enter the renderer API. Clone requires a new destination; failed/cancelled
+standard prompts. Clone requires a new destination; failed/cancelled
 destinations are retained for inspection. A paused autostashed merge completed through the composer
 retains its saved copy for explicit Recovery Apply.
 
 Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
 browser. It does not submit the form or require storing hosting credentials in this application.
 
-File → Preferences → Accounts provides GitHub login and repository browsing. Copy a personal access
-token and choose **Log in with Access Token**; the main process reads it directly from the clipboard.
-No token file is needed. **Create token on GitHub…** opens token settings in your browser. Open
-Repositories to browse accessible repositories, issues and pull requests, or choose an HTTPS/SSH clone URL.
+File → Preferences → Accounts has an account sidebar with **+** to add and **−** to remove an account.
+Choose Gitea, GitHub, GitHub Enterprise, GitLab or GitLab Server. Enter your token directly in the masked
+field; Gitea, Enterprise and GitLab Server also require an HTTPS server URL. GitHub offers Personal
+access token or OAuth. Open Repositories to browse accessible repositories and choose an HTTPS/SSH clone
+URL. GitHub also retains its built-in issue/PR lists and notifications; other providers open those pages
+in your browser. GitLab supports nested groups. Self-hosted API requests require a trusted HTTPS
+certificate and do not follow redirects.
 
 The same account now authenticates HTTPS clone, Test Connection, fetch, pull and push, including
-automatic fetch. Existing saved accounts work without another login. Fine-grained tokens need access
+automatic fetch. Existing saved accounts work without another login. For GitHub, fine-grained tokens need access
 to the intended repositories and Contents read permission for fetch/clone, or read/write for push;
 classic tokens generally need `repo` for private repositories. Organization approval and SSO still apply.
 SSH remotes continue to use SSH keys; a GitHub token cannot authenticate SSH.
 
-With multiple accounts, **Use as default for Git** selects the account for GitHub HTTPS URLs without
+With multiple accounts, **Use as default for Git** selects the account for that server's HTTPS URLs without
 a username. Hosted HTTPS clone URLs include the selected public username, so subsequent operations
-keep using that account. You can also use `https://LOGIN@github.com/OWNER/REPO.git` for an existing remote.
+keep using that account. You can also use `https://LOGIN@SERVER/OWNER/REPO.git` for an existing remote.
 Tokens never appear in URLs or Git configuration, and the app does not install a global Git helper.
 
 Accounts default to session-only storage. Remembering a token requires a secure OS keyring; Linux's
-plaintext fallback is refused. Tokens never enter the renderer, IPC, repository configuration or logs.
-Update token accepts a newly copied token and verifies that it belongs to the same account. Sign out
+plaintext fallback is refused. Direct entry is a narrow exception to the earlier no-renderer-secrets
+policy: the token passes once from an uncontrolled password field through the validated login capability
+to main. The field clears on submission, provider/method/server changes and dismissal; tokens are never
+returned to the UI, stored in React/presentation state, repository configuration or logs.
+Update token verifies that the replacement belongs to the same account and server. Failed updates retain
+the old credential. Sign out
 removes the app's credential and cancels its pending API reads. Already authenticated Git transfers
 may finish; future transfers stop using that account. Neither action clears your clipboard nor revokes
-the token on GitHub. There is no background hosting polling. Other providers, self-hosted accounts,
-and OAuth remain unimplemented. See the [accounts correction](docs/reviews/github-accounts-correction.md).
+the token on the provider. There is no background hosting activity polling.
+
+GitHub OAuth uses device authorization in your system browser and checks the optional username against
+the authorized account. Configure the application's registered public client ID before launch:
+`GIT_WORKBENCH_GITHUB_CLIENT_ID=YOUR_CLIENT_ID npm run dev`. Enable **device flow** in that GitHub OAuth
+App's settings. No client secret is bundled or required. Without registration, the OAuth option explains
+the missing setup and token login remains usable. OAuth requests `repo`, `read:user` and `notifications`;
+Cancel or closing Preferences stops authorization. Expired/revoked OAuth tokens require signing in again;
+automatic refresh-token renewal is not implemented. No real OAuth registration or live provider
+credentials were used for the [2026-09-24 verification](docs/reviews/provider-accounts.md).
+SSH clone URLs assume the server's conventional `git` user and port 22; adjust the Clone URL for custom SSH routing.
 
 In Accounts, Notifications lists your GitHub inbox with unread/all and participation filters.
 Repositories → Browse issues / Browse pull requests opens paged lists with state, author, assignee

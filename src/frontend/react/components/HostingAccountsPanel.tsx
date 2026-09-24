@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HostedRepositories, HostingAccounts, HostingCloneTarget } from '../../../common/ipc/hosting';
+import type {
+  HostedRepositories,
+  HostingAccounts,
+  HostingCloneTarget,
+  HostingConnectRequest,
+  HostingOAuthRequest,
+  HostingOAuthState,
+  HostingAccount,
+} from '../../../common/ipc/hosting';
+import { hostingProviderNames } from '../../../common/ipc/hosting';
 import { unwrapResult } from '../../../common/ipc/result';
 import type { HostingActivityRequest } from '../../../common/ipc/hosting';
 import { HostingActivity } from './HostingActivity';
+import { HostingAccountForm } from './HostingAccountForm';
 
 export function HostingAccountsPanel({
   onClone,
@@ -20,14 +30,22 @@ export function HostingAccountsPanel({
   const [tab, setTab] = useState<'account' | 'repositories' | 'activity'>('account');
   const [activity, setActivity] = useState<HostingActivityRequest>();
   const [searches] = useState(() => new Map<string, string[]>());
-  const [remember, setRemember] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [adding, setAdding] = useState(true);
+  const [removing, setRemoving] = useState(false);
+  const [oauth, setOAuth] = useState<HostingOAuthState>();
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState<HostedRepositories>();
   const [filter, setFilter] = useState('');
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https');
   const account = accounts.accounts.find((item) => item.id === selected);
+  const defaultForServer =
+    account &&
+    accounts.accounts.find(
+      (item) => (item.serverUrl ?? 'https://github.com') === (account.serverUrl ?? 'https://github.com'),
+    )?.id === account.id;
+  const working = busy || Boolean(oauth);
   const api = () => window.desktop!.hosting;
 
   useEffect(() => {
@@ -40,7 +58,7 @@ export function HostingAccountsPanel({
         if (!current) return;
         setAccounts(result);
         setSelected(result.accounts[0]?.id ?? '');
-        setRemember(result.accounts[0]?.storage === 'keyring');
+        setAdding(!result.accounts.length);
       })
       .catch((reason: unknown) => {
         if (current) setError(reason instanceof Error ? reason.message : 'Could not load accounts.');
@@ -68,21 +86,63 @@ export function HostingAccountsPanel({
       if (current()) setBusy(false);
     }
   };
-  const connect = (replace: boolean) =>
+  const connected = async (value: HostingAccount | null, current: () => boolean) => {
+    const result = unwrapResult(await api().listAccounts());
+    if (!current()) return;
+    setAccounts(result);
+    if (value) {
+      setSelected(value.id);
+      setPage(undefined);
+      setTab('account');
+      setUpdating(false);
+      setAdding(false);
+    }
+  };
+  const connect = (request: HostingConnectRequest) =>
     run(async (current) => {
-      const connected = unwrapResult(
-        await api().connect({ remember, ...(replace && account ? { accountId: account.id } : {}) }),
-      );
-      const result = unwrapResult(await api().listAccounts());
-      if (!current()) return;
-      setAccounts(result);
-      if (connected) {
-        setSelected(connected.id);
-        setPage(undefined);
-        setTab('account');
-        setUpdating(false);
-      }
+      if (!/^[\x21-\x7e]{10,4096}$/u.test(request.token))
+        throw new Error('Enter a valid access token without spaces or line breaks.');
+      await connected(unwrapResult(await api().connect(request)), current);
     });
+  const beginOAuth = (request: HostingOAuthRequest) =>
+    run(async (current) => {
+      const state = unwrapResult(await api().beginOAuth(request));
+      if (current()) setOAuth(state);
+    });
+  useEffect(() => {
+    if (!oauth) return;
+    const id = generation.current;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const current = () => !cancelled && alive.current && generation.current === id;
+    const poll = async () => {
+      try {
+        const result = unwrapResult(await window.desktop!.hosting.pollOAuth());
+        if (!current()) return;
+        if (result.account) {
+          const list = unwrapResult(await window.desktop!.hosting.listAccounts());
+          if (!current()) return;
+          setAccounts(list);
+          setSelected(result.account.id);
+          setUpdating(false);
+          setAdding(false);
+          setPage(undefined);
+          setTab('account');
+          setOAuth(undefined);
+        } else timer = setTimeout(() => void poll(), result.interval * 1000);
+      } catch (reason) {
+        if (current()) {
+          setOAuth(undefined);
+          setError(reason instanceof Error ? reason.message : 'GitHub authorization failed.');
+        }
+      }
+    };
+    timer = setTimeout(() => void poll(), oauth.interval * 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [oauth]);
   const repositories = (number: number) =>
     run(async (current) => {
       if (!account) return;
@@ -106,7 +166,8 @@ export function HostingAccountsPanel({
         setPage(undefined);
         setTab('account');
         setUpdating(false);
-        setRemember(result.accounts[0]?.storage === 'keyring');
+        setRemoving(false);
+        setAdding(!result.accounts.length);
       }
     });
   const visible =
@@ -116,51 +177,79 @@ export function HostingAccountsPanel({
     <section className="hosting-panel" aria-label="Accounts">
       <div className="hosting-layout">
         <aside className="hosting-accounts" aria-label="Hosting accounts">
-          {accounts.accounts.map((item) => (
+          <div className="hosting-account-list">
+            {accounts.accounts.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className="hosting-account"
+                aria-pressed={selected === item.id}
+                disabled={working}
+                onClick={() => {
+                  setSelected(item.id);
+                  setTab('account');
+                  setPage(undefined);
+                  setError('');
+                  setFilter('');
+                  setUpdating(false);
+                  setAdding(false);
+                  setRemoving(false);
+                }}
+              >
+                <strong>{hostingProviderNames[item.provider]}</strong>
+                <span>{item.login}</span>
+                {item.serverUrl && !['github', 'gitlab'].includes(item.provider) && (
+                  <small>{item.serverUrl}</small>
+                )}
+              </button>
+            ))}
+            {!accounts.accounts.length && <p className="muted">No connected accounts</p>}
+          </div>
+          <div className="hosting-account-controls">
             <button
               type="button"
-              key={item.id}
-              className="hosting-account"
-              aria-pressed={selected === item.id}
-              disabled={busy}
+              className="button"
+              aria-label="Add account"
+              title="Add account"
+              disabled={working}
               onClick={() => {
-                setSelected(item.id);
-                setTab('account');
-                setPage(undefined);
-                setError('');
-                setFilter('');
+                setSelected('');
                 setUpdating(false);
-                setRemember(item.storage === 'keyring');
+                setAdding(true);
+                setRemoving(false);
+                setTab('account');
+                setError('');
               }}
             >
-              <strong>GitHub</strong>
-              <span>{item.login}</span>
+              +
             </button>
-          ))}
-          {!accounts.accounts.length && <p className="muted">No connected accounts</p>}
-          <button
-            type="button"
-            className="button hosting-add"
-            disabled={busy}
-            onClick={() => {
-              setSelected('');
-              setUpdating(false);
-              setRemember(false);
-              setTab('account');
-              setError('');
-            }}
-          >
-            + Add account
-          </button>
+            <button
+              type="button"
+              className="button"
+              aria-label="Remove account"
+              title="Remove account"
+              disabled={working || !account}
+              onClick={() => {
+                setRemoving(true);
+                setUpdating(false);
+                setTab('account');
+                setError('');
+              }}
+            >
+              −
+            </button>
+          </div>
         </aside>
-        <section className="hosting-detail" aria-busy={busy}>
+        <section className="hosting-detail" aria-busy={working}>
           <div className="hosting-identity">
             <span className="hosting-avatar" aria-hidden="true">
               {account?.login.slice(0, 1).toUpperCase() ?? '+'}
             </span>
             <div>
-              <h3>{account ? account.login : 'Log in to GitHub'}</h3>
-              <p className="muted">https://github.com</p>
+              <h3>{account ? account.login : 'Add account'}</h3>
+              <p className="muted">
+                {account ? (account.serverUrl ?? 'https://github.com') : 'Connect to a Git hosting service'}
+              </p>
             </div>
           </div>
           {account && (
@@ -169,7 +258,7 @@ export function HostingAccountsPanel({
                 type="button"
                 className="button"
                 aria-pressed={tab === 'account'}
-                disabled={busy}
+                disabled={working}
                 onClick={() => setTab('account')}
               >
                 Account
@@ -178,124 +267,110 @@ export function HostingAccountsPanel({
                 type="button"
                 className="button"
                 aria-pressed={tab === 'repositories'}
-                disabled={busy}
+                disabled={working}
                 onClick={() => void repositories(page?.page ?? 1)}
               >
                 Repositories
               </button>
-              <button
-                type="button"
-                className="button"
-                disabled={busy}
-                aria-pressed={tab === 'activity' && activity?.kind === 'notifications'}
-                onClick={() => {
-                  setActivity({
-                    accountId: account.id,
-                    kind: 'notifications',
-                    page: 1,
-                    all: false,
-                    participating: false,
-                  });
-                  setTab('activity');
-                }}
-              >
-                Notifications
-              </button>
+              {account.provider === 'github' && (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={working}
+                  aria-pressed={tab === 'activity' && activity?.kind === 'notifications'}
+                  onClick={() => {
+                    setActivity({
+                      accountId: account.id,
+                      kind: 'notifications',
+                      page: 1,
+                      all: false,
+                      participating: false,
+                    });
+                    setTab('activity');
+                  }}
+                >
+                  Notifications
+                </button>
+              )}
             </div>
           )}
           {tab === 'account' && (
             <>
-              <dl>
-                <dt>Server Type:</dt>
-                <dd>GitHub</dd>
-                <dt>Authentication Type:</dt>
-                <dd>Personal access token</dd>
-                {account && (
-                  <>
-                    <dt>Username:</dt>
-                    <dd>{account.login}</dd>
-                    <dt>Storage:</dt>
-                    <dd>
-                      {account.storage === 'keyring'
-                        ? 'Saved with OS keyring encryption'
-                        : 'This application session only'}
-                    </dd>
-                    <dt>HTTPS Git:</dt>
-                    <dd>
-                      {accounts.gitAccountId === account.id ? 'Default account' : 'Available by username'}
-                    </dd>
-                  </>
-                )}
-              </dl>
-              {(!account || updating) && (
-                <div className="hosting-login">
-                  <h4>{updating ? 'Update token' : 'Login'}</h4>
-                  <p>
-                    Copy your personal access token, then log in. This account will be used for GitHub
-                    browsing and HTTPS clone, fetch, pull and push.
-                  </p>
-                  <label className="hosting-remember">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      disabled={busy || !accounts.secureStorageAvailable}
-                      onChange={(event) => setRemember(event.target.checked)}
-                    />{' '}
-                    Remember account securely
-                  </label>
-                  {!accounts.secureStorageAvailable && (
-                    <p className="muted">
-                      Secure storage is unavailable. Accounts can be used for this session.
-                    </p>
+              {account && !updating && (
+                <dl>
+                  <dt>Server Type:</dt>
+                  <dd>{hostingProviderNames[account.provider]}</dd>
+                  <dt>Authentication Type:</dt>
+                  <dd>{account.authentication === 'oauth' ? 'OAuth' : 'Personal access token'}</dd>
+                  {account && (
+                    <>
+                      <dt>Username:</dt>
+                      <dd>{account.login}</dd>
+                      <dt>Storage:</dt>
+                      <dd>
+                        {account.storage === 'keyring'
+                          ? 'Saved with OS keyring encryption'
+                          : 'This application session only'}
+                      </dd>
+                      <dt>HTTPS Git:</dt>
+                      <dd>
+                        {defaultForServer ? 'Default account for this server' : 'Available by username'}
+                      </dd>
+                    </>
                   )}
+                </dl>
+              )}
+              {((!account && adding) || updating) && (
+                <HostingAccountForm
+                  key={account?.id ?? 'new'}
+                  account={account}
+                  secureStorage={accounts.secureStorageAvailable}
+                  oauthAvailable={Boolean(accounts.githubOAuthAvailable)}
+                  busy={working}
+                  onToken={(request) => void connect(request)}
+                  onOAuth={(request) => void beginOAuth(request)}
+                  onCancel={() => {
+                    setUpdating(false);
+                    setAdding(false);
+                    setError('');
+                    if (!account) setSelected(accounts.accounts[0]?.id ?? '');
+                  }}
+                />
+              )}
+              {!account && !adding && <p className="muted">Use + to add an account.</p>}
+              {removing && account && (
+                <div className="hosting-remove-confirm" role="group" aria-label="Confirm account removal">
+                  <p>
+                    Remove {account.login} from {hostingProviderNames[account.provider]}? Its saved credential
+                    will be removed from Git Workbench.
+                  </p>
                   <div className="hosting-actions">
                     <button
+                      className="button danger"
                       type="button"
-                      className="button primary"
-                      disabled={busy}
-                      onClick={() => void connect(Boolean(account))}
+                      disabled={working}
+                      onClick={() => void signOut()}
                     >
-                      {updating ? 'Update token from Clipboard' : 'Log in with Access Token'}
+                      Remove account
                     </button>
-                    {updating && (
-                      <button
-                        type="button"
-                        className="button"
-                        disabled={busy}
-                        onClick={() => {
-                          setUpdating(false);
-                          setError('');
-                        }}
-                      >
-                        Cancel update
-                      </button>
-                    )}
                     <button
                       type="button"
-                      className="link-button"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          unwrapResult(await api().openTokenSettings());
-                        })
-                      }
+                      className="button"
+                      disabled={working}
+                      onClick={() => setRemoving(false)}
                     >
-                      Create token on GitHub…
+                      Cancel removal
                     </button>
                   </div>
-                  <p className="muted">
-                    Private repositories need repository access. For fine-grained tokens, allow Contents read
-                    access to fetch and read/write access to push. Organization SSO may require authorization.
-                  </p>
                 </div>
               )}
-              {account && (
+              {account && !updating && !removing && (
                 <div className="hosting-actions">
                   {!updating && (
                     <button
                       type="button"
                       className="button"
-                      disabled={busy}
+                      disabled={working}
                       onClick={() => {
                         setUpdating(true);
                         setError('');
@@ -304,11 +379,11 @@ export function HostingAccountsPanel({
                       Update token…
                     </button>
                   )}
-                  {accounts.gitAccountId !== account.id && (
+                  {!defaultForServer && (
                     <button
                       type="button"
                       className="button"
-                      disabled={busy}
+                      disabled={working}
                       onClick={() =>
                         void run(async (current) => {
                           unwrapResult(await api().useForGit({ accountId: account.id }));
@@ -320,15 +395,16 @@ export function HostingAccountsPanel({
                       Use as default for Git
                     </button>
                   )}
-                  <button type="button" className="button" disabled={busy} onClick={() => void signOut()}>
+                  <button type="button" className="button" disabled={working} onClick={() => void signOut()}>
                     Sign out
                   </button>
                 </div>
               )}
-              {account && (
+              {account && !updating && (
                 <p className="muted hosting-account-note">
                   HTTPS operations use your token’s repository permissions. SSH remotes use your SSH keys.
-                  Signing out removes this app’s credential; revoke it on GitHub to disable it everywhere.
+                  Signing out removes this app’s credential; revoke it on your server to disable it
+                  everywhere.
                 </p>
               )}
             </>
@@ -396,28 +472,29 @@ export function HostingAccountsPanel({
                       >
                         Clone…
                       </button>
-                      {(['issues', 'pull-requests'] as const).map((kind) => (
-                        <button
-                          type="button"
-                          className="button"
-                          key={kind}
-                          onClick={() => {
-                            setActivity({
-                              accountId: account.id,
-                              repositoryId: repo.id,
-                              kind,
-                              page: 1,
-                              state: 'open',
-                              author: '',
-                              assignee: '',
-                              text: '',
-                            });
-                            setTab('activity');
-                          }}
-                        >
-                          Browse {kind === 'issues' ? 'issues' : 'pull requests'}
-                        </button>
-                      ))}
+                      {account.provider === 'github' &&
+                        (['issues', 'pull-requests'] as const).map((kind) => (
+                          <button
+                            type="button"
+                            className="button"
+                            key={kind}
+                            onClick={() => {
+                              setActivity({
+                                accountId: account.id,
+                                repositoryId: repo.id,
+                                kind,
+                                page: 1,
+                                state: 'open',
+                                author: '',
+                                assignee: '',
+                                text: '',
+                              });
+                              setTab('activity');
+                            }}
+                          >
+                            Browse {kind === 'issues' ? 'issues' : 'pull requests'}
+                          </button>
+                        ))}
                       {(['website', 'pull-requests', 'issues'] as const).map((destination) => (
                         <button
                           type="button"
@@ -475,9 +552,15 @@ export function HostingAccountsPanel({
               </div>
             </>
           )}
-          {busy && (
+          {oauth && (
             <p role="status">
-              Contacting GitHub…{' '}
+              Enter code <strong className="hosting-device-code">{oauth.userCode}</strong> at
+              github.com/login/device in your browser. Waiting for authorization…
+            </p>
+          )}
+          {working && (
+            <p role="status">
+              {oauth ? 'GitHub OAuth' : 'Contacting server…'}{' '}
               <button
                 type="button"
                 className="link-button"
@@ -485,6 +568,7 @@ export function HostingAccountsPanel({
                   generation.current++;
                   void api().cancel();
                   setBusy(false);
+                  setOAuth(undefined);
                   setPage(undefined);
                   setTab('account');
                 }}

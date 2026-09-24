@@ -6,19 +6,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-// Backend-only protocol. Credential bytes never cross the desktop IPC boundary.
+// Backend-only protocol used by the per-operation Git helper.
 export const credentialContextSchema = z.strictObject({
   protocol: z.literal('https'),
-  host: z.enum(['github.com', 'github.com:443']),
+  host: z
+    .string()
+    .max(260)
+    .regex(/^(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]{1,5})?$/u),
   path: z
     .string()
     .max(512)
-    .regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/?$/u)
-    .refine((path) => !['.', '..'].includes(path.split('/')[1] ?? '')),
+    .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\/?$/u)
+    .refine((path) => path.split('/').every((part) => !['.', '..'].includes(part))),
   username: z
     .string()
     .max(100)
-    .regex(/^[A-Za-z0-9-]*$/u),
+    .regex(/^[A-Za-z0-9_.-]*$/u),
 });
 export type GitCredentialContext = z.infer<typeof credentialContextSchema>;
 export interface GitCredential {
@@ -27,6 +30,7 @@ export interface GitCredential {
 }
 export interface GitCredentialSource {
   available(): Promise<boolean>;
+  scopes?(): Promise<string[]>;
   get(context: GitCredentialContext): Promise<GitCredential | null>;
 }
 export interface GitCredentialBridge {
@@ -39,6 +43,7 @@ const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
 /** A private, per-process channel. Neither argv, environment nor temporary files contain a token. */
 export async function createCredentialBroker(bridge: GitCredentialBridge) {
+  const scopes = (await bridge.source.scopes?.()) ?? ['https://github.com'];
   const directory = await mkdtemp(join(tmpdir(), 'gw-credentials-'));
   const nonce = randomBytes(32).toString('hex');
   const address = process.platform === 'win32' ? `\\\\.\\pipe\\gw-${nonce}` : join(directory, 'socket');
@@ -71,6 +76,19 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
           const request = z
             .strictObject({ nonce: z.literal(nonce), context: credentialContextSchema })
             .parse(JSON.parse(input));
+          const destination = new URL(`https://${request.context.host}/${request.context.path}`);
+          if (
+            !scopes.some((scope) => {
+              const server = new URL(scope);
+              return (
+                destination.origin === server.origin &&
+                destination.pathname.startsWith(`${server.pathname.replace(/\/$/u, '')}/`)
+              );
+            })
+          ) {
+            socket.end('null\n');
+            return;
+          }
           const credential = await bridge.source.get(request.context);
           if (closed || socket.destroyed) return;
           if (credential) {
@@ -99,19 +117,19 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
   }
   const helper = `!ELECTRON_RUN_AS_NODE=1 ${quote(bridge.executable)} ${quote(bridge.helperPath)}`;
   return {
-    args: [
+    args: scopes.flatMap((scope) => [
       '-c',
-      'credential.https://github.com.helper=',
+      `credential.${scope}.helper=`,
       '-c',
-      `credential.https://github.com.helper=${helper}`,
+      `credential.${scope}.helper=${helper}`,
       '-c',
-      'credential.https://github.com.useHttpPath=true',
+      `credential.${scope}.useHttpPath=true`,
       '-c',
-      'credential.https://github.com.username=',
+      `credential.${scope}.username=`,
       // Do not follow a redirect with account credentials, including same-host path redirects.
       '-c',
-      'http.https://github.com.followRedirects=false',
-    ],
+      `http.${scope}.followRedirects=false`,
+    ]),
     env: { GW_CREDENTIAL_SOCKET: address, GW_CREDENTIAL_NONCE: nonce },
     redact(value: string) {
       let result = value;

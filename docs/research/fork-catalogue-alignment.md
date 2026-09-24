@@ -673,3 +673,30 @@ Sources, confidence and platform differences are in the
 The [handoff](../reviews/github-accounts-correction.md) records checks and limitations. OAuth, other
 providers, self-hosting, native secure-keyring/platform coverage and full Preferences inventory remain
 partial. Capture coverage and phase-completion status are unchanged.
+
+## Provider account authentication correction — 2026-09-24
+
+The [provider accounts handoff](../reviews/provider-accounts.md) supersedes the clipboard-only entry and
+provider limitations of the 2026-09-23 correction above. The requested five-provider inventory, direct
+token fields and bottom +/− controls come from the user's 2026-09-24 specification; they are requirements,
+not new captured case outcomes.
+
+Rechecked `P0-013-general-git-subcase:F1–F4`, original JSON/screen-0123 and Git invariance report
+(Windows 2.22.0.0, 2026-09-19; high confidence for sampled preferences only), plus the P1-012 dossier's
+explicit authentication unknown. Refreshed the public reference index and inspected
+`win-2026-07-31-trackerwin2826-1-preferences-dark.png` from
+[TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826) (Windows/version unstated/dark,
+2026-07-31; medium confidence for visible account composition). Compared the resulting Linux light/dark
+provider forms, multi-account layout and 780×600 state with these originals. Independent text avatars,
+Accounts within Preferences, removal confirmation, storage choices and GitHub device authorization are
+deliberate adaptations. The public protocol URLs, access dates and confidence are in the
+[research record](fork-public-surface.md#provider-account-forms-and-authentication--2026-09-24).
+
+The stable login capability now accepts a transient, write-only token from a masked input, an explicit
+user-directed exception to the previous credential acquisition policy. Validation/storage/HTTP/Git stay
+in main; new OAuth start/poll channels retain all sender/frame/inspector checks. API and Git credentials
+are scoped to the selected server and installation path. Fixture tests and headless Electron establish
+our implementation, not observed Fork token internals. Live OAuth requires the application's registered
+client ID; live provider/native-keyring/platform and automatic-renewal limits keep F29/P11 partial.
+P05's previously verified Linux phase scope is unchanged. The private bundle and case-level unknowns
+are preserved; no reference images or application assets were copied.

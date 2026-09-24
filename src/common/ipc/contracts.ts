@@ -39,6 +39,9 @@ import {
   hostingAccountsSchema,
   hostingAccountRequestSchema,
   hostingConnectRequestSchema,
+  hostingOAuthRequestSchema,
+  hostingOAuthStateSchema,
+  hostingOAuthResultSchema,
   hostingRepositoriesRequestSchema,
   hostedRepositoriesSchema,
   hostingRepositoryRequestSchema,
@@ -2486,6 +2489,8 @@ export const requests = {
     hostingAccountSchema.nullable(),
   ),
   disconnectHostingAccount: request('hosting:disconnect-account', hostingAccountRequestSchema, z.null()),
+  beginHostingOAuth: request('hosting:begin-oauth', hostingOAuthRequestSchema, hostingOAuthStateSchema),
+  pollHostingOAuth: request('hosting:poll-oauth', z.undefined(), hostingOAuthResultSchema),
   useHostingAccountForGit: request('hosting:use-for-git', hostingAccountRequestSchema, z.null()),
   openHostingTokenSettings: request('hosting:open-token-settings', z.undefined(), z.null()),
   listHostedRepositories: request(

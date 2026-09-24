@@ -104,8 +104,10 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       listActivity: (request) => invoke(requests.listHostingActivity, request),
       openActivity: (request) => invoke(requests.openHostingActivity, request),
       listAccounts: () => invoke(requests.listHostingAccounts, undefined),
-      // Authentication is owned and bounded by main; no credential bytes cross this API.
+      // Direct token entry is write-only; validation, storage and provider requests stay in main.
       connect: (request) => invoke(requests.connectHostingAccount, request, 310_000),
+      beginOAuth: (request) => invoke(requests.beginHostingOAuth, request),
+      pollOAuth: () => invoke(requests.pollHostingOAuth, undefined, 30000),
       disconnect: (request) => invoke(requests.disconnectHostingAccount, request),
       useForGit: (request) => invoke(requests.useHostingAccountForGit, request),
       openTokenSettings: () => invoke(requests.openHostingTokenSettings, undefined),

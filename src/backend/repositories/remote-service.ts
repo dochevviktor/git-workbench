@@ -260,12 +260,11 @@ export function isAllowedRemoteUrl(url: string): boolean {
     const parsed = new URL(url);
     if (!['http:', 'https:', 'ssh:', 'git:', 'file:'].includes(parsed.protocol)) return false;
     if (parsed.protocol === 'ssh:' && !parsed.password && !parsed.search) return true;
-    // A public GitHub login selects an account; passwords/tokens remain forbidden in URLs.
+    // Public hosting usernames select an account. Passwords and recognizable tokens are refused.
     if (
       parsed.protocol === 'https:' &&
-      parsed.hostname === 'github.com' &&
-      !parsed.port &&
-      /^[A-Za-z0-9-]{1,39}$/u.test(parsed.username) &&
+      /^[A-Za-z0-9_.-]{1,100}$/u.test(parsed.username) &&
+      !/^(?:gh[pousr]_|github_pat_|glpat-|gl[a-z]+-|gitea_)/iu.test(parsed.username) &&
       !parsed.password &&
       !parsed.search &&
       !parsed.hash

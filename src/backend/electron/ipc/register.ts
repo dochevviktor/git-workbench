@@ -319,17 +319,23 @@ export function registerAppIpc(
     });
     register(requests.listHostingAccounts, () => hostingService.list());
     register(requests.connectHostingAccount, (window, request) =>
-      hostingService.login(window.webContents.id, request, async () => {
-        if (window.isDestroyed()) return null;
-        const token = await clipboard.readText();
-        if (!token.trim() || token.length > 4096)
-          throw new ExpectedBackendError(
-            'HOSTING_AUTH',
-            'Copy a GitHub personal access token, then choose Log in with Access Token.',
-          );
-        return token;
-      }),
+      hostingService.connectToken(window.webContents.id, request),
     );
+    register(requests.beginHostingOAuth, async (window, request) => {
+      const owner = window.webContents.id;
+      const state = await hostingService.beginOAuth(owner, request);
+      try {
+        await shell.openExternal('https://github.com/login/device');
+      } catch {
+        hostingService.cancel(owner);
+        throw new ExpectedBackendError(
+          'UNAVAILABLE',
+          'The system browser could not be opened. Start OAuth again.',
+        );
+      }
+      return state;
+    });
+    register(requests.pollHostingOAuth, (window) => hostingService.pollOAuth(window.webContents.id));
     register(requests.useHostingAccountForGit, (_window, { accountId }) =>
       hostingService.useForGit(accountId),
     );

@@ -3,12 +3,13 @@ import type {
   HostedRepositories,
   HostingActivityRequest,
   HostingActivityPage,
+  HostingProviderId,
 } from '../../common/ipc/hosting';
 import { hostedRepositorySchema, hostingActivityRequestSchema } from '../../common/ipc/hosting';
 import { ExpectedBackendError } from '../errors';
 
 export interface HostingProvider {
-  readonly id: 'github';
+  readonly id: HostingProviderId;
   identity(token: string, signal: AbortSignal): Promise<{ id: string; login: string }>;
   repositories(token: string, page: number, signal: AbortSignal): Promise<HostedRepositories>;
   activity(
@@ -204,7 +205,7 @@ export class GitHubProvider implements HostingProvider {
       if (response.status === 401)
         throw new ExpectedBackendError(
           'HOSTING_AUTH',
-          'The GitHub token expired or was revoked. Select a replacement token file.',
+          'The GitHub token expired or was revoked. Update the token in Accounts.',
         );
       if (
         response.status === 429 ||

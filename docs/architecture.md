@@ -1,5 +1,30 @@
 # Architecture and implementation decisions
 
+Account authentication correction (2026-09-24): the [provider accounts handoff](reviews/provider-accounts.md)
+supersedes the clipboard-only F29 acquisition and GitHub-only destination policy below. The user's
+explicit request for direct token fields introduces a narrow exception to the earlier prohibition on
+renderer credential entry: an uncontrolled password input sends a bounded, write-only token via the
+existing `hosting:connect-account` capability, then clears it. Tokens never enter React/persisted view
+state or account/result DTOs; main still owns validation, provider HTTP, credential lifetime, keyring
+encryption and Git use. No clipboard read or token-file picker participates in account login/update.
+Exact document/frame/owner authorization, sandboxing, isolation, CSP and inspector denial are preserved.
+
+Public account metadata adds provider, canonical HTTPS server and authentication method, retaining old
+GitHub IDs and version-1 credential files. Gitea, GitHub Enterprise, GitLab and GitLab Server use fixed
+API paths on the explicitly selected HTTPS server, reject redirects, bound responses and suppress remote
+errors. Account IDs include the server identity; replacement cannot move a credential between servers
+or users. Git helpers are scoped to exact origins and installation paths, with longest-path selection,
+per-server defaults and username-pinned clones. Unrelated hosts/SSH retain native helpers/agents.
+Repositories are still selected by owner-issued IDs; nested GitLab namespaces are supported. Non-GitHub
+activity remains a browser handoff, not a simulated internal activity implementation.
+
+Named `hosting:begin-oauth`/`hosting:poll-oauth` capabilities implement GitHub device authorization using
+`GIT_WORKBENCH_GITHUB_CLIENT_ID` in main. Device/access tokens stay in main; only the user code, interval,
+expiry and resulting public account cross to the UI. Main enforces poll intervals/slow-down, expiration,
+identity matching, cancellation and owner generations. The browser destination is fixed. No app client
+secret is shipped; no third-party client registration is borrowed. Missing registration is explicit in
+the UI. Automatic OAuth renewal and live provider/native-keyring verification remain outside this slice.
+
 P05 (2026-09-23): [reference/network behavior and verification](reviews/p05-network.md) adds a named
 `repository:preview-push` read across contracts/preload/main. Main stores bounded, expiring, one-use
 window/repository reviews of source IDs, last-fetched lease IDs, tags and the push destination fingerprint.
@@ -157,10 +182,11 @@ without losing open paths/order; the legacy orientation channel maps to reposito
 Window geometry uses a separate bounded, versioned atomic file and validates placement against usable
 display workareas, with a fallback for Ozone's 1×1 virtual display.
 
-GitHub HTTPS authentication uses connected hosting accounts through a per-process credential broker;
+HTTPS authentication uses connected hosting accounts through a per-process credential broker;
 other authentication remains with installed helpers/agents. Silent runner calls suppress askpass
 and standard credential-manager dialogs; explicit network work may prompt through those tools. Secrets
-never enter DTOs or renderer state. P01 now defines explicit repository trust in the
+are never returned in DTOs or stored in renderer state; direct account entry follows the narrow exception
+above. P01 now defines explicit repository trust in the
 [infrastructure handoff](reviews/p01-infrastructure.md). Long reads and mutations preserve owner/generation guards, bounded output and job cancellation;
 cancellation requested is distinct from terminal status. No automatic rollback or retry is inferred.
 
@@ -652,6 +678,9 @@ Directory and selected-code requests do not cross IPC.
 ## Current limitations
 
 ### F29 GitHub account boundary
+
+Historical 2026-09-23 policy; the provider accounts correction at the top of this document supersedes
+credential acquisition, supported providers/destinations and OAuth availability in this section.
 
 `desktop.hosting` exposes named account/list/selection/browser/cancel capabilities, plus default Git
 account selection and a fixed GitHub token-settings browser handoff. Preferences embeds the accounts

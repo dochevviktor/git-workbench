@@ -143,14 +143,14 @@ outside this slice; F38 Lean Branching remains separate.
 | P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                        | P01 runner/jobs                       |
 | P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                            | P02 sessions                          |
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                          | P01 writes, P02/P03 views             |
-| P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); catalogue dialogs, reference/remote lifecycle, exact-lease review, authenticated local HTTPS/SSH and cancellation verified; see P05 handoff                | P01 jobs, P02/P04, P06 recovery       |
+| P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                               | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Partial; stash semantics, four merge modes/recovery, bounded F17 text editing, and bounded F19 history operations verified (2026-09-20); broader conflict-family scope remains                          | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                                   | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06/F20/F21 and F26 manual Bisect verified; F36 bounded patch import/export/clipboard verified (2026-09-22); directory/code history and broader patch variants remain                          | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                     | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
-| P11   | Hosting providers, issues/PRs, notifications                         | Partial; Preferences Accounts, clipboard PAT login and HTTPS Git verified (2026-09-23); F30 lists/notifications retained; other providers and OAuth/self-hosting remain                                 | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences Accounts/layout correction verified (2026-09-23), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                 | P02/P03 plus relevant domain services |
+| P11   | Hosting providers, issues/PRs, notifications                         | Partial; five-provider accounts, direct token entry and configurable GitHub OAuth verified with fixtures (2026-09-24); live authorization, renewal and broader hosting remain                           | P05 auth; browser handoff independent |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences provider account forms corrected (2026-09-24), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                    | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                             | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                 | Every claimed workflow                |
 
@@ -789,6 +789,12 @@ Live provider policy/authorization, actual OS-keyring unlock/save, hardware keys
 helpers and broader public reference organization remain explicitly unverified/unclaimed. The Linux
 phase completion does not promote the full provider/platform matrix or F12's pin/hide/custom-sort family.
 
+Authentication UI follow-up (2026-09-24): the [provider accounts correction](reviews/provider-accounts.md)
+adds the user-requested account sidebar, +/− controls and Gitea/GitHub/Enterprise/GitLab/Server forms,
+direct token entry and configurable GitHub OAuth. It extends the F29/P11 account surface used by P05
+without changing the previously verified Git operation semantics. Live OAuth requires the application's
+registered client ID; provider/native-platform limits remain explicit.
+
 Verification: `npm run check` passes **531 tests** (one existing opt-in skip), production build passes,
 and **15 relevant headless Electron scenarios** pass. The full routine suite records 43 passes, two
 opt-in skips and two failures: Quick Launch reproduces three times on untouched `e5c6c4f`, while Bisect
@@ -1136,6 +1142,18 @@ Acceptance:
 ## P11 — Hosting integrations
 
 Coverage: F29–F30.
+
+Provider account correction (2026-09-24): the [new handoff](reviews/provider-accounts.md) supersedes
+the clipboard/file acquisition and GitHub-only scope of the dated checkpoints below. Accounts now has
+bottom +/− controls, all five requested provider forms, direct masked token entry, server-aware identity,
+repository browsing and HTTPS Git credentials. GitHub additionally supports browser device OAuth when
+the installation supplies its own registered public client ID. Token entry is an explicit, bounded
+write-only exception to the older no-renderer-credential policy; all storage, HTTP and Git use stay in
+main. Cancellation, failed replacement, server isolation and legacy saved accounts retain their guards.
+P05's previously verified Linux network scope stays complete. F29/P11 remain partial for live OAuth
+registration/provider authorization, automatic OAuth renewal, native keyring/platform coverage and
+broader hosting features. Verification and evidence are recorded in the handoff; capture coverage is
+not promoted.
 
 GitHub accounts correction (2026-09-23): Accounts is embedded in File → Preferences. Login and
 same-account token updates read a copied PAT in main, replacing the UI file chooser. Existing saved

@@ -258,7 +258,7 @@ describe('preload capability API', () => {
       error: { code: 'INTERNAL_ERROR' },
     });
   });
-  it('keeps hosting secrets and arbitrary URLs out of the bridge in both directions', async () => {
+  it('accepts only scoped write-only credential entry and rejects secrets in results', async () => {
     const { api, invoke } = fixture();
     expect(await api.hosting.connect({ remember: false, token: 'not-allowed' } as never)).toMatchObject({
       ok: false,
@@ -276,7 +276,9 @@ describe('preload capability API', () => {
       ok: true,
       value: { id: 'github-1', provider: 'github', login: 'test', storage: 'session', token: 'not-allowed' },
     });
-    expect(await api.hosting.connect({ remember: false })).toMatchObject({
+    expect(
+      await api.hosting.connect({ remember: false, provider: 'github', token: 'synthetic_token' }),
+    ).toMatchObject({
       ok: false,
       error: { code: 'INTERNAL_ERROR' },
     });

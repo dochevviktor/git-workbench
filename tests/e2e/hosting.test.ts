@@ -16,6 +16,7 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
+    env.GIT_WORKBENCH_GITHUB_CLIENT_ID = '';
     app = await electron.launch({
       chromiumSandbox: true,
       args: [
@@ -31,7 +32,9 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
       dialog.showOpenDialog = async () => {
         throw new Error('Account login must not select a file');
       };
-      await clipboard.writeText('synthetic_github_token_for_e2e');
+      clipboard.readText = async () => {
+        throw new Error('Account login must not read the clipboard');
+      };
       shell.openExternal = async (url) => {
         (globalThis as unknown as { openedUrl: string }).openedUrl = url;
       };
@@ -124,18 +127,25 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     let accounts = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await expect(accounts).toContainText('No connected accounts');
     await expect(accounts.getByRole('checkbox')).toBeDisabled();
+    await accounts.getByLabel('Authentication Type:', { exact: true }).selectOption('oauth');
+    await expect(accounts.getByLabel('Username:', { exact: true })).toBeVisible();
+    await expect(accounts).toContainText('GitHub OAuth is not configured');
+    await expect(accounts.getByRole('button', { name: 'Log in with OAuth', exact: true })).toBeDisabled();
+    await accounts.getByLabel('Authentication Type:', { exact: true }).selectOption('token');
     await page.screenshot({ path: test.info().outputPath('accounts-login-light.png') });
-    await accounts.getByRole('button', { name: 'Log in with Access Token', exact: true }).click();
+    await accounts
+      .getByLabel('Personal access token:', { exact: true })
+      .fill('synthetic_github_token_for_e2e');
+    await accounts.getByRole('button', { name: 'Log in', exact: true }).click();
     await expect(accounts.getByRole('heading', { name: 'synthetic-account' })).toBeVisible();
     await expect(accounts).toContainText('This application session only');
     await expect(accounts).toContainText('Default account');
     await expect(accounts).not.toContainText('synthetic_github_token_for_e2e');
     await accounts.getByRole('button', { name: 'Update token…', exact: true }).click();
-    await app.evaluate(async ({ clipboard }) => {
-      await clipboard.writeText('not a token');
-    });
-    await accounts.getByRole('button', { name: 'Update token from Clipboard', exact: true }).click();
-    await expect(accounts.getByRole('alert')).toContainText('Copy a GitHub personal access token');
+    await accounts.getByLabel('Personal access token:', { exact: true }).fill('not a valid token');
+    await accounts.getByRole('button', { name: 'Update token', exact: true }).click();
+    await expect(accounts.getByRole('alert')).toContainText('Enter a valid access token');
+    await expect(accounts.getByLabel('Personal access token:', { exact: true })).toHaveValue('');
     await accounts.getByRole('button', { name: 'Cancel update', exact: true }).click();
     await accounts.getByRole('button', { name: 'Notifications', exact: true }).click();
     await expect(accounts).toContainText('Notification title');
@@ -213,8 +223,7 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await expect(accounts).toHaveCount(0);
     // Closing Preferences aborts a pending login; a late identity cannot restore its account.
     await openAccounts();
-    await app.evaluate(async ({ clipboard }) => {
-      await clipboard.writeText('synthetic_github_token_for_e2e');
+    await app.evaluate(async () => {
       const original = globalThis.fetch;
       globalThis.fetch = async (input, init) => {
         if (String(input).endsWith('/user'))
@@ -225,7 +234,10 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
         return original(input, init);
       };
     });
-    await accounts.getByRole('button', { name: 'Log in with Access Token', exact: true }).click();
+    await accounts
+      .getByLabel('Personal access token:', { exact: true })
+      .fill('synthetic_github_token_for_e2e');
+    await accounts.getByRole('button', { name: 'Log in', exact: true }).click();
     await expect
       .poll(() =>
         app!.evaluate(() => typeof (globalThis as unknown as { finishLogin?: unknown }).finishLogin),

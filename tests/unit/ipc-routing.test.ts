@@ -301,6 +301,8 @@ describe('IPC sender and window lifecycle', () => {
       requests.useHostingAccountForGit,
       requests.openHostingTokenSettings,
       requests.connectHostingAccount,
+      requests.beginHostingOAuth,
+      requests.pollHostingOAuth,
     ]) {
       const activityHandler = handlers.get(contract.channel)!;
       expect(await activityHandler(inspector.event(), {})).toMatchObject({
