@@ -1,5 +1,17 @@
 # Architecture and implementation decisions
 
+P07 completion (2026-09-26): the [interactive-rebase handoff](reviews/p07-interactive-rebase.md)
+supersedes the earlier F18 merge/ref/recovery limits. Existing plan/start/recover channels carry strict
+quick-action, autosquash-preview, dependent-ref, optional branch-backup and history-backup DTOs. Preload
+and main retain their fixed routing and validate both directions. Backend snapshots include branch,
+remote/upstream and worktree occupancy; execution remains in the common-directory write queue.
+Native merge plans retain Git's labels/resets/merge nodes under an explicit topology-preserving policy.
+The sequence/message helper is compiled TypeScript, fed only application-owned plans/files. Native Git
+sequencer state and user todo edits survive restart. Retained refs plus versioned atomic metadata provide
+Recovery inspection, branch creation and explicit compare-checked dismissal. Published-history review
+does not imply a fetch or push. Renderer inspection state stays separate from the main graph, and no
+generic process/file capability, sender policy, sandbox or CSP changes are introduced.
+
 P06 completion (2026-09-24): the [merge/recovery handoff](reviews/p06-merge-recovery.md) supersedes
 the bounded F15/F17/F19 limitations below for the Linux phase. Named merge/rebase tree previews bind
 execution to a reviewed source object; named conflict-resolution starts use the operation registry

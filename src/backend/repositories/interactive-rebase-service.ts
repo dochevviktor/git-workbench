@@ -20,7 +20,8 @@ import { previewLocalChanges, withLocalChanges } from './recovery-service';
 import {
   cleanupInteractiveRebaseArtifacts,
   createInteractiveRebaseArtifacts,
-  interactiveRebaseArtifactsExist,
+  readRebaseBackups,
+  rebaseBackupRef,
 } from './interactive-rebase-artifacts';
 
 const planReadTimeoutMs = 15_000;
@@ -89,11 +90,13 @@ interface BranchHead extends RepositoryHead {
 
 interface PlanRow {
   readonly commitId: string;
+  readonly parents: string[];
   readonly subject: string;
   readonly body: string;
   readonly author: RepositoryHistoryPerson;
   readonly committer: RepositoryHistoryPerson;
   readonly action: RepositoryInteractiveRebaseCommand;
+  readonly combinedMessage?: string | undefined;
 }
 
 interface MutablePlanRow extends PlanRow {
@@ -112,13 +115,29 @@ export async function readInteractiveRebasePlan(
       `Finish or abort the ${pending} before opening an interactive rebase plan.`,
     );
   }
-  if (await interactiveRebaseArtifactsExist(context.gitDir)) {
+  if ((await readRebaseBackups(context.gitDir)).length >= 100) {
     throw new InteractiveRebaseRequestError(
-      'A previous interactive rebase left a recovery ref. Finish its recovery before starting another one.',
+      'Review and dismiss older rebase backups in Recovery before starting another rebase.',
     );
   }
   const head = await readBranchHead(runner, context.cwd);
-  const rawCommits = await readPlanCommits(runner, context.cwd, head.commit, request.ontoCommitId);
+  let ontoCommitId = request.ontoCommitId;
+  if (request.quickAction) {
+    const parents =
+      (await optionalOutput(runner, context.cwd, ['show', '-s', '--format=%P', request.quickAction.commitId]))
+        ?.split(' ')
+        .filter(Boolean) ?? [];
+    ontoCommitId = parents[0] ?? null;
+    if (['squash', 'fixup'].includes(request.quickAction.action)) {
+      if (!ontoCommitId)
+        throw new InteractiveRebaseRequestError('The root commit has no parent to combine with.');
+      ontoCommitId =
+        (await optionalOutput(runner, context.cwd, ['show', '-s', '--format=%P', ontoCommitId]))?.split(
+          ' ',
+        )[0] || null;
+    }
+  }
+  const rawCommits = await readPlanCommits(runner, context.cwd, head.commit, ontoCommitId);
   const metadata = await readCommitMetadata(
     runner,
     context.cwd,
@@ -127,7 +146,11 @@ export async function readInteractiveRebasePlan(
   const rows = rawCommits.map((commit) => {
     const item = metadata.get(commit.commitId);
     if (!item) throw new Error('Git did not return metadata for every rebase commit.');
-    return { ...item, action: 'pick' as const } satisfies RepositoryInteractiveRebaseCommit;
+    return {
+      ...item,
+      parents: [...commit.parents],
+      action: 'pick' as const,
+    } satisfies RepositoryInteractiveRebaseCommit;
   });
   const newestFirst = [...rows].reverse();
   const workingChanges = await previewLocalChanges(runner, {
@@ -137,28 +160,110 @@ export async function readInteractiveRebasePlan(
     head,
   });
   const mergeCommitCount = rawCommits.filter((commit) => commit.parents.length > 1).length;
-  const ontoSubject = request.ontoCommitId
-    ? await optionalOutput(runner, context.cwd, ['show', '-s', '--format=%s', request.ontoCommitId])
+  const ontoSubject = ontoCommitId
+    ? await optionalOutput(runner, context.cwd, ['show', '-s', '--format=%s', ontoCommitId])
     : null;
+  const references = (
+    await runner.run(
+      [
+        'for-each-ref',
+        '--count=10001',
+        '--format=%(refname)%00%(objectname)%00%(if)%(worktreepath)%(then)checked-out%(end)%00%(upstream)',
+        'refs/heads',
+        'refs/remotes',
+      ],
+      {
+        cwd: context.cwd,
+        timeoutMs: planReadTimeoutMs,
+        maxOutputBytes: planReadOutputLimit,
+      },
+    )
+  ).stdout.trim();
+  const referenceRows = references ? references.split('\n').map((line) => line.split('\0')) : [];
+  if (referenceRows.length > 10_000)
+    throw new InteractiveRebaseRequestError('There are too many references to review safely.');
+  const commitIds = new Set(rows.map((row) => row.commitId));
+  const dependentBranches = referenceRows
+    .filter(
+      ([name, commit]) =>
+        name?.startsWith('refs/heads/') && name !== `refs/heads/${head.name}` && commitIds.has(commit!),
+    )
+    .map(([name, commitId, worktree]) => ({
+      name: name!.slice('refs/heads/'.length),
+      fullName: name!,
+      commitId: commitId!,
+      checkedOut: Boolean(worktree),
+    }));
+  const unpublished = new Set(
+    (
+      await runner.run(
+        [
+          'rev-list',
+          '--max-count=501',
+          ontoCommitId ? `${ontoCommitId}..${head.commit}` : head.commit,
+          '--not',
+          '--remotes',
+        ],
+        {
+          cwd: context.cwd,
+          timeoutMs: planReadTimeoutMs,
+          maxOutputBytes: planReadOutputLimit,
+        },
+      )
+    ).stdout
+      .trim()
+      .split('\n'),
+  );
   const snapshot = createHash('sha256')
     .update(
       JSON.stringify({
         head,
-        ontoCommitId: request.ontoCommitId,
+        ontoCommitId,
         rows: newestFirst,
+        references,
       }),
     )
     .digest('hex');
+  let proposed: MutablePlanRow[] = rows;
+  if (request.actions) {
+    if (request.snapshot !== snapshot) throw new StaleInteractiveRebasePlanError();
+    const seen = new Set(request.actions.map((row) => row.commitId));
+    if (
+      seen.size !== rows.length ||
+      request.actions.length !== rows.length ||
+      [...seen].some((id) => !commitIds.has(id))
+    )
+      throw new InteractiveRebaseRequestError('The plan must contain each reviewed commit once.');
+    proposed = [...request.actions]
+      .reverse()
+      .map((row) => ({ ...rows.find((original) => original.commitId === row.commitId)!, ...row }));
+  }
+  if (request.quickAction) {
+    if (!commitIds.has(request.quickAction.commitId))
+      throw new InteractiveRebaseRequestError('The selected commit is not in this branch history.');
+    proposed = proposed.map((row) =>
+      row.commitId === request.quickAction!.commitId ? { ...row, action: request.quickAction!.action } : row,
+    );
+  }
+  if (request.autosquash) {
+    if (mergeCommitCount)
+      throw new InteractiveRebaseRequestError(
+        'Autosquash is available for linear plans. Merge plans preserve their topology.',
+      );
+    proposed = applyAutosquash(proposed, rows);
+  }
   return repositoryInteractiveRebasePlanSchema.parse({
     repositoryId: context.repositoryId,
     branchName: head.name,
     headCommit: head.commit,
-    ontoCommitId: request.ontoCommitId,
+    ontoCommitId,
     ontoSubject,
-    root: request.ontoCommitId === null,
-    commits: newestFirst,
+    root: ontoCommitId === null,
+    commits: [...proposed].reverse(),
     workingChanges,
     mergeCommitCount,
+    dependentBranches,
+    publishedCommitCount: rows.filter((row) => !unpublished.has(row.commitId)).length,
     snapshot,
   } satisfies RepositoryInteractiveRebasePlan);
 }
@@ -173,9 +278,10 @@ export async function runInteractiveRebase(
     ontoCommitId: input.request.ontoCommitId,
   });
   if (currentPlan.snapshot !== input.request.snapshot) throw new StaleInteractiveRebasePlanError();
-  if (currentPlan.mergeCommitCount > 0) {
+  if (input.signal.aborted) throw new GitCancelledError();
+  if (currentPlan.publishedCommitCount && !input.request.acknowledgePublished) {
     throw new InteractiveRebaseRequestError(
-      'This plan contains merge commits. Merge-preserving interactive rebase is not implemented yet.',
+      'This plan contains published commits. Acknowledge the history rewrite after reviewing the warning.',
     );
   }
   const hasLocalChanges =
@@ -190,33 +296,68 @@ export async function runInteractiveRebase(
   }
 
   const rows = validateRows(currentPlan, input.request);
-  const orderedRows = input.request.autosquash ? applyAutosquash(rows) : rows;
+  if (currentPlan.mergeCommitCount) validateMergePlan(currentPlan, rows, input.request.autosquash);
+  const orderedRows = input.request.autosquash ? applyAutosquash(rows, currentPlan.commits) : rows;
   validateActions(orderedRows);
   const title = `Interactive rebase '${currentPlan.branchName}'${
     currentPlan.root ? ' from root' : ` to ${currentPlan.ontoCommitId?.slice(0, 7) ?? 'the selected commit'}`
   }`;
   const artifactId = randomUUID();
-  const backupRef = `refs/git-workbench/rebase-backup/${artifactId}`;
+  const backupRef = rebaseBackupRef(artifactId);
+  const backupBranch = input.request.backupBranch
+    ? `rebase-backup/${currentPlan.branchName}-${artifactId.slice(0, 8)}`
+    : null;
   const backupOptions: GitRunOptions = {
     cwd: input.cwd,
     timeoutMs: planReadTimeoutMs,
     maxOutputBytes: 64 * 1024,
   };
-  await runner.run(['update-ref', backupRef, currentPlan.headCommit], backupOptions);
-
   let artifacts: Awaited<ReturnType<typeof createInteractiveRebaseArtifacts>> | undefined;
   try {
     const messageContents = collectMessageContents(orderedRows);
     artifacts = await createInteractiveRebaseArtifacts(
       input.gitDir,
-      artifactId,
-      backupRef,
-      '# Git Workbench interactive rebase plan\n',
+      {
+        id: artifactId,
+        commitId: currentPlan.headCommit,
+        branchName: currentPlan.branchName,
+        backupBranch,
+        createdAt: new Date().toISOString(),
+      },
       messageContents,
     );
-    const { todo } = buildTodo(orderedRows, artifacts.messageFiles);
-    await writeFile(join(artifacts.directory, 'todo'), todo, { encoding: 'utf8', mode: 0o600 });
-    const args = buildRebaseArgs(currentPlan);
+    await runner.run(['update-ref', backupRef, currentPlan.headCommit, ''], backupOptions);
+    if (backupBranch) await runner.run(['branch', '--', backupBranch, currentPlan.headCommit], backupOptions);
+    const { todo, replacements } = buildTodo(
+      orderedRows,
+      artifacts.messageFiles,
+      currentPlan,
+      Boolean(input.request.updateRefs),
+      artifacts.messageEditor,
+    );
+    await writeFile(
+      join(artifacts.directory, 'plan.json'),
+      JSON.stringify({
+        version: 1,
+        todo,
+        ...(currentPlan.mergeCommitCount
+          ? {
+              replacements,
+              updateRefs: input.request.updateRefs
+                ? currentPlan.dependentBranches
+                    .filter(
+                      (branch) =>
+                        !branch.checkedOut &&
+                        rows.some((row) => row.commitId === branch.commitId && row.action !== 'drop'),
+                    )
+                    .map((branch) => branch.fullName)
+                : [],
+            }
+          : {}),
+      }),
+      { encoding: 'utf8', mode: 0o600 },
+    );
+    const args = buildRebaseArgs(currentPlan, Boolean(input.request.updateRefs));
     input.handle.setCommand?.(['git', ...args.map((argument) => JSON.stringify(argument))].join(' '));
     const run = async (): Promise<OperationOutcome> => {
       try {
@@ -226,8 +367,7 @@ export async function runInteractiveRebase(
           maxOutputBytes: rebaseOutputLimit,
           signal: input.signal,
           env: {
-            GIT_SEQUENCE_EDITOR: editorShellQuote(artifacts!.sequenceEditor),
-            GIT_WORKBENCH_TODO_FILE: join(artifacts!.directory, 'todo'),
+            GIT_SEQUENCE_EDITOR: artifacts!.sequenceEditor,
           },
         });
         return rebaseOutcome(input.gitDir, result.stdout, result.stderr);
@@ -278,7 +418,7 @@ export async function runInteractiveRebase(
       } catch {
         return {
           ...outcome,
-          message: `${outcome.message} The temporary recovery ref was retained because it could not be removed.`,
+          message: `${outcome.message} Recovery files were retained because they could not be cleaned up.`,
         };
       }
     }
@@ -390,6 +530,7 @@ async function readCommitMetadata(
     }
     metadata.set(commitId, {
       commitId,
+      parents: [],
       subject: subject ?? '',
       body: (body ?? '').replace(/\n+$/u, ''),
       author: { name: authorName ?? '', email: authorEmail ?? '', date: authorDate },
@@ -421,22 +562,34 @@ function validateRows(
     ...row,
     author: original.get(row.commitId)!.author,
     committer: original.get(row.commitId)!.committer,
+    parents: original.get(row.commitId)!.parents,
   }));
 }
 
-function applyAutosquash(rows: readonly MutablePlanRow[]): MutablePlanRow[] {
+function applyAutosquash(rows: readonly MutablePlanRow[], originals: readonly PlanRow[]): MutablePlanRow[] {
   const next = rows.map((row) => ({ ...row }));
+  const originalSubjects = new Map(originals.map((row) => [row.commitId, row.subject]));
   for (let index = 0; index < next.length; index += 1) {
     const row = next[index]!;
     if (row.action !== 'pick') continue;
     const match = /^(fixup|squash)!\s+(.+)$/u.exec(row.subject.trim());
     if (!match?.[1] || !match[2]) continue;
-    const targetIndex = next.findIndex(
+    let targetIndex = next.findIndex(
       (candidate, candidateIndex) =>
-        candidateIndex !== index &&
+        candidateIndex < index &&
         candidate.action !== 'drop' &&
-        (candidate.subject === match[2] || candidate.subject.startsWith(`${match[2]} `)),
+        (candidate.commitId.startsWith(match[2]!) ||
+          candidate.subject === match[2] ||
+          originalSubjects.get(candidate.commitId) === match[2]),
     );
+    if (targetIndex < 0)
+      targetIndex = next.findIndex(
+        (candidate, candidateIndex) =>
+          candidateIndex < index &&
+          candidate.action !== 'drop' &&
+          (candidate.subject.startsWith(match[2]!) ||
+            originalSubjects.get(candidate.commitId)?.startsWith(match[2]!)),
+      );
     if (targetIndex < 0) continue;
     const [moved] = next.splice(index, 1);
     if (!moved) continue;
@@ -457,40 +610,98 @@ function validateActions(rows: readonly MutablePlanRow[]): void {
     throw new InteractiveRebaseRequestError('The first retained commit must be Pick, Reword, or Edit.');
 }
 
+function validateMergePlan(
+  plan: RepositoryInteractiveRebasePlan,
+  rows: readonly MutablePlanRow[],
+  autosquash: boolean,
+): void {
+  if (
+    autosquash ||
+    rows.some(
+      (row, index) =>
+        row.commitId !== plan.commits[plan.commits.length - 1 - index]?.commitId ||
+        ['squash', 'fixup'].includes(row.action),
+    )
+  )
+    throw new InteractiveRebaseRequestError(
+      'Merge plans preserve their topology: use Pick, Reword, Edit or Drop without reordering or combining commits.',
+    );
+  if (rows.some((row) => row.parents.length > 1 && !['pick', 'reword'].includes(row.action)))
+    throw new InteractiveRebaseRequestError(
+      'A merge node must be kept. Its message can be reworded; edit or drop individual commits on its branches.',
+    );
+}
+
 function collectMessageContents(rows: readonly MutablePlanRow[]): string[] {
-  const messages: string[] = [];
-  const groups = messageGroups(rows);
-  for (const row of rows) if (row.action === 'reword') messages.push(commitMessage(row));
-  for (const group of groups) {
-    if (group.some((row) => row.action === 'squash')) messages.push(combinedMessage(group));
-  }
-  return messages;
+  return messageGroups(rows)
+    .filter(needsMessage)
+    .map((group) =>
+      appendToAmendment(group)
+        ? group
+            .filter((row) => row.action === 'squash')
+            .map(commitMessage)
+            .map((value) => value.trimEnd())
+            .join('\n\n')
+        : combinedMessage(group),
+    );
+}
+
+function appendToAmendment(group: readonly MutablePlanRow[]): boolean {
+  return (
+    group[0]?.action === 'edit' &&
+    group[0].combinedMessage === undefined &&
+    group.some((row) => row.action === 'squash')
+  );
+}
+
+function needsMessage(group: readonly MutablePlanRow[]): boolean {
+  return group[0]?.action === 'reword' || group.some((row) => row.action === 'squash');
 }
 
 function buildTodo(
   rows: readonly MutablePlanRow[],
   messageFiles: readonly string[],
-): { readonly todo: string; readonly messagePaths: readonly string[] } {
-  const rewordPaths = new Map<number, string>();
-  const squashPaths = new Map<number, string>();
+  plan: RepositoryInteractiveRebasePlan,
+  updateRefs: boolean,
+  messageEditor: string,
+): { readonly todo: string; readonly replacements: { commitId: string; lines: string[] }[] } {
+  const paths = new Map<string, string>();
+  const appendMessages = new Set<string>();
+  const refTargets = new Map<string, string[]>();
   let pathIndex = 0;
-  for (const [index, row] of rows.entries()) {
-    if (row.action === 'reword') rewordPaths.set(index, messageFiles[pathIndex++]!);
-  }
   for (const group of messageGroups(rows)) {
-    if (group.some((row) => row.action === 'squash')) {
-      const last = rows.indexOf(group[group.length - 1]!);
-      squashPaths.set(last, messageFiles[pathIndex++]!);
+    const last = group.at(-1)!;
+    if (needsMessage(group)) paths.set(last.commitId, messageFiles[pathIndex++]!);
+    if (appendToAmendment(group)) appendMessages.add(last.commitId);
+    if (updateRefs) {
+      const ids = new Set(group.map((row) => row.commitId));
+      refTargets.set(
+        last.commitId,
+        plan.dependentBranches
+          .filter((branch) => !branch.checkedOut && ids.has(branch.commitId))
+          .map((branch) => branch.fullName),
+      );
     }
   }
   const lines = ['# Git Workbench writes this reviewed plan.'];
-  for (const [index, row] of rows.entries()) {
-    const action = row.action === 'reword' ? 'pick' : row.action;
-    lines.push(`${action} ${row.commitId} ${singleLine(row.subject)}`);
-    const messagePath = rewordPaths.get(index) ?? squashPaths.get(index);
-    if (messagePath) lines.push(`exec git commit --amend --no-verify --file ${todoShellQuote(messagePath)}`);
+  const replacements: { commitId: string; lines: string[] }[] = [];
+  for (const row of rows) {
+    const action = row.action === 'reword' ? 'pick' : row.action === 'squash' ? 'fixup' : row.action;
+    const fragment = [
+      row.parents.length > 1 ? '$MERGE' : `${action} ${row.commitId} ${singleLine(row.subject)}`,
+    ];
+    const messagePath = paths.get(row.commitId);
+    if (messagePath)
+      fragment.push(
+        appendMessages.has(row.commitId)
+          ? `exec ${messageEditor} ${todoShellQuote(messagePath)}`
+          : `exec git commit --amend --allow-empty --allow-empty-message --cleanup=verbatim --no-verify --file ${todoShellQuote(messagePath)}`,
+      );
+    replacements.push({ commitId: row.commitId, lines: fragment });
+    lines.push(...fragment);
+    for (const ref of refTargets.get(row.commitId) ?? []) lines.push(`update-ref ${ref}`);
   }
-  return { todo: `${lines.join('\n')}\n`, messagePaths: messageFiles };
+  return { todo: `${lines.join('\n')}\n`, replacements };
 }
 
 function messageGroups(rows: readonly MutablePlanRow[]): MutablePlanRow[][] {
@@ -517,24 +728,33 @@ function commitMessage(row: Pick<PlanRow, 'subject' | 'body'>): string {
 function combinedMessage(group: readonly MutablePlanRow[]): string {
   const first = group[0];
   if (!first) return '';
+  if (first.combinedMessage !== undefined && group.some((row) => row.action === 'squash'))
+    return `${first.combinedMessage.trimEnd()}\n`;
   const parts = [commitMessage(first).trimEnd()];
   for (const row of group.slice(1)) if (row.action === 'squash') parts.push(commitMessage(row).trimEnd());
   return `${parts.filter(Boolean).join('\n\n')}\n`;
 }
 
-function buildRebaseArgs(plan: RepositoryInteractiveRebasePlan): string[] {
-  return plan.root
-    ? ['rebase', '--interactive', '--empty=keep', '--no-autostash', '--root', plan.branchName]
-    : [
-        'rebase',
-        '--interactive',
-        '--empty=keep',
-        '--no-autostash',
-        '--onto',
-        plan.ontoCommitId!,
-        plan.ontoCommitId!,
-        plan.branchName,
-      ];
+function buildRebaseArgs(plan: RepositoryInteractiveRebasePlan, updateRefs: boolean): string[] {
+  return [
+    '-c',
+    'rebase.abbreviateCommands=false',
+    '-c',
+    'rebase.instructionFormat=%s',
+    'rebase',
+    '--interactive',
+    '--empty=keep',
+    '--keep-empty',
+    '--reapply-cherry-picks',
+    '--no-autostash',
+    '--no-autosquash',
+    '--no-fork-point',
+    '--reschedule-failed-exec',
+    plan.mergeCommitCount ? '--rebase-merges=no-rebase-cousins' : '--no-rebase-merges',
+    updateRefs ? '--update-refs' : '--no-update-refs',
+    ...(plan.root ? ['--root'] : ['--onto', plan.ontoCommitId!, plan.ontoCommitId!]),
+    plan.branchName,
+  ];
 }
 
 async function rebaseOutcome(gitDir: string, stdout: string, stderr: string): Promise<OperationOutcome> {
@@ -618,9 +838,4 @@ function singleLine(value: string): string {
 
 function todoShellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function editorShellQuote(value: string): string {
-  if (process.platform === 'win32') return `"${value.replaceAll('"', '\\"')}"`;
-  return todoShellQuote(value);
 }

@@ -130,6 +130,21 @@ scope. P04 syntax, P06 conflict/partial-stash and F36 patch import are covered b
 Pull shows its remote, source branch, and destination before starting. For an inactive destination it
 explicitly checks that branch out first; Fast-Forward updates an inactive branch without switching.
 Recovery provides merge/rebase continue/abort and saved-change restoration, including after restart.
+
+History → commit context menu → Interactive Rebase opens a compact newest-first plan with revision
+inspection. Reword/Edit/Squash/Fixup/Drop quick actions preconfigure the plan; P/E/R/S/F/D and
+Ctrl+Up/Down edit rows, and dragging reorders linear plans. Inline messages have OK/Cancel; Squash
+combines messages and Fixup omits its message. Autosquash previews matching `fixup!`/`squash!` commits.
+Update dependent branches is opt-in and excludes branches in another worktree. Merge histories keep
+their topology and order; individual commits can be edited/dropped and merge messages reworded.
+Published-history rewrites require acknowledgement.
+
+Interactive rebase retains the original history in Recovery until you confirm the result. Inspect it,
+recover it as a branch, or dismiss the internal backup; a requested temporary backup branch remains
+available separately. Edit pauses detached, opens Amend presentation, and Continue restores the branch.
+Staged, unstaged and untracked changes saved before rebase survive restart and recovery. See the
+[P07 handoff](docs/reviews/p07-interactive-rebase.md) for the merge policy, verification and Fork limits.
+
 Resolve files through the built-in helper or an external tool, then Commit/Continue or mark saved changes
 resolved. A submodule source choice stages its revision without changing the child checkout. Recovery
 entries can be dismissed without changing Git's stash list. Before an action starts,

@@ -1,27 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   RepositoryInteractiveRebaseCommand,
   RepositoryInteractiveRebasePlan,
   RepositoryInteractiveRebaseRequest,
+  RepositoryHistoryCommit,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import type { Platform } from '../lib/platform';
+import { formatListDate } from '../lib/format';
 import { BranchIcon } from './Icons';
 import { DialogShell } from './DialogShell';
+import { CommitDetails } from './CommitDetails';
+import { MenuButton } from './menu/MenuButton';
+import { useContextMenu } from './menu/context-menu';
+import { contextMenuAnchor, menuSeparator } from './menu/menu-model';
+import type { MenuEntry } from './menu/menu-model';
 
-const commands: readonly RepositoryInteractiveRebaseCommand[] = [
-  'pick',
-  'reword',
-  'edit',
-  'squash',
-  'fixup',
-  'drop',
-];
-
-const commandLabels: Record<RepositoryInteractiveRebaseCommand, string> = {
+const commands = ['pick', 'edit', 'reword', 'squash', 'fixup', 'drop'] as const;
+const keys = ['p', 'e', 'r', 's', 'f', 'd'];
+const labels = {
   pick: 'Pick',
-  reword: 'Reword',
   edit: 'Edit',
+  reword: 'Reword',
   squash: 'Squash',
   fixup: 'Fixup',
   drop: 'Drop',
@@ -29,9 +29,38 @@ const commandLabels: Record<RepositoryInteractiveRebaseCommand, string> = {
 
 export interface InteractiveRebaseDialogRequest {
   readonly ontoCommitId: string | null;
+  readonly quickAction?:
+    { readonly commitId: string; readonly action: RepositoryInteractiveRebaseCommand } | undefined;
 }
 
-type EditableRow = RepositoryInteractiveRebasePlan['commits'][number];
+type Row = RepositoryInteractiveRebasePlan['commits'][number];
+type Editor = { id: string; subject: string; body: string; combined: boolean; previousAction: Row['action'] };
+
+// Presentation of the reviewed messages. Git execution and autosquash remain backend-owned.
+function messageGroups(rows: readonly Row[]): Map<string, Row[]> {
+  const groups = new Map<string, Row[]>();
+  let current: Row[] | undefined;
+  for (const row of [...rows].reverse()) {
+    if (row.action === 'drop') continue;
+    if (['squash', 'fixup'].includes(row.action)) current?.push(row);
+    else {
+      current = [row];
+      groups.set(row.commitId, current);
+    }
+  }
+  return groups;
+}
+function message(row: Row, group: readonly Row[] | undefined): string {
+  const original = (item: Row) => [item.subject, item.body].filter(Boolean).join('\n\n');
+  if (!group?.some((item) => item.action === 'squash')) return original(row);
+  return (
+    row.combinedMessage ??
+    group
+      .filter((item, index) => index === 0 || item.action === 'squash')
+      .map(original)
+      .join('\n\n')
+  );
+}
 
 export function InteractiveRebaseDialog({
   repositoryId,
@@ -51,261 +80,558 @@ export function InteractiveRebaseDialog({
   readonly onClose: () => void;
 }) {
   const [plan, setPlan] = useState<RepositoryInteractiveRebasePlan>();
-  const [rows, setRows] = useState<EditableRow[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [autosquash, setAutosquash] = useState(false);
   const [autostash, setAutostash] = useState(false);
-  const [editingId, setEditingId] = useState<string>();
+  const [updateRefs, setUpdateRefs] = useState(false);
+  const [backupBranch, setBackupBranch] = useState(false);
+  const [acknowledgePublished, setAcknowledgePublished] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [editor, setEditor] = useState<Editor>();
+  const [dragId, setDragId] = useState<string>();
+  const list = useRef<HTMLDivElement>(null);
+  const messageInput = useRef<HTMLInputElement>(null);
+  const generation = useRef(0);
+  const initiallyFocused = useRef(false);
+  const contextMenu = useContextMenu();
+  const editingId = editor?.id;
+  useEffect(() => {
+    if (editingId) {
+      messageInput.current?.focus();
+      messageInput.current?.parentElement?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [editingId]);
 
   useEffect(() => {
-    let active = true;
-    setPlan(undefined);
-    setRows([]);
+    const epoch = ++generation.current;
     setLoading(true);
     setError(undefined);
     void (async () => {
       try {
-        const api = window.desktop;
-        if (!api) throw new Error('Open this application in Electron to edit repository history.');
+        if (!window.desktop) throw new Error('Open this application in Electron to edit history.');
         const value = unwrapResult(
-          await api.repository.getInteractiveRebasePlan({
+          await window.desktop.repository.getInteractiveRebasePlan({
             id: repositoryId,
             ontoCommitId: request.ontoCommitId,
+            ...(request.quickAction ? { quickAction: request.quickAction } : {}),
           }),
         );
-        if (!active) return;
+        if (epoch !== generation.current) return;
         setPlan(value);
         setRows(value.commits);
+        const selected =
+          value.commits.find((row) => row.commitId === request.quickAction?.commitId) ?? value.commits[0]!;
+        setSelectedId(selected.commitId);
+        if (request.quickAction?.action === 'reword')
+          setEditor({
+            id: selected.commitId,
+            subject: selected.subject,
+            body: selected.body,
+            combined: false,
+            previousAction: 'reword',
+          });
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : 'The rebase plan could not be read.');
+        if (epoch === generation.current)
+          setError(reason instanceof Error ? reason.message : 'The plan could not be read.');
       } finally {
-        if (active) setLoading(false);
+        if (epoch === generation.current) setLoading(false);
       }
     })();
     return () => {
-      active = false;
+      generation.current = epoch + 1;
     };
-  }, [repositoryId, request.ontoCommitId]);
+  }, [repositoryId, request]);
 
+  const groups = useMemo(() => messageGroups(rows), [rows]);
+  const selected = plan?.commits.find((row) => row.commitId === selectedId);
+  const inspected: RepositoryHistoryCommit | undefined = selected
+    ? { ...selected, id: selected.commitId, decorations: [] }
+    : undefined;
+  const loadedIds = useMemo(() => new Set(rows.map((row) => row.commitId)), [rows]);
+  const emptyReferences = useMemo(() => new Map(), []);
+  const first = [...rows].reverse().find((row) => row.action !== 'drop');
+  const invalid = !first
+    ? 'Keep at least one commit.'
+    : ['squash', 'fixup'].includes(first.action)
+      ? 'The oldest retained commit needs to be Pick, Edit or Reword.'
+      : undefined;
   const changedCount = plan
     ? plan.workingChanges.paths.length + plan.workingChanges.untrackedPaths.length
     : 0;
-  const firstRetained = rows.find((row) => row.action !== 'drop');
-  const invalidFirst = firstRetained?.action === 'squash' || firstRetained?.action === 'fixup';
-  const warning =
-    failure ??
-    error ??
-    (plan?.mergeCommitCount
-      ? 'Merge-preserving interactive rebase is not supported for this plan.'
-      : undefined);
+  const locked = busy || loading;
   const submitDisabled =
-    loading ||
+    locked ||
     !plan ||
-    busy ||
-    plan.mergeCommitCount > 0 ||
-    invalidFirst ||
-    !firstRetained ||
-    (changedCount > 0 && !autostash);
+    Boolean(invalid) ||
+    Boolean(editor) ||
+    (changedCount > 0 && !autostash) ||
+    (Boolean(plan?.publishedCommitCount) && !acknowledgePublished);
+  const eligibleBranches =
+    plan?.dependentBranches.filter(
+      (branch) =>
+        !branch.checkedOut && rows.find((row) => row.commitId === branch.commitId)?.action !== 'drop',
+    ) ?? [];
 
-  const subtitle = useMemo(() => {
-    if (!plan) return 'Reviewing the commits…';
-    return plan.root
-      ? `Rewrite '${plan.branchName}' from its root commit`
-      : `Rewrite '${plan.branchName}' after ${plan.ontoSubject || plan.ontoCommitId?.slice(0, 7)}`;
-  }, [plan]);
-
-  const updateRow = (commitId: string, update: Partial<EditableRow>) => {
-    setRows((current) => current.map((row) => (row.commitId === commitId ? { ...row, ...update } : row)));
+  const focusRow = (id: string) => {
+    setSelectedId(id);
+    requestAnimationFrame(() =>
+      list.current?.querySelector<HTMLElement>('[data-commit-id="' + id + '"]')?.focus(),
+    );
   };
+  useEffect(() => {
+    if (selectedId && !editor) {
+      const row = list.current?.querySelector<HTMLElement>('[data-commit-id="' + selectedId + '"]');
+      row?.scrollIntoView({ block: 'nearest' });
+      if (!initiallyFocused.current) {
+        row?.focus();
+        initiallyFocused.current = true;
+      }
+    }
+  }, [selectedId, editor]);
 
-  const moveRow = (index: number, delta: -1 | 1) => {
-    setRows((current) => {
-      const target = index + delta;
-      if (target < 0 || target >= current.length) return current;
-      const next = [...current];
-      const [row] = next.splice(index, 1);
-      if (!row) return current;
-      next.splice(target, 0, row);
-      return next;
-    });
+  const updateRow = (id: string, update: Partial<Row>) =>
+    setRows((current) => current.map((row) => (row.commitId === id ? { ...row, ...update } : row)));
+  const actionBlocked = (row: Row, action: Row['action']) =>
+    locked
+      ? 'An operation is running.'
+      : editor
+        ? 'Finish or cancel the message edit first.'
+        : plan?.mergeCommitCount && ['squash', 'fixup'].includes(action)
+          ? 'Merge plans keep their topology; combining commits is available in linear plans.'
+          : row.parents.length > 1 && !['pick', 'reword'].includes(action)
+            ? 'Keep this merge node; its message can be reworded.'
+            : undefined;
+
+  const changeAction = (row: Row, action: Row['action']) => {
+    if (actionBlocked(row, action)) return;
+    setSelectedId(row.commitId);
+    if (action === 'reword') {
+      const value = message(row, groups.get(row.commitId));
+      const [subject = '', ...body] = value.split('\n');
+      setEditor({
+        id: row.commitId,
+        subject,
+        body: body.join('\n').replace(/^\n/u, ''),
+        combined: Boolean(groups.get(row.commitId)?.some((item) => item.action === 'squash')),
+        previousAction: row.action,
+      });
+    }
+    updateRow(row.commitId, { action });
+    if (action === 'squash') {
+      const older = rows
+        .slice(rows.indexOf(row) + 1)
+        .find((item) => !['squash', 'fixup', 'drop'].includes(item.action));
+      if (older?.action === 'pick') updateRow(older.commitId, { action: 'reword' });
+    }
+  };
+  const move = (row: Row, delta: number) => {
+    if (locked || plan?.mergeCommitCount || editor) return;
+    const index = rows.indexOf(row);
+    const target = index + delta;
+    if (target < 0 || target >= rows.length) return;
+    const next = [...rows];
+    next.splice(index, 1);
+    next.splice(target, 0, row);
+    setRows(next);
+    focusRow(row.commitId);
+  };
+  const rowMenu = (row: Row): MenuEntry[] => [
+    ...commands.map((action, index) => ({
+      id: action,
+      label: labels[action],
+      shortcut: keys[index]!.toUpperCase(),
+      disabled: Boolean(actionBlocked(row, action)),
+      disabledReason: actionBlocked(row, action),
+      run: () => changeAction(row, action),
+    })),
+    menuSeparator,
+    {
+      id: 'up',
+      label: 'Move Up',
+      shortcut: 'Ctrl+Up',
+      disabled: locked || Boolean(plan?.mergeCommitCount) || rows.indexOf(row) === 0,
+      run: () => move(row, -1),
+    },
+    {
+      id: 'down',
+      label: 'Move Down',
+      shortcut: 'Ctrl+Down',
+      disabled: locked || Boolean(plan?.mergeCommitCount) || rows.indexOf(row) === rows.length - 1,
+      run: () => move(row, 1),
+    },
+  ];
+  const autosquash = async () => {
+    if (!window.desktop || !plan || locked) return;
+    const epoch = generation.current;
+    setLoading(true);
+    try {
+      const value = unwrapResult(
+        await window.desktop.repository.getInteractiveRebasePlan({
+          id: repositoryId,
+          ontoCommitId: plan.ontoCommitId,
+          autosquash: true,
+          snapshot: plan.snapshot,
+          actions: rows.map(({ commitId, action, subject, body, combinedMessage }) => ({
+            commitId,
+            action,
+            subject,
+            body,
+            ...(combinedMessage === undefined ? {} : { combinedMessage }),
+          })),
+        }),
+      );
+      if (epoch !== generation.current) return;
+      setRows(value.commits);
+      setError(undefined);
+    } catch (reason) {
+      if (epoch === generation.current)
+        setError(reason instanceof Error ? reason.message : 'Autosquash could not be prepared.');
+    } finally {
+      if (epoch === generation.current) setLoading(false);
+    }
   };
 
   return (
     <DialogShell
       title="Interactive Rebase"
-      subtitle={subtitle}
-      icon={<BranchIcon size={26} />}
+      subtitle=""
+      icon={<BranchIcon size={20} />}
       platform={platform}
-      warning={warning ?? null}
+      className="p05-dialog p07-dialog"
+      warning={failure ?? error ?? invalid ?? null}
       submitLabel="Rebase"
       submitDisabled={submitDisabled}
       busy={busy}
+      onClose={onClose}
+      status={
+        <label className="reference-checkbox">
+          <input
+            type="checkbox"
+            checked={backupBranch}
+            disabled={locked}
+            onChange={(event) => setBackupBranch(event.target.checked)}
+          />
+          Backup current state with a temporary branch
+        </label>
+      }
       onSubmit={() => {
         if (!plan || submitDisabled) return;
         onSubmit({
           id: repositoryId,
           ontoCommitId: plan.ontoCommitId,
           snapshot: plan.snapshot,
-          actions: rows.map(({ commitId, action, subject, body }) => ({ commitId, action, subject, body })),
-          autosquash,
+          actions: rows.map(({ commitId, action, subject, body, combinedMessage }) => ({
+            commitId,
+            action,
+            subject,
+            body,
+            ...(combinedMessage === undefined ? {} : { combinedMessage }),
+          })),
+          autosquash: false,
           autostash,
+          updateRefs,
+          backupBranch,
+          acknowledgePublished,
           ...(autostash ? { changesSnapshot: plan.workingChanges.snapshot } : {}),
         });
       }}
-      onClose={onClose}
     >
-      <dt className="interactive-rebase-label">Plan:</dt>
-      <dd className="interactive-rebase-plan" data-testid="interactive-rebase-plan">
-        {loading && <p className="dialog-inline-note">Reading commits…</p>}
-        {!loading && rows.length === 0 && <p className="dialog-inline-note">No commits are available.</p>}
-        {rows.map((row, index) => (
-          <div
-            className={`interactive-rebase-row interactive-rebase-${row.action}${row.action === 'drop' ? ' is-dropped' : ''}`}
-            key={row.commitId}
-            tabIndex={0}
-            data-testid="interactive-rebase-row"
-            onKeyDown={(event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.ctrlKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-                event.preventDefault();
-                moveRow(index, event.key === 'ArrowUp' ? -1 : 1);
-                return;
-              }
-              if (event.ctrlKey || event.metaKey || event.altKey) return;
-              const action =
-                event.key.toLocaleLowerCase() === 'p'
-                  ? 'pick'
-                  : event.key.toLocaleLowerCase() === 'e'
-                    ? 'edit'
-                    : event.key.toLocaleLowerCase() === 'r'
-                      ? 'reword'
-                      : event.key.toLocaleLowerCase() === 's'
-                        ? 'squash'
-                        : event.key.toLocaleLowerCase() === 'f'
-                          ? 'fixup'
-                          : event.key.toLocaleLowerCase() === 'd'
-                            ? 'drop'
-                            : undefined;
-              if (!action) return;
-              event.preventDefault();
-              updateRow(row.commitId, { action });
-              if (action === 'reword') setEditingId(row.commitId);
-            }}
+      <dt className="p07-plan-label">Rebase plan</dt>
+      <dd className="p07-workspace">
+        <div className="p07-context">
+          <span>
+            Rebase: <BranchIcon size={13} /> <strong>{plan?.branchName ?? '…'}</strong>
+          </span>
+          <span title={plan?.ontoCommitId ?? ''}>
+            On:{' '}
+            <strong>
+              {plan?.root
+                ? 'Root'
+                : (plan?.ontoCommitId?.slice(0, 7) ?? '') + ' ' + (plan?.ontoSubject ?? '')}
+            </strong>
+          </span>
+          <label
+            className="reference-checkbox"
+            title={
+              eligibleBranches.length
+                ? eligibleBranches.map((branch) => branch.name).join(', ')
+                : 'No dependent branches are eligible.'
+            }
           >
-            <span className="interactive-rebase-connector" aria-hidden="true" />
-            <select
-              className="interactive-rebase-action"
-              aria-label={`Action for ${row.subject}`}
-              value={row.action}
-              disabled={busy}
-              onChange={(event) => {
-                const action = event.target.value as RepositoryInteractiveRebaseCommand;
-                updateRow(row.commitId, { action });
-                if (action === 'reword') setEditingId(row.commitId);
-              }}
-            >
-              {commands.map((command) => (
-                <option value={command} key={command}>
-                  {commandLabels[command]}
-                </option>
-              ))}
-            </select>
-            <div className="interactive-rebase-message">
-              {editingId === row.commitId ? (
-                <>
-                  <input
-                    type="text"
-                    value={row.subject}
-                    aria-label={`Subject for ${row.subject}`}
-                    disabled={busy}
-                    onChange={(event) => updateRow(row.commitId, { subject: event.target.value })}
-                  />
-                  <textarea
-                    value={row.body}
-                    aria-label={`Description for ${row.subject}`}
-                    disabled={busy}
-                    onChange={(event) => updateRow(row.commitId, { body: event.target.value })}
-                  />
-                  <button
-                    type="button"
-                    className="button button-small"
-                    disabled={busy}
-                    onClick={() => setEditingId(undefined)}
-                  >
-                    Done
-                  </button>
-                </>
-              ) : (
-                <>
-                  <strong>{row.subject || '(no subject)'}</strong>
-                  {row.body.trim() && <span className="muted">{row.body.trim().split('\n')[0]}</span>}
-                  <button
-                    type="button"
-                    className="button button-small interactive-rebase-edit-message"
-                    disabled={busy || row.action === 'drop'}
-                    onClick={() => {
-                      updateRow(row.commitId, { action: 'reword' });
-                      setEditingId(row.commitId);
+            <input
+              type="checkbox"
+              checked={updateRefs}
+              disabled={locked || !eligibleBranches.length}
+              onChange={(event) => setUpdateRefs(event.target.checked)}
+            />
+            Update dependent branches
+          </label>
+        </div>
+        <div className="p07-inspection">
+          <div
+            className="interactive-rebase-plan"
+            data-testid="interactive-rebase-plan"
+            ref={list}
+            role="listbox"
+            aria-label="Rebase commits, newest first"
+            aria-busy={loading}
+          >
+            {loading && <p className="dialog-inline-note">Reading commits…</p>}
+            {rows.map((row, index) => {
+              const combined = groups.get(row.commitId)?.some((item) => item.action === 'squash');
+              const text = message(row, groups.get(row.commitId));
+              const active = row.commitId === selectedId;
+              return (
+                <div key={row.commitId}>
+                  <div
+                    className={
+                      'interactive-rebase-row interactive-rebase-' +
+                      row.action +
+                      (active ? ' is-selected' : '') +
+                      (combined ? ' is-combined' : '')
+                    }
+                    role="option"
+                    aria-selected={active}
+                    aria-label={labels[row.action] + ' ' + (row.subject || '(no subject)')}
+                    tabIndex={active ? 0 : -1}
+                    data-testid="interactive-rebase-row"
+                    data-commit-id={row.commitId}
+                    draggable={!locked && !plan?.mergeCommitCount && !editor}
+                    onDragStart={(event) => {
+                      setDragId(row.commitId);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', row.commitId);
+                    }}
+                    onDragOver={(event) => {
+                      if (dragId && !plan?.mergeCommitCount) event.preventDefault();
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const dragged = rows.find((item) => item.commitId === dragId);
+                      if (dragged) move(dragged, index - rows.indexOf(dragged));
+                      setDragId(undefined);
+                    }}
+                    onDragEnd={() => setDragId(undefined)}
+                    onClick={() => setSelectedId(row.commitId)}
+                    onDoubleClick={() => changeAction(row, 'reword')}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setSelectedId(row.commitId);
+                      contextMenu({
+                        anchor: contextMenuAnchor(event, event.currentTarget),
+                        label: 'Rebase action',
+                        items: rowMenu(row),
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget || locked) return;
+                      if (event.ctrlKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+                        event.preventDefault();
+                        move(row, event.key === 'ArrowUp' ? -1 : 1);
+                        return;
+                      }
+                      if (event.ctrlKey || event.metaKey || event.altKey) return;
+                      if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+                        event.preventDefault();
+                        focusRow(
+                          rows[
+                            event.key === 'Home'
+                              ? 0
+                              : event.key === 'End'
+                                ? rows.length - 1
+                                : Math.min(
+                                    rows.length - 1,
+                                    Math.max(0, index + (event.key === 'ArrowUp' ? -1 : 1)),
+                                  )
+                          ]!.commitId,
+                        );
+                        return;
+                      }
+                      const action = commands[keys.indexOf(event.key.toLowerCase())];
+                      if (action) {
+                        event.preventDefault();
+                        changeAction(row, action);
+                      }
                     }}
                   >
-                    Edit message
-                  </button>
-                </>
-              )}
-            </div>
-            <span className="interactive-rebase-hash">{row.commitId.slice(0, 7)}</span>
-            <div className="interactive-rebase-move">
-              <button
-                type="button"
-                className="button button-small"
-                disabled={busy || index === 0}
-                onClick={() => moveRow(index, -1)}
-              >
-                Up
-              </button>
-              <button
-                type="button"
-                className="button button-small"
-                disabled={busy || index === rows.length - 1}
-                onClick={() => moveRow(index, 1)}
-              >
-                Down
-              </button>
-            </div>
+                    <MenuButton
+                      className="interactive-rebase-action"
+                      menuLabel="Rebase action"
+                      aria-label={'Action for ' + row.subject}
+                      items={rowMenu(row)}
+                      disabledReason={locked ? 'An operation is running.' : undefined}
+                    >
+                      <span className="p07-action-dot" aria-hidden="true" />
+                      {labels[row.action]}
+                      <span className="p07-chevron" aria-hidden="true">
+                        ⌄
+                      </span>
+                    </MenuButton>
+                    <span
+                      className={
+                        'interactive-rebase-connector' +
+                        (['squash', 'fixup'].includes(row.action) ? ' is-joined' : '')
+                      }
+                      aria-hidden="true"
+                    />
+                    <span className="interactive-rebase-message" title={text}>
+                      {text.split('\n')[0] || '(no subject)'}
+                    </span>
+                    <span className="p07-author" title={row.author.email}>
+                      {row.author.name}
+                    </span>
+                    <span className="interactive-rebase-hash">{row.commitId.slice(0, 7)}</span>
+                    <time className="p07-date" dateTime={row.author.date}>
+                      {formatListDate(row.author.date)}
+                    </time>
+                  </div>
+                  {editor?.id === row.commitId && (
+                    <div
+                      className="p07-message-editor"
+                      role="group"
+                      aria-label="Edit commit message"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          updateRow(editor.id, { action: editor.previousAction });
+                          setEditor(undefined);
+                          focusRow(row.commitId);
+                        }
+                      }}
+                    >
+                      <input
+                        ref={messageInput}
+                        aria-label="Commit subject"
+                        value={editor.subject}
+                        disabled={locked}
+                        maxLength={16_384}
+                        onChange={(event) => setEditor({ ...editor, subject: event.target.value })}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            event.currentTarget.parentElement
+                              ?.querySelector<HTMLTextAreaElement>('textarea')
+                              ?.focus();
+                          }
+                        }}
+                      />
+                      <textarea
+                        aria-label="Commit description"
+                        value={editor.body}
+                        disabled={locked}
+                        maxLength={262_144}
+                        onChange={(event) => setEditor({ ...editor, body: event.target.value })}
+                      />
+                      <div>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          disabled={locked}
+                          onClick={() => {
+                            updateRow(editor.id, { action: editor.previousAction });
+                            setEditor(undefined);
+                            focusRow(row.commitId);
+                          }}
+                        >
+                          Cancel message
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          disabled={locked || !editor.subject.trim()}
+                          onClick={() => {
+                            updateRow(
+                              editor.id,
+                              editor.combined
+                                ? {
+                                    combinedMessage: [editor.subject, editor.body]
+                                      .filter(Boolean)
+                                      .join('\n\n'),
+                                  }
+                                : { subject: editor.subject, body: editor.body },
+                            );
+                            setEditor(undefined);
+                            focusRow(row.commitId);
+                          }}
+                        >
+                          OK
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </dd>
-      <dt />
-      <dd className="interactive-rebase-options">
-        <label className="reference-checkbox">
-          <input
-            type="checkbox"
-            checked={autosquash}
-            disabled={busy}
-            onChange={(event) => setAutosquash(event.target.checked)}
+          <CommitDetails
+            repositoryId={repositoryId}
+            commit={inspected}
+            lane={undefined}
+            referencesByName={emptyReferences}
+            loadedCommitIds={loadedIds}
+            isolated
+            onSelectCommit={(id) => {
+              if (loadedIds.has(id)) focusRow(id);
+            }}
+            standalone
+            initialTab="commit"
           />
-          Autosquash fixup! and squash! commits
-        </label>
-        <label className="reference-checkbox">
-          <input
-            type="checkbox"
-            checked={autostash}
-            disabled={busy || changedCount === 0}
-            data-testid="interactive-rebase-autostash"
-            onChange={(event) => setAutostash(event.target.checked)}
-          />
-          Stash and reapply local changes
-        </label>
-        {changedCount > 0 && (
-          <p className="dialog-inline-note">
-            {changedCount} local path{changedCount === 1 ? '' : 's'} will be saved in Recovery.
-          </p>
-        )}
-        {plan?.mergeCommitCount === 0 && (
-          <p className="dialog-inline-note">
-            Rows are shown newest first. Use Edit to pause, amend, then Continue Rebase.
-          </p>
+        </div>
+        <div className="interactive-rebase-options">
+          <button
+            type="button"
+            className="button button-small"
+            disabled={locked || Boolean(plan?.mergeCommitCount) || Boolean(editor)}
+            onClick={() => void autosquash()}
+          >
+            Autosquash
+          </button>
+          {changedCount > 0 && (
+            <label className="reference-checkbox">
+              <input
+                type="checkbox"
+                checked={autostash}
+                disabled={locked}
+                data-testid="interactive-rebase-autostash"
+                onChange={(event) => setAutostash(event.target.checked)}
+              />
+              Stash and reapply {changedCount} local paths
+            </label>
+          )}
+          {Boolean(plan?.mergeCommitCount) && (
+            <span className="dialog-inline-note">
+              Merges are preserved. Edit messages or individual commits; order and merge nodes stay fixed.
+            </span>
+          )}
+          {updateRefs && (
+            <span className="dialog-inline-note" data-testid="rebase-dependent-branches">
+              Update: {eligibleBranches.map((branch) => branch.name).join(', ')}.
+            </span>
+          )}
+          {plan?.dependentBranches.some((branch) => branch.checkedOut) && (
+            <span className="dialog-inline-note">
+              Branches checked out in another worktree will stay unchanged.
+            </span>
+          )}
+        </div>
+        {Boolean(plan?.publishedCommitCount) && (
+          <div className="p07-published" role="note">
+            <span>
+              {plan?.publishedCommitCount} commits are reachable from remote-tracking branches. Rewriting
+              published history changes commit IDs; coordinate with collaborators before pushing.
+            </span>
+            <label className="reference-checkbox">
+              <input
+                type="checkbox"
+                checked={acknowledgePublished}
+                disabled={locked}
+                onChange={(event) => setAcknowledgePublished(event.target.checked)}
+              />
+              I understand that published history will be rewritten
+            </label>
+          </div>
         )}
       </dd>
     </DialogShell>

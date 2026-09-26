@@ -161,7 +161,10 @@ export function CommitComposer({
     if (!value || !prefillKey || prefilled.current === prefillKey) return;
     prefilled.current = prefillKey;
     if (subject.trim() || body.trim()) return;
-    const source = value.pendingMessage ?? value.template;
+    const source =
+      value.rebaseEdit === 'needs-amend' && value.amend
+        ? [value.amend.subject, value.amend.body].filter(Boolean).join('\n\n')
+        : (value.pendingMessage ?? value.template);
     if (!source) return;
     const message = splitMessage(source);
     setSubject(message.subject);

@@ -32,6 +32,7 @@ export default defineConfig(({ command }) => {
           input: {
             index: resolve('src/backend/electron/main.ts'),
             'credential-helper': resolve('src/backend/git/credential-helper.ts'),
+            'rebase-sequence-editor': resolve('src/backend/repositories/rebase-sequence-editor.ts'),
           },
           output: { format: 'cjs', entryFileNames: '[name].cjs' },
         },

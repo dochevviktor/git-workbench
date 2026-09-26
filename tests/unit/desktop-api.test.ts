@@ -26,6 +26,47 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates P07 plan/ref/backup capabilities and rejects renderer commands or malformed results', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    const request = {
+      id,
+      ontoCommitId: 'b'.repeat(40),
+      quickAction: { commitId: 'c'.repeat(40), action: 'edit' as const },
+    };
+    invoke.mockResolvedValueOnce({ ok: false, error: { code: 'OPERATION_FAILED', message: 'Read failed.' } });
+    await api.repository.getInteractiveRebasePlan(request);
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-interactive-rebase-plan', request);
+    invoke.mockResolvedValueOnce({ ok: true, value: { commits: [], snapshot: 'c'.repeat(64) } });
+    expect(await api.repository.getInteractiveRebasePlan(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    invoke.mockClear();
+    expect(
+      await api.repository.startInteractiveRebase({
+        id,
+        ontoCommitId: null,
+        snapshot: 'c'.repeat(64),
+        actions: [{ commitId: 'b'.repeat(40), action: 'exec', subject: 'anything', body: '' }],
+        autosquash: false,
+        autostash: false,
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(
+      await api.repository.getInteractiveRebasePlan({ ...request, sequenceEditor: 'sh' } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: false, error: { code: 'OPERATION_FAILED', message: 'No backup.' } });
+    const dismiss = {
+      id,
+      action: 'dismiss-rebase-backup' as const,
+      snapshot: 'c'.repeat(64),
+      copyId: '00000000-0000-4000-8000-000000000001',
+    };
+    await api.repository.recover(dismiss);
+    expect(invoke).toHaveBeenLastCalledWith('repository:recover', dismiss);
+  });
   it('validates P06 previews, explicit conflict choices and partial stash coordinates', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;

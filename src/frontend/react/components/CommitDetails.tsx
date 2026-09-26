@@ -73,6 +73,7 @@ interface CommitDetailsProps {
   readonly collapsed?: boolean;
   readonly onCollapsedChange?: ((collapsed: boolean) => void) | undefined;
   readonly standalone?: boolean;
+  readonly isolated?: boolean;
   readonly initialTab?: DetailTab;
   readonly initialPath?: string | undefined;
   readonly searchQuery?: string;
@@ -475,11 +476,12 @@ export function CommitDetails({
   collapsed = false,
   onCollapsedChange,
   standalone = false,
+  isolated = false,
   initialTab,
   initialPath,
   searchQuery = '',
 }: CommitDetailsProps) {
-  const savedPresentation = detailPresentations.get(repositoryId ?? '');
+  const savedPresentation = isolated ? undefined : detailPresentations.get(repositoryId ?? '');
   const externalTools = useExternalTools();
   const showContextMenu = useContextMenu();
   const [activeTab, setActiveTab] = useState<DetailTab>(
@@ -593,13 +595,14 @@ export function CommitDetails({
 
   useEffect(
     () => () => {
-      if (repositoryId && presentation.current) detailPresentations.set(repositoryId, presentation.current);
+      if (!isolated && repositoryId && presentation.current)
+        detailPresentations.set(repositoryId, presentation.current);
     },
-    [repositoryId],
+    [repositoryId, isolated],
   );
 
   useEffect(() => {
-    const saved = detailPresentations.get(repositoryId ?? '');
+    const saved = isolated ? undefined : detailPresentations.get(repositoryId ?? '');
     const restore = saved?.commitId === commit?.id ? saved : undefined;
     setSelectedChangeKey(restore?.selectedChangeKey);
     setTreeActiveKey(
@@ -610,7 +613,7 @@ export function CommitDetails({
       restore?.expandedFolders ??
         new Set(parents.map((_part, index) => parents.slice(0, index + 1).join('/'))),
     );
-  }, [commit?.id, repositoryId, initialPath]);
+  }, [commit?.id, repositoryId, initialPath, isolated]);
 
   useEffect(() => {
     if (!commit || activeTab === 'tree' || changes || changesLoading || changesError) return;

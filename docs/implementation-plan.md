@@ -1,5 +1,10 @@
 # Git Workbench implementation plan
 
+P07 completion (2026-09-26): the [interactive-rebase handoff](reviews/p07-interactive-rebase.md)
+supersedes the bounded F18 limitations below. The Linux phase now verifies the catalogue-aligned editor,
+quick actions, combined messages, dependent refs, explicit merge preservation, published-history review,
+retained backups and Edit/conflict recovery across restart. Broader Fork/platform parity remains P14.
+
 Initial baseline: 2026-09-16. **Realigned: 2026-09-20**, using the supplied Fork Windows **2.22.0.0**
 black-box catalogue. Target: an independently implemented Linux-first desktop Git client covering the
 captured Windows workflows and the separately documented public feature families.
@@ -154,7 +159,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                          | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                               | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                          | P01/P04/P05 capabilities              |
-| P07   | Interactive rebase and history editing                               | Partial; bounded F18 plan/action/message/Edit recovery verified (2026-09-20); merge preservation and dependent-reference scope remain                                                                   | P06                                   |
+| P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                       | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06/F20/F21 and F26 manual Bisect verified; F36 bounded patch import/export/clipboard verified (2026-09-22); directory/code history and broader patch variants remain                          | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                     | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
@@ -1009,6 +1014,23 @@ Acceptance:
 - Edit pauses detached, enters Amend presentation without staging old content, accepts the amendment,
   then Continue restores the branch with the expected replayed tree/messages. Preserve original author
   versus new committer information and test recovery from interruption at each transition.
+
+Completion (2026-09-26): all three requirements and acceptance criteria are verified for Linux in the
+[P07 handoff](reviews/p07-interactive-rebase.md). The editor follows P1-023's compact newest-first
+plan above revision inspection, with menu/keyboard/drag actions, OK/Cancel message editing and combined
+messages. Quick actions include Reword/Edit/Squash/Fixup/Drop. Dependent branches update only by explicit
+choice; occupied/dropped-row branches and backup branches remain unchanged. Merge histories preserve
+native Git topology with fixed order, ordinary-node Pick/Reword/Edit/Drop and merge-node Pick/Reword.
+Combining/reordering across merge topology is deliberately unavailable. Recovery retains original-head
+refs through cancellation/Abort, supports inspection/Recover as Branch and explicit dismissal, and
+preserves local work and todo/message edits across interruption. Captured optional-checkbox effects
+remain Fork unknowns; project semantics are independently validated.
+
+`npm run check`: **594 passed**, one existing opt-in skip. `npm run build`: passed. **18 relevant
+headless Electron scenarios passed**, including four new P07 workflows, production preload/renderer
+smoke, P06 conflict/restart/composer, F17/F19/F20 and the review workflows. Light/dark and a smaller
+window at 125% Electron zoom are checked. Native Windows/macOS, exact DPI and broader parity remain
+outside this Linux phase; the complete application-wide UI suite was not rerun for this change.
 
 ## P08 — Investigation, recovery, and patches
 

@@ -35,7 +35,10 @@ export interface HistoryReferenceCommands {
   readonly cherryPick: (commit: RepositoryHistoryCommit) => void;
   readonly revert: (commit: RepositoryHistoryCommit) => void;
   readonly reset: (commit: RepositoryHistoryCommit) => void;
-  readonly interactiveRebase: (commit: RepositoryHistoryCommit) => void;
+  readonly interactiveRebase: (
+    commit: RepositoryHistoryCommit,
+    action?: 'reword' | 'edit' | 'squash' | 'fixup' | 'drop',
+  ) => void;
   readonly interactiveRebaseFromRoot: () => void;
 }
 
@@ -479,6 +482,27 @@ export function HistoryView({
                     : undefined,
               run: () => referenceCommands.interactiveRebase(commit),
             },
+            menuSeparator,
+            ...(['reword', 'edit', 'squash', 'fixup', 'drop'] as const).map((action) => ({
+              id: `interactive-${action}`,
+              label: {
+                reword: 'Reword…',
+                edit: 'Edit…',
+                squash: 'Squash into Parent…',
+                fixup: 'Fixup into Parent…',
+                drop: 'Drop…',
+              }[action],
+              disabled:
+                !referenceCommands.ready ||
+                !currentBranch ||
+                (['squash', 'fixup'].includes(action) && !commit.parents.length),
+              disabledReason:
+                !commit.parents.length && ['squash', 'fixup'].includes(action)
+                  ? 'The root commit has no parent.'
+                  : 'Check out a branch before editing its history.',
+              run: () => referenceCommands.interactiveRebase(commit, action),
+            })),
+            menuSeparator,
             {
               id: 'interactive-rebase-from-root',
               label: `Rebase '${currentBranch?.name ?? 'current branch'}' from Root…`,

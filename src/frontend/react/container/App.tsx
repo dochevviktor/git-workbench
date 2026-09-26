@@ -769,10 +769,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
 
   const [interactiveRebaseDialog, setInteractiveRebaseDialog] = useState<InteractiveRebaseDialogRequest>();
   const [interactiveRebaseFailure, setInteractiveRebaseFailure] = useState<string>();
-  const openInteractiveRebase = useCallback((ontoCommitId: string | null) => {
-    setInteractiveRebaseFailure(undefined);
-    setInteractiveRebaseDialog({ ontoCommitId });
-  }, []);
+  const openInteractiveRebase = useCallback(
+    (ontoCommitId: string | null, quickAction?: InteractiveRebaseDialogRequest['quickAction']) => {
+      setInteractiveRebaseFailure(undefined);
+      setInteractiveRebaseDialog({ ontoCommitId, quickAction });
+    },
+    [],
+  );
   const [historyOperationDialog, setHistoryOperationDialog] = useState<HistoryOperationDialogRequest>();
   const [historyOperationFailure, setHistoryOperationFailure] = useState<string>();
   const openHistoryOperation = useCallback(
@@ -794,7 +797,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       cherryPick: (commit) => openHistoryOperation('cherry-pick', commit),
       revert: (commit) => openHistoryOperation('revert', commit),
       reset: (commit) => openHistoryOperation('reset', commit),
-      interactiveRebase: (commit) => openInteractiveRebase(commit.id),
+      interactiveRebase: (commit, action) =>
+        openInteractiveRebase(commit.id, action ? { commitId: commit.id, action } : undefined),
       interactiveRebaseFromRoot: () => openInteractiveRebase(null),
     }),
     [
@@ -2814,6 +2818,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           busy={Boolean(activeOperation)}
           onRecovered={refresh}
           onResolve={() => setView('changes')}
+          onRecoverHistory={(commitId) =>
+            openReferenceDialog({
+              kind: 'new-branch',
+              target: {
+                startPoint: { kind: 'commit', commitId },
+                icon: 'commit',
+                label: shortHash(commitId),
+                detail: 'Original history before rebase',
+              },
+            })
+          }
           platform={platform}
         />
       )}

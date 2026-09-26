@@ -1,5 +1,23 @@
 # Fork catalogue alignment — 2026-09-20
 
+P07 implementation checkpoint — **2026-09-26**: the
+[phase handoff](../reviews/p07-interactive-rebase.md) supersedes the initial bounded F18 implementation
+limits. `P1-023-dialog-subcase:F1`, `P1-023-plan-execution-subcase:F1–F3` and
+`P1-023-edit-amend-continue-subcase:F1–F3` establish the compact newest-first editor, lower revision
+inspection, action keys, inline message confirmation, combined messages and Edit/amend/continue.
+Original Windows 2.22.0.0 screenshots `screen-0359`, `screen-0367`, `screen-0352` and `screen-0355`
+were compared with the old implementation and the new light/dark/small-window captures. Git fixtures
+verify final trees, parents, messages, authors, dependent refs and restart/cancel/Abort recovery.
+
+The visible dependent/backup checkboxes were unchecked in the captured execution. Their implemented
+effects and fixed-topology merge policy are **independent Linux decisions**, supported by the
+[Git rebase 2.43.0 manual](https://git-scm.com/docs/git-rebase/2.43.0), checked 2026-09-26. The public
+reference index and [2018-11-10 Fork post](https://fork.dev/blog/posts/forkwin-1.23/) were also checked.
+No private images or assets were modified, copied or committed. Confidence is high for the mapped
+captured states and separately tested Linux outcomes. Capture coverage/unknowns stay unchanged;
+Electron's tested 125% zoom is not proof of native Fork DPI behavior. The handoff records deliberate
+modal/recovery/merge restrictions and the separate P14 platform limits.
+
 This audit makes the supplied Windows capture catalogue the primary behavioral and visual reference
 for the existing Linux application. It refines the [feature surface](fork-public-surface.md) and
 [implementation plan](../implementation-plan.md); it does not implement or complete a product phase.

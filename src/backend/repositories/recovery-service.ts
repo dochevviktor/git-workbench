@@ -18,7 +18,11 @@ import { detectPendingOperation, readRebaseEditState, readSingleNoCommitOperatio
 import { displayOutput } from './network-service';
 import { readWorkingChanges } from './working-tree-service';
 import { createWorkingSnapshot } from './working-snapshot';
-import { cleanupInteractiveRebaseArtifacts } from './interactive-rebase-artifacts';
+import {
+  cleanupInteractiveRebaseArtifacts,
+  dismissRebaseBackup,
+  readRebaseBackups,
+} from './interactive-rebase-artifacts';
 import {
   abortStashApplication,
   beginStashApplication,
@@ -83,7 +87,7 @@ export async function readRecovery(
   runner: RecoveryRunner,
   context: Context,
 ): Promise<RepositoryRecoveryState> {
-  const [copies, pendingOperation, changes, rebaseEdit] = await Promise.all([
+  const [copies, pendingOperation, changes, rebaseEdit, rebaseBackups] = await Promise.all([
     load(runner, context),
     detectPendingOperation(context.gitDir),
     readWorkingChanges(runner, {
@@ -93,6 +97,7 @@ export async function readRecovery(
       includeIgnored: false,
     }),
     readRebaseEditState(runner, context.cwd, context.gitDir, context.head.commit),
+    readRebaseBackups(context.gitDir),
   ]);
   const anchors = await Promise.all(
     [
@@ -107,6 +112,9 @@ export async function readRecovery(
       'rebase-merge/onto',
       'rebase-merge/orig-head',
       'rebase-merge/msgnum',
+      'rebase-merge/git-rebase-todo',
+      'rebase-merge/done',
+      'rebase-merge/update-refs',
       'rebase-apply/head-name',
       'rebase-apply/onto',
       'rebase-apply/orig-head',
@@ -118,8 +126,10 @@ export async function readRecovery(
     ].map(async (name) => {
       const path = join(context.gitDir, name);
       try {
-        if ((await lstat(path)).size > 65536) throw new Error('Recovery anchor is too large.');
-        return await readFile(path, 'utf8');
+        if ((await lstat(path)).size > 8 * 1024 * 1024) throw new Error('Recovery anchor is too large.');
+        return createHash('sha256')
+          .update(await readFile(path))
+          .digest('hex');
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
         throw new ExpectedBackendError(
@@ -164,12 +174,23 @@ export async function readRecovery(
       : { operationLabel: 'No operation in progress' };
   return {
     copies,
+    rebaseBackups,
     operationLabel: operation.operationLabel,
     pendingOperation,
     conflictedCount: changes.counts.conflicted,
     rebaseEdit,
     snapshot: createHash('sha256')
-      .update(JSON.stringify([context.head, copies, pendingOperation, rebaseEdit, anchors, fingerprints]))
+      .update(
+        JSON.stringify([
+          context.head,
+          copies,
+          rebaseBackups,
+          pendingOperation,
+          rebaseEdit,
+          anchors,
+          fingerprints,
+        ]),
+      )
       .digest('hex'),
   };
 }
@@ -378,6 +399,15 @@ export async function recover(
       'The recovery state changed. Review it again before continuing.',
     );
   const copy = state.copies.find((item) => item.id === request.copyId);
+  if (request.action === 'dismiss-rebase-backup') {
+    if (state.pendingOperation || !request.copyId)
+      throw new ExpectedBackendError(
+        'OPERATION_FAILED',
+        'Finish or abort the operation before dismissing a history backup.',
+      );
+    await dismissRebaseBackup(runner, context.cwd, context.gitDir, request.copyId);
+    return;
+  }
   if (request.action === 'continue' || request.action === 'skip' || request.action === 'abort') {
     if (!state.pendingOperation)
       throw new ExpectedBackendError('OPERATION_FAILED', 'No Git operation is waiting for recovery.');
@@ -396,6 +426,53 @@ export async function recover(
         'OPERATION_FAILED',
         'Amend the paused interactive-rebase commit in Local Changes before continuing.',
       );
+    if (state.pendingOperation === 'rebase' && request.action !== 'abort') {
+      const path = join(context.gitDir, 'rebase-merge/update-refs');
+      const details = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return undefined;
+        throw error;
+      });
+      if (details) {
+        if (!details.isFile() || details.size > 8 * 1024 * 1024)
+          throw new ExpectedBackendError(
+            'OPERATION_FAILED',
+            'The dependent branch state could not be read safely.',
+          );
+        const lines = (await readFile(path, 'utf8')).trim().split('\n');
+        const refs = new Map<string, string>();
+        for (let index = 0; index < lines.length; index += 3) {
+          const ref = lines[index];
+          const old = lines[index + 1];
+          if (ref?.startsWith('refs/heads/') && old) refs.set(ref, old);
+        }
+        if (refs.size) {
+          const current = await runner.run(
+            [
+              'for-each-ref',
+              '--format=%(refname)%00%(objectname)%00%(if)%(worktreepath)%(then)checked-out%(end)',
+              ...refs.keys(),
+            ],
+            options(context.cwd),
+          );
+          const found = new Set<string>();
+          for (const line of current.stdout.trim().split('\n')) {
+            const [ref, commit, checkedOut] = line.split('\0');
+            if (!ref || !refs.has(ref)) continue;
+            found.add(ref);
+            if (checkedOut || commit !== refs.get(ref))
+              throw new ExpectedBackendError(
+                'STALE_SNAPSHOT',
+                `Dependent branch '${ref.slice(11)}' changed or was checked out in another worktree. Restore its reviewed state or abort this rebase.`,
+              );
+          }
+          if (found.size !== refs.size)
+            throw new ExpectedBackendError(
+              'STALE_SNAPSHOT',
+              'A dependent branch was removed. Restore it or abort this rebase.',
+            );
+        }
+      }
+    }
     if (state.pendingOperation === 'stash') {
       const application = await readStashApplication(context.gitDir);
       if (request.action === 'abort') await abortStashApplication(runner, context.cwd, context.gitDir);

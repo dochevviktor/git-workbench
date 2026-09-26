@@ -3997,122 +3997,269 @@ textarea.reference-message {
   margin-top: 0;
 }
 
-.reference-dialog:has(.interactive-rebase-plan) {
+/* Interactive rebase — P1-023's compact plan above revision inspection. */
+.reference-dialog.p07-dialog {
   width: min(1020px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+  max-height: calc(100vh - 32px);
 }
-
-/* Interactive rebase --------------------------------------------------------------------------- */
-
-.interactive-rebase-label {
-  align-self: start;
-  padding-top: 6px;
+.reference-dialog.p07-dialog .dialog-content {
+  height: 100%;
+  box-sizing: border-box;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 22px 18px 14px;
+  gap: 8px;
 }
-
-.interactive-rebase-plan {
+.p07-dialog .reference-dialog-mark,
+.p07-dialog .reference-dialog-header p {
+  display: none;
+}
+.p07-dialog .reference-dialog-header {
+  min-height: 0;
+}
+.p07-dialog .reference-dialog-fields {
+  display: block;
+  min-height: 0;
+}
+.p07-plan-label {
+  display: none;
+}
+.p07-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 6px;
+}
+.p07-context {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-height: 22px;
+}
+.p07-context > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.p07-context > span:first-child {
+  flex: 1;
+}
+.p07-context > span:nth-child(2) {
+  max-width: 46%;
+}
+.p07-context strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+.p07-inspection {
   display: grid;
-  gap: 4px;
-  max-height: min(480px, 52vh);
-  overflow: auto;
-  padding: 4px;
-  border: 1px solid var(--border);
+  grid-template-rows: minmax(110px, 1fr) minmax(140px, 1fr);
+  flex: 1;
+  min-height: 0;
   background: var(--list-bg);
 }
-
+.interactive-rebase-plan {
+  min-height: 0;
+  overflow: auto;
+  padding: 3px;
+}
 .interactive-rebase-row {
   display: grid;
-  grid-template-columns: 8px 88px minmax(0, 1fr) 54px auto;
-  gap: 6px;
-  align-items: start;
-  min-height: 34px;
-  padding: 4px 2px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  grid-template-columns: 98px 20px minmax(130px, 1fr) 132px 60px 138px;
+  align-items: center;
+  min-height: 22px;
+  height: 22px;
+  padding: 0 6px;
+  gap: 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: default;
+  outline-offset: -1px;
 }
-
-.interactive-rebase-row:last-child {
-  border-bottom: 0;
+.interactive-rebase-row.is-selected {
+  background: var(--row-selected-inactive);
 }
-
-.interactive-rebase-connector {
-  align-self: stretch;
-  width: 2px;
-  margin: 2px auto;
-  background: color-mix(in srgb, var(--accent) 55%, var(--border));
+.interactive-rebase-plan:focus-within .interactive-rebase-row.is-selected {
+  background: var(--accent);
+  color: white;
 }
-
-.interactive-rebase-squash .interactive-rebase-connector,
-.interactive-rebase-fixup .interactive-rebase-connector {
-  background: var(--warning);
-}
-
-.interactive-rebase-drop .interactive-rebase-connector {
-  background: var(--danger);
-}
-
-.interactive-rebase-action,
-.interactive-rebase-message input,
-.interactive-rebase-message textarea {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--window);
-  color: var(--text);
-  font: inherit;
-}
-
 .interactive-rebase-action {
-  height: 28px;
-  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
 }
-
-.interactive-rebase-message {
-  display: grid;
-  gap: 2px;
+.p07-chevron {
+  margin-left: auto;
+  font-size: 15px;
+  opacity: 0.75;
+}
+.p07-action-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2cbd50;
+  flex-shrink: 0;
+}
+.interactive-rebase-reword .p07-action-dot {
+  background: #efb737;
+}
+.interactive-rebase-edit .p07-action-dot {
+  background: #56a6e9;
+}
+.interactive-rebase-drop .p07-action-dot {
+  background: #f15257;
+}
+.interactive-rebase-squash .p07-action-dot,
+.interactive-rebase-fixup .p07-action-dot {
+  background: #b0b0b0;
+}
+.interactive-rebase-connector {
+  height: 22px;
+  position: relative;
+}
+.interactive-rebase-connector.is-joined::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  bottom: -12px;
+  border-left: 2px solid #969696;
+}
+.interactive-rebase-connector.is-joined::after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #969696;
+  left: 3.5px;
+  top: 8px;
+}
+.interactive-rebase-row.is-combined .interactive-rebase-connector::before {
+  content: '›';
+  position: absolute;
+  left: 5px;
+  top: -10px;
+  height: 21px;
+  width: 12px;
+  border-left: 2px solid #969696;
+  border-bottom: 2px solid #969696;
+  border-bottom-left-radius: 8px;
+  color: #969696;
+  text-align: right;
+  line-height: 33px;
+}
+.interactive-rebase-message,
+.p07-author,
+.p07-date {
   min-width: 0;
-}
-
-.interactive-rebase-message strong,
-.interactive-rebase-message span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.interactive-rebase-message input,
-.interactive-rebase-message textarea {
-  width: 100%;
-  padding: 4px 6px;
-}
-
-.interactive-rebase-message textarea {
-  min-height: 44px;
-  resize: vertical;
-}
-
-.interactive-rebase-row.is-dropped .interactive-rebase-message strong {
-  color: var(--danger);
-  text-decoration: line-through;
-}
-
-.interactive-rebase-edit-message {
-  justify-self: start;
-  margin-top: 2px;
-}
-
 .interactive-rebase-hash {
-  padding-top: 6px;
-  color: var(--text-muted);
-  font-family: var(--mono);
   font-size: 11px;
 }
-
-.interactive-rebase-move {
-  display: flex;
-  gap: 3px;
+.interactive-rebase-drop .interactive-rebase-message,
+.interactive-rebase-drop .interactive-rebase-hash,
+.interactive-rebase-drop .p07-date {
+  text-decoration: line-through;
+  opacity: 0.5;
 }
-
-.interactive-rebase-options {
+.interactive-rebase-fixup .interactive-rebase-message,
+.interactive-rebase-squash .interactive-rebase-message {
+  opacity: 0.6;
+}
+.p07-message-editor {
   display: grid;
+  margin: 6px 12% 8px 120px;
+  padding: 8px;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--sidebar-bg);
+  box-shadow: 0 1px 6px #0002;
+}
+.p07-message-editor input,
+.p07-message-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--list-bg);
+  color: var(--text);
+  padding: 4px 6px;
+  font: inherit;
+}
+.p07-message-editor textarea {
+  min-height: 75px;
+  resize: vertical;
+  border-top: 0;
+}
+.p07-message-editor > div {
+  display: flex;
+  justify-content: flex-end;
   gap: 6px;
+  padding-top: 6px;
+}
+.interactive-rebase-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.interactive-rebase-options .dialog-inline-note {
+  margin: 0;
+  font-size: 11px;
+}
+.p07-published {
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+  color: var(--warning);
+}
+.p07-dialog .reference-dialog-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.p07-dialog .reference-dialog-actions > .reference-checkbox {
+  font-size: 11px;
+  margin-right: auto;
+}
+.p07-dialog .reference-dialog-warning:empty {
+  display: none;
+}
+.p07-dialog .reference-dialog-warning:not(:empty) {
+  flex-basis: 100%;
+  order: 3;
+}
+.p07-inspection .commit-details {
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 850px) {
+  .interactive-rebase-row {
+    grid-template-columns: 88px 16px minmax(80px, 1fr) 100px 56px;
+  }
+  .p07-date {
+    display: none;
+  }
+  .p07-context {
+    flex-wrap: wrap;
+    gap: 4px 14px;
+  }
+  .p07-message-editor {
+    margin-right: 8px;
+    margin-left: 108px;
+  }
 }
 
 /* Stash dialogs ------------------------------------------------------------------------------- */

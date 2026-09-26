@@ -2113,11 +2113,13 @@ export const repositoryInteractiveRebaseCommandSchema = z.enum([
 
 export const repositoryInteractiveRebaseCommitSchema = z.strictObject({
   commitId: gitObjectIdSchema,
+  parents: z.array(gitObjectIdSchema).max(128),
   subject: z.string().max(16_384),
   body: z.string().max(262_144),
   author: repositoryHistoryPersonSchema,
   committer: repositoryHistoryPersonSchema,
   action: repositoryInteractiveRebaseCommandSchema,
+  combinedMessage: z.string().max(262_144).optional(),
 });
 
 /** A newest-first, backend-reviewed plan. The renderer may reorder and edit only these rows. */
@@ -2131,12 +2133,44 @@ export const repositoryInteractiveRebasePlanSchema = z.strictObject({
   commits: z.array(repositoryInteractiveRebaseCommitSchema).min(1).max(500),
   workingChanges: repositoryLocalChangesPreviewSchema,
   mergeCommitCount: z.number().int().nonnegative().max(500),
+  dependentBranches: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(4_096),
+        fullName: z.string().startsWith('refs/heads/').max(4_096),
+        commitId: gitObjectIdSchema,
+        checkedOut: z.boolean(),
+      }),
+    )
+    .max(10_000),
+  publishedCommitCount: z.number().int().nonnegative().max(500),
   snapshot: repositoryDiffSnapshotSchema,
 });
 
 export const repositoryInteractiveRebasePlanRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   ontoCommitId: gitObjectIdSchema.nullable(),
+  autosquash: z.boolean().optional(),
+  actions: z
+    .array(
+      z.strictObject({
+        commitId: gitObjectIdSchema,
+        action: repositoryInteractiveRebaseCommandSchema,
+        subject: z.string().max(16_384),
+        body: z.string().max(262_144),
+        combinedMessage: z.string().max(262_144).optional(),
+      }),
+    )
+    .min(1)
+    .max(500)
+    .optional(),
+  snapshot: repositoryDiffSnapshotSchema.optional(),
+  quickAction: z
+    .strictObject({
+      commitId: gitObjectIdSchema,
+      action: repositoryInteractiveRebaseCommandSchema,
+    })
+    .optional(),
 });
 
 export const repositoryInteractiveRebaseActionSchema = z
@@ -2151,12 +2185,16 @@ export const repositoryInteractiveRebaseActionSchema = z
           action: repositoryInteractiveRebaseCommandSchema,
           subject: z.string().max(16_384),
           body: z.string().max(262_144),
+          combinedMessage: z.string().max(262_144).optional(),
         }),
       )
       .min(1)
       .max(500),
     autosquash: z.boolean(),
     autostash: z.boolean(),
+    updateRefs: z.boolean().optional(),
+    backupBranch: z.boolean().optional(),
+    acknowledgePublished: z.boolean().optional(),
     changesSnapshot: repositoryDiffSnapshotSchema.optional(),
   })
   .refine(
@@ -2171,18 +2209,26 @@ export const repositoryRecoveryCopySchema = z.strictObject({
   createdAt: z.string().datetime(),
   pending: z.boolean(),
 });
+export const repositoryRebaseBackupSchema = z.strictObject({
+  id: z.uuid(),
+  commitId: gitObjectIdSchema,
+  branchName: z.string().min(1).max(4_096),
+  backupBranch: z.string().min(1).max(4_096).nullable(),
+  createdAt: z.string().datetime(),
+});
 export const repositoryRecoveryStateSchema = z.strictObject({
   operationLabel: z.string().max(512).optional(),
   snapshot: repositoryDiffSnapshotSchema,
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
   copies: z.array(repositoryRecoveryCopySchema).max(100),
+  rebaseBackups: z.array(repositoryRebaseBackupSchema).max(100).optional(),
   conflictedCount: z.number().int().nonnegative().max(100_000).optional(),
   rebaseEdit: z.enum(['none', 'needs-amend', 'ready-to-continue']),
 });
 export const repositoryRecoveryRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   snapshot: repositoryDiffSnapshotSchema,
-  action: z.enum(['continue', 'skip', 'abort', 'apply', 'finish', 'drop']),
+  action: z.enum(['continue', 'skip', 'abort', 'apply', 'finish', 'drop', 'dismiss-rebase-backup']),
   copyId: z.uuid().optional(),
 });
 

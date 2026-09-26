@@ -12,6 +12,7 @@ export function RecoveryPanel({
   busy,
   onRecovered,
   onResolve,
+  onRecoverHistory,
   platform,
 }: {
   readonly repositoryId: string;
@@ -19,6 +20,7 @@ export function RecoveryPanel({
   readonly busy: boolean;
   readonly onRecovered: () => void;
   readonly onResolve: () => void;
+  readonly onRecoverHistory: (commitId: string) => void;
   readonly platform: Platform;
 }) {
   const [state, setState] = useState<RepositoryRecoveryState>();
@@ -77,7 +79,14 @@ export function RecoveryPanel({
       setRunning(false);
     }
   };
-  if (!error && !state?.pendingOperation && !state?.copies.length && !state?.conflictedCount) return null;
+  if (
+    !error &&
+    !state?.pendingOperation &&
+    !state?.copies.length &&
+    !state?.rebaseBackups?.length &&
+    !state?.conflictedCount
+  )
+    return null;
   const disabled = running || busy;
   return (
     <div className="recovery-panel" data-testid="recovery-panel">
@@ -90,15 +99,17 @@ export function RecoveryPanel({
               <span>{state.operationLabel ?? `${state.pendingOperation} in progress`}. </span>
               {state.pendingOperation === 'rebase' && state.rebaseEdit === 'needs-amend'
                 ? 'Paused for Edit. Amend the current commit, then continue.'
-                : state.pendingOperation === 'squash'
-                  ? 'Review the staged changes, then choose Squash.'
-                  : state.conflictedCount
-                    ? `Fix ${state.conflictedCount} conflict${state.conflictedCount === 1 ? '' : 's'} and then continue.`
-                    : 'All conflicts fixed.'}
+                : state.rebaseEdit === 'ready-to-continue'
+                  ? 'Amendment saved. Continue the rebase.'
+                  : state.pendingOperation === 'squash'
+                    ? 'Review the staged changes, then choose Squash.'
+                    : state.conflictedCount
+                      ? `Fix ${state.conflictedCount} conflict${state.conflictedCount === 1 ? '' : 's'} and then continue.`
+                      : 'All conflicts fixed.'}
             </p>
-            {Boolean(state.conflictedCount) && (
+            {(Boolean(state.conflictedCount) || state.rebaseEdit === 'needs-amend') && (
               <button className="button button-small" disabled={disabled} onClick={onResolve}>
-                Resolve
+                {state.rebaseEdit === 'needs-amend' ? 'Amend in Local Changes' : 'Resolve'}
               </button>
             )}
             <button
@@ -110,11 +121,12 @@ export function RecoveryPanel({
                 ? 'Squash with generated message'
                 : `Continue ${state.pendingOperation}`}
             </button>
-            {['rebase', 'cherry-pick', 'revert'].includes(state.pendingOperation) && (
-              <button className="button button-small" disabled={disabled} onClick={() => void run('skip')}>
-                Skip {state.pendingOperation} commit
-              </button>
-            )}
+            {state.rebaseEdit === 'none' &&
+              ['rebase', 'cherry-pick', 'revert'].includes(state.pendingOperation) && (
+                <button className="button button-small" disabled={disabled} onClick={() => void run('skip')}>
+                  Skip {state.pendingOperation} commit
+                </button>
+              )}
             <button
               className="button button-small"
               disabled={disabled}
@@ -203,6 +215,56 @@ export function RecoveryPanel({
                 stashes remain available after an entry is dismissed.
               </p>
             )}
+          </details>
+        )}
+        {Boolean(state?.rebaseBackups?.length) && (
+          <details className="recovery-copies" data-testid="rebase-backups">
+            <summary>
+              Recovery — {state?.rebaseBackups?.length} rebase history backup
+              {state?.rebaseBackups?.length === 1 ? '' : 's'}
+            </summary>
+            {state?.rebaseBackups?.map((backup) => (
+              <div className="recovery-copy" key={backup.id}>
+                <span>
+                  Before rebasing {backup.branchName} · {backup.commitId.slice(0, 7)}
+                  {backup.backupBranch ? ' · ' + backup.backupBranch : ''}
+                </span>
+                <button
+                  className="button button-small"
+                  disabled={disabled}
+                  onClick={() => {
+                    void window.desktop?.repository
+                      .openCommitDetails({
+                        id: repositoryId,
+                        commitId: backup.commitId,
+                        tab: 'commit',
+                        theme: 'system',
+                      })
+                      .then((result) => {
+                        if (!result.ok) setError(result.error.message);
+                      })
+                      .catch(() => setError('The backup could not be opened.'));
+                  }}
+                >
+                  Inspect original history
+                </button>
+                <button
+                  className="button button-small"
+                  disabled={disabled || Boolean(state.pendingOperation)}
+                  onClick={() => onRecoverHistory(backup.commitId)}
+                >
+                  Recover as branch…
+                </button>
+                <button
+                  className="button button-small"
+                  disabled={disabled || Boolean(state.pendingOperation)}
+                  title="Remove the internal backup after checking the result. A temporary branch, if requested, is kept."
+                  onClick={() => void run('dismiss-rebase-backup', backup.id)}
+                >
+                  Confirm result and dismiss backup
+                </button>
+              </div>
+            ))}
           </details>
         )}
       </div>

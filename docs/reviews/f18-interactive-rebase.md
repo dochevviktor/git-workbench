@@ -1,5 +1,9 @@
 # F18 interactive rebase — 2026-09-20
 
+Historical initial slice. The [P07 completion record](p07-interactive-rebase.md), verified 2026-09-26,
+supersedes its merge-preservation, dependent-ref, quick-action, design and recovery-ref limitations.
+The original catalogue unknowns remain unchanged.
+
 This handoff implements the bounded F18/P07 interactive-rebase slice as an independent Linux-first
 workflow. It uses the supplied Fork for Windows 2.22.0.0 catalogue as behavioral evidence; it does not
 claim Fork equivalence, Linux support in Fork, or reuse Fork artwork, binaries, or capture tooling.

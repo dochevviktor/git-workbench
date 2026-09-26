@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, constants, readFile, stat } from 'node:fs/promises';
+import { access, constants, readFile, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type {
   RepositoryAmendChanges,
@@ -235,6 +235,13 @@ export async function commitChanges(
   }
 
   const commitId = await readHeadCommitId(runner, input.cwd);
+  if (input.amend && context.rebaseEdit === 'needs-amend') {
+    const stopped = await readGitDirText(input.gitDir, 'rebase-merge/stopped-sha');
+    if (stopped)
+      await writeFile(join(input.gitDir, 'rebase-merge/git-workbench-amended'), `${stopped}\n${commitId}\n`, {
+        mode: 0o600,
+      });
+  }
   if (context.pendingOperation === 'stash') await finishStashApplication(input.gitDir);
   const noCommit = await readSingleNoCommitOperation(input.gitDir);
   if (noCommit && noCommit === context.pendingOperation)
@@ -583,6 +590,8 @@ export async function readRebaseEditState(
     (await readGitDirText(gitDir, 'rebase-merge/stopped-sha')) ??
     (await readGitDirText(gitDir, 'rebase-apply/stopped-sha'));
   if (!stopped || !objectIdPattern.test(stopped)) return 'none';
+  const amended = await readGitDirText(gitDir, 'rebase-merge/git-workbench-amended');
+  if (amended === `${stopped}\n${headCommit}`) return 'ready-to-continue';
   if (stopped === headCommit) return 'needs-amend';
   const [original, current] = await Promise.all([
     optionalOutput(runner, cwd, ['show', '-s', '--format=%T%x00%an%x00%ae%x00%B', stopped]),
