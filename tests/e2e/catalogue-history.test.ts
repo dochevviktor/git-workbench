@@ -93,6 +93,9 @@ test('catalogue history navigation, search scopes, highlights and session state 
     await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-id', root);
     await list.focus();
     await page.keyboard.press('Home');
+    await expect(page.getByText(/History from commit/u)).toHaveCount(0);
+    await expect(page.getByTestId('history-commit').first()).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.history-view')).toHaveAttribute('aria-busy', 'false');
     for (const size of [200, 300]) {
       await page.locator('.commit-list-scroll').evaluate((element) => {
         element.scrollTop = element.scrollHeight;

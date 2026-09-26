@@ -45,6 +45,7 @@ test('F26 start, mark, skip, restart, abort and first bad outcome', async () => 
     await page.reload();
     const start = async () => {
       await page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: 'Bisect', exact: true })).toBeEnabled();
       await page.getByRole('menuitem', { name: 'Bisect', exact: true }).click();
       await expect(page.getByRole('region', { name: 'Bisect', exact: true })).toBeVisible();
     };
@@ -101,6 +102,14 @@ test('F26 start, mark, skip, restart, abort and first bad outcome', async () => 
     await expect(banner).toHaveCount(0);
     expect(await run('show-ref')).toBe(originalRefs);
     expect(await run('status', '--porcelain')).toBe('');
+  } catch (error) {
+    if (app) {
+      const page = await app.firstWindow();
+      await test
+        .info()
+        .attach('bisect-state', { body: await page.locator('body').innerText(), contentType: 'text/plain' });
+    }
+    throw error;
   } finally {
     await app?.close();
     await rm(root, { recursive: true, force: true });

@@ -30,6 +30,7 @@ export interface DiffWorkingAction {
 }
 
 interface DiffViewerProps {
+  readonly onHistoryForSelection?: ((start: number, end: number, side: 'old' | 'new') => void) | undefined;
   readonly value: RepositoryDiff | undefined;
   readonly loading: boolean;
   readonly error: string | undefined;
@@ -243,6 +244,8 @@ function DiffCell({
       className={`diff-cell ${side} ${line.kind}`}
       data-testid="diff-line"
       data-line-anchor={line.newLine ?? line.oldLine ?? undefined}
+      data-old-line={line.oldLine ?? undefined}
+      data-new-line={line.newLine ?? undefined}
       data-hunk-index={hunkIndex}
       data-change-index={selectable ? lineIndex : undefined}
     >
@@ -541,6 +544,7 @@ function diffMessage(value: RepositoryDiff): string | undefined {
 import { isNumberBetween, usePersistentState } from '../hooks/use-persistent-state';
 
 export function DiffViewer({
+  onHistoryForSelection,
   value,
   loading,
   error,
@@ -941,10 +945,42 @@ export function DiffViewer({
         const text = value?.state === 'text' ? value.content : '';
         const available =
           !loading && !error && !!text && text.length <= 1_048_576 && !text.includes('\uFFFD');
+        const selection = window.getSelection();
+        const range = selection?.rangeCount && !selection.isCollapsed ? selection.getRangeAt(0) : undefined;
+        const selected =
+          range && bodyRef.current?.contains(range.commonAncestorContainer)
+            ? [...bodyRef.current.querySelectorAll<HTMLElement>('.diff-cell')].filter((cell) => {
+                const code = cell.querySelector('code');
+                return code && range.intersectsNode(code);
+              })
+            : [];
+        const side = selected.some(
+          (line) => line.classList.contains('remove') || line.classList.contains('old'),
+        )
+          ? 'old'
+          : 'new';
+        const numbers = selected.map((line) =>
+          Number(side === 'old' ? line.dataset.oldLine : line.dataset.newLine),
+        );
+        const canHistory =
+          available && numbers.length > 0 && numbers.every((line) => Number.isInteger(line) && line > 0);
         showContextMenu({
           label: 'Diff',
           anchor: { type: 'point', x: event.clientX, y: event.clientY },
           items: [
+            ...(onHistoryForSelection
+              ? [
+                  {
+                    id: 'selected-code-history',
+                    label: 'History for Selected Lines…',
+                    disabled: !canHistory,
+                    disabledReason: canHistory
+                      ? undefined
+                      : 'Select source lines on one side of the committed diff.',
+                    run: () => onHistoryForSelection(Math.min(...numbers), Math.max(...numbers), side),
+                  },
+                ]
+              : []),
             {
               id: 'copy-diff-selection',
               label: 'Copy',

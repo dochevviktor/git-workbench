@@ -85,8 +85,11 @@ inspect/apply/pop/delete/rename actions, and bounded commit/stash/working-tree p
 The bounded F17/F18/F19 slices add text conflict resolution, interactive rebase editing, and
 single-commit cherry-pick/revert plus Soft/Mixed/Hard reset with Recovery safeguards. F20 adds a
 bounded lost-commit/reflog history mode with Exit and reviewed recovery through those existing actions.
-F21 adds bounded rename-aware file History and Blame inspectors with historical diffs, line attribution,
-revision selection, and Blame Back/Forward; directory and selected-code variants remain later work.
+P08 adds rename-aware file and directory History, selected-line history from committed diffs/File Tree,
+compact Blame with original-path attribution and Back/Forward, and historical Save As outside the checkout.
+Search is cancellable. Lost commits can be recovered to named branches/tags without changing the checkout.
+Patch import supports bounded format-patch mailboxes as one staged delta without commits; merge export
+lets you choose the comparison parent. See the [P08 handoff](docs/reviews/p08-investigation.md) for limits.
 F23 adds bounded submodule lifecycle inspection with parent/index/child revision cards, dirty-child
 state, nested sidebar navigation, safe Add/Initialize/Update/Sync/Remove actions, and backend-resolved
 child tabs. F24 adds bounded local Git LFS pointer/materialized inspection, optional repository-local

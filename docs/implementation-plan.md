@@ -1,5 +1,23 @@
 # Git Workbench implementation plan
 
+P08 Bisect follow-up (2026-09-26): the [refresh correction](reviews/p08-bisect-refresh.md) fixes
+Start/Good/Bad clicks lost during background reads. Last-validated context remains actionable while
+reads refresh; actual mutations retain a synchronous action lock and backend snapshot validation.
+Controlled pointer/refresh tests verify normal execution and refusal to classify a changed checkout.
+Verification: `npm run check` passes 603 tests (one opt-in skip), production build passes, and the full
+headless Electron suite passes all 62 routine scenarios (two opt-in skips), including P03 and Bisect.
+
+P03 viewport verification follow-up (2026-09-26): the [correction record](reviews/p03-viewport.md)
+resolves the inherited 914-pixel assertion. The test now waits for the selected commit's reveal before
+measuring a visible anchor. Repeated prepend, virtualization, collapsed-branch and zoom cases retain
+the original pixel tolerance. Application behavior and phase scope are unchanged.
+
+P08 completion (2026-09-26): the [investigation handoff](reviews/p08-investigation.md) supersedes
+the bounded F20/F21/F26/F36 limitations below for Linux. Directory/selected-code history, compact
+History/Blame timelines, original-path attribution, exact historical Save As, cancellable search,
+named reflog recovery and advanced patch import/export are verified within the phase requirements.
+Public-only semantics are independently specified; native platform and unobserved Fork variants stay P14.
+
 P07 completion (2026-09-26): the [interactive-rebase handoff](reviews/p07-interactive-rebase.md)
 supersedes the bounded F18 limitations below. The Linux phase now verifies the catalogue-aligned editor,
 quick actions, combined messages, dependent refs, explicit merge preservation, published-history review,
@@ -160,7 +178,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                               | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                          | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                       | P06                                   |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Partial; F06/F20/F21 and F26 manual Bisect verified; F36 bounded patch import/export/clipboard verified (2026-09-22); directory/code history and broader patch variants remain                          | P03/P04; recovery for mutations       |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Complete for Linux phase scope (2026-09-26); investigation, recovery and patch scope verified; Bisect refresh corrected and all 62 routine Electron scenarios pass; see P08 handoffs                    | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Partial; bounded F22/F23 slices and F25 native Git-flow feature/release/hotfix lifecycles verified (2026-09-20); broader worktree/submodule variants remain planned                                     | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; five-provider accounts, direct token entry and configurable GitHub OAuth verified with fixtures (2026-09-24); live authorization, renewal and broader hosting remain                           | P05 auth; browser handoff independent |
@@ -1081,6 +1099,23 @@ Acceptance:
 - Verify rename traversal, Blame Back/Forward availability, reflog graph mode/Exit, bisect Skip/Abort and
   staged mixed add/edit/rename patch contents with Cancel invariance. Report a first-bad bisect result
   as an outcome, without reproducing the captured Git Error presentation.
+
+Completion (2026-09-26): the four requirements and acceptance criteria are verified for the Linux
+phase scope in the [P08 handoff](reviews/p08-investigation.md). Captured History/Blame windows now
+use compact revision/attribution rows and a shared timeline, including selected-revision changes and
+correct original-file links. File Tree directories and committed-code selections open rename-aware
+history; historical Save As preserves raw bytes outside the checkout. Search/graph/inspector reads
+are cancellable and bounded, and explicit navigation survives watcher refreshes. Named branch/tag
+recovery, expired objects and Bisect restart/Skip/Abort/result behavior have independent Git assertions.
+Patch mailboxes preflight in a temporary index and stage one net delta without commits; merge exports
+select an exact parent and unusual Linux paths retain their bytes. Scope, resource bounds, safety
+refusals, visual evidence and the final verification matrix are recorded in the handoff. Earlier
+slice descriptions retain their original dates and do not override this phase checkpoint.
+
+Verification: `npm run check` passes **603 tests** (one opt-in skip), production build passes, and
+**14 focused headless Electron scenarios** pass. The broad UI run has 57 passes, two opt-in skips and
+one existing P03 viewport-retention failure, reproduced twice on untouched starting commit `3c343240`.
+The handoff records that caveat without claiming a fully green application-wide UI matrix.
 
 ## P09 — Worktrees, submodules, and Git-flow
 

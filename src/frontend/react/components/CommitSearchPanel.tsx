@@ -138,9 +138,11 @@ export function CommitSearchPanel({
 
   const status = !search.query
     ? null
-    : loading && results.length === 0
-      ? 'Searching…'
-      : `${results.length}${hasMore ? '+' : ''} ${results.length === 1 && !hasMore ? 'result' : 'results'}`;
+    : search.cancelled
+      ? 'Search cancelled'
+      : loading && results.length === 0
+        ? 'Searching…'
+        : `${results.length}${hasMore ? '+' : ''} ${results.length === 1 && !hasMore ? 'result' : 'results'}`;
   const unavailable = reveal?.status === 'unavailable' && reveal.commitId === activeId;
 
   return (
@@ -215,6 +217,16 @@ export function CommitSearchPanel({
         <span className="commit-search-count" role="status" aria-live="polite">
           {status}
         </span>
+        {loading && (
+          <button
+            type="button"
+            className="pane-icon-button"
+            aria-label="Cancel search"
+            onClick={search.cancel}
+          >
+            <CloseIcon size={10} />
+          </button>
+        )}
       </div>
       {search.field === 'hash' && (
         <p className="commit-search-scope-detail">Full SHA or prefix (at least 4 characters)</p>
@@ -232,6 +244,11 @@ export function CommitSearchPanel({
             Retry
           </button>
         </div>
+      )}
+      {search.cancelled && (
+        <button type="button" className="button button-small" onClick={search.retry}>
+          Search again
+        </button>
       )}
       {unavailable && (
         <p className="commit-search-note" role="status">
@@ -294,9 +311,12 @@ export function CommitSearchPanel({
             );
           })}
         </div>
-        {search.query && !loading && !search.pending && !search.error && results.length === 0 && (
-          <p className="commit-search-empty">No commits match “{search.query}”.</p>
-        )}
+        {search.query &&
+          !loading &&
+          !search.cancelled &&
+          !search.pending &&
+          !search.error &&
+          results.length === 0 && <p className="commit-search-empty">No commits match “{search.query}”.</p>}
         <div ref={sentinelRef} className="commit-search-sentinel" />
       </div>
     </section>

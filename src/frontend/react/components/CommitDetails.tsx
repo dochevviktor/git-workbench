@@ -147,6 +147,7 @@ function CommitSummary({ commit }: { readonly commit: RepositoryHistoryCommit })
 }
 
 interface ChangeFactsProps {
+  readonly onHistoryForSelection?: ((start: number, end: number, side: 'old' | 'new') => void) | undefined;
   readonly positionKey: string;
   readonly change: RepositoryCommitChange;
   readonly diff: ReturnType<typeof useRepositoryDiff>;
@@ -258,6 +259,7 @@ function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
 }
 
 function ChangeFacts({
+  onHistoryForSelection,
   positionKey,
   change,
   diff,
@@ -298,6 +300,7 @@ function ChangeFacts({
             label="Committed change diff"
             controls={diff.controls}
             positionKey={positionKey}
+            onHistoryForSelection={onHistoryForSelection}
           />
         )}
       </div>
@@ -322,7 +325,7 @@ interface RevisionTreeProps {
   readonly activeKey: string | undefined;
   readonly onActiveChange: (key: string) => void;
   readonly onExpandedChange: (next: ReadonlySet<string>) => void;
-  readonly onContextMenu: (path: string, event: ReactMouseEvent<HTMLElement>) => void;
+  readonly onContextMenu: (path: string, event: ReactMouseEvent<HTMLElement>, directory?: boolean) => void;
 }
 
 function RevisionTree({
@@ -460,7 +463,8 @@ function RevisionTree({
       }}
       onContextMenu={(item, event) => {
         const entry = entries.get(item.key);
-        if (entry?.type === 'blob') onContextMenu(entry.path, event);
+        if (entry?.type === 'blob' || entry?.type === 'tree')
+          onContextMenu(entry.path, event, entry.type === 'tree');
       }}
     ></TreeView>
   );
@@ -525,14 +529,16 @@ export function CommitDetails({
   const presentation = useRef<DetailPresentation | undefined>(undefined);
 
   const openFileContextMenu = useCallback(
-    (path: string, event: ReactMouseEvent<HTMLElement>) => {
+    (path: string, event: ReactMouseEvent<HTMLElement>, directory = false) => {
       if (standalone || !repositoryId || !commit) return;
       event.preventDefault();
       showContextMenu({
         anchor: contextMenuAnchor(event, event.currentTarget),
         label: `File ${path}`,
         items: compactMenu([
-          ...externalTools.items(repositoryId, { kind: 'revision', path, commitId: commit.id, line: 1 }),
+          ...(!directory
+            ? externalTools.items(repositoryId, { kind: 'revision', path, commitId: commit.id, line: 1 })
+            : []),
           {
             id: 'file-history',
             label: 'History…',
@@ -543,6 +549,7 @@ export function CommitDetails({
                   id: repositoryId,
                   commitId: commit.id,
                   path,
+                  scope: { kind: directory ? 'directory' : 'file' },
                   theme: theme === 'dark' || theme === 'light' ? theme : 'system',
                 })
                 .then(unwrapResult)
@@ -556,6 +563,8 @@ export function CommitDetails({
           {
             id: 'file-blame',
             label: 'Blame / Timeline',
+            disabled: directory,
+            disabledReason: directory ? 'Select a file to inspect line attribution.' : undefined,
             run: () => {
               const theme = document.documentElement.dataset.theme;
               void window.desktop?.repository
@@ -573,6 +582,22 @@ export function CommitDetails({
                 );
             },
           },
+          {
+            id: 'save-historical-file',
+            label: 'Save As…',
+            disabled: directory,
+            disabledReason: directory ? 'Select a file to save its contents.' : undefined,
+            run: () => {
+              void window.desktop?.repository
+                .saveRevisionFile({ id: repositoryId, commitId: commit.id, path })
+                .then(unwrapResult)
+                .catch((reason: unknown) =>
+                  setFileInspectorError(
+                    reason instanceof Error ? reason.message : 'The file could not be saved.',
+                  ),
+                );
+            },
+          },
           menuSeparator,
           { id: 'copy-file-path', label: 'Copy Path', run: () => copyText(path) },
         ]),
@@ -580,6 +605,30 @@ export function CommitDetails({
     },
     [commit, repositoryId, showContextMenu, standalone, externalTools],
   );
+
+  const openLineHistory = (
+    path: string,
+    start: number,
+    end: number,
+    side: 'old' | 'new' = 'new',
+    previousPath?: string | null,
+  ) => {
+    const commitId = side === 'old' ? commit?.parents[0] : commit?.id;
+    if (standalone || !repositoryId || !commitId) return;
+    const theme = document.documentElement.dataset.theme;
+    void window.desktop?.repository
+      .openFileHistory({
+        id: repositoryId,
+        commitId,
+        path: side === 'old' ? (previousPath ?? path) : path,
+        scope: { kind: 'lines', start, end },
+        theme: theme === 'dark' || theme === 'light' ? theme : 'system',
+      })
+      .then(unwrapResult)
+      .catch((reason: unknown) =>
+        setFileInspectorError(reason instanceof Error ? reason.message : 'Line history is unavailable.'),
+      );
+  };
 
   useEffect(() => {
     if (commit)
@@ -862,6 +911,12 @@ export function CommitDetails({
                 showWhitespace={showWhitespace}
                 onShowWhitespaceChange={setShowWhitespace}
                 lfs={changeLfs}
+                onHistoryForSelection={
+                  standalone
+                    ? undefined
+                    : (start, end, side) =>
+                        openLineHistory(selectedChange.path, start, end, side, selectedChange.previousPath)
+                }
               />
             ) : (
               <p className="preview-empty">Select a file to see how it changed.</p>
@@ -915,7 +970,13 @@ export function CommitDetails({
                 ) : blob?.state === 'too-large' ? (
                   <p className="preview-note">This file is too large for an inline preview.</p>
                 ) : blob ? (
-                  <CodePreview content={blob.content} testId="revision-blob" />
+                  <CodePreview
+                    content={blob.content}
+                    testId="revision-blob"
+                    onHistoryForSelection={
+                      standalone ? undefined : (start, end) => openLineHistory(blobPath, start, end)
+                    }
+                  />
                 ) : null}
               </div>
             )}

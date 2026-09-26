@@ -148,9 +148,32 @@ export function PatchExportDialog({
   readonly onSaved: (message: string) => void;
 }) {
   const [destination, setDestination] = useState<'file' | 'clipboard'>('file');
+  const [parents, setParents] = useState<readonly string[]>();
+  const [parent, setParent] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const mounted = useRef(true);
+  useEffect(() => {
+    if (target.kind !== 'commit') return;
+    let active = true;
+    void window.desktop?.repository
+      .getHistory({
+        id: repositoryId,
+        offset: 0,
+        limit: 1,
+        filter: { kind: 'reference', target: target.commitId },
+      })
+      .then(unwrapResult)
+      .then((value) => {
+        if (active) setParents(value.commits[0]?.parents ?? []);
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : 'Commit could not be read.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [repositoryId, target]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -162,14 +185,16 @@ export function PatchExportDialog({
     if (!api) return;
     setBusy(true);
     try {
+      const selectedTarget =
+        target.kind === 'commit' && parents && parents.length > 1 ? { ...target, parent } : target;
       if (destination === 'clipboard') {
-        unwrapResult(await api.copyPatch({ id: repositoryId, target }));
+        unwrapResult(await api.copyPatch({ id: repositoryId, target: selectedTarget }));
         if (mounted.current) {
           onSaved('Patch copied to clipboard.');
           onClose();
         }
       } else {
-        const result = unwrapResult(await api.savePatch({ id: repositoryId, target }));
+        const result = unwrapResult(await api.savePatch({ id: repositoryId, target: selectedTarget }));
         if (mounted.current && result.status === 'saved') {
           onSaved(result.message);
           onClose();
@@ -189,7 +214,7 @@ export function PatchExportDialog({
       platform={platform}
       warning={error ?? null}
       submitLabel={destination === 'clipboard' ? 'Copy' : 'Save…'}
-      submitDisabled={false}
+      submitDisabled={target.kind === 'commit' && !parents}
       busy={busy}
       onSubmit={() => void submit()}
       onClose={onClose}
@@ -202,6 +227,24 @@ export function PatchExportDialog({
             ? target.stashId
             : `${target.paths.length} selected paths`}
       </dd>
+      {parents && parents.length > 1 && (
+        <>
+          <dt>Parent:</dt>
+          <dd>
+            <select
+              aria-label="Patch parent"
+              value={parent}
+              onChange={(event) => setParent(Number(event.target.value))}
+            >
+              {parents.map((id, index) => (
+                <option key={id} value={index + 1}>
+                  Parent {index + 1} · {id.slice(0, 12)}
+                </option>
+              ))}
+            </select>
+          </dd>
+        </>
+      )}
       <dt>Destination:</dt>
       <dd>
         <select

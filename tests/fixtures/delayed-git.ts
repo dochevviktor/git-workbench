@@ -8,6 +8,11 @@ const executable = process.env.GIT_WORKBENCH_REAL_GIT;
 if (!executable) throw new Error('The fixture needs the real Git executable.');
 const delayed = process.cwd() === process.env.GIT_WORKBENCH_DELAY_REPOSITORY && args.includes('log');
 if (delayed) {
+  process.once('SIGTERM', () => {
+    void writeFile(`${process.env.GIT_WORKBENCH_DELAY_MARKER!}.done`, 'log cancelled').finally(() =>
+      process.exit(0),
+    );
+  });
   await writeFile(process.env.GIT_WORKBENCH_DELAY_MARKER!, 'log started');
   await new Promise((resolve) => setTimeout(resolve, 2000));
 }

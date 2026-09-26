@@ -450,6 +450,7 @@ export const repositoryHistoryRequestSchema = z.strictObject({
   filter: repositoryHistoryFilterSchema.optional(),
   anchor: repositoryHistoryAnchorSchema.optional(),
   mode: repositoryHistoryModeSchema.optional(),
+  readId: z.string().uuid().optional(),
 });
 
 export const repositoryHistoryPageSchema = z.strictObject({
@@ -2311,7 +2312,11 @@ export const repositoryStashActionRequestSchema = z.strictObject({
 });
 
 export const repositoryPatchTargetSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('commit'), commitId: gitObjectIdSchema }),
+  z.strictObject({
+    kind: z.literal('commit'),
+    commitId: gitObjectIdSchema,
+    parent: z.number().int().min(1).max(64).optional(),
+  }),
   z.strictObject({ kind: z.literal('stash'), stashId: gitObjectIdSchema }),
   z.strictObject({
     kind: z.literal('working'),
@@ -2450,23 +2455,47 @@ const repositoryHistoricalFilePathSchema = repositoryRevisionPathSchema.refine(
   'A historical file path is required.',
 );
 
-export const repositoryFileHistoryRequestSchema = z.strictObject({
+export const repositoryHistoryScopeSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('file') }),
+  z.strictObject({ kind: z.literal('directory') }),
+  z
+    .strictObject({
+      kind: z.literal('lines'),
+      start: z.number().int().min(1).max(1_000_000),
+      end: z.number().int().min(1).max(1_000_000),
+    })
+    .refine(
+      (value) => value.end >= value.start && value.end - value.start < 100_000,
+      'Choose an ordered range of at most 100,000 lines.',
+    ),
+]);
+
+export const repositoryHistoricalFileRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
   path: repositoryHistoricalFilePathSchema,
+});
+
+export const repositoryFileHistoryRequestSchema = repositoryHistoricalFileRequestSchema.extend({
+  scope: repositoryHistoryScopeSchema.optional(),
+  readId: z.string().uuid().optional(),
 });
 
 export const repositoryFileHistoryOpenRequestSchema = repositoryFileHistoryRequestSchema.extend({
   theme: z.enum(['system', 'light', 'dark']),
 });
 
-export const repositoryFileHistoryRevisionSchema = z.strictObject({
-  commit: repositoryHistoryCommitSchema,
+export const repositoryHistoricalChangeSchema = z.strictObject({
   /** The path at this revision, which can be the pre-rename name. */
   path: repositoryHistoricalFilePathSchema,
   previousPath: repositoryHistoricalFilePathSchema.nullable(),
   status: repositoryCommitChangeStatusSchema,
   similarity: z.number().int().nonnegative().max(100).nullable(),
+});
+
+export const repositoryFileHistoryRevisionSchema = repositoryHistoricalChangeSchema.extend({
+  commit: repositoryHistoryCommitSchema,
+  changes: z.array(repositoryHistoricalChangeSchema).max(10_000).optional(),
 });
 
 export const repositoryFileHistorySchema = z.strictObject({
@@ -2482,9 +2511,12 @@ export const repositoryFileHistoryContextSchema = z.strictObject({
   commitId: gitObjectIdSchema,
   path: repositoryHistoricalFilePathSchema,
   theme: z.enum(['system', 'light', 'dark']),
+  scope: repositoryHistoryScopeSchema.optional(),
 });
 
-export const repositoryBlameRequestSchema = repositoryFileHistoryRequestSchema;
+export const repositoryBlameRequestSchema = repositoryHistoricalFileRequestSchema.extend({
+  readId: z.string().uuid().optional(),
+});
 
 export const repositoryBlameOpenRequestSchema = repositoryBlameRequestSchema.extend({
   theme: z.enum(['system', 'light', 'dark']),
@@ -2494,6 +2526,8 @@ export const repositoryBlameLineSchema = z.strictObject({
   line: z.number().int().positive().max(1_000_000),
   commitId: gitObjectIdSchema,
   content: z.string().max(262_144),
+  originalPath: repositoryHistoricalFilePathSchema,
+  originalLine: z.number().int().positive().max(1_000_000),
 });
 
 export const repositoryBlameSchema = z.strictObject({
@@ -3004,6 +3038,16 @@ export const requests = {
     repositoryFileHistoryRequestSchema,
     repositoryFileHistorySchema,
   ),
+  cancelRepositoryInvestigation: request(
+    'repository:cancel-investigation',
+    repositoryDiffCancelSchema,
+    z.null(),
+  ),
+  saveRepositoryRevisionFile: request(
+    'repository:save-revision-file',
+    repositoryHistoricalFileRequestSchema,
+    repositoryPatchExportResultSchema,
+  ),
   openRepositoryBlame: request('repository:open-blame', repositoryBlameOpenRequestSchema, z.null()),
   getRepositoryBlameContext: request(
     'repository:get-blame-context',
@@ -3225,6 +3269,8 @@ export type RepositoryLfsInitializationRequest = z.infer<typeof repositoryLfsIni
 export type RepositoryLfsSaveRequest = z.infer<typeof repositoryLfsSaveRequestSchema>;
 export type RepositoryLfsSaveResult = z.infer<typeof repositoryLfsSaveResultSchema>;
 export type RepositoryFileHistoryRequest = z.infer<typeof repositoryFileHistoryRequestSchema>;
+export type RepositoryHistoryScope = z.infer<typeof repositoryHistoryScopeSchema>;
+export type RepositoryHistoricalFileRequest = z.infer<typeof repositoryHistoricalFileRequestSchema>;
 export type RepositoryFileHistoryOpenRequest = z.infer<typeof repositoryFileHistoryOpenRequestSchema>;
 export type RepositoryFileHistoryRevision = z.infer<typeof repositoryFileHistoryRevisionSchema>;
 export type RepositoryFileHistory = z.infer<typeof repositoryFileHistorySchema>;

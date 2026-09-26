@@ -1,5 +1,44 @@
 # Fork catalogue alignment — 2026-09-20
 
+P08 Bisect follow-up — **2026-09-26**: [the correction record](../reviews/p08-bisect-refresh.md)
+maps the existing `P2-006:F1`/skip-subcase F1–F3 manual workflow to stable control availability during
+background reads. A real unchanged-snapshot refresh was disabling controls and discarding a click.
+Held-read pointer tests and independent Git assertions verify the correction and retained stale-state
+refusal. Windows 2.22.0.0 capture confidence stays high for the observed workflow; the new timing tests
+are independent Linux verification. No visual assets, layout, captures or native-platform claims change.
+
+P03 viewport verification follow-up — **2026-09-26**: [runtime evidence](../reviews/p03-viewport.md)
+shows the inherited 914-pixel failure measured an offscreen row before Playwright scrolled the paging
+button into view. The application correctly preserved the row visible when paging began. Tests now
+synchronize selection reveal, require a visible anchor and exercise repeated/virtualized/collapsed
+paging at normal and 125% Electron zoom. `P2-017:F1`'s Windows 2.22.0.0 scrolling/selection evidence
+(2026-09-19, high confidence) is unchanged; neither layout nor native DPI/Fork coverage is promoted.
+
+P08 implementation checkpoint — **2026-09-26**: the
+[phase handoff](../reviews/p08-investigation.md) supersedes the dated F20/F21/F26/F36 implementation
+limits within Linux P08. `P1-030-file-history-subcase:F1`, `P1-030-rename-follow-subcase:F1–F3`,
+`P1-031:F1` and `P1-033-blame-history-navigation-subcase:F1–F4` anchor compact History revision cards,
+the full-width timeline, aligned Blame groups, revision/Back/Forward state and original-file commit
+links. Original screens 0415–0417 and 0426–0430 were compared with light/dark/760×600 application
+captures. Blame now includes the selected revision's added/deleted lines. Icons and styling remain
+independently authored; the ordinal, keyboard-accessible timeline is a deliberate adaptation.
+
+`P1-029:F1` search fields/scopes/highlights and `P1-028:F1` reflog graph/Exit remain. Read cancellation,
+explicit named branch/tag recovery and unavailable expired-object handling are independently verified.
+`P2-005-mixed-patch-preflight-subcase:F1–F4` and export/import F1 still define applicability/Cancel and
+staged mixed-patch semantics; the mailbox summary and parent selector extend the same compact forms.
+`P2-006:F1`/skip-subcase F1–F3 retain top-banner manual Bisect with independently verified outcomes.
+Original case JSON and linked Git records were inspected, including continuous15/16 verification.
+
+Public-only directory/code-history/Save As routes use the
+[Windows release notes](https://fork.dev/releasenoteswin), checked 2026-09-26 (1.52, 2.14 and 1.81),
+plus [Git log](https://git-scm.com/docs/git-log), [blame](https://git-scm.com/docs/git-blame) and
+[apply](https://git-scm.com/docs/git-apply). Confidence is high for those documented capabilities and
+separately tested project semantics. Mailboxes stage their net change without commits; conflicts in a
+mailbox require separate application. Traversal/absolute/symlink/submodule patch refusals, raw-file
+versus UTF-8 clipboard limits, resource bounds and native platform unknowns are documented adaptations.
+No original evidence, private images, capture statuses or case-level unknowns were changed.
+
 P07 implementation checkpoint — **2026-09-26**: the
 [phase handoff](../reviews/p07-interactive-rebase.md) supersedes the initial bounded F18 implementation
 limits. `P1-023-dialog-subcase:F1`, `P1-023-plan-execution-subcase:F1–F3` and

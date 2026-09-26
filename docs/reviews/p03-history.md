@@ -1,5 +1,11 @@
 # P03 — History, graph and revision inspection
 
+Viewport follow-up (2026-09-26): the [runtime diagnosis and regression record](p03-viewport.md)
+resolves the recurring 914-pixel assertion retained in later phase handoffs. It was a test race between
+metadata rendering, the queued selection reveal and Playwright's automatic scroll before clicking.
+The original pixel tolerance remains, with visible-anchor preconditions and additional paging cases;
+production history/scroll behavior is unchanged.
+
 Verified 2026-09-23 on Linux. P03's four requirements and three acceptance criteria are complete for
 the bounded Linux implementation described here. This closes F04/F05/F07 and the P03 search portion
 of F06, plus the existing F34 history-pane foundation. P08 investigation extensions and P12/P14

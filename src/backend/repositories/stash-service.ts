@@ -153,11 +153,26 @@ export async function readPatch(runner: StashRunner, input: ReadPatchInput): Pro
         ['show', '-s', '--format=%P', input.target.commitId],
         readOptions(input.cwd),
       );
-      if (parents.stdout.trim().split(/\s+/u).filter(Boolean).length > 1)
-        throw new ExpectedBackendError(
-          'UNAVAILABLE',
-          'Merge commit patch export requires choosing a parent and is not supported.',
-        );
+      const parentIds = parents.stdout.trim().split(/\s+/u).filter(Boolean);
+      if (input.target.parent !== undefined || parentIds.length > 1) {
+        const parent = input.target.parent;
+        if (parent === undefined || !Number.isInteger(parent) || !parentIds[parent - 1])
+          throw new ExpectedBackendError('UNAVAILABLE', 'Choose a valid parent for the merge commit patch.');
+        return runPatch(runner, input.cwd, [
+          'diff',
+          '--no-ext-diff',
+          '--no-textconv',
+          '--src-prefix=a/',
+          '--dst-prefix=b/',
+          '--binary',
+          '--full-index',
+          '--no-color',
+          '--find-renames',
+          parentIds[parent - 1]!,
+          input.target.commitId,
+          '--',
+        ]);
+      }
       return runPatch(runner, input.cwd, [
         'format-patch',
         '--root',

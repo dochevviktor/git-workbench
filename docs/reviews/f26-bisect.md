@@ -1,5 +1,9 @@
 # F26 Bisect handoff — 2026-09-22
 
+Follow-up (2026-09-26): the [P08 refresh correction](p08-bisect-refresh.md) resolves the intermittent
+Start and classification failures caused by background reads disabling controls during a click.
+Controlled interaction and stale-checkout regressions supplement the historical verification below.
+
 Status: bounded F26 workflow implemented and verified on Linux. P08 remains partial for the separate
 search/history and patch-import work.
 

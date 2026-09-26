@@ -84,7 +84,11 @@ test('F21 opens rename-aware file history and blame inspectors without changing 
     await blamePage.screenshot({ path: 'test-results/f21-blame.png' });
 
     const commitWindow = application.waitForEvent('window');
-    await blamePage.getByRole('button', { name: /[0-9a-f]{7} · Edit before rename/u }).click();
+    await expect(blamePage.getByTestId('blame-deleted-line')).toContainText('Beta');
+    await blamePage
+      .getByRole('button', { name: /[0-9a-f]{7} · Edit before rename/u })
+      .first()
+      .click();
     const commitPage = await commitWindow;
     await expect(commitPage.getByTestId('commit-inspector')).toBeVisible();
     await commitPage.getByRole('tab', { name: 'Commit', exact: true }).click();

@@ -26,6 +26,54 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates P08 investigation scopes, cancellation, historical saving and attribution results', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    const commitId = 'b'.repeat(40);
+    const request = {
+      id,
+      commitId,
+      path: 'source/code.txt',
+      scope: { kind: 'lines' as const, start: 2, end: 4 },
+    };
+    invoke.mockResolvedValueOnce({ ok: false, error: { code: 'OPERATION_FAILED', message: 'Stopped.' } });
+    await api.repository.getFileHistory(request);
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-file-history', request);
+    invoke.mockClear();
+    expect(
+      await api.repository.getFileHistory({ ...request, scope: { kind: 'lines', start: 4, end: 2 } }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(
+      await api.repository.saveRevisionFile({
+        id,
+        commitId,
+        path: '../outside',
+        destination: '/tmp/x',
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+    const cancel = { id, readId: '00000000-0000-4000-8000-000000000001' };
+    await api.repository.cancelInvestigation(cancel);
+    expect(invoke).toHaveBeenLastCalledWith('repository:cancel-investigation', cancel);
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        repositoryId: id,
+        commitId,
+        path: 'x',
+        state: 'text',
+        byteLength: 1,
+        commits: [],
+        lines: [{ line: 1, commitId, content: 'x', originalPath: '../x', originalLine: 1 }],
+        truncated: false,
+        message: null,
+      },
+    });
+    expect(await api.repository.getBlame({ id, commitId, path: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates P07 plan/ref/backup capabilities and rejects renderer commands or malformed results', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;

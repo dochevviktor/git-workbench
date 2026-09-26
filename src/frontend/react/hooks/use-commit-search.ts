@@ -44,9 +44,16 @@ export function useCommitSearch(repositoryId: string | undefined) {
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
   const [error, setError] = useState<string>();
   const generation = useRef(0);
   const mounted = useRef(true);
+  const reads = useRef(new Map<string, string>());
+  const cancelReads = useCallback(() => {
+    for (const [readId, id] of reads.current)
+      void window.desktop?.repository.cancelInvestigation({ id, readId });
+    reads.current.clear();
+  }, []);
 
   useEffect(() => {
     if (repositoryId) sessions.set(repositoryId, { text, query, field, scope, recent });
@@ -70,8 +77,10 @@ export function useCommitSearch(repositoryId: string | undefined) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      generation.current++;
+      cancelReads();
     };
-  }, []);
+  }, [cancelReads]);
 
   useEffect(() => {
     const normalized = text.trim().slice(0, commitSearchQueryLimit);
@@ -87,10 +96,14 @@ export function useCommitSearch(repositoryId: string | undefined) {
         return;
       }
       setLoading(true);
+      setCancelled(false);
+      const readId = crypto.randomUUID();
+      reads.current.set(readId, id);
       try {
         const page = unwrapResult(
           await api.repository.getHistory({
             id,
+            readId,
             offset,
             limit: searchPageSize,
             filter: { kind: 'commit-search', query: searchQuery, field, scope },
@@ -108,6 +121,7 @@ export function useCommitSearch(repositoryId: string | undefined) {
       } catch (reason: unknown) {
         if (mounted.current && generation.current === requestGeneration) setError(actionError(reason));
       } finally {
+        reads.current.delete(readId);
         if (mounted.current && generation.current === requestGeneration) setLoading(false);
       }
     },
@@ -116,15 +130,21 @@ export function useCommitSearch(repositoryId: string | undefined) {
 
   useEffect(() => {
     const requestGeneration = generation.current + 1;
+    cancelReads();
     generation.current = requestGeneration;
     setResults([]);
     setHasMore(false);
     setNextOffset(null);
     setError(undefined);
     setLoading(false);
+    setCancelled(false);
     if (!repositoryId || !query) return;
     void requestPage(repositoryId, query, 0, requestGeneration);
-  }, [query, repositoryId, requestPage]);
+    return () => {
+      generation.current++;
+      cancelReads();
+    };
+  }, [query, repositoryId, requestPage, cancelReads]);
 
   const loadMore = useCallback(() => {
     if (!repositoryId || !query || loading || !hasMore || nextOffset === null) return;
@@ -135,8 +155,9 @@ export function useCommitSearch(repositoryId: string | undefined) {
     if (!repositoryId || !query) return;
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
+    cancelReads();
     void requestPage(repositoryId, query, 0, requestGeneration);
-  }, [query, repositoryId, requestPage]);
+  }, [query, repositoryId, requestPage, cancelReads]);
 
   return {
     text,
@@ -160,8 +181,16 @@ export function useCommitSearch(repositoryId: string | undefined) {
     results,
     hasMore,
     loading,
+    cancelled,
     error,
     loadMore,
     retry,
+    cancel: () => {
+      generation.current++;
+      cancelReads();
+      setLoading(false);
+      setHasMore(false);
+      setCancelled(true);
+    },
   };
 }

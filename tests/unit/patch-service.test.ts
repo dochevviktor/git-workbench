@@ -116,7 +116,7 @@ describe('F36 patch import and export', () => {
     await expect(f.preview()).rejects.toMatchObject({ code: 'UNAVAILABLE' });
   });
 
-  it('bounds files, refuses symlink targets and multi-commit mailboxes, and cleans up on tab close', async () => {
+  it('bounds files, refuses symlink traversal and malformed mailboxes, and cleans up on tab close', async () => {
     const f = await fixture();
     expect(() => checkedPatch(Buffer.alloc(0))).toThrow();
     expect(() => checkedPatch(Buffer.alloc(8 * 1024 * 1024 + 1))).toThrow();
@@ -172,7 +172,7 @@ describe('F36 patch import and export', () => {
     ).toBe(false);
   });
 
-  it('exports the exact root commit and refuses to substitute an ancestor for a merge commit', async () => {
+  it('exports the exact root and selected merge parent, refusing an ambiguous or invalid parent', async () => {
     const f = await fixture();
     const root = await f.service.patchExportContent(1, {
       id: f.id,
@@ -191,7 +191,87 @@ describe('F36 patch import and export', () => {
         id: f.id,
         target: { kind: 'commit', commitId: await f.run('rev-parse', 'HEAD') },
       }),
-    ).rejects.toThrow('Merge commit');
+    ).rejects.toThrow(/parent/u);
+    const commitId = await f.run('rev-parse', 'HEAD');
+    for (const parent of [1, 2]) {
+      const result = await f.service.patchExportContent(1, {
+        id: f.id,
+        target: { kind: 'commit', commitId, parent },
+      });
+      const expected = (
+        await f.git.run(
+          [
+            'diff',
+            '--no-ext-diff',
+            '--binary',
+            '--full-index',
+            '--find-renames',
+            `${commitId}^${parent}`,
+            commitId,
+            '--',
+          ],
+          { cwd: f.cwd },
+        )
+      ).stdout;
+      expect(result).toBe(expected);
+    }
+    await expect(
+      f.service.patchExportContent(1, { id: f.id, target: { kind: 'commit', commitId, parent: 3 } }),
+    ).rejects.toThrow(/parent/u);
+  });
+
+  it('preflights a mailbox using a temporary index, preserves Cancel, and stages its net result without commits', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'change.txt'), 'first change\r\n');
+    await f.run('add', '.');
+    await f.run('commit', '-qm', 'First mailed change');
+    await writeFile(join(f.cwd, 'change.txt'), 'second change\r\n');
+    await writeFile(join(f.cwd, 'mail.txt'), 'mail content\n');
+    await f.run('add', '.');
+    await f.run('commit', '-qm', 'Second mailed change');
+    const expected = await f.run('ls-files', '--stage');
+    const bytes = Buffer.from(
+      (
+        await f.git.run(['format-patch', '--stdout', '--binary', '-2'], {
+          cwd: f.cwd,
+          stdoutEncoding: 'base64',
+        })
+      ).stdout,
+      'base64',
+    );
+    await f.run('reset', '--hard', f.head);
+    const before = await f.snapshot();
+    const cancelled = await f.preview(bytes);
+    expect(cancelled).toMatchObject({ state: 'clean', message: expect.stringContaining('2 patches') });
+    expect(await f.snapshot()).toEqual(before);
+    f.service.releasePatch(1, { id: f.id, token: cancelled.token });
+    expect(await f.snapshot()).toEqual(before);
+    expect(await f.apply((await f.preview(bytes)).token)).toMatchObject({ status: 'succeeded' });
+    expect(await f.run('ls-files', '--stage')).toBe(expected);
+    expect(await f.run('rev-parse', 'HEAD')).toBe(f.head);
+    expect(await f.run('diff')).toBe('');
+    expect(await readFile(join(f.cwd, 'change.txt'), 'utf8')).toBe('second change\r\n');
+  });
+
+  it('round-trips quoted tab, newline, backslash and leading-dash paths on Linux', async () => {
+    const f = await fixture();
+    const paths = ['line\nbreak.txt', 'tab\tname.txt', 'back\\slash.txt', '-option café.txt'];
+    for (const path of paths) await writeFile(join(f.cwd, path), Buffer.from([255, 13, 10, 97]));
+    await f.run('add', '--', ...paths);
+    const expected = await f.run('ls-files', '--stage');
+    const destination = join(f.root, 'paths.patch');
+    await f.service.savePatch(
+      1,
+      { id: f.id, target: { kind: 'working', paths, includeUntracked: true } },
+      destination,
+    );
+    await f.run('reset', '--hard', 'HEAD');
+    const preview = await f.preview(await readFile(destination));
+    expect(preview.state).toBe('clean');
+    expect(await f.apply(preview.token)).toMatchObject({ status: 'succeeded' });
+    expect(await f.run('ls-files', '--stage')).toBe(expected);
+    for (const path of paths)
+      expect(await readFile(join(f.cwd, path))).toEqual(Buffer.from([255, 13, 10, 97]));
   });
 
   it('round-trips binary additions, deletions and header-like hunk text without rewriting bytes', async () => {

@@ -3,7 +3,6 @@ import { useAppearanceUpdates } from '../hooks/use-appearance-updates';
 import type {
   RepositoryBlame,
   RepositoryBlameContext,
-  RepositoryBlameLine,
   RepositoryFileHistory,
   RepositoryFileHistoryRevision,
   RepositoryHistoryCommit,
@@ -11,9 +10,13 @@ import type {
 import { unwrapResult } from '../../../common/ipc/result';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { FileIcon } from '../components/Icons';
+import { HistoryTimeline } from '../components/HistoryTimeline';
 import { useDesktop } from '../hooks/use-desktop';
 import { avatarColor, formatListDate, initials, shortHash } from '../lib/format';
 import { detectPlatform } from '../lib/platform';
+import { useRepositoryDiff } from '../hooks/use-repository-diff';
+import { blameDisplayLines } from '../lib/blame-lines';
+import type { BlameDisplayLine } from '../lib/blame-lines';
 
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
@@ -21,15 +24,19 @@ function errorMessage(reason: unknown, fallback: string): string {
 
 interface BlameGroup {
   readonly commitId: string;
-  readonly lines: readonly RepositoryBlameLine[];
+  readonly lines: BlameDisplayLine[];
 }
 
-function groupLines(lines: readonly RepositoryBlameLine[]): BlameGroup[] {
+function groupLines(lines: readonly BlameDisplayLine[]): BlameGroup[] {
   const groups: BlameGroup[] = [];
   for (const line of lines) {
     const previous = groups.at(-1);
-    if (previous?.commitId === line.commitId) {
-      groups[groups.length - 1] = { ...previous, lines: [...previous.lines, line] };
+    if (
+      previous?.commitId === line.commitId &&
+      previous.lines[0]?.originalPath === line.originalPath &&
+      previous.lines[0]?.change === line.change
+    ) {
+      previous.lines.push(line);
     } else {
       groups.push({ commitId: line.commitId, lines: [line] });
     }
@@ -81,14 +88,16 @@ export default function BlameInspector() {
   useEffect(() => {
     if (!context || !window.desktop) return;
     let active = true;
+    const readId = crypto.randomUUID();
     setHistory(undefined);
     setBlame(undefined);
     setError(undefined);
     void window.desktop.repository
-      .getFileHistory({ id: context.repositoryId, commitId: context.commitId, path: context.path })
+      .getFileHistory({ id: context.repositoryId, commitId: context.commitId, path: context.path, readId })
       .then(unwrapResult)
       .then((value) => {
         if (!active) return;
+        value = { ...value, revisions: value.revisions.filter((revision) => revision.status !== 'deleted') };
         const index = Math.max(
           0,
           value.revisions.findIndex(
@@ -105,17 +114,32 @@ export default function BlameInspector() {
       });
     return () => {
       active = false;
+      void window.desktop?.repository.cancelInvestigation({ id: context.repositoryId, readId });
     };
   }, [context]);
 
   const revision = selectedRevision(history, selectedIndex);
+  const target = useMemo(
+    () =>
+      revision
+        ? {
+            kind: 'commit' as const,
+            commitId: revision.commit.id,
+            path: revision.path,
+            previousPath: revision.previousPath,
+          }
+        : undefined,
+    [revision],
+  );
+  const diff = useRepositoryDiff(context?.repositoryId, target, 'normal');
   useEffect(() => {
     if (!context || !revision || !window.desktop) return;
     let active = true;
+    const readId = crypto.randomUUID();
     setBlame(undefined);
     setError(undefined);
     void window.desktop.repository
-      .getBlame({ id: context.repositoryId, commitId: revision.commit.id, path: revision.path })
+      .getBlame({ id: context.repositoryId, commitId: revision.commit.id, path: revision.path, readId })
       .then(unwrapResult)
       .then((value) => {
         if (active) setBlame(value);
@@ -125,14 +149,34 @@ export default function BlameInspector() {
       });
     return () => {
       active = false;
+      void window.desktop?.repository.cancelInvestigation({ id: context.repositoryId, readId });
     };
   }, [context, revision]);
 
   const commitsById = useMemo(
-    () => new Map((blame?.commits ?? []).map((commit) => [commit.id, commit])),
-    [blame?.commits],
+    () =>
+      new Map(
+        [...(blame?.commits ?? []), ...(revision ? [revision.commit] : [])].map((commit) => [
+          commit.id,
+          commit,
+        ]),
+      ),
+    [blame?.commits, revision],
   );
-  const groups = useMemo(() => groupLines(blame?.lines ?? []), [blame?.lines]);
+  const groups = useMemo(
+    () =>
+      groupLines(
+        blameDisplayLines(
+          blame?.lines ?? [],
+          diff.value?.target.kind === 'commit' && diff.value.target.commitId === blame?.commitId
+            ? diff.value.content
+            : '',
+          revision?.commit.id ?? '',
+          revision?.path ?? '',
+        ),
+      ),
+    [blame, diff.value, revision],
+  );
 
   const selectRevision = (index: number, recordNavigation: boolean) => {
     if (!history || index < 0 || index >= history.revisions.length || index === selectedIndex) return;
@@ -222,6 +266,13 @@ export default function BlameInspector() {
             </select>
           </div>
         </header>
+        {history && (
+          <HistoryTimeline
+            revisions={history.revisions}
+            selected={selectedIndex}
+            onSelect={(index) => selectRevision(index, true)}
+          />
+        )}
         {error && (
           <div className="inline-alert" role="alert">
             {error}
@@ -237,45 +288,43 @@ export default function BlameInspector() {
               const commit = commitsById.get(group.commitId);
               if (!commit) return null;
               const first = group.lines[0];
-              const last = group.lines.at(-1);
               return (
                 <div
                   className="blame-group"
-                  key={`${group.commitId}:${first?.line ?? 0}`}
+                  key={`${group.commitId}:${first?.line ?? 0}:${first?.change}`}
                   data-testid="blame-group"
                 >
                   <div className="blame-attribution">
-                    <div className="blame-attribution-person">
-                      <span
-                        className={`avatar avatar-${avatarColor(commit.author.email || commit.author.name)}`}
-                        aria-hidden="true"
-                      >
-                        {initials(commit.author.name, commit.author.email)}
-                      </span>
-                      <span>{commit.author.name || commit.author.email || 'Unknown author'}</span>
-                    </div>
-                    <time dateTime={commit.author.date}>{formatListDate(commit.author.date)}</time>
+                    <span
+                      className={`avatar avatar-${avatarColor(commit.author.email || commit.author.name)}`}
+                      aria-hidden="true"
+                    >
+                      {initials(commit.author.name, commit.author.email)}
+                    </span>
                     <button
                       type="button"
                       className="blame-commit-button"
-                      title={commit.subject}
-                      onClick={() => openCommitDetails(commit, revision?.path ?? context?.path ?? '')}
+                      title={`${commit.subject}\n${commit.author.name} · ${formatListDate(commit.author.date)}\n${first?.originalPath ?? ''}:${first?.originalLine ?? 1}`}
+                      aria-label={`${shortHash(commit.id)} · ${commit.subject || '(no subject)'}`}
+                      onClick={() => openCommitDetails(commit, first?.originalPath ?? revision?.path ?? '')}
                     >
-                      {shortHash(commit.id)} · {commit.subject || '(no subject)'}
+                      {commit.subject || '(no subject)'}
                     </button>
-                    <span className="blame-range">
-                      Lines {first?.line ?? 0}–{last?.line ?? first?.line ?? 0}
-                    </span>
+                    <time dateTime={commit.author.date}>
+                      {new Date(commit.author.date).toLocaleDateString()}
+                    </time>
+                    <span className="blame-range">{shortHash(commit.id)}</span>
                   </div>
                   <div className="blame-lines">
                     {group.lines.map((line) => (
                       <div
-                        className="blame-line"
-                        key={`${line.commitId}:${line.line}`}
-                        data-testid="blame-line"
+                        className={`blame-line ${line.change}`}
+                        key={`${line.commitId}:${line.line}:${line.change}`}
+                        data-testid={line.change === 'remove' ? 'blame-deleted-line' : 'blame-line'}
+                        title={`Original line ${line.originalLine} in ${line.originalPath}`}
                       >
                         <span className="blame-line-number" aria-hidden="true">
-                          {line.line}
+                          {line.change === 'remove' ? `−${line.line}` : line.line}
                         </span>
                         <pre>{line.content}</pre>
                       </div>

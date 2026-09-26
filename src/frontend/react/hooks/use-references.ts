@@ -101,7 +101,6 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
         throw new Error('Open this application in Electron to change branches and tags.');
       }
       setBusy(true);
-      const requestGeneration = generation.current;
       const actionGeneration = operationGeneration.current;
       try {
         const current = context;
@@ -116,8 +115,16 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
         const operation = await waitForOperation(api, accepted);
         if (operation.result?.kind !== 'reference') throw new Error(operation.message);
         const result = operation.result.value;
+        // Watcher refreshes can run during a write. Only a read started after completion may
+        // supply the next dialog's snapshot; invalidate any earlier read before requesting it.
+        if (!mounted.current || operationGeneration.current !== actionGeneration) return result;
+        generation.current++;
         const refreshed = await read(repositoryId).catch(() => undefined);
-        if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
+        if (mounted.current && operationGeneration.current === actionGeneration) {
+          generation.current++;
+          setContext(refreshed);
+          setLoading(false);
+        }
         return result;
       } finally {
         if (mounted.current && operationGeneration.current === actionGeneration) setBusy(false);
@@ -131,14 +138,19 @@ export function useReferences(repositoryId: string | undefined, refreshSignal = 
       const api = window.desktop;
       if (!repositoryId || !api) throw new Error('Open this application in Electron to change remotes.');
       setBusy(true);
-      const requestGeneration = generation.current;
       const actionGeneration = operationGeneration.current;
       try {
         const result = unwrapResult(await api.repository.applyRemoteAction({ id: repositoryId, action }));
-        if (mounted.current && generation.current === requestGeneration) setRemotes(result.remotes);
+        if (!mounted.current || operationGeneration.current !== actionGeneration) return result;
+        generation.current++;
+        setRemotes(result.remotes);
         // A removed remote also removes its remote-tracking branches, so the references are reread.
         const refreshed = await read(repositoryId).catch(() => undefined);
-        if (mounted.current && generation.current === requestGeneration && refreshed) setContext(refreshed);
+        if (mounted.current && operationGeneration.current === actionGeneration) {
+          generation.current++;
+          setContext(refreshed);
+          setLoading(false);
+        }
         return result;
       } finally {
         if (mounted.current && operationGeneration.current === actionGeneration) setBusy(false);

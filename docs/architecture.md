@@ -1,5 +1,29 @@
 # Architecture and implementation decisions
 
+P08 Bisect refresh correction (2026-09-26): [runtime evidence and tests](reviews/p08-bisect-refresh.md)
+establish that background context reads must not toggle operation busy state and swallow pointer clicks.
+The renderer retains the last validated context during reads, claims each action synchronously, and
+keeps repository/operation generation guards. Existing main-process snapshots and the common-directory
+mutation queue still reject changed state; no automatic retry, retargeting or IPC expansion is introduced.
+
+P08 (2026-09-26): the [investigation handoff](reviews/p08-investigation.md) supersedes the earlier
+directory/selected-code, attribution-path and patch-variant limits within its Linux scope. Existing
+history/file-history/Blame contracts accept owned read IDs, and file history adds a strict file/directory/
+numeric-line scope. A named cancellation capability propagates AbortSignals through bounded Git reads;
+main graph/search generations cancel obsolete work and retain explicit navigation intent through refresh.
+Blame preserves original paths/line numbers and overlays bounded committed changes in compact rows.
+Historical Save As has a native destination chooser and exact main-owned blob bytes, with checkout/link
+guards and atomic replacement. Inspector read/save permissions remain explicit; no generic filesystem
+or process capability is exposed.
+
+Patch export adds a validated merge-parent choice. Mailbox preflight applies each message to an isolated
+main-owned index and derives one net patch, then the existing one-use snapshot-bound apply operation
+stages it. Ref/HEAD/index/worktree state is unchanged during preflight; generated unreachable objects
+are permitted. Source bytes, temporary index paths, diagnostics and resource limits stay in main.
+Post-reference-mutation reads update the next form's snapshot before releasing busy state. Bisect read
+refreshes and operation generations remain independent. All sender/frame/owner/document, trust, sandbox,
+isolation and CSP boundaries are preserved. See the handoff for independent policies and unclaimed variants.
+
 P07 completion (2026-09-26): the [interactive-rebase handoff](reviews/p07-interactive-rebase.md)
 supersedes the earlier F18 merge/ref/recovery limits. Existing plan/start/recover channels carry strict
 quick-action, autosquash-preview, dependent-ref, optional branch-backup and history-backup DTOs. Preload

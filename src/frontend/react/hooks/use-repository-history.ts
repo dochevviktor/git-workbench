@@ -78,6 +78,12 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   }>({ repositoryId: undefined, mode: 'normal' });
   const [reveal, setReveal] = useState<HistoryRevealRequest>();
   const sessions = useRef(new Map<string, HistorySession>());
+  const reads = useRef(new Map<string, string>());
+  const cancelReads = useCallback(() => {
+    for (const [readId, id] of reads.current)
+      void window.desktop?.repository.cancelInvestigation({ id, readId });
+    reads.current.clear();
+  }, []);
   useEffect(() => {
     const close = (event: Event) => {
       const id: unknown = (event as CustomEvent<unknown>).detail;
@@ -89,12 +95,16 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       setOwnedMode((current) =>
         current.repositoryId === id ? { repositoryId: undefined, mode: 'normal' } : current,
       );
-      if (id === repositoryId) generation.current++;
+      if (id === repositoryId) {
+        generation.current++;
+        cancelReads();
+      }
     };
     window.addEventListener('workbench-repository-closed', close);
     return () => window.removeEventListener('workbench-repository-closed', close);
-  }, [repositoryId]);
+  }, [repositoryId, cancelReads]);
   const revealToken = useRef(0);
+  const navigation = useRef<RepositoryHistoryAnchor | { kind: 'home' } | undefined>(undefined);
   const generation = useRef(0);
   const mounted = useRef(true);
   const filter =
@@ -111,8 +121,10 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      generation.current++;
+      cancelReads();
     };
-  }, []);
+  }, [cancelReads]);
 
   const requestPage = useCallback(
     async (
@@ -134,12 +146,17 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
         }
         return;
       }
-      if (replace) setLoading(true);
-      else setLoadingMore(true);
+      if (replace) {
+        cancelReads();
+        setLoading(true);
+      } else setLoadingMore(true);
+      const readId = crypto.randomUUID();
+      reads.current.set(readId, id);
       try {
         const page = unwrapResult(
           await api.repository.getHistory({
             id,
+            readId,
             offset,
             limit: historyPageSize,
             filter: requestFilter,
@@ -192,6 +209,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
         if (
           replace &&
           !anchor &&
+          !selectFirst &&
           oldSelection &&
           oldSelection !== selected &&
           previous &&
@@ -207,18 +225,20 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       } catch (reason: unknown) {
         if (mounted.current && generation.current === requestGeneration) setError(actionError(reason));
       } finally {
+        reads.current.delete(readId);
         if (mounted.current && generation.current === requestGeneration) {
           setLoading(false);
           setLoadingMore(false);
         }
       }
     },
-    [],
+    [cancelReads],
   );
 
   useEffect(() => {
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
+    cancelReads();
     setCommits([]);
     setReferences([]);
     setTracking({ upstream: null, ahead: null, behind: null });
@@ -229,6 +249,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     setHasMore(false);
     setError(undefined);
     setReveal(undefined);
+    navigation.current = undefined;
     if (!repositoryId) {
       setLoading(false);
       setLoadingMore(false);
@@ -250,7 +271,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       return;
     }
     void requestPage(repositoryId, 0, true, requestGeneration, filter, mode);
-  }, [filter, mode, repositoryId, requestPage]);
+  }, [filter, mode, repositoryId, requestPage, cancelReads]);
 
   const setFilter = useCallback(
     (next: RepositoryHistoryFilter) => {
@@ -277,7 +298,17 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
     setError(undefined);
-    void requestPage(repositoryId, 0, true, requestGeneration, filter, mode);
+    const pending = navigation.current;
+    void requestPage(
+      repositoryId,
+      0,
+      true,
+      requestGeneration,
+      filter,
+      mode,
+      pending?.kind === 'home' ? undefined : pending,
+      pending?.kind === 'home',
+    );
   }, [filter, mode, repositoryId, requestPage]);
 
   const loadMore = useCallback(() => {
@@ -305,12 +336,14 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     const cached = sessions.current.get(repositoryId);
     if (cached) sessions.current.set(repositoryId, { ...cached, selectedCommitId: undefined });
     setReveal(undefined);
+    navigation.current = { kind: 'home' };
     void requestPage(repositoryId, 0, true, generation.current, filter, mode, undefined, true);
   }, [filter, mode, repositoryId, requestPage]);
 
   const selectCommit = useCallback(
     (id: string) => {
       if (commits.some((commit) => commit.id === id)) {
+        navigation.current = undefined;
         if (reveal?.status === 'loading') {
           generation.current += 1;
           setLoading(false);
@@ -326,6 +359,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   );
 
   const requestReveal = useCallback((commitId: string) => {
+    navigation.current = { kind: 'commit', commitId };
     generation.current += 1;
     setLoading(false);
     setLoadingMore(false);
@@ -335,6 +369,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   }, []);
 
   const requestEnd = useCallback(() => {
+    navigation.current = { kind: 'oldest' };
     generation.current += 1;
     setLoading(false);
     setLoadingMore(false);
@@ -346,6 +381,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   const finishReveal = useCallback(
     (token: number) => {
       if (reveal?.token !== token) return;
+      navigation.current = undefined;
       if (reveal.status === 'loading') {
         generation.current += 1;
         setLoading(false);

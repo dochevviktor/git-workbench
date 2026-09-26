@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { cpus, platform, tmpdir, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -98,16 +98,20 @@ test('P03 hash search, recent queries, inline changes, retained collapse selecti
     await expect(page.getByTestId('commit-search-result')).toHaveCount(1);
     await page.getByTestId('commit-search-result').click();
     await expect(page.locator('.history-full-hash')).toHaveText(root);
+    // Selection metadata can render before the queued scrollIntoView. Wait for the reveal
+    // before moving the viewport, otherwise the test measures an offscreen first row.
+    await expect(page.locator('.commit-row.selected')).toBeInViewport();
     await page.locator('.commit-list-scroll').evaluate((element) => {
       element.scrollTop = 0;
     });
     await painted(page);
     const anchorRow = page.getByTestId('history-commit').first();
+    await expect(anchorRow).toBeInViewport();
     const anchorId = await anchorRow.getAttribute('data-commit-id');
     const anchorY = (await anchorRow.boundingBox())!.y;
     const loadedCount = Number(await anchorRow.getAttribute('aria-setsize'));
     await page.getByRole('button', { name: 'Load newer commits', exact: true }).click();
-    const retainedRow = page.locator(`[data-commit-id="${anchorId}"]`);
+    const retainedRow = page.locator(`[data-testid="history-commit"][data-commit-id="${anchorId}"]`);
     await expect(retainedRow).toHaveAttribute('aria-setsize', String(loadedCount + 100));
     await expect(retainedRow).toBeInViewport();
     expect(Math.abs((await retainedRow.boundingBox())!.y - anchorY)).toBeLessThan(2);
@@ -199,6 +203,108 @@ test('P03 hash search, recent queries, inline changes, retained collapse selecti
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const collapsed of [false, true]) {
+  test(`P03 paging retains the visible row across virtualization and the first page (${collapsed ? 'collapsed, 125% zoom' : 'expanded'})`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'git-workbench-p03-viewport-'));
+    let app: ElectronApplication | undefined;
+    try {
+      const repo = join(directory, 'repository');
+      await mkdir(repo);
+      const { git, head, root } = await historyFixture(repo, 425, 1);
+      const before = (await git.run(['show-ref'], { cwd: repo })).stdout;
+      const launched = await launch(join(directory, 'profile'));
+      app = launched.app;
+      const page = launched.page;
+      if (collapsed) {
+        await app.evaluate(({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0]!;
+          window.setSize(1000, 760);
+          window.webContents.setZoomFactor(1.25);
+        });
+      }
+      expect((await page.evaluate(openTrustedFixture, repo)).ok).toBe(true);
+      await page.reload();
+      await expect(page.locator('.history-full-hash')).toHaveText(head);
+      await expect(page.locator('.history-view')).toHaveAttribute('aria-busy', 'false');
+      if (collapsed) {
+        await page.locator('.commit-row.selected .commit-subject').click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Collapse All', exact: true }).click();
+      }
+      await page.getByRole('listbox', { name: 'Commits', exact: true }).focus();
+      await page.keyboard.press('End');
+      await expect(page.locator('.history-full-hash')).toHaveText(root);
+      await expect(page.locator('.commit-row.selected')).toBeInViewport();
+
+      const measurements: { step: number; before: number; after: number; rows: number; virtual: boolean }[] =
+        [];
+      for (let step = 0; step < 4; step++) {
+        const button = page.getByRole('button', { name: 'Load newer commits', exact: true });
+        await expect(page.locator('.history-view')).toHaveAttribute('aria-busy', 'false');
+        await expect(button).toBeEnabled();
+        await painted(page);
+        // Bring the action into view before sampling; clicking must not introduce another
+        // automatic scroll between the before measurement and the paging request.
+        await button.scrollIntoViewIfNeeded();
+        await painted(page);
+        await expect(button).toBeInViewport({ ratio: 1 });
+        let snapshot: { id: string; beforeY: number; count: number } | undefined;
+        // Query and measure in one browser task: a resolved element handle can detach during
+        // a React refresh between Playwright's lookup and its separate evaluate call.
+        await expect
+          .poll(async () => {
+            snapshot = await page.evaluate(() => {
+              const scroll = document.querySelector('.commit-list-scroll');
+              const element = scroll?.querySelector('[data-testid="history-commit"]');
+              if (!scroll || !element) return;
+              const row = element.getBoundingClientRect();
+              const viewport = scroll.getBoundingClientRect();
+              const id = element.getAttribute('data-commit-id');
+              if (!id || row.height === 0 || row.top < viewport.top || row.bottom > viewport.bottom) return;
+              return { id, beforeY: row.y, count: Number(element.getAttribute('aria-setsize')) };
+            });
+            return snapshot !== undefined;
+          })
+          .toBe(true);
+        const { id, beforeY, count } = snapshot!;
+        await button.click();
+        const retained = page.locator(`[data-testid="history-commit"][data-commit-id="${id}"]`);
+        await expect
+          .poll(async () => Number(await retained.getAttribute('aria-setsize')))
+          .toBeGreaterThan(count);
+        await painted(page);
+        await expect(retained).toBeInViewport();
+        const afterY = (await retained.boundingBox())!.y;
+        expect(Math.abs(afterY - beforeY)).toBeLessThan(2);
+        await expect(page.locator('.history-full-hash')).toHaveText(root);
+        await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-id', root);
+        const virtual = (await page.locator('.commit-list.virtual-list').count()) > 0;
+        measurements.push({
+          step,
+          before: beforeY,
+          after: afterY,
+          rows: Number(await retained.getAttribute('aria-setsize')),
+          virtual,
+        });
+        if (virtual) expect(await page.getByTestId('history-commit').count()).toBeLessThan(100);
+      }
+      await expect(page.getByRole('button', { name: 'Load newer commits', exact: true })).toHaveCount(0);
+      expect(measurements.some((entry) => !entry.virtual)).toBe(true);
+      expect(measurements.some((entry) => entry.virtual)).toBe(true);
+      const coordinates = test.info().outputPath('viewport-coordinates.json');
+      await writeFile(coordinates, JSON.stringify(measurements, null, 2));
+      await test
+        .info()
+        .attach('viewport-coordinates', { path: coordinates, contentType: 'application/json' });
+      expect((await git.run(['show-ref'], { cwd: repo })).stdout).toBe(before);
+      expect((await git.run(['rev-parse', 'HEAD'], { cwd: repo })).stdout.trim()).toBe(head);
+      expect((await git.run(['status', '--porcelain'], { cwd: repo })).stdout).toBe('');
+    } finally {
+      await app?.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test('P03 Electron cold/warm paint, navigation and memory budgets at 100k commits and 1k refs', async () => {
   const info = test.info();

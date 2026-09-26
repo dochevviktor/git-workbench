@@ -507,7 +507,14 @@ export function registerAppIpc(
         );
       openingInspectors.set(ownerId, pending + 1);
       try {
-        await repositoryService.getFileHistory(ownerId, request.id, request.commitId, request.path);
+        await repositoryService.getFileHistory(
+          ownerId,
+          request.id,
+          request.commitId,
+          request.path,
+          request.scope,
+          request.readId,
+        );
         if (parent.isDestroyed())
           throw new ExpectedBackendError('UNAVAILABLE', 'The source window was closed.');
         const context: RepositoryFileHistoryContext = {
@@ -515,6 +522,7 @@ export function registerAppIpc(
           commitId: request.commitId,
           path: request.path,
           theme: request.theme,
+          ...(request.scope ? { scope: request.scope } : {}),
         };
         await createFileHistoryWindow(parent, 'file-history', async (child, url) => {
           attachWindow(child, url, { kind: 'file-history', parentId: ownerId, context });
@@ -650,8 +658,8 @@ export function registerAppIpc(
     register(requests.rescanSourceDirectory, (window, { id }) =>
       repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
-    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor, mode }) =>
-      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor, mode),
+    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor, mode, readId }) =>
+      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor, mode, readId),
     );
     register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
       repositoryService.getCommitChanges(window.webContents.id, id, commitId),
@@ -892,12 +900,24 @@ export function registerAppIpc(
       if (chosen.canceled || !chosen.filePath) return null;
       return repositoryService.startLfsPayloadSave(window.webContents.id, request, chosen.filePath);
     });
-    register(requests.getRepositoryFileHistory, (window, { id, commitId, path }) =>
-      repositoryService.getFileHistory(window.webContents.id, id, commitId, path),
+    register(requests.getRepositoryFileHistory, (window, { id, commitId, path, scope, readId }) =>
+      repositoryService.getFileHistory(window.webContents.id, id, commitId, path, scope, readId),
     );
-    register(requests.getRepositoryBlame, (window, { id, commitId, path }) =>
-      repositoryService.getBlame(window.webContents.id, id, commitId, path),
+    register(requests.getRepositoryBlame, (window, { id, commitId, path, readId }) =>
+      repositoryService.getBlame(window.webContents.id, id, commitId, path, readId),
     );
+    register(requests.cancelRepositoryInvestigation, (window, request) =>
+      repositoryService.cancelInvestigation(window.webContents.id, request),
+    );
+    register(requests.saveRepositoryRevisionFile, async (window, request) => {
+      const chosen = await dialog.showSaveDialog(window, {
+        title: 'Save Historical File',
+        defaultPath: request.path.split('/').at(-1) ?? 'historical-file',
+      });
+      if (chosen.canceled || !chosen.filePath)
+        return { status: 'cancelled' as const, path: null, byteLength: 0, message: 'Save cancelled.' };
+      return repositoryService.saveRevisionFile(window.webContents.id, request, chosen.filePath);
+    });
     register(requests.openRepositoryInFileManager, async (window, location) => {
       const path = await repositoryService.resolveLocation(window.webContents.id, location);
       const failure = await shell.openPath(path);

@@ -12,10 +12,23 @@ export function useBisect(
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
+  const operationGeneration = useRef(0);
+  const activeAction = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const current = ++operationGeneration.current;
+    activeAction.current = undefined;
+    setBusy(false);
+    return () => {
+      operationGeneration.current = current + 1;
+    };
+  }, [repositoryId]);
   const errorRepository = useRef(repositoryId);
   useEffect(() => {
     const current = ++generation.current;
-    setContext(undefined);
+    // A background read retains the last validated context. Disabling controls on every read
+    // can swallow an in-progress pointer click even when the returned snapshot is identical.
+    // The main-process snapshot check still rejects a checkout that changed before the action.
+    setContext((current) => (current?.repositoryId === repositoryId ? current : undefined));
     if (errorRepository.current !== repositoryId) {
       setError(undefined);
       errorRepository.current = repositoryId;
@@ -35,8 +48,11 @@ export function useBisect(
   const apply = useCallback(
     async (action: RepositoryBisectActionRequest['action']) => {
       const api = window.desktop;
-      if (!api || !context || context.repositoryId !== repositoryId || busy) return;
-      const current = generation.current;
+      if (!api || !context || context.repositoryId !== repositoryId || activeAction.current !== undefined)
+        return;
+      const current = operationGeneration.current;
+      // Claim synchronously: two events before React's busy render must not submit twice.
+      activeAction.current = current;
       setBusy(true);
       setError(undefined);
       try {
@@ -48,18 +64,27 @@ export function useBisect(
           }),
         );
         const operation = await waitForOperation(api, accepted);
-        if (current !== generation.current) return;
+        if (current !== operationGeneration.current) return;
+        generation.current++;
         if (operation.result?.kind === 'bisect') setContext(operation.result.value);
         else setError(operation.message);
         onChanged(operation.result?.kind === 'bisect' ? operation.result.value.head : null);
       } catch (reason) {
-        if (current === generation.current)
+        if (current === operationGeneration.current)
           setError(reason instanceof Error ? reason.message : 'Bisect failed.');
       } finally {
-        setBusy(false);
+        if (current === operationGeneration.current) {
+          activeAction.current = undefined;
+          setBusy(false);
+        }
       }
     },
-    [busy, context, onChanged, repositoryId],
+    [context, onChanged, repositoryId],
   );
-  return { context: context?.repositoryId === repositoryId ? context : undefined, error, busy, apply };
+  return {
+    context: context?.repositoryId === repositoryId ? context : undefined,
+    error,
+    busy,
+    apply,
+  };
 }

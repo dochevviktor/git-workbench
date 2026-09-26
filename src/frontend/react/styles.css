@@ -1623,7 +1623,7 @@ p {
 .file-history-body {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(250px, 28%) minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -1631,25 +1631,48 @@ p {
   min-width: 0;
   overflow: auto;
   border-right: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  background: var(--list-bg);
 }
 
-.file-history-timeline {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 12px 5px;
+.history-timeline {
+  flex: none;
+  padding: 0 12px 10px;
+  background: var(--sidebar-bg);
   color: var(--text-muted);
   font-size: 10px;
-  text-transform: uppercase;
+}
+
+.history-timeline input {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 16px;
+  margin: 0 0 2px;
+  accent-color: var(--link);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--list-bg);
+}
+
+.history-timeline input::-webkit-slider-thumb {
+  appearance: none;
+  width: 3px;
+  height: 16px;
+  background: var(--link);
+  cursor: ew-resize;
+}
+
+.history-timeline > div {
+  display: flex;
+  justify-content: space-between;
 }
 
 .file-history-card {
   display: grid;
   width: 100%;
-  gap: 5px;
-  padding: 9px 12px;
+  gap: 3px;
+  padding: 5px 7px;
   border: 0;
-  border-top: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -1694,7 +1717,7 @@ p {
 .file-history-card-subject {
   overflow: hidden;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1768,19 +1791,20 @@ p {
 
 .blame-group {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 34%) minmax(0, 1fr);
   min-width: 680px;
   border-bottom: 1px solid var(--border);
 }
 
 .blame-attribution {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: flex-start;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 0 5px;
+  line-height: 20px;
   border-right: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  background: var(--list-bg);
   color: var(--text-muted);
   font-size: 11px;
 }
@@ -1806,17 +1830,52 @@ p {
 }
 
 .blame-commit-button {
+  flex: 1;
   min-width: 0;
   padding: 0;
   overflow: hidden;
   border: 0;
   background: transparent;
-  color: var(--link);
+  color: var(--text);
   font-family: var(--font-ui);
   font-size: 11px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 20px;
+}
+
+.blame-attribution .avatar {
+  flex: none;
+  margin-top: 3px;
+}
+.blame-attribution time,
+.blame-range {
+  flex: none;
+  white-space: nowrap;
+}
+.file-history-card-path > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-history-diff-header select {
+  min-width: 0;
+  max-width: 55%;
+  margin-left: auto;
+}
+
+@media (max-width: 850px) {
+  .file-inspector-header {
+    flex-wrap: wrap;
+    padding-block: 5px;
+    gap: 5px;
+  }
+  .file-history-body {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+  .file-inspector-actions {
+    margin-left: auto;
+  }
 }
 
 .blame-commit-button:hover {
@@ -1838,6 +1897,13 @@ p {
 
 .blame-line:hover {
   background: var(--row-hover);
+}
+
+.blame-line.add {
+  background: color-mix(in srgb, var(--status-added) 13%, var(--list-bg));
+}
+.blame-line.remove {
+  background: color-mix(in srgb, var(--status-deleted) 13%, var(--list-bg));
 }
 
 .blame-line-number {

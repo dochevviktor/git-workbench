@@ -1,16 +1,18 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { PatchPreviews, validatePatch } from './patch-service';
 import type { RepositoryPatchPreview, RepositoryPatchApplyRequest } from '../../common/ipc/contracts';
-import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile, rename, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, relative } from 'node:path';
 import { DirectoryWatcher } from './directory-watcher';
 import { ReadCoordinator } from '../git/read-coordinator';
 import { RepositoryTrustStore } from '../git/trust-store';
 import { RepositoryGitRunner } from '../git/repository-runner';
 import { gitCapabilities, minimumGitVersion } from '../git/capabilities';
 import type {
+  RepositoryHistoryScope,
+  RepositoryHistoricalFileRequest,
   RepositoryManagerAction,
   RepositoryManagerScan,
   RepositoryManagerLocation,
@@ -133,6 +135,7 @@ import {
   FileHistoryPathError,
   readBlame,
   readFileHistory,
+  readHistoricalFile,
 } from './file-history-service';
 import { readWorkingChanges } from './working-tree-service';
 import {
@@ -284,6 +287,7 @@ export class RepositoryService {
   private readonly pushPreviews = new PushPreviewStore();
   private readonly sessionGenerations = new Map<string, number>();
   private readonly diffReads = new Map<string, AbortController>();
+  private readonly investigationReads = new Map<string, AbortController>();
   private readonly statistics = new StatisticsService();
   private readonly statisticsReads = new Map<string, AbortController>();
   private readonly restorePromises = new Map<number, Promise<void>>();
@@ -700,6 +704,7 @@ export class RepositoryService {
   }
 
   async close(ownerId: number, id: string): Promise<void> {
+    this.cancelInvestigationReads(ownerId, id);
     this.pushPreviews.release(ownerId, id);
     this.ai.cancel(ownerId, id);
     this.patches.release(ownerId, id);
@@ -793,51 +798,54 @@ export class RepositoryService {
     filter?: RepositoryHistoryFilter,
     anchor?: RepositoryHistoryAnchor,
     mode?: RepositoryHistoryMode,
+    readId?: string,
   ): Promise<RepositoryHistoryPage> {
-    await this.requireGit();
-    await this.ensureSessions(ownerId);
-    const ownerSessions = this.sessions.get(ownerId);
-    const cached = ownerSessions?.get(id);
-    if (!ownerSessions || !cached) {
-      throw new ExpectedBackendError(
-        'REPOSITORY_NOT_OPEN',
-        'That repository tab is not open in this window.',
-      );
-    }
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
-      throw new ExpectedBackendError('INVALID_REQUEST', 'The history offset is not valid.');
-    }
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
-      throw new ExpectedBackendError('INVALID_REQUEST', 'The history page size is not valid.');
-    }
+    return this.investigate(ownerId, id, readId, async (runner) => {
+      await this.requireGit();
+      await this.ensureSessions(ownerId);
+      const ownerSessions = this.sessions.get(ownerId);
+      const cached = ownerSessions?.get(id);
+      if (!ownerSessions || !cached) {
+        throw new ExpectedBackendError(
+          'REPOSITORY_NOT_OPEN',
+          'That repository tab is not open in this window.',
+        );
+      }
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+        throw new ExpectedBackendError('INVALID_REQUEST', 'The history offset is not valid.');
+      }
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+        throw new ExpectedBackendError('INVALID_REQUEST', 'The history page size is not valid.');
+      }
 
-    let summary: RepositorySummary;
-    try {
-      summary = await this.refreshOpenRepository(ownerId, id);
-    } catch (error) {
-      throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
-    }
-    if (summary.id !== id) {
-      throw new ExpectedBackendError(
-        'REPOSITORY_NOT_OPEN',
-        'That repository is no longer open in this window.',
-      );
-    }
+      let summary: RepositorySummary;
+      try {
+        summary = await this.refreshOpenRepository(ownerId, id);
+      } catch (error) {
+        throw this.mapGitFailure(error, 'Git could not refresh the selected repository.');
+      }
+      if (summary.id !== id) {
+        throw new ExpectedBackendError(
+          'REPOSITORY_NOT_OPEN',
+          'That repository is no longer open in this window.',
+        );
+      }
 
-    try {
-      return await readRepositoryHistory(this.runner, {
-        repositoryId: id,
-        cwd: summary.worktreePath ?? summary.commonDir,
-        head: summary.head,
-        offset,
-        limit,
-        filter,
-        anchor,
-        mode,
-      });
-    } catch (error) {
-      throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
-    }
+      try {
+        return await readRepositoryHistory(runner, {
+          repositoryId: id,
+          cwd: summary.worktreePath ?? summary.commonDir,
+          head: summary.head,
+          offset,
+          limit,
+          filter,
+          anchor,
+          mode,
+        });
+      } catch (error) {
+        throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
+      }
+    });
   }
 
   async getCommitChanges(ownerId: number, id: string, commitId: string): Promise<RepositoryCommitChanges> {
@@ -3096,31 +3104,127 @@ export class RepositoryService {
     id: string,
     commitId: string,
     path: string,
+    scope?: RepositoryHistoryScope,
+    readId?: string,
   ): Promise<RepositoryFileHistory> {
-    const summary = await this.refreshOpenRepository(ownerId, id, false);
-    try {
-      return await readFileHistory(this.runner, {
-        repositoryId: id,
-        cwd: summary.worktreePath ?? summary.commonDir,
-        commitId,
-        path,
-      });
-    } catch (error) {
-      throw this.mapFileHistoryFailure(error, 'Git could not read the selected file history.');
-    }
+    return this.investigate(ownerId, id, readId, async (runner) => {
+      const summary = await this.refreshOpenRepository(ownerId, id, false);
+      try {
+        return await readFileHistory(runner, {
+          repositoryId: id,
+          cwd: summary.worktreePath ?? summary.commonDir,
+          commitId,
+          path,
+          scope,
+        });
+      } catch (error) {
+        throw this.mapFileHistoryFailure(error, 'Git could not read the selected file history.');
+      }
+    });
   }
 
-  async getBlame(ownerId: number, id: string, commitId: string, path: string): Promise<RepositoryBlame> {
-    const summary = await this.refreshOpenRepository(ownerId, id, false);
+  async getBlame(
+    ownerId: number,
+    id: string,
+    commitId: string,
+    path: string,
+    readId?: string,
+  ): Promise<RepositoryBlame> {
+    return this.investigate(ownerId, id, readId, async (runner) => {
+      const summary = await this.refreshOpenRepository(ownerId, id, false);
+      try {
+        return await readBlame(runner, {
+          repositoryId: id,
+          cwd: summary.worktreePath ?? summary.commonDir,
+          commitId,
+          path,
+        });
+      } catch (error) {
+        throw this.mapFileHistoryFailure(error, 'Git could not read blame for the selected file.');
+      }
+    });
+  }
+
+  async saveRevisionFile(
+    ownerId: number,
+    request: RepositoryHistoricalFileRequest,
+    destination: string,
+  ): Promise<RepositoryPatchExportResult> {
+    if (!isAbsolute(destination) || destination.includes('\0'))
+      throw new ExpectedBackendError('INVALID_REQUEST', 'Choose an absolute destination.');
+    const summary = await this.refreshOpenRepository(ownerId, request.id, false);
+    const bytes = await readHistoricalFile(this.runner, {
+      repositoryId: request.id,
+      cwd: summary.worktreePath ?? summary.commonDir,
+      commitId: request.commitId,
+      path: request.path,
+    });
+    // Native destination selection is authority to export, never to replace the checkout or Git metadata.
+    const parent = await realpath(dirname(destination));
+    const target = join(parent, basename(destination));
+    for (const protectedPath of [summary.worktreePath, summary.gitDir, summary.commonDir]) {
+      if (!protectedPath) continue;
+      const path = relative(protectedPath, target);
+      if (path === '' || (!path.startsWith('../') && path !== '..' && !isAbsolute(path)))
+        throw new ExpectedBackendError(
+          'INVALID_REQUEST',
+          'Save the historical file outside this repository.',
+        );
+    }
+    const existing = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (existing && (!existing.isFile() || existing.nlink > 1))
+      throw new ExpectedBackendError('INVALID_REQUEST', 'Choose a regular destination file without links.');
+    this.operationRepository(ownerId, request.id);
+    const temporary = join(parent, `.git-workbench-export-${randomUUID()}`);
     try {
-      return await readBlame(this.runner, {
-        repositoryId: id,
-        cwd: summary.worktreePath ?? summary.commonDir,
-        commitId,
-        path,
+      await writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' });
+      await rename(temporary, target);
+    } finally {
+      await unlink(temporary).catch(() => undefined);
+    }
+    return { status: 'saved', path: target, byteLength: bytes.length, message: 'Historical file saved.' };
+  }
+
+  cancelInvestigation(ownerId: number, request: RepositoryDiffCancel): null {
+    this.investigationReads.get(`${ownerId}:${request.id}:${request.readId}`)?.abort();
+    return null;
+  }
+
+  private cancelInvestigationReads(ownerId: number, id?: string): void {
+    for (const [key, controller] of this.investigationReads)
+      if (key.startsWith(`${ownerId}:${id ? `${id}:` : ''}`)) {
+        controller.abort();
+        this.investigationReads.delete(key);
+      }
+  }
+
+  private async investigate<T>(
+    ownerId: number,
+    id: string,
+    readId: string | undefined,
+    read: (runner: Pick<GitRunner, 'run'>) => Promise<T>,
+  ): Promise<T> {
+    const key = `${ownerId}:${id}:${readId ?? randomUUID()}`;
+    this.investigationReads.get(key)?.abort();
+    if (
+      [...this.investigationReads.entries()].filter(
+        ([entry, controller]) => entry.startsWith(`${ownerId}:`) && !controller.signal.aborted,
+      ).length >= 4
+    )
+      throw new ExpectedBackendError('UNAVAILABLE', 'Cancel an investigation before starting another.');
+    const controller = new AbortController();
+    this.investigationReads.set(key, controller);
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      return await read({
+        run: (args, options) => this.runner.run(args, { ...options, signal: controller.signal }),
       });
-    } catch (error) {
-      throw this.mapFileHistoryFailure(error, 'Git could not read blame for the selected file.');
+    } finally {
+      clearTimeout(timer);
+      if (this.investigationReads.get(key) === controller) this.investigationReads.delete(key);
     }
   }
 
@@ -3556,6 +3660,7 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    this.cancelInvestigationReads(ownerId);
     this.cancelManagerScan(ownerId);
     this.managerScans.delete(ownerId);
     this.managerOwners.delete(ownerId);
@@ -3588,6 +3693,8 @@ export class RepositoryService {
   }
 
   dispose(): void {
+    for (const controller of this.investigationReads.values()) controller.abort();
+    this.investigationReads.clear();
     this.pushPreviews.release();
     for (const entry of this.watches.values()) entry.watcher.dispose();
     this.watches.clear();

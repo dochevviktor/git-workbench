@@ -1,6 +1,7 @@
 import type { Statistics, StatisticsRequest } from './statistics';
 import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
+  RepositoryHistoricalFileRequest,
   RepositoryManagerScan,
   RepositoryManagerAction,
   RepositoryManagerLocation,
@@ -221,6 +222,10 @@ export interface DesktopApi {
     openFileHistory(request: RepositoryFileHistoryOpenRequest): Promise<IpcResult<null>>;
     getFileHistoryContext(): Promise<IpcResult<RepositoryFileHistoryContext>>;
     getFileHistory(request: RepositoryFileHistoryRequest): Promise<IpcResult<RepositoryFileHistory>>;
+    cancelInvestigation(request: RepositoryDiffCancel): Promise<IpcResult<null>>;
+    saveRevisionFile(
+      request: RepositoryHistoricalFileRequest,
+    ): Promise<IpcResult<RepositoryPatchExportResult>>;
     openBlame(request: RepositoryBlameOpenRequest): Promise<IpcResult<null>>;
     getBlameContext(): Promise<IpcResult<RepositoryBlameContext>>;
     getBlame(request: RepositoryBlameRequest): Promise<IpcResult<RepositoryBlame>>;

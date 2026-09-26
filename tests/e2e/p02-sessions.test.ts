@@ -327,7 +327,7 @@ test('P02 a delayed history response cannot replace the active repository', asyn
     await expect(page.getByTestId('history-commit').first()).toContainText('Fast history');
     await expect
       .poll(() => readFile(`${marker}.done`, 'utf8').catch(() => ''), { timeout: 5000 })
-      .toBe('log completed');
+      .toBe('log cancelled');
     await expect(page.getByTestId('history-commit').first()).toContainText('Fast history');
     await expect(page.getByTestId('history-commit').filter({ hasText: 'Slow history' })).toHaveCount(0);
   } finally {

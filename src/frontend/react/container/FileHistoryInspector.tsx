@@ -5,16 +5,19 @@ import type {
   RepositoryFileHistory,
   RepositoryFileHistoryContext,
   RepositoryFileHistoryRevision,
+  RepositoryDiffWhitespace,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import { DiffViewer } from '../components/DiffViewer';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { useDesktop } from '../hooks/use-desktop';
 import { useRepositoryDiff } from '../hooks/use-repository-diff';
-import { avatarColor, formatListDate, initials, shortHash } from '../lib/format';
+import { avatarColor, initials, shortHash } from '../lib/format';
 import { detectPlatform } from '../lib/platform';
 import { FileIcon } from '../components/Icons';
 import { StatusBadge } from '../components/StatusBadge';
+import { HistoryTimeline } from '../components/HistoryTimeline';
+import type { DiffDisplayMode } from '../components/DiffViewer';
 
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error ? reason.message : fallback;
@@ -31,6 +34,10 @@ export default function FileHistoryInspector() {
   const [context, setContext] = useState<RepositoryFileHistoryContext>();
   const [history, setHistory] = useState<RepositoryFileHistory>();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedFile, setSelectedFile] = useState(0);
+  const [mode, setMode] = useState<DiffDisplayMode>('unified');
+  const [whitespace, setWhitespace] = useState<RepositoryDiffWhitespace>('normal');
+  const [showWhitespace, setShowWhitespace] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -54,11 +61,18 @@ export default function FileHistoryInspector() {
   useEffect(() => {
     if (!context || !window.desktop) return;
     let active = true;
+    const readId = crypto.randomUUID();
     setHistory(undefined);
     setSelectedIndex(0);
     setError(undefined);
     void window.desktop.repository
-      .getFileHistory({ id: context.repositoryId, commitId: context.commitId, path: context.path })
+      .getFileHistory({
+        id: context.repositoryId,
+        commitId: context.commitId,
+        path: context.path,
+        scope: context.scope,
+        readId,
+      })
       .then(unwrapResult)
       .then((value) => {
         if (active) setHistory(value);
@@ -68,6 +82,7 @@ export default function FileHistoryInspector() {
       });
     return () => {
       active = false;
+      void window.desktop?.repository.cancelInvestigation({ id: context.repositoryId, readId });
     };
   }, [context]);
 
@@ -76,27 +91,32 @@ export default function FileHistoryInspector() {
   }, [history, selectedIndex]);
 
   const revision = history?.revisions[selectedIndex];
+  const change = revision?.changes?.[selectedFile] ?? revision;
   const diffTarget = useMemo<RepositoryDiffTarget | undefined>(
     () =>
-      revision
+      revision && change
         ? {
             kind: 'commit',
             commitId: revision.commit.id,
-            path: revision.path,
-            previousPath: revision.previousPath,
+            path: change.path,
+            previousPath: change.previousPath,
           }
         : undefined,
-    [revision],
+    [revision, change],
   );
-  const diff = useRepositoryDiff(context?.repositoryId, diffTarget, 'normal');
+  const diff = useRepositoryDiff(context?.repositoryId, diffTarget, whitespace);
+  const selectRevision = (index: number) => {
+    setSelectedIndex(index);
+    setSelectedFile(0);
+  };
 
   const openBlame = () => {
-    if (!context || !revision || !window.desktop) return;
+    if (!context || !revision || !change || !window.desktop) return;
     void window.desktop.repository
       .openBlame({
         id: context.repositoryId,
         commitId: revision.commit.id,
-        path: revision.path,
+        path: change.path,
         theme: context.theme,
       })
       .then(unwrapResult)
@@ -104,13 +124,13 @@ export default function FileHistoryInspector() {
   };
 
   const openCommitDetails = () => {
-    if (!context || !revision || !window.desktop) return;
+    if (!context || !revision || !change || !window.desktop) return;
     void window.desktop.repository
       .openCommitDetails({
         id: context.repositoryId,
         commitId: revision.commit.id,
         tab: 'changes',
-        path: revision.path,
+        path: change.path,
         theme: context.theme,
       })
       .then(unwrapResult)
@@ -130,11 +150,35 @@ export default function FileHistoryInspector() {
             <span className="file-inspector-path" title={context?.path}>
               <FileIcon size={14} />
               {context?.path ?? 'Reading file history…'}
+              {context?.scope?.kind === 'lines' ? ` · Lines ${context.scope.start}–${context.scope.end}` : ''}
             </span>
           </div>
           <div className="file-inspector-actions">
-            <button type="button" className="button button-small" disabled={!revision} onClick={openBlame}>
+            <button
+              type="button"
+              className="button button-small"
+              disabled={!revision || change?.status === 'deleted'}
+              onClick={openBlame}
+            >
               Blame / Timeline
+            </button>
+            <button
+              type="button"
+              className="button button-small"
+              disabled={!revision || change?.status === 'deleted'}
+              onClick={() => {
+                if (!context || !revision || !change) return;
+                void window.desktop?.repository
+                  .saveRevisionFile({
+                    id: context.repositoryId,
+                    commitId: revision.commit.id,
+                    path: change.path,
+                  })
+                  .then(unwrapResult)
+                  .catch((reason: unknown) => setError(errorMessage(reason, 'The file could not be saved.')));
+              }}
+            >
+              Save As…
             </button>
             <button
               type="button"
@@ -146,6 +190,9 @@ export default function FileHistoryInspector() {
             </button>
           </div>
         </header>
+        {history && (
+          <HistoryTimeline revisions={history.revisions} selected={selectedIndex} onSelect={selectRevision} />
+        )}
         {error && (
           <div className="inline-alert" role="alert">
             {error}
@@ -158,10 +205,6 @@ export default function FileHistoryInspector() {
         ) : (
           <div className="file-history-body">
             <aside className="file-history-revisions" aria-label="File revisions">
-              <div className="file-history-timeline" aria-hidden="true">
-                <span>{history?.revisions.at(-1)?.commit.author.date.slice(0, 7) ?? ''}</span>
-                <span>{history?.revisions[0]?.commit.author.date.slice(0, 7) ?? ''}</span>
-              </div>
               {history?.revisions.map((candidate, index) => (
                 <button
                   key={candidate.commit.id}
@@ -169,7 +212,27 @@ export default function FileHistoryInspector() {
                   className={index === selectedIndex ? 'file-history-card selected' : 'file-history-card'}
                   aria-pressed={index === selectedIndex}
                   data-testid="file-history-revision"
-                  onClick={() => setSelectedIndex(index)}
+                  aria-label={revisionLabel(candidate)}
+                  onClick={() => selectRevision(index)}
+                  onKeyDown={(event) => {
+                    const next =
+                      event.key === 'ArrowDown'
+                        ? index + 1
+                        : event.key === 'ArrowUp'
+                          ? index - 1
+                          : event.key === 'Home'
+                            ? 0
+                            : event.key === 'End'
+                              ? history.revisions.length - 1
+                              : undefined;
+                    if (next === undefined) return;
+                    event.preventDefault();
+                    const clamped = Math.max(0, Math.min(history.revisions.length - 1, next));
+                    selectRevision(clamped);
+                    (
+                      event.currentTarget.parentElement?.children[clamped] as HTMLElement | undefined
+                    )?.focus();
+                  }}
                 >
                   <span className="file-history-card-topline">
                     <span
@@ -182,15 +245,27 @@ export default function FileHistoryInspector() {
                       {candidate.commit.author.name || candidate.commit.author.email || 'Unknown author'}
                     </span>
                     <time dateTime={candidate.commit.author.date}>
-                      {formatListDate(candidate.commit.author.date)}
+                      {new Date(candidate.commit.author.date).toLocaleDateString()}
                     </time>
+                    <span>{shortHash(candidate.commit.id)}</span>
                   </span>
-                  <span className="file-history-card-subject">{revisionLabel(candidate)}</span>
+                  <span className="file-history-card-subject">
+                    {candidate.commit.subject || '(no subject)'}
+                  </span>
                   <span className="file-history-card-path">
                     <StatusBadge status={candidate.status} />
-                    {candidate.previousPath
-                      ? `${candidate.previousPath} → ${candidate.path}`
-                      : candidate.path}
+                    <span
+                      title={
+                        candidate.previousPath
+                          ? `${candidate.previousPath} → ${candidate.path}`
+                          : candidate.path
+                      }
+                    >
+                      {candidate.path}
+                      {candidate.changes && candidate.changes.length > 1
+                        ? ` (+${candidate.changes.length - 1})`
+                        : ''}
+                    </span>
                   </span>
                 </button>
               ))}
@@ -202,24 +277,36 @@ export default function FileHistoryInspector() {
                   <div className="file-history-diff-header">
                     <span className="file-history-diff-path">
                       <FileIcon size={14} />
-                      {revision.path}
+                      {change?.path}
                     </span>
-                    <span className="muted">{revision.commit.subject || '(no subject)'}</span>
+                    {revision.changes && (
+                      <select
+                        aria-label="Historical changed file"
+                        value={selectedFile}
+                        onChange={(event) => setSelectedFile(Number(event.target.value))}
+                      >
+                        {revision.changes.map((file, index) => (
+                          <option key={file.path} value={index}>
+                            {file.path}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <DiffViewer
                     value={diff.value}
                     loading={diff.loading}
                     error={diff.error}
                     onRetry={diff.refresh}
-                    mode="unified"
-                    onModeChange={() => undefined}
-                    whitespace="normal"
-                    onWhitespaceChange={() => undefined}
-                    showWhitespace={false}
-                    onShowWhitespaceChange={() => undefined}
+                    mode={mode}
+                    onModeChange={setMode}
+                    whitespace={whitespace}
+                    onWhitespaceChange={setWhitespace}
+                    showWhitespace={showWhitespace}
+                    onShowWhitespaceChange={setShowWhitespace}
                     label="Historical file diff"
                     controls={diff.controls}
-                    positionKey={`file-history:${context?.repositoryId ?? ''}:${revision.commit.id}:${revision.path}`}
+                    positionKey={`file-history:${context?.repositoryId ?? ''}:${revision.commit.id}:${change?.path ?? revision.path}`}
                   />
                 </>
               ) : (

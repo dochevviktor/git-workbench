@@ -2,7 +2,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitRunner } from '../../src/backend/git/runner';
+import { GitRunner, GitCancelledError } from '../../src/backend/git/runner';
+import type { GitRunOptions, GitCommandResult } from '../../src/backend/git/runner';
+import { randomUUID } from 'node:crypto';
 import { RepositoryService } from '../../src/backend/repositories/repository-service';
 import { repositoryHistoryRequestSchema } from '../../src/common/ipc/contracts';
 
@@ -100,6 +102,94 @@ describe('repository history service', () => {
       'reflog',
     );
     expect(located.commits.map((entry) => entry.id)).toContain(lostCommit);
+  });
+
+  it('cancels only the owning search, including immediate cancellation and window disposal', async () => {
+    const directory = await fixtureDirectory();
+    const cwd = join(directory, 'cancel');
+    await mkdir(cwd);
+    const git = new GitRunner();
+    const signals: AbortSignal[] = [];
+    const runner = {
+      executable: git.executable,
+      version: () => git.version(),
+      run: (args: readonly string[], options: GitRunOptions): Promise<GitCommandResult> => {
+        if (!args.includes('--grep=slow-investigation')) return git.run(args, options);
+        const signal = options.signal!;
+        signals.push(signal);
+        return new Promise((_, reject) => {
+          if (signal.aborted) reject(new GitCancelledError());
+          else signal.addEventListener('abort', () => reject(new GitCancelledError()), { once: true });
+        });
+      },
+    };
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    try {
+      const { id } = await service.initialize(51, cwd, false);
+      await writeFile(join(cwd, 'file.txt'), 'safe');
+      await git.run(['add', '.'], { cwd });
+      await git.run(
+        ['-c', 'user.name=Search', '-c', 'user.email=search@example.test', 'commit', '-qm', 'base'],
+        { cwd },
+      );
+      const search = (readId: string) =>
+        service.getHistory(
+          51,
+          id,
+          0,
+          50,
+          { kind: 'commit-search', query: 'slow-investigation' },
+          undefined,
+          undefined,
+          readId,
+        );
+      const readId = randomUUID();
+      const pending = search(readId).catch((error: unknown) => error);
+      await expect.poll(() => signals.length).toBe(1);
+      service.cancelInvestigation(52, { id, readId });
+      expect(signals[0]!.aborted).toBe(false);
+      service.cancelInvestigation(51, { id, readId });
+      expect(signals[0]!.aborted).toBe(true);
+      expect(await pending).toBeInstanceOf(Error);
+      const immediateId = randomUUID();
+      const immediate = search(immediateId).catch((error: unknown) => error);
+      service.cancelInvestigation(51, { id, readId: immediateId });
+      expect(await immediate).toBeInstanceOf(Error);
+      expect(signals).toHaveLength(1);
+      const closed = search(randomUUID()).catch((error: unknown) => error);
+      await expect.poll(() => signals.length).toBe(2);
+      service.disposeWindow(51);
+      expect(await closed).toBeInstanceOf(Error);
+      expect(signals[1]!.aborted).toBe(true);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it('handles expired reflogs and unavailable objects without inventing lost revisions', async () => {
+    const directory = await fixtureDirectory();
+    const cwd = join(directory, 'expiry');
+    await mkdir(cwd);
+    const runner = new GitRunner();
+    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    try {
+      const { id } = await service.initialize(52, cwd, false);
+      await writeFile(join(cwd, 'file.txt'), 'base');
+      const base = await commit(runner, cwd, 'base', '', 'Expiry', 'expiry@example.test', '2026-02-01');
+      await writeFile(join(cwd, 'file.txt'), 'lost');
+      const lost = await commit(runner, cwd, 'lost', '', 'Expiry', 'expiry@example.test', '2026-02-02');
+      await runner.run(['reset', '--hard', base], { cwd });
+      await runner.run(['reflog', 'expire', '--expire=now', '--expire-unreachable=now', '--all'], { cwd });
+      await runner.run(['prune', '--expire=now'], { cwd });
+      const page = await service.getHistory(52, id, 0, 50, undefined, undefined, 'reflog');
+      expect(page.commits.map((item) => item.id)).toEqual([base]);
+      await expect(service.getFileHistory(52, id, lost, 'file.txt')).rejects.toThrow(
+        /no longer|not|unavailable/iu,
+      );
+      expect((await runner.run(['rev-parse', 'HEAD'], { cwd })).stdout.trim()).toBe(base);
+    } finally {
+      service.dispose();
+    }
   });
 
   it('keeps octopus parents, reordered dates, disconnected roots and detached selection consistent with Git', async () => {
