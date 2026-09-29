@@ -1,13 +1,13 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { GitRunner } from '../src/backend/git/runner';
 import type { GitRunOptions } from '../src/backend/git/runner';
 
 const execute = promisify(execFile);
-export async function signingFixture() {
+export async function signingFixture(options: { protected?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'workbench-signing-'));
   const cwd = join(root, 'repo');
   const gnupg = join(root, 'gnupg');
@@ -30,22 +30,37 @@ export async function signingFixture() {
   try {
     await mkdir(cwd);
     await mkdir(gnupg, { mode: 0o700 });
-    await execute(
-      'gpg',
-      [
-        '--batch',
-        '--pinentry-mode',
-        'loopback',
-        '--passphrase',
-        '',
-        '--quick-generate-key',
-        'Workbench Test <signing@example.test>',
-        'ed25519',
-        'sign',
-        '0',
-      ],
-      { env },
-    );
+    if (options.protected) {
+      const program = join(gnupg, 'pinentry.ts');
+      await copyFile(resolve('tests/helpers/pinentry-fixture.ts'), program);
+      await chmod(program, 0o700);
+      await writeFile(
+        join(gnupg, 'gpg-agent.conf'),
+        `pinentry-program ${program}\ndefault-cache-ttl 0\nmax-cache-ttl 0\n`,
+      );
+      await writeFile(join(gnupg, 'pinentry-mode'), 'accept');
+      await writeFile(join(gnupg, 'fixture-passphrase'), 'synthetic-p10-passphrase', { mode: 0o600 });
+    }
+    await new Promise<void>((done, reject) => {
+      const child = execFile(
+        'gpg',
+        [
+          '--batch',
+          '--pinentry-mode',
+          'loopback',
+          '--passphrase-fd',
+          '0',
+          '--quick-generate-key',
+          'Workbench Test <signing@example.test>',
+          'ed25519',
+          'sign',
+          '0',
+        ],
+        { env },
+        (error) => (error ? reject(error) : done()),
+      );
+      child.stdin?.end(options.protected ? 'synthetic-p10-passphrase\n' : '\n');
+    });
     const keys = await execute('gpg', ['--batch', '--with-colons', '--list-secret-keys'], { env });
     const fingerprint = keys.stdout
       .split('\n')

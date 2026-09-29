@@ -1,0 +1,133 @@
+.dialog.lfs-dialog {
+  width: 620px;
+  max-width: calc(100vw - 36px);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border-radius: 3px;
+}
+.lfs-dialog .dialog-content {
+  gap: 12px;
+}
+.lfs-dialog .dialog-actions {
+  gap: 8px;
+}
+.lfs-repository-name {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: normal;
+  margin-left: 12px;
+}
+.lfs-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.lfs-tabs button {
+  padding: 5px 8px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+.lfs-tabs button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.lfs-field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.lfs-field input,
+.lfs-field select {
+  min-width: 0;
+  width: 100%;
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--window);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.lfs-destination {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+.lfs-endpoints {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.lfs-endpoints dt {
+  color: var(--text-muted);
+}
+.lfs-endpoints dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.lfs-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.lfs-actions span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.lfs-table-scroll {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  margin: 12px 0;
+}
+.lfs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.lfs-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.lfs-table th,
+.lfs-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.lfs-table td:last-child {
+  white-space: nowrap;
+}
+.lfs-dialog .link-button:disabled {
+  color: var(--text-muted);
+  text-decoration: none;
+  opacity: 0.6;
+  cursor: default;
+}
+.lfs-operation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+.lfs-operation progress {
+  width: 120px;
+  height: 4px;
+  accent-color: var(--accent);
+}
+.signing-defaults {
+  display: grid;
+  gap: 8px;
+}
+.signing-defaults label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}

@@ -17,6 +17,8 @@ const readChannels = new Set<string>([
   requests.cancelRepositoryDiff.channel,
   requests.cancelRepositoryInvestigation.channel,
   requests.saveRepositoryRevisionFile.channel,
+  requests.cancelRepositoryOperation.channel,
+  requests.listRepositoryOperations.channel,
 ]);
 const windowActions = new Set([
   'close',

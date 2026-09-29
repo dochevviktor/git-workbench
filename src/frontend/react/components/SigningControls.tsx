@@ -33,6 +33,9 @@ export function SignatureCheck({
   const generation = useRef(0);
   useEffect(() => {
     const current = ++generation.current;
+    setResult(undefined);
+    setError('');
+    setBusy(false);
     return () => {
       generation.current = current + 1;
     };
@@ -130,6 +133,8 @@ function SigningKeyDialog({
   const [settings, setSettings] = useState<RepositorySigningSettings>();
   const [key, setKey] = useState('');
   const [inherit, setInherit] = useState(false);
+  const [commits, setCommits] = useState('inherit');
+  const [tags, setTags] = useState('inherit');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -142,6 +147,8 @@ function SigningKeyDialog({
         setSettings(value);
         setKey(value.localKey ?? value.key ?? '');
         setInherit(value.localKey === null);
+        setCommits(value.localCommits == null ? 'inherit' : String(value.localCommits));
+        setTags(value.localTags == null ? 'inherit' : String(value.localTags));
       })
       .catch(() => {
         if (active) setError('Signing settings could not be read.');
@@ -207,6 +214,28 @@ function SigningKeyDialog({
               Use a full fingerprint or a 16-digit key ID. Worktree-specific or environment settings can
               override this repository value. Sign with GPG selects OpenPGP for that operation.
             </p>
+            <div className="signing-defaults">
+              {(
+                [
+                  ['Commit default', commits, setCommits],
+                  ['Tag default', tags, setTags],
+                ] as const
+              ).map(([label, current, update]) => (
+                <label key={label}>
+                  {label}
+                  <select
+                    aria-label={label}
+                    value={current}
+                    disabled={busy}
+                    onChange={(event) => update(event.target.value)}
+                  >
+                    <option value="inherit">Inherit</option>
+                    <option value="true">Sign by default</option>
+                    <option value="false">Do not sign by default</option>
+                  </select>
+                </label>
+              ))}
+            </div>
           </>
         ) : (
           <p>Reading settings…</p>
@@ -229,6 +258,8 @@ function SigningKeyDialog({
                   id: repositoryId,
                   snapshot: settings.snapshot,
                   key: inherit ? null : key.trim(),
+                  commits: commits === 'inherit' ? null : commits === 'true',
+                  tags: tags === 'inherit' ? null : tags === 'true',
                 })
                 .then(unwrapResult)
                 .then(onClose)

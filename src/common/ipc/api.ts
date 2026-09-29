@@ -1,4 +1,5 @@
 import type { Statistics, StatisticsRequest } from './statistics';
+import type { LfsContext, LfsOperationRequest } from './lfs';
 import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
   RepositorySubmoduleComparisonRequest,
@@ -350,6 +351,8 @@ export interface DesktopApi {
     getRevisionTree(request: RepositoryRevisionTreeRequest): Promise<IpcResult<RepositoryRevisionTree>>;
     getRevisionBlob(request: RepositoryRevisionBlobRequest): Promise<IpcResult<RepositoryRevisionBlob>>;
     getLfsFile(request: RepositoryLfsFileRequest): Promise<IpcResult<RepositoryLfsFile>>;
+    getLfsContext(request: { id: string }): Promise<IpcResult<LfsContext>>;
+    startLfsOperation(request: LfsOperationRequest): Promise<IpcResult<RepositoryOperation>>;
     startLfsInitialization(
       request: RepositoryLfsInitializationRequest,
     ): Promise<IpcResult<RepositoryOperation>>;

@@ -39,10 +39,17 @@ export function useRepositoryLfs(
     const api = window.desktop;
     if (!api) return;
     return api.repository.onOperationChanged((operation) => {
+      if (operation.repositoryId !== repositoryId || operation.kind !== 'lfs') return;
       operationEvents.current.set(operation.id, operation);
-      setSaveOperation((current) => (current?.id === operation.id ? operation : current));
+      if (operationEvents.current.size > 50)
+        operationEvents.current.delete(operationEvents.current.keys().next().value!);
+      setSaveOperation((current) =>
+        current?.id === operation.id && (operation.revision ?? 0) >= (current.revision ?? 0)
+          ? operation
+          : current,
+      );
     });
-  }, []);
+  }, [repositoryId]);
 
   useEffect(() => {
     if (!repositoryId || !commitId || !path) return;
@@ -70,15 +77,30 @@ export function useRepositoryLfs(
     const api = window.desktop;
     if (!api) throw new Error('Open this application in Electron to save an LFS payload.');
     setSaveError(undefined);
+    const requestGeneration = generation.current;
     try {
       const accepted = unwrapResult(
         await api.repository.saveLfsPayload({ id: repositoryId, commitId, path }),
       );
-      if (accepted) setSaveOperation(operationEvents.current.get(accepted.id) ?? accepted);
+      if (accepted && requestGeneration === generation.current)
+        setSaveOperation(operationEvents.current.get(accepted.id) ?? accepted);
     } catch (reason: unknown) {
-      setSaveError(errorMessage(reason, 'The LFS payload could not be saved.'));
+      if (requestGeneration === generation.current)
+        setSaveError(errorMessage(reason, 'The LFS payload could not be saved.'));
     }
   }, [commitId, path, repositoryId]);
+
+  useEffect(() => {
+    if (saveOperation?.status !== 'succeeded' || !repositoryId || !commitId || !path) return;
+    const current = generation.current;
+    void window.desktop?.repository
+      .getLfsFile({ id: repositoryId, commitId, path })
+      .then(unwrapResult)
+      .then((value) => {
+        if (current === generation.current) setLfs(value);
+      })
+      .catch(() => undefined);
+  }, [saveOperation?.status, repositoryId, commitId, path]);
 
   return {
     lfs: owner === key ? lfs : undefined,
@@ -86,6 +108,14 @@ export function useRepositoryLfs(
     error,
     saveError,
     saveAs,
+    cancel: async () => {
+      if (!saveOperation || !window.desktop) return;
+      try {
+        unwrapResult(await window.desktop.repository.cancelOperation({ operationId: saveOperation.id }));
+      } catch {
+        setSaveError('The retrieval could not be cancelled. Check Activity.');
+      }
+    },
     saveOperation: owner === key ? saveOperation : undefined,
   };
 }

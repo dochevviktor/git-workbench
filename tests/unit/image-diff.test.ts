@@ -175,7 +175,7 @@ describe('F27 image diff', () => {
       ),
     ).rejects.toBeInstanceOf(GitCancelledError);
     const ready = imageFromBytes(pngFixture());
-    expect(repositoryImageSideSchema.safeParse({ ...ready, mime: 'image/svg+xml' }).success).toBe(false);
+    expect(repositoryImageSideSchema.safeParse({ ...ready, mime: 'text/html' }).success).toBe(false);
     expect(repositoryImageSideSchema.safeParse({ ...ready, width: 8192, height: 8192 }).success).toBe(false);
     expect(repositoryImageSideSchema.safeParse({ ...ready, base64: 'file:///etc/passwd' }).success).toBe(
       false,

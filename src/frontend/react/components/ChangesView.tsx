@@ -40,6 +40,7 @@ import type { DiscardRequest } from './DiscardDialog';
 import { ConflictResolver } from './ConflictResolver';
 import { ConflictPreview } from './ConflictPreview';
 import { SubmodulePreview } from './SubmodulePreview';
+import { LfsDialog } from './LfsDialog';
 
 const sessionSelections = repositorySessionMap<ListSelection>();
 
@@ -397,6 +398,7 @@ export function ChangesView({
   onVisibleCountChange,
 }: ChangesViewProps) {
   const showContextMenu = useContextMenu();
+  const [lfsPath, setLfsPath] = useState<string>();
   const externalTools = useExternalTools();
   const [mode, setMode] = usePersistentState<FileListMode>(
     `repository.${repository.id}.changes.mode`,
@@ -656,6 +658,12 @@ export function ChangesView({
               }),
           },
           { id: 'diff-popup', label: 'Open Diff Popup', run: () => setPopup(true) },
+          {
+            id: 'lfs-file',
+            label: 'LFS',
+            disabled: paths.length !== 1,
+            submenu: [{ id: 'lfs-file-lock', label: 'Lock / Unlock…', run: () => setLfsPath(entry.path) }],
+          },
           menuSeparator,
           { id: 'copy-path', label: 'Copy Path', run: () => copyText(entry.path) },
           ...(paths.length === 1 ? (customFileItems?.(paths[0]!) ?? []) : []),
@@ -1188,6 +1196,15 @@ export function ChangesView({
             refreshDiff();
             onCommitted();
           }}
+        />
+      )}
+      {lfsPath && (
+        <LfsDialog
+          key={`${repository.id}:${lfsPath}`}
+          repositoryId={repository.id}
+          name={repository.name}
+          initialPath={lfsPath}
+          onClose={() => setLfsPath(undefined)}
         />
       )}
     </section>

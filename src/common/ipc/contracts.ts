@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { lfsContextSchema, lfsLocksSchema, lfsOperationRequestSchema } from './lfs';
 import {
   aiSettingsSchema,
   aiConfigureSchema,
@@ -574,9 +575,16 @@ export const repositoryImageSideSchema = z.discriminatedUnion('state', [
   z
     .strictObject({
       state: z.literal('ready'),
-      mime: z.enum(['image/png', 'image/jpeg']),
+      mime: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml']),
       width: z.number().int().min(1).max(8192),
       height: z.number().int().min(1).max(8192),
+      /** Original local LFS payload size, when the Git blob itself is only a pointer. */
+      byteLength: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(4 * 1024 * 1024)
+        .optional(),
       base64: z
         .string()
         .max(5_592_408)
@@ -860,6 +868,8 @@ export const repositorySigningSettingsSchema = z.strictObject({
   format: z.string().max(128),
   commits: z.boolean(),
   tags: z.boolean(),
+  localCommits: z.boolean().nullable().optional(),
+  localTags: z.boolean().nullable().optional(),
   snapshot: repositoryDiffSnapshotSchema,
 });
 export const repositorySigningSettingsRequestSchema = z.strictObject({
@@ -869,6 +879,8 @@ export const repositorySigningSettingsRequestSchema = z.strictObject({
     .string()
     .regex(/^(?:[0-9a-fA-F]{16}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64})!?$/u)
     .nullable(),
+  commits: z.boolean().nullable().optional(),
+  tags: z.boolean().nullable().optional(),
 });
 export const repositoryVerifySignatureRequestSchema = z.strictObject({
   id: repositoryIdSchema,
@@ -1968,6 +1980,7 @@ export const repositoryOperationSchema = z.strictObject({
       z.strictObject({ kind: z.literal('git-flow'), value: repositoryGitFlowActionResultSchema }),
       z.strictObject({ kind: z.literal('bisect'), value: repositoryBisectContextSchema }),
       z.strictObject({ kind: z.literal('lfs'), value: repositoryLfsSaveResultSchema }),
+      z.strictObject({ kind: z.literal('lfs-locks'), value: lfsLocksSchema }),
     ])
     .optional(),
   startedAt: z.string().datetime({ offset: true }),
@@ -2461,6 +2474,7 @@ export const repositoryRevisionBlobSchema = z.strictObject({
   state: z.enum(['text', 'binary', 'too-large']),
   content: z.string().max(1_048_576),
   byteLength: z.number().int().nonnegative().max(1_000_000_000_000),
+  image: repositoryImageSideSchema.optional(),
 });
 
 export const repositoryLfsPointerSchema = z.strictObject({
@@ -2507,6 +2521,7 @@ export const repositoryLfsSaveRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   commitId: gitObjectIdSchema,
   path: repositoryRevisionPathSchema.refine((value) => value.length > 0, 'An LFS path is required.'),
+  remote: z.string().min(1).max(256).optional(),
 });
 
 const repositoryHistoricalFilePathSchema = repositoryRevisionPathSchema.refine(
@@ -3076,6 +3091,16 @@ export const requests = {
     'repository:get-lfs-file',
     repositoryLfsFileRequestSchema,
     repositoryLfsFileSchema,
+  ),
+  getRepositoryLfsContext: request(
+    'repository:get-lfs-context',
+    z.strictObject({ id: repositoryIdSchema }),
+    lfsContextSchema,
+  ),
+  startRepositoryLfsOperation: request(
+    'repository:start-lfs-operation',
+    lfsOperationRequestSchema,
+    repositoryOperationSchema,
   ),
   startRepositoryLfsInitialization: request(
     'repository:start-lfs-initialization',

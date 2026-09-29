@@ -57,9 +57,16 @@
   margin: 6px 0;
 }
 .image-file-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin: 6px;
-  padding: 30px 20px;
-  min-width: 72px;
+  width: 104px;
+  height: 112px;
+  flex: none;
+  background: var(--window);
   border: 1px solid var(--border);
   box-shadow: 0 1px 4px #0002;
 }
@@ -156,4 +163,23 @@
 .image-diff-modes button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+.image-diff-modes select {
+  background: var(--window);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+}
+.image-format-note {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 3px;
+}
+.image-source-toggle {
+  align-self: flex-end;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 11px;
 }

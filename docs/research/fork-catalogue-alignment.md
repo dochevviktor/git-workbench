@@ -1,5 +1,23 @@
 # Fork catalogue alignment — 2026-09-20
 
+P10 alignment — **2026-09-29**: [implementation and verification](../reviews/p10-rich-diffs-lfs-signing.md)
+maps `P0-026:F1`, `P2-003:F1`, and `P2-011-initialize-download-subcase:F1–F4` to binary/rich image
+viewers and exact historical payload retrieval. Original JSON, screens 0156/0455–0458/0518–0525 and
+linked Git/hash records were inspected (Windows 2.22.0.0, 2026-09-19; high confidence within each
+trial). Both selected before/after manifests retain all 13 command hashes. Before/after Linux captures
+prompted removal of the duplicate LFS filename header and restoration of the framed extension card,
+badge/state caption and inline size dropdown. Bottom image mode controls and old/new framing remain.
+
+The public [Windows 1.48 Lock/Unlock screenshot](https://fork.dev/blog/posts/forkwin-1.48/), dated
+2020-05-05 and checked 2026-09-29, anchors LFS file-menu access. Management/review dialogs, verified
+ownership, no force unlock, and root tracking edits are independent Linux policies. The existing
+public image library was refreshed (226 cached images); no new screenshot or private asset was added.
+[Mac release notes](https://git-fork.com/releasenotes), checked 2026-09-29, establish richer image
+format availability separately from the Windows captures. Restricted SVG, GIF first-frame, zoom/pan,
+cached LFS comparisons and decoded 8-bit Pixel semantics retain explicit parity limits. Signing remains
+public-only; the compact retained composer/tag forms do not prove exact Fork settings/pinentry behavior.
+Native platform/graphical pinentry and provider matrices remain P14; case-level unknowns are not promoted.
+
 P09 test follow-up — **2026-09-29**: [the stability correction](../reviews/p09-test-stability.md)
 keeps P2-017:F1's scrolling/selection distinction through unchanged repository refreshes. Runtime
 evidence identified replacement of retained pages and an unintended second selection reveal.

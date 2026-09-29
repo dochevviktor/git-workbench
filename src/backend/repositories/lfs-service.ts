@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { lstat, open, readFile, rename, stat, unlink } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   RepositoryLfsFile,
   RepositoryLfsPointer,
@@ -8,7 +9,8 @@ import type {
   RepositoryOperationProgress,
 } from '../../common/ipc/contracts';
 import { repositoryLfsFileSchema, repositoryLfsSaveResultSchema } from '../../common/ipc/contracts';
-import { GitCommandError } from '../git/runner';
+import { GitCancelledError, GitCommandError } from '../git/runner';
+import { resolveLfsRemote, runLfsTransfer } from './lfs-management';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 
 const lfsReadTimeoutMs = 20_000;
@@ -22,6 +24,16 @@ export interface LfsRunner {
   run(args: readonly string[], options: GitRunOptions): Promise<GitCommandResult>;
 }
 
+export function withLfsSignal(runner: LfsRunner, signal: AbortSignal): LfsRunner {
+  return {
+    run: (args, options) =>
+      runner.run(args, {
+        ...options,
+        signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal,
+      }),
+  };
+}
+
 export interface ReadLfsFileInput {
   readonly repositoryId: string;
   readonly cwd: string;
@@ -30,7 +42,9 @@ export interface ReadLfsFileInput {
   readonly path: string;
 }
 
-export type LfsSaveInput = ReadLfsFileInput;
+export interface LfsSaveInput extends ReadLfsFileInput {
+  readonly remote?: string;
+}
 
 export interface LfsProgressHandle {
   readonly signal: AbortSignal;
@@ -60,6 +74,7 @@ export class LfsPayloadError extends Error {
 
 /** Reads pointer metadata and local object availability without changing the checkout. */
 export async function readLfsFile(runner: LfsRunner, input: ReadLfsFileInput): Promise<RepositoryLfsFile> {
+  runner = withLfsSignal(runner, AbortSignal.timeout(10_000));
   validatePath(input.path);
   await ensureCommit(runner, input);
 
@@ -82,27 +97,59 @@ export async function readLfsFile(runner: LfsRunner, input: ReadLfsFileInput): P
   return repositoryLfsFileSchema.parse(response);
 }
 
-/** Copies one locally available historical object to a native Save As destination. */
+/** Retrieves exactly one historical object; smudge output is drained, never written to the checkout. */
 export async function saveLfsPayload(
   runner: LfsRunner,
   input: LfsSaveInput,
   destination: string,
   handle: LfsProgressHandle,
 ): Promise<RepositoryLfsSaveResult> {
+  runner = withLfsSignal(runner, handle.signal);
   if (!isAbsolute(destination) || destination.includes('\0') || destination.length > 32_768) {
     throw new LfsPayloadError('Choose a valid absolute destination for the LFS payload.');
   }
-  const metadata = await readLfsFile(runner, input);
+  destination = await validateDestination(runner, input.cwd, input.worktreePath, destination);
+  if (handle.signal.aborted) throw new GitCancelledError();
+  let metadata = await readLfsFile(runner, input);
   if (metadata.history.kind !== 'lfs') {
     throw new LfsPayloadError('The selected historical file is not a Git LFS pointer.');
   }
-  if (metadata.history.payloadState !== 'available') {
-    throw new LfsPayloadError(
-      metadata.history.payloadState === 'missing'
-        ? 'The LFS payload is not available in the local object cache. Network retrieval is not enabled for this action.'
-        : 'The local LFS object does not match the pointer size.',
+  if (metadata.history.payloadState === 'missing') {
+    if (!metadata.gitLfs.available) throw new LfsPayloadError('Install Git LFS to retrieve this payload.');
+    const remote = await resolveLfsRemote(runner, input.cwd, input.remote);
+    const pointer = metadata.history.pointer;
+    await runLfsTransfer(
+      runner,
+      input.cwd,
+      [
+        '-c',
+        `remote.lfsdefault=${remote}`,
+        '-c',
+        'lfs.remote.autodetect=false',
+        '-c',
+        'lfs.remote.searchall=false',
+        '-c',
+        'lfs.fetchinclude=',
+        '-c',
+        'lfs.fetchexclude=',
+        '-c',
+        'lfs.skipdownloaderrors=false',
+        'lfs',
+        'smudge',
+        '--',
+        input.path,
+      ],
+      handle,
+      {
+        discardStdout: true,
+        env: { GIT_LFS_SKIP_SMUDGE: '0' },
+        stdin: `version ${pointer.version}\noid ${pointer.oid}\nsize ${pointer.size}\n`,
+      },
     );
+    metadata = await readLfsFile(runner, input);
   }
+  if (metadata.history.kind !== 'lfs' || metadata.history.payloadState !== 'available')
+    throw new LfsPayloadError('The local LFS object is missing or does not match the pointer size.');
 
   const source = await locatePayload(runner, input.cwd, metadata.history.pointer);
   if (!source) throw new LfsPayloadError('The LFS payload is no longer available in the local object cache.');
@@ -120,7 +167,10 @@ export async function saveLfsPayload(
   let destinationHandle: Awaited<ReturnType<typeof open>> | undefined;
   let completed = false;
   try {
-    sourceHandle = await open(source.path, 'r');
+    sourceHandle = await open(source.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const sourceInfo = await sourceHandle.stat();
+    if (!sourceInfo.isFile() || sourceInfo.size !== metadata.history.pointer.size)
+      throw new LfsPayloadError('The local LFS object changed. Retry after checking the cache.');
     destinationHandle = await open(temporary, 'wx', 0o600);
     handle.setProgress({ phase: 'Retrieving LFS payload', percent: 0 });
 
@@ -128,7 +178,7 @@ export async function saveLfsPayload(
     const buffer = Buffer.allocUnsafe(lfsChunkSize);
     let offset = 0;
     while (offset < source.byteLength) {
-      if (handle.signal.aborted) throw new LfsPayloadError('The LFS payload retrieval was cancelled.');
+      if (handle.signal.aborted) throw new GitCancelledError();
       const remaining = source.byteLength - offset;
       const { bytesRead } = await sourceHandle.read(
         buffer,
@@ -139,7 +189,12 @@ export async function saveLfsPayload(
       if (bytesRead <= 0) throw new LfsPayloadError('The local LFS object ended before the expected size.');
       const chunk = buffer.subarray(0, bytesRead);
       digest.update(chunk);
-      await destinationHandle.write(chunk, 0, bytesRead, offset);
+      let written = 0;
+      while (written < bytesRead) {
+        const result = await destinationHandle.write(chunk, written, bytesRead - written, offset + written);
+        if (result.bytesWritten === 0) throw new LfsPayloadError('The destination could not be written.');
+        written += result.bytesWritten;
+      }
       offset += bytesRead;
       handle.setProgress({
         phase: 'Retrieving LFS payload',
@@ -150,6 +205,9 @@ export async function saveLfsPayload(
     await destinationHandle.sync();
     const sha256 = digest.digest('hex');
     if (sha256 !== expectedHash) throw new LfsPayloadError('The local LFS object failed its SHA-256 check.');
+    if (handle.signal.aborted) throw new GitCancelledError();
+    if ((await validateDestination(runner, input.cwd, input.worktreePath, destination)) !== destination)
+      throw new LfsPayloadError('The destination directory changed during retrieval.');
     completed = true;
     return repositoryLfsSaveResultSchema.parse({
       path: destination,
@@ -161,9 +219,8 @@ export async function saveLfsPayload(
     await sourceHandle?.close().catch(() => undefined);
     if (completed) {
       await rename(temporary, destination).catch(async (error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        await unlink(destination);
-        await rename(temporary, destination);
+        await unlink(temporary).catch(() => undefined);
+        throw error;
       });
     } else {
       await unlink(temporary).catch(() => undefined);
@@ -241,6 +298,9 @@ async function readTrackedAttribute(runner: LfsRunner, input: ReadLfsFileInput):
 async function readWorktreeState(input: ReadLfsFileInput): Promise<RepositoryLfsFile['worktree']> {
   if (!input.worktreePath) return { state: 'unavailable', byteLength: null };
   const path = join(input.worktreePath, ...input.path.split('/'));
+  const root = await realpath(input.worktreePath);
+  const canonical = await realpath(path).catch(() => undefined);
+  if (!canonical || !inside(root, canonical)) return { state: 'unavailable', byteLength: null };
   const details = await lstat(path).catch(() => undefined);
   if (!details || !details.isFile()) return { state: 'missing', byteLength: null };
   if (details.size > lfsPointerLimit) return { state: 'materialized', byteLength: details.size };
@@ -250,7 +310,7 @@ async function readWorktreeState(input: ReadLfsFileInput): Promise<RepositoryLfs
   return { state: 'materialized', byteLength: details.size };
 }
 
-async function probeGitLfs(runner: LfsRunner, cwd: string): Promise<RepositoryLfsFile['gitLfs']> {
+export async function probeGitLfs(runner: LfsRunner, cwd: string): Promise<RepositoryLfsFile['gitLfs']> {
   try {
     const result = await runner.run(['lfs', 'version'], readOptions(cwd, 4_096));
     const version =
@@ -262,7 +322,7 @@ async function probeGitLfs(runner: LfsRunner, cwd: string): Promise<RepositoryLf
   }
 }
 
-async function locatePayload(
+export async function locatePayload(
   runner: LfsRunner,
   cwd: string,
   pointer: RepositoryLfsPointer,
@@ -274,7 +334,10 @@ async function locatePayload(
   const storageRoot = resolve(storage);
   const objectPath = resolve(storageRoot, hex.slice(0, 2), hex.slice(2, 4), hex);
   if (objectPath !== storageRoot && !objectPath.startsWith(`${storageRoot}${sep}`)) return null;
-  const details = await stat(objectPath).catch(() => undefined);
+  const canonical = await realpath(objectPath).catch(() => undefined);
+  const canonicalStorage = await realpath(storageRoot).catch(() => undefined);
+  if (!canonical || !canonicalStorage || !inside(canonicalStorage, canonical)) return null;
+  const details = await lstat(objectPath).catch(() => undefined);
   if (!details?.isFile()) return null;
   return { path: objectPath, byteLength: details.size };
 }
@@ -286,7 +349,10 @@ async function resolveStorage(runner: LfsRunner, cwd: string): Promise<string | 
   ]) {
     try {
       const raw = (await runner.run(args, readOptions(cwd, 4_096))).stdout.trim();
-      if (raw) return isAbsolute(raw) ? raw : resolve(cwd, raw);
+      if (raw) {
+        const root = isAbsolute(raw) ? raw : resolve(cwd, raw);
+        return args[0] === 'config' ? join(root, 'objects') : root;
+      }
     } catch (error) {
       if (!(error instanceof GitCommandError)) throw error;
     }
@@ -304,7 +370,31 @@ async function ensureCommit(runner: LfsRunner, input: ReadLfsFileInput): Promise
 }
 
 function readOptions(cwd: string, maxOutputBytes: number): GitRunOptions {
-  return { cwd, timeoutMs: lfsReadTimeoutMs, maxOutputBytes };
+  return { cwd, timeoutMs: lfsReadTimeoutMs, maxOutputBytes, env: { GIT_NO_LAZY_FETCH: '1' } };
+}
+
+function inside(root: string, path: string) {
+  const local = relative(root, path);
+  return !isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`);
+}
+
+async function validateDestination(
+  runner: LfsRunner,
+  cwd: string,
+  worktree: string | null,
+  destination: string,
+) {
+  const parent = await realpath(dirname(destination));
+  const target = join(parent, basename(destination));
+  const common = (await runner.run(['rev-parse', '--git-common-dir'], readOptions(cwd, 32768))).stdout.trim();
+  for (const root of [worktree, resolve(cwd, common)]) {
+    if (root && inside(await realpath(root), target))
+      throw new LfsPayloadError('Save the historical payload outside the working tree and Git directory.');
+  }
+  const info = await lstat(target).catch(() => undefined);
+  if (info && (!info.isFile() || info.nlink > 1))
+    throw new LfsPayloadError('Choose a regular destination without symbolic or hard links.');
+  return target;
 }
 
 function parseSize(value: string): number {

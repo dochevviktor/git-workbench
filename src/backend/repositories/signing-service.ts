@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { lstat, mkdtemp, open, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type {
   RepositorySignature,
   RepositorySigningSettings,
@@ -30,12 +33,15 @@ export async function readSigningSettings(
       throw error;
     }
   };
-  const [key, localKey, format, commits, tags] = await Promise.all([
+  const [key, localKey, format, commits, tags, localCommits, localTags, config] = await Promise.all([
     read('user.signingkey'),
     read('user.signingkey', true),
     read('gpg.format'),
     read('commit.gpgsign', false, true),
     read('tag.gpgsign', false, true),
+    read('commit.gpgsign', true, true),
+    read('tag.gpgsign', true, true),
+    signingConfig(runner, cwd),
   ]);
   const values = {
     repositoryId,
@@ -44,14 +50,30 @@ export async function readSigningSettings(
     format: format ?? 'openpgp',
     commits: commits === 'true',
     tags: tags === 'true',
+    localCommits: localCommits === null ? null : localCommits === 'true',
+    localTags: localTags === null ? null : localTags === 'true',
   };
   return repositorySigningSettingsSchema.parse({
     ...values,
-    snapshot: createHash('sha256').update(JSON.stringify(values)).digest('hex'),
+    snapshot: createHash('sha256')
+      .update(JSON.stringify([values, config.bytes.toString('base64')]))
+      .digest('hex'),
   });
 }
 
-/** A single Git config write preserves unrelated entries; local scope is shared by linked worktrees. */
+async function signingConfig(runner: CommitRunner, cwd: string) {
+  const common = (await runner.run(['rev-parse', '--git-common-dir'], { cwd, ...bounds })).stdout.trim();
+  const path = join(resolve(cwd, common), 'config');
+  const info = await lstat(path);
+  if (!info.isFile() || info.size > 1024 * 1024)
+    throw new ExpectedBackendError(
+      'UNAVAILABLE',
+      'Signing settings require a regular Git config smaller than 1 MiB.',
+    );
+  return { path, bytes: await readFile(path), mode: info.mode };
+}
+
+/** Prepare all changed signing keys privately, then publish under Git's lock without changing unrelated config. */
 export async function setSigningKey(
   runner: CommitRunner,
   cwd: string,
@@ -63,13 +85,51 @@ export async function setSigningKey(
       'STALE_SNAPSHOT',
       'Signing settings changed. Reopen settings before saving.',
     );
-  if (request.key !== null) {
-    await runner.run(['config', '--local', '--replace-all', 'user.signingkey', request.key], {
-      cwd,
-      ...bounds,
-    });
-  } else if (before.localKey !== null) {
-    await runner.run(['config', '--local', '--unset-all', 'user.signingkey'], { cwd, ...bounds });
+  const changes: Array<[string, string | null, string | null]> = [
+    ['user.signingkey', request.key, before.localKey],
+  ];
+  for (const [key, next, old] of [
+    ['commit.gpgsign', request.commits, before.localCommits],
+    ['tag.gpgsign', request.tags, before.localTags],
+  ] as const)
+    if (next !== undefined)
+      changes.push([key, next === null ? null : String(next), old == null ? null : String(old)]);
+  if (changes.every(([, next, old]) => next === old)) return before;
+  const config = await signingConfig(runner, cwd);
+  const lockPath = `${config.path}.lock`;
+  const lock = await open(lockPath, 'wx', config.mode & 0o777);
+  let temporary: string | undefined,
+    published = false;
+  try {
+    if ((await readSigningSettings(runner, cwd, request.id)).snapshot !== request.snapshot)
+      throw new ExpectedBackendError('STALE_SNAPSHOT', 'Signing settings changed. Reopen settings.');
+    temporary = await mkdtemp(join(tmpdir(), 'workbench-signing-config-'));
+    const copy = join(temporary, 'config');
+    await writeFile(copy, config.bytes, { mode: 0o600 });
+    for (const [key, next, old] of changes) {
+      if (next === old) continue;
+      await runner.run(
+        [
+          'config',
+          '--file',
+          copy,
+          '--no-includes',
+          ...(next === null ? ['--unset-all', key] : ['--replace-all', key, next]),
+        ],
+        { cwd, ...bounds },
+      );
+    }
+    if ((await readSigningSettings(runner, cwd, request.id)).snapshot !== request.snapshot)
+      throw new ExpectedBackendError('STALE_SNAPSHOT', 'Signing settings changed. Reopen settings.');
+    await lock.writeFile(await readFile(copy));
+    await lock.sync();
+    await lock.close();
+    await rename(lockPath, config.path);
+    published = true;
+  } finally {
+    await lock.close();
+    if (!published) await unlink(lockPath).catch(() => undefined);
+    if (temporary) await rm(temporary, { recursive: true, force: true });
   }
   return readSigningSettings(runner, cwd, request.id);
 }

@@ -1,5 +1,15 @@
 # Git Workbench implementation plan
 
+P10 completion (2026-09-29): the [rich-diff/LFS/signing handoff](reviews/p10-rich-diffs-lfs-signing.md)
+supersedes the bounded F24/F27/F28 limitations for the Linux phase. Additional raster formats and
+restricted SVG, zoom/pan, cached LFS images, on-demand exact payload retrieval, authenticated object
+transfers, tracking rules, ownership-checked locks and atomic GPG defaults are implemented and verified.
+The Fork comparison corrected LFS card framing/metadata and retained bottom image mode controls.
+`npm run check` passes 630 tests (one opt-in skip), build passes, and all eight targeted desktop
+scenarios pass. The broad suite records 66 passes, two opt-in skips and one intermittent P07 scenario;
+that scenario also fails on the untouched starting commit, at a different keyboard-action assertion.
+The handoff retains the exact results and native-platform/format/provider limits.
+
 P09 test follow-up (2026-09-29): the [stability correction](reviews/p09-test-stability.md) resolves
 history paging interrupted by unchanged refreshes, displayed-patch copying disabled during refresh,
 and premature fixture checkout after merge. All 12 repeated targeted scenarios pass with unchanged
@@ -184,23 +194,23 @@ outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
 
-| Phase | Deliverable                                                          | Status                                                                                                                                                                                                  | Depends on                            |
-| ----- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                                                   | —                                     |
-| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                     | P00                                   |
-| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                        | P01 runner/jobs                       |
-| P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                            | P02 sessions                          |
-| P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                          | P01 writes, P02/P03 views             |
-| P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                               | P01 jobs, P02/P04, P06 recovery       |
-| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                          | P01/P04/P05 capabilities              |
-| P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                       | P06                                   |
-| P08   | Search, history/blame, reflog, bisect, patches                       | Complete for Linux phase scope (2026-09-26); investigation, recovery and patch scope verified; Bisect refresh corrected and all 62 routine Electron scenarios pass; see P08 handoffs                    | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full suite green after stability follow-up                  | P02/P05, common-repo queue            |
-| P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
-| P11   | Hosting providers, issues/PRs, notifications                         | Partial; five-provider accounts, direct token entry and configurable GitHub OAuth verified with fixtures (2026-09-24); live authorization, renewal and broader hosting remain                           | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences provider account forms corrected (2026-09-24), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                    | P02/P03 plus relevant domain services |
-| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                             | P03 history; P12 tools for AI         |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                 | Every claimed workflow                |
+| Phase | Deliverable                                                          | Status                                                                                                                                                                                                            | Depends on                            |
+| ----- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| P00   | Vite migration, isolated desktop shell, typed IPC, research and plan | Complete (2026-09-16)                                                                                                                                                                                             | —                                     |
+| P01   | Git runner, capabilities, operations, cancellation, fixtures         | Complete for Linux (2026-09-22); capabilities, trust, queue/process lifetime and Activity verified; see P01 handoff                                                                                               | P00                                   |
+| P02   | Repository sessions, open/init/local clone, persistence, tabs        | Complete for Linux (2026-09-23); manager organization, scan jobs, watchers, session isolation and persistence/recovery verified; see P02 handoff                                                                  | P01 runner/jobs                       |
+| P03   | History graph, references, commit details, revision tree             | Complete for Linux (2026-09-23); F04–F07 history/search/revision scope and 100k/1k browser budgets verified; see P03 handoff                                                                                      | P02 sessions                          |
+| P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                                    | P01 writes, P02/P03 views             |
+| P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                                         | P01 jobs, P02/P04, P06 recovery       |
+| P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                                    | P01/P04/P05 capabilities              |
+| P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                                 | P06                                   |
+| P08   | Search, history/blame, reflog, bisect, patches                       | Complete for Linux phase scope (2026-09-26); investigation, recovery and patch scope verified; Bisect refresh corrected and all 62 routine Electron scenarios pass; see P08 handoffs                              | P03/P04; recovery for mutations       |
+| P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full suite green after stability follow-up                            | P02/P05, common-repo queue            |
+| P10   | Binary/image diffs, LFS, signing                                     | Complete for Linux phase scope (2026-09-29); bounded rich formats/SVG, zoom, cached LFS images, authenticated transfers, tracking/ownership, GPG defaults and protected-agent workflows verified; see P10 handoff | P04, safe assets; P05 transfers       |
+| P11   | Hosting providers, issues/PRs, notifications                         | Partial; five-provider accounts, direct token entry and configurable GitHub OAuth verified with fixtures (2026-09-24); live authorization, renewal and broader hosting remain                                     | P05 auth; browser handoff independent |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences provider account forms corrected (2026-09-24), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                              | P02/P03 plus relevant domain services |
+| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                                       | P03 history; P12 tools for AI         |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                           | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
 strict P00→P14 execution chain: shell/workspace foundations from P12 and large-diff handling from P10
@@ -1202,6 +1212,23 @@ unexecuted submodule Move/tool variants and native-platform/exact-default parity
 ## P10 — Rich diffs, LFS, and signing
 
 Coverage: F24, F27–F28.
+
+**Complete for Linux phase scope — 2026-09-29.** The
+[P10 handoff](reviews/p10-rich-diffs-lfs-signing.md) maps all three requirements and acceptance
+criteria to catalogue/public evidence, independently authored implementation and disposable Git,
+LFS/TLS, GPG-agent and Electron verification. The dated bounded records below remain historical.
+GIF first-frame, static WebP, BMP, TGA and restricted SVG join the existing PNG/JPEG modes;
+File Tree and cached-LFS previews, zoom/pan and exact payload metadata retain bounded decoding.
+LFS management includes explicit download/refetch/upload, root tracking edits, source-aware pattern
+inspection and server-verified locks. Historical Save As downloads only the chosen missing object,
+verifies size/hash and leaves the checkout pointer intact. Atomic repository GPG defaults preserve
+inheritance, and protected-key cancellation/interruption is verified through the native agent.
+Graphical pinentry, real hosting policies, native platforms and full codec/color parity remain P14.
+
+Verification: 630 tests pass (one existing opt-in skip), build passes, and eight focused desktop
+workflows pass. The full UI run has 66 passes, two opt-in skips and an intermittent P07 keyboard-action
+scenario, also reproduced on untouched `7b2624a` with a different assertion. No P10 acceptance criterion
+remains unverified for the stated Linux policies; the handoff does not claim a fully green broad suite.
 
 Catalogue anchors: P2-003/P2-011; C05 handles image/local-LFS slices. P04 owns large text and the safe
 fallback. Signing, authenticated LFS and locks remain separately sourced public-only scope.

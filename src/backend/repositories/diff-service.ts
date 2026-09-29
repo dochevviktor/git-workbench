@@ -14,7 +14,7 @@ import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readWorkingChanges } from './working-tree-service';
 import { resolveAmendBase, RevisionNotFoundError, RevisionPathError } from './revision-service';
 import { createWorkingSnapshot } from './working-snapshot';
-import { readDiffImages } from './image-diff-service';
+import { readDiffImages, readDiffBlobIds } from './image-diff-service';
 
 const diffReadTimeoutMs = 15_000;
 const diffReadOutputLimit = 8 * 1024 * 1024;
@@ -89,6 +89,7 @@ export async function readRepositoryDiff(
 
   const content = result.stdout;
   const binary = isBinaryDiff(content);
+  const richImage = binary || /\.(?:png|jpe?g|gif|webp|bmp|tga|svg)$/iu.test(input.target.path);
   // Loading is opt-in above our own resource budget; the captured 60,000-line file is not a threshold.
   if (
     !binary &&
@@ -105,8 +106,8 @@ export async function readRepositoryDiff(
     byteLength: Buffer.byteLength(content, 'utf8'),
     message: binary ? 'Binary changes do not have an inline text diff.' : null,
     snapshot,
-    ...(binary ? { binaryMetadata: await binaryMetadata(runner, input, content) } : {}),
-    ...(binary && input.options?.includeImages
+    ...(richImage ? { binaryMetadata: await binaryMetadata(runner, input, content) } : {}),
+    ...(richImage && input.options?.includeImages
       ? { images: await readDiffImages(runner, input, content) }
       : {}),
   });
@@ -230,10 +231,8 @@ async function binaryMetadata(
   input: ReadRepositoryDiffInput,
   content: string,
 ): Promise<{ beforeBytes: number | null; afterBytes: number | null }> {
-  const indexes = [...content.matchAll(/^index ([a-f0-9]+)\.\.([a-f0-9]+)/gmu)];
-  if (indexes.length !== 1 || (content.match(/^diff --git /gmu)?.length ?? 0) !== 1)
-    return { beforeBytes: null, afterBytes: null };
-  const index = indexes[0];
+  const ids = await readDiffBlobIds(runner, input, content);
+  if (!ids) return { beforeBytes: null, afterBytes: null };
   const size = async (id: string | undefined): Promise<number | null> => {
     if (!id) return null;
     if (/^0+$/u.test(id)) return 0;
@@ -251,12 +250,12 @@ async function binaryMetadata(
       return null;
     }
   };
-  const beforeBytes = await size(index?.[1]);
+  const beforeBytes = await size(ids.before);
   if (input.target.kind === 'working' && input.target.area !== 'staged') {
     const details = await lstat(join(input.cwd, input.target.path)).catch(() => undefined);
     return { beforeBytes, afterBytes: details?.isFile() ? details.size : details ? null : 0 };
   }
-  return { beforeBytes, afterBytes: await size(index?.[2]) };
+  return { beforeBytes, afterBytes: await size(ids.after) };
 }
 
 function tooLarge(input: ReadRepositoryDiffInput, snapshot: string | null): RepositoryDiff {

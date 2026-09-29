@@ -85,6 +85,7 @@ import { useWorktrees } from '../hooks/use-worktrees';
 import { useSubmodules } from '../hooks/use-submodules';
 import { BisectBanner } from '../components/BisectBanner';
 import { RepositoryStatistics } from '../components/RepositoryStatistics';
+import { LfsDialog } from '../components/LfsDialog';
 import { AiSettingsDialog, AiRequestDialog } from '../components/AiIntegration';
 import { useBisect } from '../hooks/use-bisect';
 import { useGitFlow } from '../hooks/use-git-flow';
@@ -850,6 +851,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [leanDialog, setLeanDialog] = useState<{ id: string; kind: 'start' | 'sync' | 'finish' }>();
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
   const [statisticsView, setStatisticsView] = useState<'statistics' | 'treemap'>();
+  const [lfsRepository, setLfsRepository] = useState<{ id: string; name: string }>();
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [aiReview, setAiReview] = useState<RepositorySummary>();
   const [gitFlowFailure, setGitFlowFailure] = useState<string>();
@@ -1858,6 +1860,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                         ? 'Another repository operation is running.'
                         : undefined,
                     run: initializeLfs,
+                  },
+                  {
+                    id: 'manage-lfs',
+                    label: 'Manage Git LFS…',
+                    disabled: active.bare,
+                    disabledReason: active.bare ? 'A bare repository has no working tree.' : undefined,
+                    run: () => setLfsRepository({ id: active.id, name: active.name }),
                   },
                 ],
               },
@@ -3309,6 +3318,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           platform={platform}
           contextKey={`${active?.id}:${referenceContext?.snapshot}:${referenceBusy}`}
           onClose={() => setQuickLaunchOpen(false)}
+        />
+      )}
+      {lfsRepository && (
+        <LfsDialog
+          key={lfsRepository.id}
+          repositoryId={lfsRepository.id}
+          name={lfsRepository.name}
+          onClose={() => setLfsRepository(undefined)}
         />
       )}
       {mergeRebaseDialog && active && (

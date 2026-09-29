@@ -562,6 +562,7 @@ export function DiffViewer({
 }: DiffViewerProps) {
   const showContextMenu = useContextMenu();
   const [copyStatus, setCopyStatus] = useState<string>();
+  const [imageSource, setImageSource] = useState(false);
   const [fontSize] = usePersistentState('diff.fontSize', 12, isNumberBetween(10, 20));
   const [showMarks] = usePersistentState(
     'diff.showMarks',
@@ -802,36 +803,47 @@ export function DiffViewer({
   };
 
   const toolbar = (
-    <DiffToolbar
-      mode={mode}
-      onModeChange={onModeChange}
-      whitespace={whitespace}
-      onWhitespaceChange={onWhitespaceChange}
-      showWhitespace={showWhitespace}
-      onShowWhitespaceChange={onShowWhitespaceChange}
-      query={query}
-      onQueryChange={setQuery}
-      matchCount={matchCount}
-      activeMatch={activeMatch}
-      onMoveMatch={moveMatch}
-      selectedLineCount={selectedLines?.indexes.size ?? 0}
-      workingActions={workingActions}
-      actionsDisabledReason={actionsDisabledReason}
-      applyingAction={applyingAction}
-      onApplySelection={(workingAction) => {
-        if (!selectedLines) return;
-        void applySelection(workingAction, {
-          kind: 'lines',
-          hunk: selectedLines.hunk,
-          lineIndexes: [...selectedLines.indexes],
-        });
-      }}
-      onClearSelection={() => setSelectedLines(undefined)}
-      controls={controls}
-      wrap={wrap}
-      onWrapChange={setWrap}
-      large={large}
-    />
+    <>
+      {value?.images && imageSource && (
+        <button
+          type="button"
+          className="link-button image-source-toggle"
+          onClick={() => setImageSource(false)}
+        >
+          Show image comparison
+        </button>
+      )}
+      <DiffToolbar
+        mode={mode}
+        onModeChange={onModeChange}
+        whitespace={whitespace}
+        onWhitespaceChange={onWhitespaceChange}
+        showWhitespace={showWhitespace}
+        onShowWhitespaceChange={onShowWhitespaceChange}
+        query={query}
+        onQueryChange={setQuery}
+        matchCount={matchCount}
+        activeMatch={activeMatch}
+        onMoveMatch={moveMatch}
+        selectedLineCount={selectedLines?.indexes.size ?? 0}
+        workingActions={workingActions}
+        actionsDisabledReason={actionsDisabledReason}
+        applyingAction={applyingAction}
+        onApplySelection={(workingAction) => {
+          if (!selectedLines) return;
+          void applySelection(workingAction, {
+            kind: 'lines',
+            hunk: selectedLines.hunk,
+            lineIndexes: [...selectedLines.indexes],
+          });
+        }}
+        onClearSelection={() => setSelectedLines(undefined)}
+        controls={controls}
+        wrap={wrap}
+        onWrapChange={setWrap}
+        large={large}
+      />
+    </>
   );
 
   if (loading && !value) {
@@ -871,9 +883,18 @@ export function DiffViewer({
     );
   }
   const message = diffMessage(value);
-  if (value.state === 'binary' && value.images) {
+  if (value.images && (value.state === 'binary' || !imageSource)) {
     return (
       <div className="diff-viewer" data-testid="diff-viewer">
+        {value.state === 'text' && (
+          <button
+            type="button"
+            className="link-button image-source-toggle"
+            onClick={() => setImageSource(true)}
+          >
+            Show source diff
+          </button>
+        )}
         <ImageDiffViewer key={`${value.repositoryId}:${JSON.stringify(value.target)}`} value={value} />
       </div>
     );

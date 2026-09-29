@@ -16,6 +16,8 @@ const defaultTimeout = 30_000;
 export interface GitRunOptions {
   /** Backend-only binary blob reads; limits still count raw bytes. */
   readonly stdoutEncoding?: 'utf8' | 'base64';
+  /** Main-owned LFS transfers drain payload bytes without retaining or logging them. */
+  readonly discardStdout?: boolean;
   readonly cwd: string;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
@@ -254,7 +256,11 @@ export class GitRunner {
     while (args[index]?.startsWith('-')) index += args[index] === '-c' ? 2 : 1;
     if (
       !this.credentials ||
-      !['clone', 'ls-remote', 'fetch', 'pull', 'push', 'submodule'].includes(args[index] ?? '') ||
+      !(
+        ['clone', 'ls-remote', 'fetch', 'pull', 'push', 'submodule'].includes(args[index] ?? '') ||
+        (args[index] === 'lfs' &&
+          ['fetch', 'push', 'smudge', 'locks', 'lock', 'unlock'].includes(args[index + 1] ?? ''))
+      ) ||
       !(await this.credentials.source.available())
     )
       return this.runProcess(args, options);
@@ -362,7 +368,7 @@ export class GitRunner {
         child.stdin.end(options.stdin);
       }
       child.stdout.on('data', (chunk: Buffer | string) => {
-        if (termination) return;
+        if (termination || options.discardStdout) return;
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         if (stdoutBytes + buffer.byteLength > limit) {
           terminate(new GitOutputLimitError('stdout'));

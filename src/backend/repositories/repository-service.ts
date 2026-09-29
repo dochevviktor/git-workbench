@@ -182,6 +182,8 @@ import {
 } from './submodule-service';
 import { readBisectContext, applyBisectAction } from './bisect-service';
 import { readSigningSettings, setSigningKey, verifySignature } from './signing-service';
+import { readLfsContext, applyLfsOperation, lfsFailure } from './lfs-management';
+import type { LfsOperationRequest } from '../../common/ipc/lfs';
 import { StatisticsService } from './statistics-service';
 import type { StatisticsRequest } from '../../common/ipc/statistics';
 import { statisticsLimits } from '../../common/ipc/statistics';
@@ -3033,6 +3035,36 @@ export class RepositoryService {
     }
   }
 
+  async getLfsContext(ownerId: number, id: string) {
+    const summary = await this.requireWorktree(ownerId, id);
+    try {
+      return await readLfsContext(this.runner, summary.worktreePath, id);
+    } catch (error) {
+      throw this.mapLfsFailure(
+        error,
+        'Git LFS settings could not be read. Check the repository configuration and installed Git LFS version (3.8 or newer).',
+      );
+    }
+  }
+
+  startLfsOperation(ownerId: number, request: LfsOperationRequest): RepositoryOperation {
+    const cached = this.operationRepository(ownerId, request.id);
+    return this.startOperation(
+      {
+        ownerId,
+        repositoryId: request.id,
+        kind: 'lfs',
+        title: `Git LFS ${request.action.kind}`,
+        command: `git lfs ${request.action.kind}`,
+      },
+      (handle) =>
+        this.withRepositoryMutation(cached.commonDir, async () => {
+          const summary = await this.requireWorktree(ownerId, request.id);
+          return applyLfsOperation(this.runner, summary.worktreePath, request, handle);
+        }),
+    );
+  }
+
   startLfsInitialization(ownerId: number, request: RepositoryLfsInitializationRequest): RepositoryOperation {
     const cached = this.operationRepository(ownerId, request.id);
     if (!cached.worktreePath)
@@ -3109,6 +3141,7 @@ export class RepositoryService {
                 worktreePath: summary.worktreePath,
                 commitId: request.commitId,
                 path: request.path,
+                ...(request.remote ? { remote: request.remote } : {}),
               },
               destination,
               handle,
@@ -3125,6 +3158,15 @@ export class RepositoryService {
                 status: 'failed' as const,
                 failureReason: 'other' as const,
                 message: error.message,
+                output: '',
+              };
+            }
+            if (error instanceof GitCommandError) {
+              const failure = lfsFailure(error);
+              return {
+                status: 'failed' as const,
+                failureReason: failure.reason,
+                message: failure.message,
                 output: '',
               };
             }

@@ -6,6 +6,14 @@ import {
 import { requests, repositoryCommitDetailsRequestSchema } from '../../src/common/ipc/contracts';
 
 describe('commit inspector capabilities', () => {
+  it('keeps LFS server and configuration actions in the main window while permitting cancellation of owned exports', () => {
+    for (const kind of ['commit-details', 'file-history', 'blame'] as const) {
+      expect(canInvokeInspector(kind, requests.getRepositoryLfsContext.channel, {})).toBe(false);
+      expect(canInvokeInspector(kind, requests.startRepositoryLfsOperation.channel, {})).toBe(false);
+      expect(canInvokeInspector(kind, requests.startRepositoryLfsInitialization.channel, {})).toBe(false);
+      expect(canInvokeInspector(kind, requests.cancelRepositoryOperation.channel, {})).toBe(true);
+    }
+  });
   it('permits committed reads but rejects working files, repository mutations and generic window actions', () => {
     expect(canInvokeCommitInspector(requests.getRepositoryHistory.channel, {})).toBe(true);
     expect(canInvokeCommitInspector(requests.getRepositoryDiff.channel, { target: { kind: 'commit' } })).toBe(

@@ -1,5 +1,24 @@
 # Architecture and implementation decisions
 
+P10 (2026-09-29): the [rich-diff/LFS/signing handoff](reviews/p10-rich-diffs-lfs-signing.md) extends
+existing content contracts with bounded GIF/WebP/BMP/TGA/SVG previews, historical File Tree images
+and cached LFS pixels. TGA normalizes to PNG; other decoding remains in the sandboxed renderer.
+SVG is parsed inertly, restricted by an element/attribute allowlist and decoded only in image mode;
+repository markup never enters the application DOM. No asset protocol or CSP expansion is needed.
+Image selection does not initiate a network download, and old/index/working bytes remain distinct.
+
+Named `getLfsContext`/`startLfsOperation` extend strict shared contracts, preload and authorized main
+handlers together. Context reads isolate native Git LFS's implicit format-version write in temporary
+metadata. Explicit transfers, pattern edits and locks share the common-directory queue and validate
+review snapshots; Git LFS and the existing origin-scoped credential broker own authentication.
+Historical Save As retrieves one pointer, drains transfer bytes without keeping them in memory,
+then streams/hash-checks to a guarded native destination. Cancellation, bounded progress and owner
+cleanup use the existing registry. Lock JSON is checked against an ordinary successful ownership read
+because the installed tool can suppress JSON query failures. Inspectors may cancel their own exports
+but cannot manage LFS/configuration. GPG defaults use an atomic, lock-compatible repository config
+transaction; passphrases stay in the installed agent. Existing sandbox, context isolation, exact
+document/frame/sender checks and subscription cleanup remain intact.
+
 P09 test follow-up (2026-09-29): the [stability correction](reviews/p09-test-stability.md) preserves
 an unchanged history window through refresh and queues invalidations behind active paging/navigation.
 One bounded page plus HEAD/reference comparison determines whether retained pages remain valid; changed

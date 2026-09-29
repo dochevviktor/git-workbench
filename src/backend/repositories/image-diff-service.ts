@@ -4,12 +4,15 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { RepositoryImageSide } from '../../common/ipc/contracts';
 import { GitCancelledError, GitCommandError, GitOutputLimitError } from '../git/runner';
 import type { DiffRunner, ReadRepositoryDiffInput } from './diff-service';
+import { additionalImage } from './additional-image-formats';
+import { locatePayload, parseLfsPointer } from './lfs-service';
+import { createHash } from 'node:crypto';
 
 export const imageByteLimit = 4 * 1024 * 1024;
 const pixelLimit = 4_194_304;
 
-/** Inspect before decoding. Only static PNG and JPEG bytes ever reach a raster decoder. */
-export function imageFromBytes(bytes: Buffer): RepositoryImageSide {
+/** Inspect before decoding. Additional formats normalize or use the restricted image-only path. */
+export function imageFromBytes(bytes: Buffer, path = ''): RepositoryImageSide {
   if (bytes.length > imageByteLimit) return { state: 'too-large' };
   let width = 0;
   let height = 0;
@@ -94,7 +97,7 @@ export function imageFromBytes(bytes: Buffer): RepositoryImageSide {
     }
     if (!scanned || !ended) return { state: 'unavailable' };
     bytes = Buffer.concat(chunks);
-  } else return { state: 'unsupported' };
+  } else return additionalImage(bytes, path);
   if (!width || !height) return { state: 'unavailable' };
   if (width > 8192 || height > 8192 || width * height > pixelLimit) return { state: 'too-large' };
   return { state: 'ready', mime, width, height, base64: bytes.toString('base64') };
@@ -105,11 +108,8 @@ export async function readDiffImages(
   input: ReadRepositoryDiffInput,
   content: string,
 ): Promise<{ before: RepositoryImageSide; after: RepositoryImageSide }> {
-  const indexes = [...content.matchAll(/^index ([a-f0-9]+)\.\.([a-f0-9]+)/gmu)];
-  // Multi-parent/multi-patch diffs must not present an arbitrary pair as the whole diff.
-  if (indexes.length !== 1 || (content.match(/^diff --git /gmu)?.length ?? 0) !== 1)
-    return { before: { state: 'unavailable' }, after: { state: 'unavailable' } };
-  const index = indexes[0]!;
+  const ids = await readDiffBlobIds(runner, input, content);
+  if (!ids) return { before: { state: 'unavailable' }, after: { state: 'unavailable' } };
   const blob = async (id: string): Promise<RepositoryImageSide> => {
     if (/^0+$/u.test(id)) return { state: 'missing' };
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(id)) return { state: 'unavailable' };
@@ -122,23 +122,56 @@ export async function readDiffImages(
         stdoutEncoding: 'base64',
         env: { GIT_NO_LAZY_FETCH: '1' },
       });
-      return imageFromBytes(Buffer.from(result.stdout, 'base64'));
+      return resolveLfsImage(runner, input, Buffer.from(result.stdout, 'base64'));
     } catch (error) {
       if (error instanceof GitOutputLimitError) return { state: 'too-large' };
       if (error instanceof GitCommandError) return { state: 'unavailable' };
       throw error;
     }
   };
-  const before = await blob(index[1]!);
+  const before = await blob(ids.before);
   const after =
     input.target.kind === 'working' && input.target.area !== 'staged'
-      ? await workingImage(input)
-      : await blob(index[2]!);
+      ? await workingImage(runner, input)
+      : await blob(ids.after);
   if (input.signal?.aborted) throw new GitCancelledError();
   return { before, after };
 }
 
-async function workingImage(input: ReadRepositoryDiffInput): Promise<RepositoryImageSide> {
+export async function readDiffBlobIds(
+  runner: DiffRunner,
+  input: ReadRepositoryDiffInput,
+  content: string,
+): Promise<{ before: string; after: string } | undefined> {
+  // Multi-parent/multi-patch diffs must not present an arbitrary pair as the whole diff.
+  if ((content.match(/^diff --git /gmu)?.length ?? 0) !== 1) return undefined;
+  const indexes = [...content.matchAll(/^index ([a-f0-9]+)\.\.([a-f0-9]+)/gmu)];
+  if (indexes.length === 1) return { before: indexes[0]![1]!, after: indexes[0]![2]! };
+  if (indexes.length || !/^similarity index 100%$/mu.test(content) || !input.target.previousPath)
+    return undefined;
+  // Rename-only patches omit their index line. Both sides are the exact new-path blob in this case.
+  const object = `${input.target.kind === 'commit' ? input.target.commitId : ''}:${input.target.path}`;
+  try {
+    const id = (
+      await runner.run(['rev-parse', '--verify', '--end-of-options', object], {
+        cwd: input.cwd,
+        timeoutMs: 10_000,
+        maxOutputBytes: 1024,
+        signal: input.signal,
+        env: { GIT_NO_LAZY_FETCH: '1' },
+      })
+    ).stdout.trim();
+    return /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(id) ? { before: id, after: id } : undefined;
+  } catch (error) {
+    if (error instanceof GitCommandError) return undefined;
+    throw error;
+  }
+}
+
+async function workingImage(
+  runner: DiffRunner,
+  input: ReadRepositoryDiffInput,
+): Promise<RepositoryImageSide> {
   const path = resolve(input.cwd, input.target.path);
   try {
     const root = await realpath(input.cwd);
@@ -170,12 +203,44 @@ async function workingImage(input: ReadRepositoryDiffInput): Promise<RepositoryI
       const after = await handle.stat();
       if (count !== details.size || after.mtimeMs !== details.mtimeMs || after.size !== details.size)
         return { state: 'unavailable' };
-      return imageFromBytes(buffer.subarray(0, count));
+      return resolveLfsImage(runner, input, buffer.subarray(0, count));
     } finally {
       await handle.close();
     }
   } catch (error) {
     if (error instanceof GitCancelledError) throw error;
     return { state: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unavailable' };
+  }
+}
+
+async function resolveLfsImage(
+  runner: DiffRunner,
+  input: ReadRepositoryDiffInput,
+  bytes: Buffer,
+): Promise<RepositoryImageSide> {
+  const pointer = bytes.length <= 1024 ? parseLfsPointer(bytes.toString('utf8')) : null;
+  if (!pointer) return imageFromBytes(bytes, input.target.path);
+  if (pointer.size > imageByteLimit) return { state: 'too-large' };
+  const payload = await locatePayload(runner, input.cwd, pointer);
+  if (!payload || payload.byteLength !== pointer.size) return { state: 'unavailable' };
+  const file = await open(payload.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size !== pointer.size) return { state: 'unavailable' };
+    const content = Buffer.alloc(pointer.size + 1);
+    let count = 0;
+    while (count < content.length) {
+      if (input.signal?.aborted) throw new GitCancelledError();
+      const result = await file.read(content, count, content.length - count, count);
+      if (!result.bytesRead) break;
+      count += result.bytesRead;
+    }
+    const value = content.subarray(0, count);
+    if (count !== pointer.size || createHash('sha256').update(value).digest('hex') !== pointer.oid.slice(7))
+      return { state: 'unavailable' };
+    const image = imageFromBytes(value, input.target.path);
+    return image.state === 'ready' ? { ...image, byteLength: pointer.size } : image;
+  } finally {
+    await file.close();
   }
 }

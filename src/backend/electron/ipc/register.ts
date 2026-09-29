@@ -891,6 +891,12 @@ export function registerAppIpc(
     register(requests.getRepositoryLfsFile, (window, { id, commitId, path }) =>
       repositoryService.getLfsFile(window.webContents.id, id, commitId, path),
     );
+    register(requests.getRepositoryLfsContext, (window, { id }) =>
+      repositoryService.getLfsContext(window.webContents.id, id),
+    );
+    register(requests.startRepositoryLfsOperation, (window, request) =>
+      repositoryService.startLfsOperation(window.webContents.id, request),
+    );
     register(requests.startRepositoryLfsInitialization, (window, request) =>
       repositoryService.startLfsInitialization(window.webContents.id, request),
     );

@@ -15,6 +15,8 @@ import { useRepositoryDiff } from '../hooks/use-repository-diff';
 import { useRevisionInspection } from '../hooks/use-revision-inspection';
 import type { RevisionInspection } from '../hooks/use-revision-inspection';
 import { useRepositoryLfs } from '../hooks/use-repository-lfs';
+import { LfsDialog } from './LfsDialog';
+import { ImageDiffViewer } from './ImageDiffViewer';
 import { changeDetail, statusBadge } from '../lib/change-status';
 import {
   avatarColor,
@@ -169,14 +171,26 @@ function lfsSizeLabel(bytes: number): string {
 interface LfsPayloadCardProps {
   readonly path: string;
   readonly lfs: ReturnType<typeof useRepositoryLfs>;
+  readonly status?: RepositoryCommitChange['status'];
 }
 
-function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
+function LfsPayloadCard({ path, lfs, status }: LfsPayloadCardProps) {
+  const [preview, setPreview] = useState(false);
   const file = lfs.lfs;
+  useEffect(() => setPreview(false), [path, file?.commitId, file?.repositoryId]);
+  const imageDiff = useRepositoryDiff(
+    preview ? file?.repositoryId : undefined,
+    preview && file ? { kind: 'commit', commitId: file.commitId, path, previousPath: null } : undefined,
+    'normal',
+  );
   const history = file?.history.kind === 'lfs' ? file.history : undefined;
   const operation = lfs.saveOperation;
   const running = operation?.status === 'running';
-  const canSave = history?.payloadState === 'available' && !running;
+  const canSave =
+    !!history &&
+    history.payloadState !== 'invalid' &&
+    (history.payloadState === 'available' || !!file?.gitLfs.available) &&
+    !running;
   const saveLabel = running
     ? operation?.progress
       ? `${operation.progress.phase}${
@@ -191,25 +205,31 @@ function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
 
   return (
     <div className="lfs-preview" data-testid="lfs-file-card" aria-live="polite">
-      <div className="preview-header">
-        <span className="lfs-badge">LFS</span>
-        <span className="preview-path" title={path}>
-          {path}
-        </span>
-      </div>
       {lfs.loading ? (
         <p className="preview-note">Inspecting Git LFS metadata…</p>
       ) : lfs.error ? (
         <p className="preview-note" role="alert">
           {lfs.error}
         </p>
+      ) : preview && imageDiff.value?.images ? (
+        <>
+          <button type="button" className="link-button" onClick={() => setPreview(false)}>
+            Show file card
+          </button>
+          <ImageDiffViewer value={imageDiff.value} />
+        </>
       ) : history ? (
         <div className="lfs-card-body">
-          <span className="lfs-card-state">created</span>
-          <FileIcon size={34} />
-          <strong>{lfsSizeLabel(history.pointer.size)}</strong>
+          <div className="lfs-card-caption">
+            <span className="lfs-badge">LFS</span>
+            {status && <span className="lfs-card-state">{status === 'added' ? 'created' : status}</span>}
+          </div>
+          <div className="lfs-file-frame">
+            <FileIcon size={34} />
+            <span>{path.match(/\.[^./]+$/u)?.[0] ?? 'File'}</span>
+          </div>
           <MenuButton
-            className="pane-icon-button"
+            className="lfs-size-button"
             aria-label="LFS payload options"
             title="LFS payload options"
             menuLabel="LFS payload options"
@@ -219,8 +239,8 @@ function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
                 label: 'Save As…',
                 disabled: !canSave,
                 disabledReason:
-                  history.payloadState === 'missing'
-                    ? 'The payload is not available in the local LFS cache.'
+                  history.payloadState === 'missing' && !file?.gitLfs.available
+                    ? 'Install Git LFS to retrieve this payload.'
                     : history.payloadState === 'invalid'
                       ? 'The local payload does not match the pointer size.'
                       : running
@@ -230,11 +250,40 @@ function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
               },
             ]}
           >
+            <span>{lfsSizeLabel(history.pointer.size)}</span>
             <span className="lfs-size-menu-mark" aria-hidden="true">
-              ⋮
+              ⌄
             </span>
           </MenuButton>
           {saveLabel && <span className="lfs-card-status">{saveLabel}</span>}
+          {/\.(?:png|jpe?g|gif|webp|bmp|tga|svg)$/iu.test(path) && (
+            <button
+              type="button"
+              className="link-button"
+              disabled={history.payloadState !== 'available' || imageDiff.loading}
+              onClick={() => setPreview(true)}
+            >
+              {imageDiff.loading ? 'Loading preview…' : 'Compare images'}
+            </button>
+          )}
+          {imageDiff.error && <span role="alert">{imageDiff.error}</span>}
+          {running && (
+            <>
+              <progress
+                aria-label="LFS retrieval progress"
+                max="100"
+                value={operation.progress?.percent ?? undefined}
+              />
+              <button
+                type="button"
+                className="link-button"
+                disabled={operation.cancelRequested}
+                onClick={() => void lfs.cancel()}
+              >
+                Cancel retrieval
+              </button>
+            </>
+          )}
           {lfs.saveError && (
             <span className="lfs-card-status error" role="alert">
               {lfs.saveError}
@@ -243,7 +292,9 @@ function LfsPayloadCard({ path, lfs }: LfsPayloadCardProps) {
           {history.payloadState !== 'available' && !saveLabel && (
             <span className="lfs-card-status">
               {history.payloadState === 'missing'
-                ? 'Payload not available locally; network retrieval is not enabled here.'
+                ? file?.gitLfs.available
+                  ? 'Save As downloads this payload from the configured LFS remote.'
+                  : 'Install Git LFS to retrieve this payload.'
                 : 'Local payload size does not match the pointer.'}
             </span>
           )}
@@ -284,7 +335,7 @@ function ChangeFacts({
       </div>
       <div className="preview-body diff-preview-body">
         {lfs.loading || lfs.error || lfs.lfs?.history.kind === 'lfs' ? (
-          <LfsPayloadCard path={change.path} lfs={lfs} />
+          <LfsPayloadCard path={change.path} lfs={lfs} status={change.status} />
         ) : (
           <DiffViewer
             value={diff.value}
@@ -493,6 +544,7 @@ export function CommitDetails({
   );
   const [popOutError, setPopOutError] = useState<string>();
   const [fileInspectorError, setFileInspectorError] = useState<string>();
+  const [lfsPath, setLfsPath] = useState<string>();
   const [openingPopOut, setOpeningPopOut] = useState(false);
   const [fileListMode, setFileListMode] = usePersistentState<FileListMode>(
     'details.fileListMode',
@@ -599,6 +651,15 @@ export function CommitDetails({
             },
           },
           menuSeparator,
+          ...(!directory
+            ? [
+                {
+                  id: 'file-lfs',
+                  label: 'LFS',
+                  submenu: [{ id: 'file-lfs-lock', label: 'Lock / Unlock…', run: () => setLfsPath(path) }],
+                },
+              ]
+            : []),
           { id: 'copy-file-path', label: 'Copy Path', run: () => copyText(path) },
         ]),
       });
@@ -965,6 +1026,26 @@ export function CommitDetails({
                   <p className="preview-note">Reading file…</p>
                 ) : blobError ? (
                   <RetryAlert message={blobError} onRetry={() => void loadBlob(blobPath)} />
+                ) : blob?.image ? (
+                  <ImageDiffViewer
+                    single
+                    value={{
+                      repositoryId: blob.repositoryId,
+                      target: {
+                        kind: 'commit',
+                        commitId: blob.commitId,
+                        path: blob.path,
+                        previousPath: null,
+                      },
+                      state: 'binary',
+                      content: '',
+                      byteLength: blob.byteLength,
+                      snapshot: null,
+                      message: null,
+                      binaryMetadata: { beforeBytes: null, afterBytes: blob.byteLength },
+                      images: { before: { state: 'missing' }, after: blob.image },
+                    }}
+                  />
                 ) : blob?.state === 'binary' ? (
                   <p className="preview-note">This file is binary and has no text preview.</p>
                 ) : blob?.state === 'too-large' ? (
@@ -1078,6 +1159,15 @@ export function CommitDetails({
         <div className="inline-alert" role="alert">
           {popOutError}
         </div>
+      )}
+      {lfsPath && repositoryId && (
+        <LfsDialog
+          key={`${repositoryId}:${lfsPath}`}
+          repositoryId={repositoryId}
+          name={lfsPath}
+          initialPath={lfsPath}
+          onClose={() => setLfsPath(undefined)}
+        />
       )}
       {fileInspectorError && (
         <div className="inline-alert" role="alert">

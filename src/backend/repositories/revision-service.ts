@@ -11,6 +11,7 @@ import {
   repositoryRevisionTreeSchema,
 } from '../../common/ipc/contracts';
 import { GitCommandError } from '../git/runner';
+import { imageByteLimit, imageFromBytes } from './image-diff-service';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 
 const revisionReadTimeoutMs = 15_000;
@@ -183,6 +184,25 @@ export async function readRevisionBlob(
 
   const sizeResult = await runner.run(['cat-file', '-s', object], readOptions(input.cwd, 1_024));
   const byteLength = parseBlobSize(sizeResult.stdout.trim());
+  if (/\.(?:png|jpe?g|gif|webp|bmp|tga|svg)$/iu.test(path) && byteLength <= imageByteLimit) {
+    const raw = await runner.run(['cat-file', 'blob', object], {
+      ...readOptions(input.cwd, imageByteLimit),
+      stdoutEncoding: 'base64',
+      env: { GIT_NO_LAZY_FETCH: '1' },
+    });
+    const bytes = Buffer.from(raw.stdout, 'base64');
+    const image = imageFromBytes(bytes, path);
+    if (image.state !== 'unsupported' || bytes.includes(0))
+      return repositoryRevisionBlobSchema.parse({
+        repositoryId: input.repositoryId,
+        commitId: input.commitId,
+        path,
+        state: 'binary',
+        content: '',
+        byteLength,
+        image,
+      });
+  }
   if (byteLength > revisionBlobPreviewLimit) {
     return repositoryRevisionBlobSchema.parse({
       repositoryId: input.repositoryId,

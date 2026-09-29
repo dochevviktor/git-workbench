@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RepositoryDiff, RepositoryImageSide } from '../../../common/ipc/contracts';
 import { compareImagePixels } from '../lib/image-comparison';
+import { decodeRepositoryImage } from '../lib/decode-image';
+import { FileIcon } from './Icons';
 import './image-diff.css';
 
 type Mode = 'Side-by-Side' | 'Swipe' | 'Onion Skin' | 'Pixel';
@@ -18,11 +20,11 @@ function description(side: RepositoryImageSide | undefined): string {
     case 'unavailable':
       return 'Preview unavailable. Refresh to retry.';
     default:
-      return 'No preview. Supported: static PNG and JPEG.';
+      return 'No preview for this format or image variant.';
   }
 }
 
-function Raster({ bitmap, label }: { bitmap: ImageBitmap; label: string }) {
+function Raster({ bitmap, label, zoom }: { bitmap: ImageBitmap; label: string; zoom: number | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -31,7 +33,15 @@ function Raster({ bitmap, label }: { bitmap: ImageBitmap; label: string }) {
     canvas.height = bitmap.height;
     canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
   }, [bitmap]);
-  return <canvas ref={ref} className="image-raster" role="img" aria-label={label} />;
+  return (
+    <canvas
+      ref={ref}
+      className="image-raster"
+      role="img"
+      aria-label={label}
+      style={zoom === null ? undefined : { width: bitmap.width * zoom, maxWidth: 'none' }}
+    />
+  );
 }
 
 function Combined({
@@ -39,11 +49,13 @@ function Combined({
   mode,
   amount,
   onAmount,
+  zoom,
 }: {
   decoded: Decoded;
   mode: Mode;
   amount: number;
   onAmount: (amount: number) => void;
+  zoom: number | null;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -105,12 +117,16 @@ function Combined({
     if (bounds?.width) onAmount(Math.max(0, Math.min(100, (100 * (clientX - bounds.left)) / bounds.width)));
   };
   return (
-    <div className="image-combined">
+    <div className="image-combined" style={zoom === null ? undefined : { minWidth: width * zoom + 16 }}>
       <div className="image-side-labels">
         <span>old</span>
         <span>new</span>
       </div>
-      <div className="image-composite-frame" ref={frame} style={{ width }}>
+      <div
+        className="image-composite-frame"
+        ref={frame}
+        style={{ width: width * (zoom ?? 1), maxWidth: zoom === null ? '100%' : 'none' }}
+      >
         <canvas ref={canvas} className="image-raster" role="img" aria-label={`${mode} image comparison`} />
         {mode === 'Swipe' && (
           <button
@@ -164,10 +180,12 @@ function Combined({
 }
 
 /** Receives bytes only, never repository URLs. Chromium decodes inside the sandboxed renderer. */
-export function ImageDiffViewer({ value }: { value: RepositoryDiff }) {
+export function ImageDiffViewer({ value, single = false }: { value: RepositoryDiff; single?: boolean }) {
   const [mode, setMode] = useState<Mode>('Side-by-Side');
   const [amount, setAmount] = useState(50);
   const [decoded, setDecoded] = useState<Decoded>();
+  const [zoom, setZoom] = useState<number | null>(null);
+  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const images = value.images;
   useEffect(() => {
     let disposed = false;
@@ -177,10 +195,7 @@ export function ImageDiffViewer({ value }: { value: RepositoryDiff }) {
     const decode = async (side: RepositoryImageSide | undefined, label: string) => {
       if (side?.state !== 'ready') return null;
       try {
-        const bytes = Uint8Array.from(atob(side.base64), (character) => character.charCodeAt(0));
-        const bitmap = await createImageBitmap(new Blob([bytes], { type: side.mime }), {
-          imageOrientation: 'none',
-        });
+        const bitmap = await decodeRepositoryImage(side);
         if (disposed || bitmap.width !== side.width || bitmap.height !== side.height) {
           bitmap.close();
           if (!disposed) failures.push(`${label}: invalid image dimensions.`);
@@ -211,39 +226,93 @@ export function ImageDiffViewer({ value }: { value: RepositoryDiff }) {
   const selected = canCompare ? mode : 'Side-by-Side';
   return (
     <div className="image-diff-viewer" data-testid="image-diff-viewer">
-      <div className="image-diff-content">
+      <div
+        className="image-diff-content"
+        tabIndex={0}
+        aria-label="Image viewport"
+        onPointerDown={(event) => {
+          if (zoom === null || (event.target as HTMLElement).closest('button, input, label, select')) return;
+          pan.current = {
+            x: event.clientX,
+            y: event.clientY,
+            left: event.currentTarget.scrollLeft,
+            top: event.currentTarget.scrollTop,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (pan.current) {
+            event.currentTarget.scrollLeft = pan.current.left + pan.current.x - event.clientX;
+            event.currentTarget.scrollTop = pan.current.top + pan.current.y - event.clientY;
+          }
+        }}
+        onPointerUp={() => {
+          pan.current = null;
+        }}
+        onLostPointerCapture={() => {
+          pan.current = null;
+        }}
+      >
         {selected === 'Side-by-Side' ? (
-          <div className="image-diff-pair">
-            {(['before', 'after'] as const).map((side) => {
+          <div
+            className="image-diff-pair"
+            style={{
+              ...(single ? { gridTemplateColumns: 'minmax(0, 1fr)' } : {}),
+              ...(zoom !== null && decoded
+                ? { minWidth: (decoded.before?.width ?? 0) * zoom + (decoded.after?.width ?? 0) * zoom + 48 }
+                : {}),
+            }}
+          >
+            {(single ? (['after'] as const) : (['before', 'after'] as const)).map((side) => {
               const path =
                 side === 'before' ? (value.target.previousPath ?? value.target.path) : value.target.path;
-              const size = value.binaryMetadata?.[side === 'before' ? 'beforeBytes' : 'afterBytes'];
+              const image = images?.[side];
+              const size =
+                (image?.state === 'ready' ? image.byteLength : undefined) ??
+                value.binaryMetadata?.[side === 'before' ? 'beforeBytes' : 'afterBytes'];
               const bitmap = decoded?.[side];
               return (
-                <section className={`image-diff-side ${side}`} key={side}>
-                  <strong>{side === 'before' ? 'old' : 'new'}</strong>
+                <section className={`image-diff-side ${side}`} key={side} title={path}>
+                  {!single && <strong>{side === 'before' ? 'old' : 'new'}</strong>}
                   {bitmap ? (
-                    <Raster bitmap={bitmap} label={`${side === 'before' ? 'Old' : 'New'} image`} />
+                    <Raster
+                      bitmap={bitmap}
+                      label={`${side === 'before' ? 'Old' : 'New'} image`}
+                      zoom={zoom}
+                    />
                   ) : (
                     <div className="image-file-card">
+                      <FileIcon size={32} />
                       <span>{path.match(/\.[^./]+$/u)?.[0] ?? 'File'}</span>
                     </div>
                   )}
-                  <span>{description(images?.[side])}</span>
-                  <span>
-                    {size == null
-                      ? 'Size unavailable'
-                      : `${size.toLocaleString()} bytes (${size.toLocaleString()} B)`}
-                  </span>
-                  <span className="image-path" title={path}>
-                    {path}
-                  </span>
+                  {bitmap ? (
+                    <span>
+                      {description(images?.[side])} ({size?.toLocaleString() ?? '?'} bytes)
+                    </span>
+                  ) : (
+                    <>
+                      <span>{description(images?.[side])}</span>
+                      <span>
+                        {size == null
+                          ? 'Size unavailable'
+                          : `${size.toLocaleString()} bytes (${size.toLocaleString()} B)`}
+                      </span>
+                    </>
+                  )}
+                  {value.target.previousPath && (
+                    <span className="image-path" title={path}>
+                      {path}
+                    </span>
+                  )}
                 </section>
               );
             })}
           </div>
         ) : (
-          decoded && <Combined decoded={decoded} mode={selected} amount={amount} onAmount={setAmount} />
+          decoded && (
+            <Combined decoded={decoded} mode={selected} amount={amount} onAmount={setAmount} zoom={zoom} />
+          )
         )}
         {!decoded && <p role="status">Decoding images…</p>}
         {decoded?.failures.map((failure) => (
@@ -253,18 +322,34 @@ export function ImageDiffViewer({ value }: { value: RepositoryDiff }) {
         ))}
       </div>
       <div className="image-diff-modes" role="group" aria-label="Image comparison mode">
-        {modes.map((item) => (
-          <button
-            type="button"
-            key={item}
-            aria-pressed={selected === item}
-            disabled={item !== 'Side-by-Side' && !canCompare}
-            onClick={() => setMode(item)}
-          >
-            {item}
-          </button>
-        ))}
+        {!single &&
+          modes.map((item) => (
+            <button
+              type="button"
+              key={item}
+              aria-pressed={selected === item}
+              disabled={item !== 'Side-by-Side' && !canCompare}
+              onClick={() => setMode(item)}
+            >
+              {item}
+            </button>
+          ))}
+        <select
+          aria-label="Image zoom"
+          value={zoom ?? 'fit'}
+          onChange={(event) => setZoom(event.target.value === 'fit' ? null : Number(event.target.value))}
+        >
+          <option value="fit">Fit</option>
+          {[0.25, 0.5, 1, 2, 4].map((scale) => (
+            <option key={scale} value={scale}>
+              {scale * 100}%
+            </option>
+          ))}
+        </select>
       </div>
+      {[images?.before, images?.after].some(
+        (side) => side?.state === 'ready' && side.mime === 'image/gif',
+      ) && <span className="image-format-note">GIF comparison uses the first frame.</span>}
     </div>
   );
 }

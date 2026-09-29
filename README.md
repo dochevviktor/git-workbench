@@ -100,9 +100,13 @@ Interrupted finishes survive restart with Continue Git-flow and Stop Finish cont
 [P09 handoff](docs/reviews/p09-topology.md) for verification and screenshots; the
 [stability follow-up](docs/reviews/p09-test-stability.md) resolves its initial full-suite failures.
 
-F24 adds bounded local Git LFS pointer/materialized inspection, optional repository-local
-initialization, exact historical payload Save As with SHA-256 verification, and retrieval progress;
-remote/authenticated transfers, push, locks, and remote missing-object recovery remain later work.
+P10 adds Repository → Git LFS → Manage Git LFS for explicit object download/refetch/upload, tracking
+rules and server-verified file locks. Initialize installs repository-local LFS configuration/hooks.
+Historical Save As retrieves missing payloads and verifies their size/SHA-256 outside the checkout;
+the working pointer stays unchanged. Selecting a row never downloads an object. Transfers use installed
+Git LFS and the existing account credentials or native Git helpers, with progress/cancellation in Activity.
+Only your own verified locks can be unlocked. Review tracking changes in Local Changes before committing.
+Git LFS 3.8.0 is the tested optional version; it is not bundled or installed automatically.
 Git-flow uses ordinary Git and repository-local configuration; specialized remote publishing, topic
 rebase and automatic stash/reapply remain outside P09. Lean Branching remains
 a separate F38 family: the Branch dropdown and Repository → Lean Branching offer
@@ -114,16 +118,19 @@ use Recovery Continue/Abort, then Sync can be run again. See the
 F26 adds manual Bisect start/Bad/Good/Skip/Abort, visible range and results, and restoration of active
 sessions after restart. First-bad and ambiguous skipped-candidate results stay visible until Abort
 restores the original checkout; local changes must be committed or stashed before advancing.
-F28 adds GPG signing for commits/amends and annotated tags, repository-local signing-key configuration,
-Git-default/Unsigned choices, and explicit commit/tag verification with separate trust and failure states.
+F28 adds GPG signing for commits/amends and annotated tags, atomic repository-local key/commit/tag defaults,
+explicit inheritance, Git-default/Unsigned choices, and commit/tag verification with separate trust and failure states.
 The installed GPG agent handles passphrases. Key generation/import, global settings UI and SSH/X.509
 verification remain outside this workflow; see the [F28 handoff](docs/reviews/f28-signing.md).
 
-F27 adds static PNG/JPEG comparison in working and committed diffs: Side-by-Side, draggable Swipe,
-Onion Skin and Pixel highlighting, with dimensions, byte sizes and transparency backgrounds.
-Previews are bounded to 4 MiB and 4 megapixels per side; other formats, corrupt and oversized files
-retain metadata/fallback states. SVG stays inert. See the [F27 handoff](docs/reviews/f27-image-diffs.md)
-for the independent comparison rules and remaining format/LFS limits.
+F27 compares PNG/JPEG, GIF first frames, static WebP, BMP, TGA and restricted SVG in working/committed
+diffs: Side-by-Side, Swipe, Onion Skin and Pixel, with dimensions, sizes, transparency and Fit/25–400% zoom.
+Drag a zoomed viewport to pan; keyboard scrolling remains available. File Tree previews historical images,
+and cached LFS image cards offer Compare images. SVG source is accessible through Show source diff.
+Previews are bounded to 4 MiB and 4 megapixels per side. Unsupported variants, corrupt and oversized files
+retain explicit fallbacks. SVG scripts, external content and unsupported constructs never render.
+See the [P10 handoff](docs/reviews/p10-rich-diffs-lfs-signing.md) for verification, source evidence,
+independent format policies and remaining platform/provider limits.
 
 The [F01–F16 catalogue correction pass](docs/reviews/f01-f16-catalogue-corrections.md) adds Clone and Test
 Connection, persistent tab reorder/reopen and window bounds, CLI/second-instance opening, scoped history

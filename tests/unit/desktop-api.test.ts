@@ -26,6 +26,42 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates P10 LFS management inputs/results without admitting commands, endpoints or forced unlocks', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: {
+        repositoryId: id,
+        snapshot: 'b'.repeat(64),
+        available: false,
+        version: null,
+        head: null,
+        remotes: [],
+        defaultRemote: null,
+        patterns: [],
+      },
+    });
+    expect(await api.repository.getLfsContext({ id })).toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-lfs-context', { id });
+    invoke.mockClear();
+    for (const action of [
+      { kind: 'fetch', remote: 'origin', endpoint: 'https://unreviewed.invalid' },
+      { kind: 'unlock', remote: 'origin', path: '../secret', lockId: '1' },
+      { kind: 'unlock', remote: 'origin', path: 'asset.bin', lockId: '1', force: true },
+      { kind: 'track', pattern: '*.bin\n* filter=program', lockable: false },
+      { kind: 'exec', command: 'anything' },
+    ])
+      expect(
+        await api.repository.startLfsOperation({ id, snapshot: 'b'.repeat(64), action } as never),
+      ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({ ok: true, value: { repositoryId: id, secret: 'must not cross' } });
+    expect(await api.repository.getLfsContext({ id })).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates P09 comparison reads and named topology mutations in both directions', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;
@@ -390,7 +426,7 @@ describe('preload capability API', () => {
       ok: true,
       value: {
         ...value,
-        images: { ...value.images, after: { ...value.images.after, mime: 'image/svg+xml' } },
+        images: { ...value.images, after: { ...value.images.after, mime: 'text/html' } },
       },
     });
     expect(await api.repository.getDiff(request)).toMatchObject({
