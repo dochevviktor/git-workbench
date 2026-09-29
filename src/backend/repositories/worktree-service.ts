@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { lstat, realpath, stat } from 'node:fs/promises';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type {
   RepositoryWorktree,
   RepositoryWorktreeAction,
@@ -16,6 +16,8 @@ import {
 import { GitCommandError, GitTimeoutError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { displayOutput } from './network-service';
+import { parseWorkingTreeStatus } from './working-tree-service';
+import { hasUnrelatedRepository, topologyPathFingerprint } from './topology-paths';
 
 const readTimeoutMs = 15_000;
 const readOutputLimit = 8 * 1024 * 1024;
@@ -68,13 +70,14 @@ export async function readWorktreeContext(
   const raw = await readRawWorktrees(runner, input.cwd);
   const currentPath = input.currentWorktreePath ? await canonicalOrOriginal(input.currentWorktreePath) : null;
   const worktrees: RepositoryWorktree[] = [];
+  const fingerprints: string[] = [];
   for (const [index, item] of raw.slice(0, worktreeLimit).entries()) {
     const canonicalPath = await canonicalOrOriginal(item.path);
     const exists = await directoryExists(item.path);
     const isCurrent = currentPath !== null && canonicalPath === currentPath;
     const workingTree = item.bare
       ? unavailableWorkingTree()
-      : await inspectWorkingTree(runner, item.path, exists);
+      : await inspectWorkingTree(runner, item.path, exists, (value) => fingerprints.push(value));
     worktrees.push({
       id: worktreeId(input.commonDir, item.path),
       path: item.path,
@@ -95,7 +98,10 @@ export async function readWorktreeContext(
   return repositoryWorktreeContextSchema.parse({
     repositoryId: input.repositoryId,
     worktrees,
-    snapshot: worktreeSnapshot(worktrees),
+    snapshot: createHash('sha256')
+      .update(worktreeSnapshot(worktrees))
+      .update(JSON.stringify(fingerprints))
+      .digest('hex'),
   } satisfies RepositoryWorktreeContext);
 }
 
@@ -185,7 +191,8 @@ async function planAction(
   action: RepositoryWorktreeAction,
 ): Promise<ActionPlan | ActionRefusal> {
   switch (action.kind) {
-    case 'create': {
+    case 'create':
+    case 'create-detached': {
       const destination = resolve(action.path);
       const parent = dirname(destination);
       if (!isAbsolute(action.path) || action.path.includes('\0') || !isAbsolute(destination)) {
@@ -210,6 +217,34 @@ async function planAction(
         };
       }
 
+      const canonicalDestination = resolve(await realpath(parent), destination.slice(parent.length + 1));
+      if (
+        context.worktrees.some((tree) => contains(tree.path, canonicalDestination)) ||
+        contains(commonDir, canonicalDestination)
+      )
+        return {
+          reason: 'invalid-path',
+          message: 'Choose a location outside the existing worktrees and Git metadata.',
+          worktreeId: null,
+        };
+      if (action.kind === 'create-detached') {
+        try {
+          await runner.run(['cat-file', '-e', `${action.commitId}^{commit}`], readOptions(cwd));
+        } catch (error) {
+          if (!(error instanceof GitCommandError)) throw error;
+          return {
+            reason: 'not-found',
+            message: 'The selected commit is no longer available.',
+            worktreeId: null,
+          };
+        }
+        return {
+          args: ['worktree', 'add', '--quiet', '--detach', destination, action.commitId],
+          message: 'Created a worktree at a detached HEAD.',
+          worktreeId: worktreeId(commonDir, destination),
+          path: destination,
+        };
+      }
       const references = await readBranchReferences(runner, cwd);
       if (!references.has(action.sourceFullName)) {
         return { reason: 'not-found', message: 'That branch is no longer available.', worktreeId: null };
@@ -280,6 +315,35 @@ async function planAction(
         path: destination,
       };
     }
+    case 'lock':
+    case 'unlock': {
+      const worktree = context.worktrees.find((item) => item.id === action.worktreeId);
+      if (!worktree)
+        return {
+          reason: 'not-found',
+          message: 'That worktree is no longer registered.',
+          worktreeId: action.worktreeId,
+        };
+      if (worktree.isMain)
+        return { reason: 'main', message: 'The main worktree cannot be locked.', worktreeId: worktree.id };
+      if (worktree.locked === (action.kind === 'lock'))
+        return {
+          reason: 'stale',
+          message: `The worktree is already ${worktree.locked ? 'locked' : 'unlocked'}. Refresh its state.`,
+          worktreeId: worktree.id,
+        };
+      return {
+        args: [
+          'worktree',
+          action.kind,
+          ...(action.kind === 'lock' && action.reason ? ['--reason', action.reason] : []),
+          worktree.path,
+        ],
+        message: `${action.kind === 'lock' ? 'Locked' : 'Unlocked'} worktree.`,
+        worktreeId: worktree.id,
+        path: worktree.path,
+      };
+    }
     case 'remove': {
       const worktree = context.worktrees.find((candidate) => candidate.id === action.worktreeId);
       if (!worktree)
@@ -320,6 +384,35 @@ async function planAction(
           worktreeId: worktree.id,
         };
       }
+      if (
+        !(await lstat(worktree.path)).isDirectory() ||
+        context.worktrees.some((other) => other.id !== worktree.id && contains(worktree.path, other.path)) ||
+        (await hasUnrelatedRepository(worktree.path))
+      )
+        return {
+          reason: 'invalid-path',
+          message:
+            'This path contains another repository or no longer identifies a worktree directory. Remove nested repositories separately.',
+          worktreeId: worktree.id,
+        };
+      const actualCommon = (
+        await runner.run(
+          ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+          readOptions(worktree.path),
+        )
+      ).stdout.trimEnd();
+      if ((await canonicalOrOriginal(actualCommon)) !== (await canonicalOrOriginal(commonDir)))
+        return {
+          reason: 'invalid-path',
+          message: 'The worktree path now belongs to a different repository.',
+          worktreeId: worktree.id,
+        };
+      if (worktree.workingTree.state === 'unknown' || worktree.workingTree.state === 'unavailable')
+        return {
+          reason: 'other',
+          message: 'The worktree could not be inspected. Refresh before removing it.',
+          worktreeId: worktree.id,
+        };
       const forceCount = action.force && worktree.locked ? 2 : action.force ? 1 : 0;
       return {
         args: ['worktree', 'remove', ...Array.from({ length: forceCount }, () => '--force'), worktree.path],
@@ -339,7 +432,7 @@ async function planAction(
 }
 
 async function refuseAction(action: RepositoryWorktreeAction): Promise<ActionRefusal | undefined> {
-  if (action.kind !== 'create') return undefined;
+  if (action.kind !== 'create' && action.kind !== 'create-detached') return undefined;
   if (!isAbsolute(action.path) || action.path.startsWith('-')) {
     return { reason: 'invalid-path', message: 'Choose an absolute worktree destination.', worktreeId: null };
   }
@@ -420,10 +513,10 @@ async function readRawWorktrees(runner: WorktreeRunner, cwd: string): Promise<Ra
       else if (key === 'bare') current.bare = true;
       else if (key === 'locked') {
         current.locked = true;
-        current.lockReason = value || null;
+        current.lockReason = value.slice(0, 512) || null;
       } else if (key === 'prunable') {
         current.prunable = true;
-        current.pruneReason = value || null;
+        current.pruneReason = value.slice(0, 512) || null;
       }
     }
   }
@@ -462,6 +555,7 @@ async function inspectWorkingTree(
   runner: WorktreeRunner,
   cwd: string,
   exists: boolean,
+  fingerprint: (value: string) => void,
 ): Promise<RepositoryWorkingTree> {
   if (!exists) return { state: 'unavailable', changedFileCount: null };
   try {
@@ -474,15 +568,26 @@ async function inspectWorkingTree(
         '--no-optional-locks',
         'status',
         '--porcelain=v2',
-        '--untracked-files=normal',
+        '--untracked-files=all',
+        '--ignored=matching',
         '-z',
         '--',
       ],
       readOptions(cwd),
     );
-    const changedFileCount = result.stdout
-      .split('\0')
-      .filter((entry) => /^(?:1 |2 |u |\? |! )/u.test(entry)).length;
+    const records = parseWorkingTreeStatus(result.stdout);
+    const changedFileCount = records.length;
+    fingerprint(
+      createHash('sha256')
+        .update(result.stdout)
+        .update(
+          await topologyPathFingerprint(
+            cwd,
+            records.map((record) => record.path),
+          ),
+        )
+        .digest('hex'),
+    );
     return { state: changedFileCount === 0 ? 'clean' : 'dirty', changedFileCount };
   } catch {
     return { state: 'unknown', changedFileCount: null };
@@ -491,6 +596,11 @@ async function inspectWorkingTree(
 
 function unavailableWorkingTree(): RepositoryWorkingTree {
   return { state: 'unavailable', changedFileCount: null };
+}
+
+function contains(parent: string, child: string): boolean {
+  const path = relative(parent, child);
+  return path === '' || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`));
 }
 
 async function directoryExists(path: string): Promise<boolean> {
@@ -581,7 +691,11 @@ function classifyFailure(
 function actionDescription(action: RepositoryWorktreeAction): string {
   switch (action.kind) {
     case 'create':
+    case 'create-detached':
       return 'create the worktree';
+    case 'lock':
+    case 'unlock':
+      return `${action.kind} the worktree`;
     case 'remove':
       return 'remove the worktree';
     case 'prune':

@@ -15,6 +15,17 @@ describe('commit inspector capabilities', () => {
       canInvokeCommitInspector(requests.getRepositoryDiff.channel, { target: { kind: 'working' } }),
     ).toBe(false);
     expect(canInvokeCommitInspector(requests.getRepositoryWorkingChanges.channel, {})).toBe(false);
+    expect(canInvokeCommitInspector(requests.getRepositorySubmoduleComparison.channel, {})).toBe(false);
+    expect(
+      canInvokeCommitInspector(requests.startRepositoryWorktreeOperation.channel, {
+        action: { kind: 'lock' },
+      }),
+    ).toBe(false);
+    expect(
+      canInvokeInspector('blame', requests.startRepositoryGitFlowOperation.channel, {
+        action: { kind: 'continue' },
+      }),
+    ).toBe(false);
     expect(canInvokeCommitInspector(requests.getRepositoryMergeRebasePreview.channel, {})).toBe(false);
     expect(canInvokeCommitInspector(requests.resolveRepositoryConflict.channel, {})).toBe(false);
     expect(canInvokeCommitInspector(requests.startRepositoryConflictResolution.channel, {})).toBe(false);

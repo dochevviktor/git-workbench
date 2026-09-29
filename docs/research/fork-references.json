@@ -621,11 +621,11 @@
       "source": "https://fork.dev/blog/posts/forkwin-1.17/",
       "date": "2018-06-11",
       "platform": "windows",
-      "version": null,
+      "version": "1.17 (post)",
       "theme": "light",
-      "topics": ["dialogs"],
-      "shows": "Fork for Windows 1.17 post image: gitflow.",
-      "note": null
+      "topics": ["dialogs", "git-flow"],
+      "shows": "Initialize git flow: production/development branches, feature/release/hotfix prefixes and Version Tag Prefix, Initialize and Cancel.",
+      "note": "Rechecked 2026-09-29. Version is stated by the vendor post, not visible in the screenshot. Historical Windows light composition; not proof of 2.22 defaults."
     },
     {
       "file": "blog-2018-06-11-forkwin-1.17-gitflow-menu.png",
@@ -633,9 +633,9 @@
       "source": "https://fork.dev/blog/posts/forkwin-1.17/",
       "date": "2018-06-11",
       "platform": "windows",
-      "version": null,
+      "version": "1.17 (post)",
       "theme": "light",
-      "topics": ["menus"],
+      "topics": ["menus", "git-flow"],
       "shows": "Fork for Windows 1.17 post image: gitflow menu.",
       "note": null
     },

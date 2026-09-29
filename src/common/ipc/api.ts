@@ -1,6 +1,8 @@
 import type { Statistics, StatisticsRequest } from './statistics';
 import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
+  RepositorySubmoduleComparisonRequest,
+  RepositorySubmoduleComparison,
   RepositoryHistoricalFileRequest,
   RepositoryManagerScan,
   RepositoryManagerAction,
@@ -299,6 +301,9 @@ export interface DesktopApi {
     getGitFlow(request: RepositorySession): Promise<IpcResult<RepositoryGitFlowContext>>;
     startGitFlowOperation(request: RepositoryGitFlowActionRequest): Promise<IpcResult<RepositoryOperation>>;
     getSubmodules(request: RepositorySession): Promise<IpcResult<RepositorySubmoduleContext>>;
+    getSubmoduleComparison(
+      request: RepositorySubmoduleComparisonRequest,
+    ): Promise<IpcResult<RepositorySubmoduleComparison>>;
     startSubmoduleOperation(
       request: RepositorySubmoduleActionRequest,
     ): Promise<IpcResult<RepositoryOperation>>;

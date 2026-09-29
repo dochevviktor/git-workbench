@@ -310,78 +310,85 @@ describe('P01 repository trust', () => {
 });
 
 describe('P01 durable activity', () => {
-  it('serializes linked worktrees, cancels queued jobs before launch and leaves other repositories independent', async () => {
-    const f = await fixture();
-    const other = await fixture();
-    const service = new RepositoryService({ storagePath: join(f.root, 'queue-profile', 'recent') });
-    cleanups.push(async () => {
+  it.each(['linked worktree', 'submodule'] as const)(
+    'serializes a %s with its parent, cancels queued jobs and leaves other repositories independent',
+    async (topology) => {
+      const f = await fixture();
+      const other = await fixture();
+      const service = new RepositoryService({ storagePath: join(f.root, 'queue-profile', 'recent') });
+      cleanups.push(async () => {
+        service.dispose();
+        await service.settled();
+      });
+      const first = await service.open(1, f.cwd);
+      await service.setTrust(1, first.id, true);
+      const childPath = topology === 'submodule' ? join(f.cwd, 'child') : f.linked;
+      if (topology === 'submodule')
+        await f.run('-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', other.cwd, 'child');
+      const linked = await service.open(2, childPath);
+      if (topology === 'submodule') await service.setTrust(2, linked.id, true);
+      const independent = await service.open(3, other.cwd);
+      await service.setTrust(3, independent.id, true);
+      const make = async (owner: number, id: string, marker: string, wait: boolean) => {
+        const commands = await service.customCommands.store.save({
+          definition: {
+            name: 'P01 fixture',
+            target: 'repository',
+            fields: [],
+            action: {
+              kind: 'process',
+              executable: process.execPath,
+              args: [script, wait ? 'wait' : 'arguments', marker],
+            },
+          },
+          enabled: true,
+        });
+        return service.previewCustomCommand(owner, {
+          commandId: commands.at(-1)!.id,
+          context: { repositoryId: id, target: 'repository', value: '' },
+          inputs: [],
+        });
+      };
+      const marker = join(f.root, 'active');
+      const queuedMarker = join(f.root, 'queued');
+      const a = await make(1, first.id, marker, true);
+      const b = await make(2, linked.id, queuedMarker, true);
+      const c = await make(3, independent.id, 'independent', false);
+      const active = service.startCustomCommand(1, a.token, async () => undefined);
+      await expect
+        .poll(() =>
+          access(marker).then(
+            () => true,
+            () => false,
+          ),
+        )
+        .toBe(true);
+      const queued = service.startCustomCommand(2, b.token, async () => undefined);
+      service.cancelOperation(2, queued.id);
+      await expect
+        .poll(() => service.listOperations(2).find((job) => job.id === queued.id)?.status)
+        .toBe('cancelled');
+      await expect(access(queuedMarker)).rejects.toThrow();
+      const concurrent = service.startCustomCommand(3, c.token, async () => undefined);
+      await expect
+        .poll(() => service.listOperations(3).find((job) => job.id === concurrent.id)?.status)
+        .toBe('succeeded');
+      expect(service.listOperations(1).find((job) => job.id === active.id)?.status).toBe('running');
       service.dispose();
       await service.settled();
-    });
-    const first = await service.open(1, f.cwd);
-    await service.setTrust(1, first.id, true);
-    const linked = await service.open(2, f.linked);
-    const independent = await service.open(3, other.cwd);
-    await service.setTrust(3, independent.id, true);
-    const make = async (owner: number, id: string, marker: string, wait: boolean) => {
-      const commands = await service.customCommands.store.save({
-        definition: {
-          name: 'P01 fixture',
-          target: 'repository',
-          fields: [],
-          action: {
-            kind: 'process',
-            executable: process.execPath,
-            args: [script, wait ? 'wait' : 'arguments', marker],
-          },
-        },
-        enabled: true,
-      });
-      return service.previewCustomCommand(owner, {
-        commandId: commands.at(-1)!.id,
-        context: { repositoryId: id, target: 'repository', value: '' },
-        inputs: [],
-      });
-    };
-    const marker = join(f.root, 'active');
-    const queuedMarker = join(f.root, 'queued');
-    const a = await make(1, first.id, marker, true);
-    const b = await make(2, linked.id, queuedMarker, true);
-    const c = await make(3, independent.id, 'independent', false);
-    const active = service.startCustomCommand(1, a.token, async () => undefined);
-    await expect
-      .poll(() =>
-        access(marker).then(
-          () => true,
-          () => false,
-        ),
-      )
-      .toBe(true);
-    const queued = service.startCustomCommand(2, b.token, async () => undefined);
-    service.cancelOperation(2, queued.id);
-    await expect
-      .poll(() => service.listOperations(2).find((job) => job.id === queued.id)?.status)
-      .toBe('cancelled');
-    await expect(access(queuedMarker)).rejects.toThrow();
-    const concurrent = service.startCustomCommand(3, c.token, async () => undefined);
-    await expect
-      .poll(() => service.listOperations(3).find((job) => job.id === concurrent.id)?.status)
-      .toBe('succeeded');
-    expect(service.listOperations(1).find((job) => job.id === active.id)?.status).toBe('running');
-    service.dispose();
-    await service.settled();
-    const pid = Number(await readFile(marker, 'utf8'));
-    await expect
-      .poll(async () => {
-        try {
-          return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
-        } catch {
-          return 'gone';
-        }
-      })
-      .toMatch(/^(?:Z|gone)$/u);
-    await expect(access(queuedMarker)).rejects.toThrow();
-  });
+      const pid = Number(await readFile(marker, 'utf8'));
+      await expect
+        .poll(async () => {
+          try {
+            return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
+          } catch {
+            return 'gone';
+          }
+        })
+        .toMatch(/^(?:Z|gone)$/u);
+      await expect(access(queuedMarker)).rejects.toThrow();
+    },
+  );
 
   it('retains terminal results on cancellation, redacts split secrets and tolerates disconnected listeners', async () => {
     const registry = new OperationRegistry();

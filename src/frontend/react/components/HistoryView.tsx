@@ -31,6 +31,7 @@ export interface HistoryReferenceCommands {
   readonly newBranch: (commit: RepositoryHistoryCommit) => void;
   readonly newTag: (commit: RepositoryHistoryCommit) => void;
   readonly checkoutCommit: (commit: RepositoryHistoryCommit) => void;
+  readonly createWorktree: (commit: RepositoryHistoryCommit) => void;
   readonly savePatch: (commit: RepositoryHistoryCommit) => void;
   readonly cherryPick: (commit: RepositoryHistoryCommit) => void;
   readonly revert: (commit: RepositoryHistoryCommit) => void;
@@ -534,6 +535,12 @@ export function HistoryView({
           label: 'Checkout Commit…',
           ...unavailable,
           run: () => referenceCommands.checkoutCommit(commit),
+        },
+        {
+          id: 'create-worktree',
+          label: 'Checkout Commit as Worktree…',
+          disabled: !referenceCommands.ready,
+          run: () => referenceCommands.createWorktree(commit),
         },
         {
           id: 'cherry-pick',

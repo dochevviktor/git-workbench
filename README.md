@@ -90,16 +90,20 @@ compact Blame with original-path attribution and Back/Forward, and historical Sa
 Search is cancellable. Lost commits can be recovered to named branches/tags without changing the checkout.
 Patch import supports bounded format-patch mailboxes as one staged delta without commits; merge export
 lets you choose the comparison parent. See the [P08 handoff](docs/reviews/p08-investigation.md) for limits.
-F23 adds bounded submodule lifecycle inspection with parent/index/child revision cards, dirty-child
-state, nested sidebar navigation, safe Add/Initialize/Update/Sync/Remove actions, and backend-resolved
-child tabs. F24 adds bounded local Git LFS pointer/materialized inspection, optional repository-local
+P09 completes the Linux worktree, submodule and Git-flow phase. Worktrees support branch/remote/detached
+creation, parent/child identity, lock/unlock and reviewed removal. Submodule views show compact revision
+metadata and a child commit graph; nested Add/Initialize/Update/Sync/Remove actions show their scope.
+Missing commits, interrupted initialization and gitlink conflicts retain actionable state, and removing
+a child closes its tabs. Git-flow initialization includes the version tag prefix; feature finish changes
+develop only, while release/hotfix workflows support annotated tags and optional develop merges.
+Interrupted finishes survive restart with Continue Git-flow and Stop Finish controls. See the
+[P09 handoff](docs/reviews/p09-topology.md) for verification, screenshots and the full-suite caveat.
+
+F24 adds bounded local Git LFS pointer/materialized inspection, optional repository-local
 initialization, exact historical payload Save As with SHA-256 verification, and retrieval progress;
 remote/authenticated transfers, push, locks, and remote missing-object recovery remain later work.
-Interrupted updates, nested mutation, missing-object recovery, and conflict continuation remain later work.
-F25 adds native Git-flow initialization plus feature, release, and hotfix start/finish workflows with
-annotated tags, optional develop back-merges, explicit capability checks, and a Git-flow toolbar/menu.
-It uses ordinary Git and repository-local `gitflow.*` configuration; remote publishing, topic rebase,
-automatic stash/reapply, and specialized conflict continuation remain later work. Lean Branching remains
+Git-flow uses ordinary Git and repository-local configuration; specialized remote publishing, topic
+rebase and automatic stash/reapply remain outside P09. Lean Branching remains
 a separate F38 family: the Branch dropdown and Repository → Lean Branching offer
 Start, Sync and Finish with a reviewed base branch. Start checks out a new topic,
 Sync rebases, and Finish returns to the base and merges while retaining the topic.

@@ -848,6 +848,9 @@ export function registerAppIpc(
     register(requests.getRepositorySubmodules, (window, { id }) =>
       repositoryService.getSubmodules(window.webContents.id, id),
     );
+    register(requests.getRepositorySubmoduleComparison, (window, request) =>
+      repositoryService.getSubmoduleComparison(window.webContents.id, request),
+    );
     register(requests.startRepositorySubmoduleOperation, (window, request) =>
       repositoryService.startSubmoduleOperation(window.webContents.id, request),
     );

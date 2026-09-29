@@ -1,113 +1,172 @@
-import type { RepositorySubmodule } from '../../../common/ipc/contracts';
-import { shortHash } from '../lib/format';
-import { SubmoduleIcon, WarningIcon } from './Icons';
+import { useEffect, useMemo, useState } from 'react';
+import type { RepositorySubmodule, RepositorySubmoduleComparison } from '../../../common/ipc/contracts';
+import { buildHistoryGraph } from '../../../common/history-graph';
+import { unwrapResult } from '../../../common/ipc/result';
+import { formatListDate, initials, shortHash } from '../lib/format';
+import { SubmoduleIcon } from './Icons';
+import { CommitGraph } from './CommitGraph';
 
 interface SubmodulePreviewProps {
+  readonly repositoryId: string;
+  readonly area: 'staged' | 'unstaged';
+  readonly refreshSignal: number;
   readonly submodule: RepositorySubmodule;
   readonly busy: boolean;
   readonly onOpen: () => void;
   readonly onUpdate: () => void;
 }
 
-function revision(value: string | null): string {
-  return value ? shortHash(value) : 'Not available';
-}
-
-function stateLabel(submodule: RepositorySubmodule): string {
-  switch (submodule.state) {
-    case 'dirty':
-      return `${submodule.dirtyFileCount ?? 0} uncommitted ${submodule.dirtyFileCount === 1 ? 'file' : 'files'}`;
-    case 'changed':
-      return 'Child revision changed';
-    case 'detached':
-      return 'Detached HEAD';
-    case 'uninitialized':
-      return 'Not initialized';
-    case 'missing':
-      return 'Working tree missing';
-    case 'missing-commit':
-      return 'Recorded commit is missing';
-    case 'conflicted':
-      return 'Conflict';
-    case 'unknown':
-      return 'Status unavailable';
-    case 'clean':
-      return 'Clean';
-  }
-}
-
-/** A gitlink comparison card; submodules deliberately do not use a text diff viewer. */
-export function SubmodulePreview({ submodule, busy, onOpen, onUpdate }: SubmodulePreviewProps) {
-  const newRevision = submodule.revisions.working ?? submodule.revisions.index;
-  const canUpdate = !busy && submodule.state !== 'dirty' && submodule.state !== 'conflicted';
+/** Compact revision summaries and a real, bounded child commit graph, P2-002:F1/F2. */
+export function SubmodulePreview({
+  repositoryId,
+  area,
+  refreshSignal,
+  submodule,
+  busy,
+  onOpen,
+  onUpdate,
+}: SubmodulePreviewProps) {
+  const [comparison, setComparison] = useState<RepositorySubmoduleComparison>();
+  const [error, setError] = useState<string>();
+  const { id, revisions, initialized, path } = submodule;
+  useEffect(() => {
+    let current = true;
+    setComparison(undefined);
+    setError(undefined);
+    void window.desktop?.repository
+      .getSubmoduleComparison({ id: repositoryId, submoduleId: id, area })
+      .then(unwrapResult)
+      .then((value) => {
+        if (current) setComparison(value);
+      })
+      .catch((reason: unknown) => {
+        if (current)
+          setError(reason instanceof Error ? reason.message : 'The submodule commits could not be read.');
+      });
+    return () => {
+      current = false;
+    };
+  }, [
+    repositoryId,
+    id,
+    area,
+    refreshSignal,
+    revisions.head,
+    revisions.index,
+    revisions.working,
+    initialized,
+  ]);
+  const before = area === 'staged' ? revisions.head : revisions.index;
+  const after = area === 'staged' ? revisions.index : revisions.working;
+  const graph = useMemo(() => buildHistoryGraph(comparison?.commits ?? []), [comparison]);
+  const dirty = area === 'unstaged' && (submodule.dirtyFileCount ?? 0) > 0;
+  const unavailable = !initialized
+    ? 'Not initialized'
+    : submodule.state === 'missing-commit'
+      ? 'Recorded commit unavailable locally'
+      : null;
+  const summary = (commitId: string | null, side: 'before' | 'after') => {
+    const commit = comparison?.commits.find((item) => item.id === commitId);
+    const label =
+      side === 'before'
+        ? area === 'staged'
+          ? 'Parent baseline'
+          : 'Parent index'
+        : area === 'staged'
+          ? 'Parent index'
+          : 'Child checkout';
+    return (
+      <div className={`submodule-revision-row ${side}`} aria-label={label} title={label}>
+        <span className="submodule-author-mark" aria-hidden="true">
+          {commit ? initials(commit.author, '') : '—'}
+        </span>
+        <span className="submodule-author">{commit?.author ?? label}</span>
+        <code title={commitId ?? undefined}>{commitId ? shortHash(commitId) : '—'}</code>
+        <time>{commit ? formatListDate(commit.date) : ''}</time>
+        <strong>
+          {commit?.subject ??
+            (commitId ? (comparison ? 'Commit unavailable locally' : 'Loading commit…') : 'Not available')}
+        </strong>
+      </div>
+    );
+  };
   return (
     <div className="submodule-preview" data-testid="submodule-preview">
+      <div className="preview-header">
+        <SubmoduleIcon size={14} />
+        <span className="preview-path">{path}</span>
+      </div>
       <header className="submodule-preview-header">
-        <SubmoduleIcon size={16} />
-        <strong>Submodule &apos;{submodule.name}&apos;</strong>
-        <span className={submodule.state === 'dirty' ? 'submodule-state dirty' : 'submodule-state'}>
-          {stateLabel(submodule)}
-        </span>
+        <strong>Submodule &apos;{submodule.name}&apos; changed</strong>
+        {comparison?.ahead ? <span className="submodule-state">{comparison.ahead}↑</span> : null}
+        {comparison?.behind ? <span className="submodule-state">{comparison.behind}↓</span> : null}
+        {dirty && (
+          <span className="submodule-state dirty">
+            {submodule.dirtyFileCount} uncommitted {submodule.dirtyFileCount === 1 ? 'file' : 'files'}
+          </span>
+        )}
+        {unavailable && <span className="submodule-state">{unavailable}</span>}
       </header>
-      {submodule.state === 'dirty' && (
-        <p className="submodule-warning" role="status">
-          <WarningIcon size={14} />
-          The child repository has local changes. The parent index still records{' '}
-          {revision(submodule.revisions.index)}.
+      <div className="submodule-revisions" aria-label="Submodule revisions">
+        {summary(before, 'before')}
+        {summary(after, 'after')}
+      </div>
+      {error && (
+        <p className="submodule-detail" role="alert">
+          {error}
         </p>
       )}
-      <div className="submodule-revisions" aria-label="Submodule revisions">
-        <div className="submodule-revision-card">
-          <span className="submodule-revision-label">Parent baseline</span>
-          <code>{revision(submodule.revisions.head)}</code>
-        </div>
-        <span className="submodule-revision-arrow" aria-hidden="true">
-          →
-        </span>
-        <div className="submodule-revision-card current">
-          <span className="submodule-revision-label">
-            {submodule.revisions.working && submodule.workingChanged ? 'Child checkout' : 'Parent index'}
-          </span>
-          <code>{revision(newRevision)}</code>
-        </div>
+      <div className="submodule-history" aria-label="Submodule commit history">
+        {comparison?.commits.map((commit, index) => (
+          <div className="submodule-history-row" key={commit.id}>
+            <CommitGraph row={graph[index]!} />
+            <span className="submodule-subject" title={commit.subject}>
+              {commit.subject}
+            </span>
+            <span className="submodule-author">{commit.author}</span>
+            <code className={commit.id === after ? 'after' : commit.id === before ? 'before' : ''}>
+              {shortHash(commit.id)}
+            </code>
+            <time>{formatListDate(commit.date)}</time>
+          </div>
+        ))}
+        {comparison?.truncated && (
+          <p className="submodule-detail">
+            Showing the first 100 commits. Open Submodule for its full history.
+          </p>
+        )}
       </div>
-      {submodule.detached && <p className="submodule-detail">The child is checked out at a detached HEAD.</p>}
-      {submodule.dirtyPaths.length > 0 && (
-        <p className="submodule-detail">
-          {submodule.dirtyPaths.length === 1
-            ? `Changed child path: ${submodule.dirtyPaths[0]}`
-            : `${submodule.dirtyPaths.length} changed child paths`}
-        </p>
+      {area === 'unstaged' && submodule.detached && <p className="submodule-detail">Detached HEAD</p>}
+      {dirty && (
+        <details className="submodule-detail">
+          <summary>Changed child paths</summary>
+          <ul>
+            {submodule.dirtyPaths.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="submodule-actions">
         <button
           type="button"
           className="button button-small"
-          disabled={busy || !submodule.initialized}
-          title={
-            submodule.initialized
-              ? 'Open the child repository in a new tab.'
-              : 'Initialize the submodule first.'
-          }
+          disabled={busy || !initialized}
           onClick={onOpen}
         >
           Open Submodule
         </button>
-        <button
-          type="button"
-          className="button button-small"
-          disabled={!canUpdate}
-          title={
-            submodule.state === 'dirty'
-              ? 'Save or commit child changes before updating.'
-              : submodule.state === 'conflicted'
-                ? 'Resolve the submodule conflict first.'
-                : 'Initialize or update this submodule.'
-          }
-          onClick={onUpdate}
-        >
-          {submodule.initialized ? 'Update' : 'Initialize'}
-        </button>
+        {area === 'unstaged' &&
+          (!initialized || submodule.workingChanged || submodule.state === 'missing-commit') && (
+            <button
+              type="button"
+              className="button button-small"
+              disabled={busy || dirty || submodule.state === 'conflicted'}
+              onClick={onUpdate}
+            >
+              {initialized ? 'Update…' : 'Initialize…'}
+            </button>
+          )}
       </div>
     </div>
   );

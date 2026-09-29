@@ -30,12 +30,14 @@ interface ToolbarProps {
   readonly repositoryListVisible: boolean;
   readonly onToggleRepositoryList: () => void;
   readonly repository: RepositorySummary | undefined;
+  readonly worktreeParentName: string | undefined;
   readonly tracking: RepositoryHistoryTracking | undefined;
   readonly branchItems: readonly MenuEntry[];
   readonly branchDisabledReason: string | undefined;
   readonly branchPrimaryDisabledReason: string | undefined;
   readonly gitFlowItems: readonly MenuEntry[];
   readonly gitFlowDisabledReason: string | undefined;
+  readonly gitFlowPrimaryDisabledReason: string | undefined;
   readonly stashItems: readonly MenuEntry[];
   readonly stashDisabledReason: string | undefined;
   readonly openInItems: readonly MenuEntry[];
@@ -180,12 +182,14 @@ export function Toolbar({
   repositoryListVisible,
   onToggleRepositoryList,
   repository,
+  worktreeParentName,
   tracking,
   branchItems,
   branchDisabledReason,
   branchPrimaryDisabledReason,
   gitFlowItems,
   gitFlowDisabledReason,
+  gitFlowPrimaryDisabledReason,
   stashItems,
   stashDisabledReason,
   openInItems,
@@ -275,7 +279,10 @@ export function Toolbar({
         </button>
         {repository ? (
           <div className="toolbar-repository-copy" aria-live="polite">
-            <strong title={repository.path}>{repository.name}</strong>
+            <strong title={repository.path}>
+              {worktreeParentName ? `${worktreeParentName}: ` : ''}
+              {repository.name}
+            </strong>
             {runningOperation ? (
               <span className="toolbar-repository-progress" data-testid="toolbar-progress">
                 {progressText(runningOperation)}
@@ -285,9 +292,6 @@ export function Toolbar({
                 <BranchIcon size={12} />
                 {repository.bare ? 'Bare repository' : headDescription(repository)}
               </span>
-            )}
-            {!repository.bare && repository.gitDir !== repository.commonDir && (
-              <span className="toolbar-repository-worktree">Linked worktree</span>
             )}
           </div>
         ) : (
@@ -331,6 +335,7 @@ export function Toolbar({
           icon={<BranchIcon size={18} />}
           label="Git-flow"
           disabledReason={gitFlowDisabledReason}
+          primaryDisabledReason={gitFlowPrimaryDisabledReason}
           menuItems={gitFlowItems}
           onClick={onGitFlow}
         />

@@ -4,13 +4,14 @@ import { PatchPreviews, validatePatch } from './patch-service';
 import type { RepositoryPatchPreview, RepositoryPatchApplyRequest } from '../../common/ipc/contracts';
 import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile, rename, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, relative, sep } from 'node:path';
 import { DirectoryWatcher } from './directory-watcher';
 import { ReadCoordinator } from '../git/read-coordinator';
 import { RepositoryTrustStore } from '../git/trust-store';
 import { RepositoryGitRunner } from '../git/repository-runner';
 import { gitCapabilities, minimumGitVersion } from '../git/capabilities';
 import type {
+  RepositorySubmoduleComparisonRequest,
   RepositoryHistoryScope,
   RepositoryHistoricalFileRequest,
   RepositoryManagerAction,
@@ -173,7 +174,12 @@ import {
 import { RemoteFetchPreferenceStore } from './remote-fetch-preference-store';
 import { applyReferenceAction, readReferenceContext, StaleReferenceSnapshotError } from './reference-service';
 import { applyWorktreeAction, readWorktreeContext, StaleWorktreeSnapshotError } from './worktree-service';
-import { applySubmoduleAction, readSubmoduleContext, StaleSubmoduleSnapshotError } from './submodule-service';
+import {
+  applySubmoduleAction,
+  readSubmoduleContext,
+  readSubmoduleComparison,
+  StaleSubmoduleSnapshotError,
+} from './submodule-service';
 import { readBisectContext, applyBisectAction } from './bisect-service';
 import { readSigningSettings, setSigningKey, verifySignature } from './signing-service';
 import { StatisticsService } from './statistics-service';
@@ -1430,7 +1436,9 @@ export class RepositoryService {
         ? 'Initialize Git-flow'
         : action.kind === 'start'
           ? `Start ${action.type} '${action.name}'`
-          : `Finish ${action.type} '${action.name}'`;
+          : action.kind === 'finish'
+            ? `Finish ${action.type} '${action.name}'`
+            : `${action.kind === 'continue' ? 'Continue' : 'Stop'} Git-flow finish`;
     return this.startOperation(
       {
         ownerId,
@@ -1483,6 +1491,17 @@ export class RepositoryService {
     }
   }
 
+  async getSubmoduleComparison(ownerId: number, request: RepositorySubmoduleComparisonRequest) {
+    const summary = await this.requireWorktree(ownerId, request.id);
+    return this.repositoryRunner.authorized(summary.commonDir, async () => {
+      const context = await this.getSubmodules(ownerId, request.id);
+      const submodule = context.submodules.find((item) => item.id === request.submoduleId);
+      if (!submodule)
+        throw new ExpectedBackendError('INVALID_REQUEST', 'That submodule is no longer registered.');
+      return readSubmoduleComparison(this.runner, summary.worktreePath, submodule, request.area);
+    });
+  }
+
   startSubmoduleOperation(ownerId: number, request: RepositorySubmoduleActionRequest): RepositoryOperation {
     const cached = this.operationRepository(ownerId, request.id);
     const action = request.action;
@@ -1504,6 +1523,12 @@ export class RepositoryService {
         this.withRepositoryMutation(cached.commonDir, async () => {
           const summary = await this.requireWorktree(ownerId, request.id);
           try {
+            const removed =
+              action.kind === 'remove'
+                ? (await this.getSubmodules(ownerId, request.id)).submodules.find(
+                    (item) => item.id === action.submoduleId,
+                  )
+                : undefined;
             const value = await applySubmoduleAction(this.runner, {
               repositoryId: request.id,
               cwd: summary.worktreePath,
@@ -1512,7 +1537,15 @@ export class RepositoryService {
               signal: handle.signal,
               onCommand: (args) =>
                 handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
+              onProgress: (progress) => handle.setProgress(progress),
+              onOutput: (line) => handle.appendOutput(line),
             });
+            if (value.status === 'applied' && removed)
+              await this.closeRemovedRepositoryTabs(
+                resolve(summary.worktreePath, removed.path),
+                undefined,
+                true,
+              );
             return {
               status: value.status === 'applied' ? 'succeeded' : 'failed',
               message: value.message,
@@ -1548,11 +1581,13 @@ export class RepositoryService {
     const cached = this.operationRepository(ownerId, request.id);
     const action = request.action;
     const title =
-      action.kind === 'create'
+      action.kind === 'create' || action.kind === 'create-detached'
         ? 'Create worktree'
         : action.kind === 'remove'
           ? 'Remove worktree'
-          : 'Prune worktrees';
+          : action.kind === 'prune'
+            ? 'Prune worktrees'
+            : `${action.kind === 'lock' ? 'Lock' : 'Unlock'} worktree`;
     return this.startOperation(
       {
         ownerId,
@@ -1577,7 +1612,7 @@ export class RepositoryService {
                 handle.setCommand?.(['git', ...args.map((arg) => JSON.stringify(arg))].join(' ')),
             });
             if (value.status === 'applied' && action.kind === 'remove' && value.path)
-              await this.closeRemovedWorktreeTabs(value.path, summary.commonDir);
+              await this.closeRemovedRepositoryTabs(value.path, summary.commonDir);
             return {
               status: value.status === 'applied' ? 'succeeded' : 'failed',
               message: value.message,
@@ -3734,7 +3769,21 @@ export class RepositoryService {
     operation: () => Promise<T>,
     requireTrust = true,
   ): Promise<T> {
-    const previous = this.mutationQueues.get(key) ?? Promise.resolve();
+    // A submodule's common directory lives under its parent's modules directory. Parent updates
+    // and writes from independently opened child tabs must share a barrier, including nested children.
+    const previous = Promise.all(
+      [...this.mutationQueues]
+        .filter(([other]) => {
+          const a = relative(key, other);
+          const b = relative(other, key);
+          return (
+            a === '' ||
+            (!a.startsWith(`..${sep}`) && a !== '..' && !isAbsolute(a)) ||
+            (!b.startsWith(`..${sep}`) && b !== '..' && !isAbsolute(b))
+          );
+        })
+        .map(([, barrier]) => barrier),
+    ).then(() => undefined);
     let release!: () => void;
     const current = new Promise<void>((resolve) => {
       release = resolve;
@@ -3770,15 +3819,20 @@ export class RepositoryService {
     }
   }
 
-  private async closeRemovedWorktreeTabs(path: string, commonDir: string): Promise<void> {
+  private async closeRemovedRepositoryTabs(
+    path: string,
+    commonDir?: string,
+    descendants = false,
+  ): Promise<void> {
     const target = this.pathKey(path);
     const removals: Array<{ readonly ownerId: number; readonly id: string }> = [];
     for (const [ownerId, sessions] of this.sessions) {
       for (const summary of sessions.values()) {
         if (
           summary.worktreePath &&
-          this.pathKey(summary.worktreePath) === target &&
-          summary.commonDir === commonDir
+          (this.pathKey(summary.worktreePath) === target ||
+            (descendants && this.pathKey(summary.worktreePath).startsWith(`${target}${sep}`))) &&
+          (commonDir === undefined || summary.commonDir === commonDir)
         )
           removals.push({ ownerId, id: summary.id });
       }

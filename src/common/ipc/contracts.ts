@@ -1297,6 +1297,17 @@ export const repositoryWorktreeActionSchema = z
       branchName: repositoryReferenceNameSchema.optional(),
     }),
     z.strictObject({
+      kind: z.literal('create-detached'),
+      path: repositoryPathSchema,
+      commitId: gitObjectIdSchema,
+    }),
+    z.strictObject({
+      kind: z.literal('lock'),
+      worktreeId: repositoryWorktreeIdSchema,
+      reason: z.string().max(512),
+    }),
+    z.strictObject({ kind: z.literal('unlock'), worktreeId: repositoryWorktreeIdSchema }),
+    z.strictObject({
       kind: z.literal('remove'),
       worktreeId: repositoryWorktreeIdSchema,
       /** Explicitly permits deleting a dirty or locked linked worktree. */
@@ -1312,7 +1323,14 @@ export const repositoryWorktreeActionSchema = z
     'A local branch name is required for a remote worktree.',
   );
 
-export const repositoryWorktreeActionKindSchema = z.enum(['create', 'remove', 'prune']);
+export const repositoryWorktreeActionKindSchema = z.enum([
+  'create',
+  'create-detached',
+  'lock',
+  'unlock',
+  'remove',
+  'prune',
+]);
 
 export const repositoryWorktreeFailureReasonSchema = z.enum([
   'current',
@@ -1516,6 +1534,9 @@ export const repositorySubmoduleSchema = z.strictObject({
   url: z.string().max(32_768),
   branch: z.string().max(4_096).nullable(),
   nested: z.boolean(),
+  /** Root-relative repository that owns this gitlink; empty for the top-level repository. */
+  ownerPath: repositoryRevisionPathSchema,
+  relativePath: repositoryRevisionPathSchema,
   initialized: z.boolean(),
   detached: z.boolean(),
   state: repositorySubmoduleStateSchema,
@@ -1529,6 +1550,7 @@ export const repositorySubmoduleSchema = z.strictObject({
   workingChanged: z.boolean(),
   /** Relative paths reported by the child status, bounded for safe presentation. */
   dirtyPaths: z.array(repositoryRevisionPathSchema).max(10_000),
+  ignoredPaths: z.array(repositoryRevisionPathSchema).max(10_000),
 });
 
 export const repositorySubmoduleContextSchema = z.strictObject({
@@ -1580,6 +1602,25 @@ export const repositorySubmoduleRequestSchema = z.strictObject({ id: repositoryI
 export const repositoryOpenSubmoduleRequestSchema = z.strictObject({
   id: repositoryIdSchema,
   submoduleId: repositorySubmoduleIdSchema,
+});
+
+export const repositorySubmoduleComparisonRequestSchema = repositoryOpenSubmoduleRequestSchema.extend({
+  area: z.enum(['staged', 'unstaged']),
+});
+export const repositorySubmoduleCommitSchema = z.strictObject({
+  id: gitObjectIdSchema,
+  parents: z.array(gitObjectIdSchema).max(64),
+  subject: z.string().max(4096),
+  author: z.string().max(4096),
+  date: z.string().max(128),
+});
+export const repositorySubmoduleComparisonSchema = z.strictObject({
+  before: gitObjectIdSchema.nullable(),
+  after: gitObjectIdSchema.nullable(),
+  commits: z.array(repositorySubmoduleCommitSchema).max(102),
+  ahead: z.number().int().nonnegative().nullable(),
+  behind: z.number().int().nonnegative().nullable(),
+  truncated: z.boolean(),
 });
 
 export const repositorySubmoduleFailureReasonSchema = z.enum([
@@ -1636,6 +1677,7 @@ export const repositoryGitFlowConfigSchema = z.strictObject({
   featurePrefix: repositoryGitFlowPrefixSchema,
   releasePrefix: repositoryGitFlowPrefixSchema,
   hotfixPrefix: repositoryGitFlowPrefixSchema,
+  tagPrefix: z.string().max(128).optional(),
 });
 
 export const repositoryGitFlowBranchSchema = z.strictObject({
@@ -1651,6 +1693,14 @@ export const repositoryGitFlowLocalBranchSchema = z.strictObject({
   name: repositoryReferenceNameSchema,
   target: gitObjectIdSchema,
   isHead: z.boolean(),
+  worktreePath: repositoryPathSchema.nullable(),
+});
+
+export const repositoryGitFlowPendingFinishSchema = z.strictObject({
+  type: repositoryGitFlowTypeSchema,
+  name: repositoryReferenceNameSchema,
+  sourceFullName: z.string().startsWith('refs/heads/').max(32_768),
+  step: z.string().max(512),
 });
 
 export const repositoryGitFlowCapabilitiesSchema = z.strictObject({
@@ -1675,13 +1725,22 @@ export const repositoryGitFlowContextSchema = z.strictObject({
   conflictedCount: z.number().int().nonnegative().max(100_000),
   pendingOperation: repositoryCommitPendingOperationSchema.nullable(),
   capabilities: repositoryGitFlowCapabilitiesSchema,
+  pendingFinish: repositoryGitFlowPendingFinishSchema.nullable(),
   message: z.string().max(512),
   snapshot: repositoryDiffSnapshotSchema,
 });
 
-export const repositoryGitFlowActionKindSchema = z.enum(['initialize', 'start', 'finish']);
+export const repositoryGitFlowActionKindSchema = z.enum([
+  'initialize',
+  'start',
+  'finish',
+  'continue',
+  'stop',
+]);
 
 export const repositoryGitFlowActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('continue'), snapshot: repositoryDiffSnapshotSchema }),
+  z.strictObject({ kind: z.literal('stop'), snapshot: repositoryDiffSnapshotSchema }),
   z.strictObject({
     kind: z.literal('initialize'),
     config: repositoryGitFlowConfigSchema,
@@ -2835,6 +2894,11 @@ export const requests = {
     repositorySubmoduleRequestSchema,
     repositorySubmoduleContextSchema,
   ),
+  getRepositorySubmoduleComparison: request(
+    'repository:get-submodule-comparison',
+    repositorySubmoduleComparisonRequestSchema,
+    repositorySubmoduleComparisonSchema,
+  ),
   startRepositorySubmoduleOperation: request(
     'repository:start-submodule-operation',
     repositorySubmoduleActionRequestSchema,
@@ -3184,6 +3248,8 @@ export type RepositorySubmoduleState = z.infer<typeof repositorySubmoduleStateSc
 export type RepositorySubmoduleParentStatus = z.infer<typeof repositorySubmoduleParentStatusSchema>;
 export type RepositorySubmoduleRevisions = z.infer<typeof repositorySubmoduleRevisionsSchema>;
 export type RepositorySubmodule = z.infer<typeof repositorySubmoduleSchema>;
+export type RepositorySubmoduleComparisonRequest = z.infer<typeof repositorySubmoduleComparisonRequestSchema>;
+export type RepositorySubmoduleComparison = z.infer<typeof repositorySubmoduleComparisonSchema>;
 export type RepositorySubmoduleContext = z.infer<typeof repositorySubmoduleContextSchema>;
 export type RepositorySubmoduleAction = z.infer<typeof repositorySubmoduleActionSchema>;
 export type RepositorySubmoduleActionKind = z.infer<typeof repositorySubmoduleActionKindSchema>;

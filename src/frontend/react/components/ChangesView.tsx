@@ -291,6 +291,9 @@ function ChangePreview({
   if (entry.kind === 'working' && entry.submodule) {
     return (
       <SubmodulePreview
+        repositoryId={repositoryId}
+        area={entry.change.area === 'staged' ? 'staged' : 'unstaged'}
+        refreshSignal={refreshSignal}
         submodule={entry.submodule}
         busy={busy}
         onOpen={() => onOpenSubmodule(entry.submodule!)}

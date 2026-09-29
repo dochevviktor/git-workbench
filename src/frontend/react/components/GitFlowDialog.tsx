@@ -16,6 +16,7 @@ export type GitFlowActionDraft = RepositoryGitFlowAction extends infer Action
   : never;
 
 export type GitFlowDialogRequest =
+  | { readonly kind: 'stop' }
   | { readonly kind: 'initialize' }
   | { readonly kind: 'start'; readonly type: RepositoryGitFlowType }
   | { readonly kind: 'finish'; readonly branch: RepositoryGitFlowBranch };
@@ -38,6 +39,30 @@ const typeLabels: Record<RepositoryGitFlowType, string> = {
 
 export function GitFlowDialog(props: GitFlowDialogProps) {
   switch (props.request.kind) {
+    case 'stop':
+      return (
+        <DialogShell
+          className="p05-dialog p09-dialog"
+          title="Stop Git-flow Finish"
+          subtitle="Keep completed merges and tags"
+          icon={<BranchIcon size={26} />}
+          platform={props.platform}
+          warning={props.failure ?? null}
+          submitLabel="Stop Finish"
+          submitDisabled={false}
+          busy={props.busy}
+          onClose={props.onClose}
+          onSubmit={() => props.onSubmit({ kind: 'stop' })}
+        >
+          <dt>Topic:</dt>
+          <dd>{props.context?.pendingFinish?.sourceFullName.replace(/^refs\/heads\//u, '')}</dd>
+          <dt>Result:</dt>
+          <dd>
+            Stop the remaining finish steps. Existing commits, tags, and the topic branch are retained. Use
+            Recovery to abort any pending Git merge.
+          </dd>
+        </DialogShell>
+      );
     case 'initialize':
       return <InitializeGitFlowDialog {...props} />;
     case 'start':
@@ -61,6 +86,7 @@ function InitializeGitFlowDialog({
   const [featurePrefix, setFeaturePrefix] = useState('feature/');
   const [releasePrefix, setReleasePrefix] = useState('release/');
   const [hotfixPrefix, setHotfixPrefix] = useState('hotfix/');
+  const [tagPrefix, setTagPrefix] = useState('');
   const duplicateBranches = productionBranch.trim() === developBranch.trim();
   const prefixes = [featurePrefix.trim(), releasePrefix.trim(), hotfixPrefix.trim()];
   const duplicatePrefixes = new Set(prefixes).size !== prefixes.length;
@@ -77,6 +103,7 @@ function InitializeGitFlowDialog({
 
   return (
     <DialogShell
+      className="p05-dialog p09-dialog"
       title="Initialize Git-flow"
       subtitle="Configure the production, integration, and topic branches"
       icon={<BranchIcon size={26} />}
@@ -100,6 +127,7 @@ function InitializeGitFlowDialog({
             featurePrefix: featurePrefix.trim(),
             releasePrefix: releasePrefix.trim(),
             hotfixPrefix: hotfixPrefix.trim(),
+            tagPrefix: tagPrefix.trim(),
           },
         })
       }
@@ -133,7 +161,7 @@ function InitializeGitFlowDialog({
         )}
       </dd>
       <NameInput
-        label="Develop branch:"
+        label="Development branch:"
         id="git-flow-develop"
         value={developBranch}
         onChange={setDevelopBranch}
@@ -155,6 +183,12 @@ function InitializeGitFlowDialog({
         id="git-flow-hotfix-prefix"
         value={hotfixPrefix}
         onChange={setHotfixPrefix}
+      />
+      <NameInput
+        label="Version tag prefix:"
+        id="git-flow-tag-prefix"
+        value={tagPrefix}
+        onChange={setTagPrefix}
       />
       <dt />
       <dd className="dialog-inline-note">
@@ -187,6 +221,7 @@ function StartGitFlowDialog({
 
   return (
     <DialogShell
+      className="p05-dialog p09-dialog"
       title={`Start ${typeLabels[type]}`}
       subtitle={`Create ${prefix || `${type}/`}… from ${base ?? 'the configured base branch'}`}
       icon={<BranchIcon size={26} />}
@@ -241,6 +276,7 @@ function FinishGitFlowDialog({
 
   return (
     <DialogShell
+      className="p05-dialog p09-dialog"
       title={`Finish ${typeLabels[branch.type]}`}
       subtitle={`Merge ${branch.fullName.replace(/^refs\/heads\//u, '')} into ${target ?? 'its base branch'}`}
       icon={branch.type === 'feature' ? <BranchIcon size={26} /> : <TagIcon size={26} />}
@@ -264,10 +300,20 @@ function FinishGitFlowDialog({
     >
       <dt>Topic:</dt>
       <dd>{branch.fullName.replace(/^refs\/heads\//u, '')}</dd>
-      <dt>Production:</dt>
-      <dd>{context?.config?.productionBranch ?? 'Unavailable'}</dd>
-      <dt>Develop:</dt>
-      <dd>{context?.config?.developBranch ?? 'Unavailable'}</dd>
+      <dt>Merge into:</dt>
+      <dd>
+        {target ?? 'Unavailable'}
+        {!isFeature && mergeIntoDevelop ? `, then ${context?.config?.developBranch}` : ''}
+      </dd>
+      {!isFeature && (
+        <>
+          <dt>Version tag:</dt>
+          <dd>
+            {context?.config?.tagPrefix ?? ''}
+            {branch.name}
+          </dd>
+        </>
+      )}
       <dt />
       <dd className="reference-dialog-options">
         <label className="reference-checkbox">

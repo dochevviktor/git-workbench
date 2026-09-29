@@ -2392,9 +2392,7 @@ p {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  gap: 14px;
-  padding: 22px 28px;
-  overflow: auto;
+  overflow: hidden;
   background: var(--list-bg);
 }
 
@@ -2402,9 +2400,13 @@ p {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 26px;
+  justify-content: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 8px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .submodule-preview-header svg {
@@ -2438,10 +2440,73 @@ p {
 }
 
 .submodule-revisions {
-  display: flex;
+  padding: 0 8px 4px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.submodule-revision-row {
+  display: grid;
+  grid-template-columns: 18px 115px 60px 140px minmax(120px, 1fr);
   align-items: center;
-  gap: 10px;
-  max-width: 720px;
+  min-height: 23px;
+  min-width: 500px;
+  gap: 6px;
+  font-size: 12px;
+}
+.submodule-revision-row strong,
+.submodule-author,
+.submodule-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.submodule-author-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text);
+  background: light-dark(#f3c578, #796033);
+  border-radius: 2px;
+  font-size: 9px;
+}
+.submodule-preview code {
+  font-size: 11px;
+  padding: 1px 3px;
+}
+.submodule-revision-row.before code,
+.submodule-history code.before {
+  background: light-dark(#fde7e7, #663638);
+}
+.submodule-revision-row.after code,
+.submodule-history code.after {
+  background: light-dark(#def1df, #2d5138);
+}
+.submodule-preview time {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 11px;
+}
+.submodule-history {
+  flex: 1;
+  min-height: 40px;
+  overflow: auto;
+  padding: 5px 8px;
+}
+.submodule-history-row {
+  display: grid;
+  grid-template-columns: 38px minmax(140px, 1fr) 115px 62px 140px;
+  align-items: center;
+  min-width: 525px;
+  height: 24px;
+  gap: 6px;
+  font-size: 12px;
+}
+.submodule-history-row .commit-graph {
+  position: static;
+  height: 24px;
 }
 
 .submodule-revision-card {
@@ -2476,13 +2541,67 @@ p {
 }
 
 .submodule-detail {
-  margin: 0;
+  margin: 2px 10px;
+  flex-shrink: 0;
+}
+.submodule-detail ul {
+  max-height: 90px;
+  overflow: auto;
 }
 
 .submodule-actions {
   display: flex;
   gap: 7px;
-  padding-top: 4px;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 10px;
+}
+
+.reference-dialog.p09-dialog {
+  width: min(590px, calc(100vw - 32px));
+}
+.p09-path {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.p09-path-list {
+  max-height: 120px;
+  overflow: auto;
+  padding-left: 18px;
+  margin: 0;
+}
+.p09-location {
+  display: flex;
+  gap: 4px;
+}
+.p09-location .reference-input {
+  min-width: 0;
+  flex: 1;
+}
+.tree-row.worktree .tree-label {
+  flex: 1;
+  min-width: 48px;
+}
+.tree-row.worktree .tree-meta {
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p09-flow-recovery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  font-size: 12px;
+}
+.p09-flow-recovery > span {
+  flex: 1;
+}
+.p09-flow-recovery > button {
+  flex-shrink: 0;
 }
 
 /* Built-in conflict helper -------------------------------------------------------------------- */

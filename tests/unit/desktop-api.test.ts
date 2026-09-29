@@ -26,6 +26,44 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates P09 comparison reads and named topology mutations in both directions', async () => {
+    const { api, invoke } = fixture();
+    const id = `repo-${'a'.repeat(64)}`;
+    const submoduleId = `submodule-${'b'.repeat(64)}`;
+    const request = { id, submoduleId, area: 'staged' as const };
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { before: null, after: null, commits: [], ahead: null, behind: null, truncated: false },
+    });
+    expect(await api.repository.getSubmoduleComparison(request)).toMatchObject({ ok: true });
+    expect(invoke).toHaveBeenLastCalledWith('repository:get-submodule-comparison', request);
+    invoke.mockClear();
+    expect(
+      await api.repository.getSubmoduleComparison({ ...request, path: '/unowned' } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(
+      await api.repository.startWorktreeOperation({
+        id,
+        snapshot: 'c'.repeat(64),
+        action: { kind: 'create-detached', path: '/worktree', commitId: 'HEAD~1' },
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(
+      await api.repository.startGitFlowOperation({
+        id,
+        action: { kind: 'continue', snapshot: 'c'.repeat(64), command: 'merge anything' },
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { before: null, after: null, commits: [], ahead: -1, behind: null, truncated: false },
+    });
+    expect(await api.repository.getSubmoduleComparison(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates P08 investigation scopes, cancellation, historical saving and attribution results', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;

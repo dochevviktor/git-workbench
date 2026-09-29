@@ -768,6 +768,10 @@ describe('P06 complete operation states', () => {
     await writeFile(join(f.cwd, 'module', 'file.txt'), 'keep child work\n');
     f = await reopen(f);
     const state = await f.service.getConflicts(1, { id: f.id, path: 'module' });
+    expect((await f.service.getSubmodules(1, f.id)).submodules[0]).toMatchObject({
+      state: 'conflicted',
+      revisions: { index: null },
+    });
     expect(state.selected).toMatchObject({ kind: 'submodule', workingCommitId: ours });
     await f.service.resolveConflict(
       { id: f.id, path: 'module', snapshot: state.snapshot, choice: 'theirs' },
@@ -776,6 +780,11 @@ describe('P06 complete operation states', () => {
     expect(await f.run('ls-files', '--stage', 'module')).toContain(`160000 ${theirs} 0`);
     expect(await subRun('rev-parse', 'HEAD')).toBe(ours);
     expect(await readFile(join(f.cwd, 'module', 'file.txt'), 'utf8')).toBe('keep child work\n');
+    expect((await f.service.getSubmodules(1, f.id)).submodules[0]).toMatchObject({
+      state: 'dirty',
+      workingChanged: true,
+      revisions: { index: theirs, working: ours },
+    });
     expect(await recover(f, 'continue')).toMatchObject({ status: 'succeeded' });
   });
 });

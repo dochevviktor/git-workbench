@@ -115,17 +115,18 @@ function referenceIcon(reference: RepositoryHistoryReference): ReactNode {
 
 /** Remote names and sections start expanded; nested reference folders start collapsed. */
 function expandedByDefault(key: string, level: number): boolean {
+  if (key === 'worktree-parent') return true;
   if (key.startsWith('section:')) return !collapsedByDefault.has(key);
   return key.startsWith('remotes/') && level === 2;
 }
 
 interface SubmoduleFolder {
   readonly folders: Map<string, SubmoduleFolder>;
-  readonly leaves: RepositorySubmodule[];
+  submodule?: RepositorySubmodule;
 }
 
 function emptySubmoduleFolder(): SubmoduleFolder {
-  return { folders: new Map(), leaves: [] };
+  return { folders: new Map() };
 }
 
 function submoduleTree(submodules: readonly RepositorySubmodule[]): SubmoduleFolder {
@@ -133,7 +134,7 @@ function submoduleTree(submodules: readonly RepositorySubmodule[]): SubmoduleFol
   for (const submodule of submodules) {
     const parts = submodule.path.split('/').filter((part) => part.length > 0);
     let folder = root;
-    for (const part of parts.slice(0, -1)) {
+    for (const part of parts) {
       let child = folder.folders.get(part);
       if (!child) {
         child = emptySubmoduleFolder();
@@ -141,7 +142,7 @@ function submoduleTree(submodules: readonly RepositorySubmodule[]): SubmoduleFol
       }
       folder = child;
     }
-    folder.leaves.push(submodule);
+    folder.submodule = submodule;
   }
   return root;
 }
@@ -297,28 +298,47 @@ export function RepositorySidebar({
         toggleOnClick: true,
       });
       if (worktreesOpen) {
-        for (const worktree of visibleWorktrees) {
+        const main = worktrees.find((item) => item.isMain);
+        const linkedView = main && !main.isCurrent;
+        const groupKey = 'worktree-parent';
+        const groupOpen = expanded(groupKey, 1);
+        if (linkedView)
+          result.push({
+            key: groupKey,
+            level: 2,
+            label: main.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? main.path,
+            icon: <FolderIcon size={14} />,
+            expandable: true,
+            expanded: groupOpen,
+            parentKey: worktreeSectionKey,
+            className: 'worktree-parent',
+            toggleOnClick: true,
+            title: main.path,
+          });
+        for (const worktree of visibleWorktrees.filter(
+          (item) => !item.isMain && (!linkedView || groupOpen),
+        )) {
           const key = `worktree:${worktree.id}`;
           worktreesByKey.set(key, worktree);
-          const meta = worktree.isCurrent
-            ? 'Current'
-            : worktree.workingTree.state === 'dirty'
-              ? 'Dirty'
-              : worktree.locked
-                ? 'Locked'
-                : undefined;
+          const meta = [
+            worktree.branchName ?? 'Detached',
+            worktree.isCurrent ? 'Current' : null,
+            !worktree.exists ? 'Missing' : worktree.workingTree.state === 'dirty' ? 'Dirty' : null,
+            worktree.locked ? 'Locked' : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
           result.push({
             key,
-            level: 2,
-            label:
-              worktree.branchName ?? worktree.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? worktree.path,
+            level: linkedView ? 3 : 2,
+            label: worktree.path.split(/[\\/]/u).filter(Boolean).at(-1) ?? worktree.path,
             icon: <FolderIcon size={14} />,
             meta,
             expandable: false,
             expanded: false,
-            parentKey: worktreeSectionKey,
+            parentKey: linkedView ? groupKey : worktreeSectionKey,
             className: worktree.isCurrent ? 'worktree current' : 'worktree',
-            title: worktree.path,
+            title: `${worktree.path}\n${meta}${worktree.lockReason ? `\n${worktree.lockReason}` : ''}`,
             testId: `worktree-${worktree.id}`,
           });
         }
@@ -357,49 +377,41 @@ export function RepositorySidebar({
           for (const [name, child] of [...node.folders.entries()].sort(([left], [right]) =>
             left.localeCompare(right),
           )) {
-            const key = `submodule-folder:${prefix ? `${prefix}/` : ''}${name}`;
+            const submodule = child.submodule;
+            const key = submodule
+              ? `submodule:${submodule.id}`
+              : `submodule-folder:${prefix ? `${prefix}/` : ''}${name}`;
+            if (submodule) submodulesByKey.set(key, submodule);
             const open = expanded(key, level);
             result.push({
               key,
               level,
               label: name,
-              icon: <FolderIcon size={14} />,
-              expandable: child.folders.size > 0 || child.leaves.length > 0,
+              icon: submodule ? <SubmoduleIcon size={14} /> : <FolderIcon size={14} />,
+              expandable: child.folders.size > 0,
               expanded: open,
               parentKey,
-              className: 'folder',
+              className: submodule
+                ? submodule.state === 'dirty'
+                  ? 'submodule dirty'
+                  : 'submodule'
+                : 'folder',
+              title: submodule?.path,
+              meta: submodule
+                ? {
+                    dirty: 'Dirty',
+                    uninitialized: 'Not initialized',
+                    missing: 'Missing',
+                    detached: 'Detached',
+                    'missing-commit': 'Missing commit',
+                    conflicted: 'Conflict',
+                    changed: 'Changed',
+                    unknown: 'Unavailable',
+                    clean: '',
+                  }[submodule.state] || undefined
+                : undefined,
             });
             if (open) addSubmoduleNodes(child, level + 1, key, prefix ? `${prefix}/${name}` : name);
-          }
-          for (const submodule of [...node.leaves].sort((left, right) =>
-            left.name.localeCompare(right.name),
-          )) {
-            const key = `submodule:${submodule.id}`;
-            submodulesByKey.set(key, submodule);
-            const meta =
-              submodule.state === 'dirty'
-                ? 'Dirty'
-                : submodule.state === 'uninitialized'
-                  ? 'Not initialized'
-                  : submodule.state === 'missing'
-                    ? 'Missing'
-                    : submodule.state === 'detached'
-                      ? 'Detached'
-                      : submodule.state === 'changed'
-                        ? 'Changed'
-                        : undefined;
-            result.push({
-              key,
-              level,
-              label: submodule.name,
-              icon: <SubmoduleIcon size={14} />,
-              meta,
-              expandable: false,
-              expanded: false,
-              parentKey,
-              className: submodule.state === 'dirty' ? 'submodule dirty' : 'submodule',
-              title: submodule.path,
-            });
           }
         };
         addSubmoduleNodes(tree, 2, submoduleSectionKey, '');
@@ -415,7 +427,7 @@ export function RepositorySidebar({
     toggled,
     visibleSubmodules,
     visibleWorktrees,
-    worktrees.length,
+    worktrees,
   ]);
 
   const toggle = (item: TreeItem, expand: boolean) => {

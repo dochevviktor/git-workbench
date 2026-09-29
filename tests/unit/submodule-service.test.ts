@@ -1,9 +1,13 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitRunner } from '../../src/backend/git/runner';
-import { applySubmoduleAction, readSubmoduleContext } from '../../src/backend/repositories/submodule-service';
+import { GitRunner, GitCancelledError } from '../../src/backend/git/runner';
+import {
+  applySubmoduleAction,
+  readSubmoduleContext,
+  readSubmoduleComparison,
+} from '../../src/backend/repositories/submodule-service';
 
 const temporaryDirectories: string[] = [];
 const repositoryId = `repo-${'b'.repeat(64)}`;
@@ -45,6 +49,211 @@ afterEach(async () => {
 });
 
 describe('submodule service', () => {
+  it('keeps ignored child files visible to removal review and rejects changed or unrelated child content', async () => {
+    const f = await fixture();
+    const child = join(f.parent, 'modules/demo');
+    await writeFile(join(f.parent, '.git/modules/modules/demo/info/exclude'), 'cache/\n');
+    await mkdir(join(child, 'cache'));
+    await writeFile(join(child, 'cache/local.txt'), 'first\n');
+    const before = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(before.submodules[0]).toMatchObject({
+      state: 'clean',
+      dirtyFileCount: 0,
+      ignoredPaths: ['cache'],
+    });
+    const action = { kind: 'remove' as const, submoduleId: before.submodules[0]!.id, force: false };
+    expect(
+      await applySubmoduleAction(f.git, { repositoryId, cwd: f.parent, action, snapshot: before.snapshot }),
+    ).toMatchObject({ status: 'blocked', reason: 'dirty' });
+    await writeFile(join(child, 'cache/local.txt'), 'newer\n');
+    await expect(
+      applySubmoduleAction(f.git, {
+        repositoryId,
+        cwd: f.parent,
+        action: { ...action, force: true },
+        snapshot: before.snapshot,
+      }),
+    ).rejects.toThrow('changed after it was read');
+    const unrelated = join(child, 'independent');
+    await initRepository(f.git, unrelated, 'precious.txt', 'preserve\n');
+    const current = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(
+      await applySubmoduleAction(f.git, {
+        repositoryId,
+        cwd: f.parent,
+        action: { ...action, force: true },
+        snapshot: current.snapshot,
+      }),
+    ).toMatchObject({ status: 'blocked', reason: 'invalid-path' });
+    expect(await readFile(join(unrelated, 'precious.txt'), 'utf8')).toBe('preserve\n');
+  });
+  it('does not discover the parent HEAD through an empty uninitialized child or a symbolic link', async () => {
+    const f = await fixture();
+    await f.git.run(['submodule', 'deinit', '--force', '--', 'modules/demo'], { cwd: f.parent });
+    const empty = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(empty.submodules[0]).toMatchObject({
+      initialized: false,
+      state: 'uninitialized',
+      revisions: { working: null },
+    });
+    await rm(join(f.parent, 'modules/demo'), { recursive: true });
+    await symlink(f.source, join(f.parent, 'modules/demo'));
+    const linked = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(linked.submodules[0]?.initialized).toBe(false);
+    expect(
+      await applySubmoduleAction(f.git, {
+        repositoryId,
+        cwd: f.parent,
+        snapshot: linked.snapshot,
+        action: { kind: 'remove', submoduleId: linked.submodules[0]!.id, force: true },
+      }),
+    ).toMatchObject({ status: 'blocked', reason: 'invalid-path' });
+    expect(await readFile(join(f.source, 'module.txt'), 'utf8')).toBe('baseline\n');
+  });
+
+  it('recursively adds, inspects, synchronizes and removes nested gitlinks in their owning repository', async () => {
+    const f = await fixture();
+    const deep = join(f.root, 'deep');
+    const baseline = await initRepository(f.git, deep, 'deep.txt', 'deep\n');
+    const childPath = 'nested/space café (one)';
+    await f.git.run(
+      ['-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', '--', deep, childPath],
+      { cwd: f.source },
+    );
+    await f.git.run(['commit', '--quiet', '-am', 'nested child'], { cwd: f.source });
+    const before = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    const added = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: before.snapshot,
+      action: { kind: 'add', url: f.source, path: 'modules/tree', recursive: true },
+    });
+    expect(added.status).toBe('applied');
+    const nested = added.context.submodules.find((item) => item.path === `modules/tree/${childPath}`)!;
+    expect(nested).toMatchObject({
+      ownerPath: 'modules/tree',
+      relativePath: childPath,
+      nested: true,
+      state: 'detached',
+      revisions: { head: baseline, index: baseline, working: baseline },
+    });
+    expect(await readFile(join(f.parent, nested.path, 'deep.txt'), 'utf8')).toBe('deep\n');
+    const parentIndex = (await f.git.run(['ls-files', '--stage'], { cwd: f.parent })).stdout;
+    const synced = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: added.context.snapshot,
+      action: { kind: 'sync', submoduleId: nested.id, recursive: true },
+    });
+    expect(synced.status).toBe('applied');
+    const removed = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: synced.context.snapshot,
+      action: { kind: 'remove', submoduleId: nested.id, force: false },
+    });
+    expect(removed.status).toBe('applied');
+    expect(removed.context.submodules.some((item) => item.id === nested.id)).toBe(false);
+    expect((await f.git.run(['ls-files', '--stage'], { cwd: f.parent })).stdout).toBe(parentIndex);
+    expect(await readFile(join(f.parent, 'modules/tree/.gitmodules'), 'utf8')).not.toContain(childPath);
+    expect(await readFile(join(f.parent, 'parent.txt'), 'utf8')).toBe('parent\n');
+  });
+
+  it('fetches a missing recorded commit and compares staged and unstaged pointers independently', async () => {
+    const f = await fixture();
+    await gitCommit(f.git, f.source, 'module.txt', 'middle\n', 'Middle revision');
+    const middle = (await f.git.run(['rev-parse', 'HEAD'], { cwd: f.source })).stdout.trim();
+    await f.git.run(['update-index', '--cacheinfo', `160000,${middle},modules/demo`], { cwd: f.parent });
+    let context = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(context.submodules[0]?.state).toBe('missing-commit');
+    const before = (await f.git.run(['ls-files', '--stage'], { cwd: f.parent })).stdout;
+    const updated = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: context.snapshot,
+      action: { kind: 'update', submoduleId: context.submodules[0]!.id, recursive: false },
+    });
+    expect(updated.status).toBe('applied');
+    expect((await f.git.run(['ls-files', '--stage'], { cwd: f.parent })).stdout).toBe(before);
+    await gitCommit(f.git, f.source, 'module.txt', 'latest\n', 'Latest revision');
+    const latest = (await f.git.run(['rev-parse', 'HEAD'], { cwd: f.source })).stdout.trim();
+    await f.git.run(['fetch', '--quiet'], { cwd: join(f.parent, 'modules/demo') });
+    await f.git.run(['checkout', '--quiet', latest], { cwd: join(f.parent, 'modules/demo') });
+    context = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    expect(await readSubmoduleComparison(f.git, f.parent, context.submodules[0]!, 'staged')).toMatchObject({
+      before: f.baseline,
+      after: middle,
+      ahead: 1,
+      behind: 0,
+    });
+    const unstaged = await readSubmoduleComparison(f.git, f.parent, context.submodules[0]!, 'unstaged');
+    expect(unstaged).toMatchObject({ before: middle, after: latest, ahead: 1, behind: 0 });
+    expect(unstaged.commits.map((commit) => commit.subject)).toEqual(['Latest revision', 'Middle revision']);
+    const missingId = '1'.repeat(40);
+    await f.git.run(['update-index', '--cacheinfo', `160000,${missingId},modules/demo`], { cwd: f.parent });
+    context = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    const failed = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: context.snapshot,
+      action: { kind: 'update', submoduleId: context.submodules[0]!.id, recursive: false },
+    });
+    expect(failed).toMatchObject({
+      status: 'blocked',
+      context: { submodules: [expect.objectContaining({ state: 'missing-commit' })] },
+    });
+    expect(await readFile(join(f.parent, 'modules/demo/module.txt'), 'utf8')).toBe('latest\n');
+  });
+
+  it('resumes an interrupted recursive initialization using native partial Git state', async () => {
+    const f = await fixture();
+    const deep = join(f.root, 'deep');
+    await initRepository(f.git, deep, 'deep.txt', 'nested bytes\n');
+    await f.git.run(['-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', deep, 'nested'], {
+      cwd: f.source,
+    });
+    await f.git.run(['commit', '--quiet', '-am', 'nested'], { cwd: f.source });
+    const before = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
+    const abort = new AbortController();
+    await expect(
+      applySubmoduleAction(
+        {
+          run: async (args, options) => {
+            if (args.includes('update') && args.includes('--recursive')) {
+              abort.abort();
+              throw new GitCancelledError();
+            }
+            return f.git.run(args, options);
+          },
+        },
+        {
+          repositoryId,
+          cwd: f.parent,
+          snapshot: before.snapshot,
+          signal: abort.signal,
+          action: { kind: 'add', path: 'partial', url: f.source, recursive: true },
+        },
+      ),
+    ).rejects.toBeInstanceOf(GitCancelledError);
+    const partial = await readSubmoduleContext(new GitRunner(), { repositoryId, cwd: f.parent });
+    expect(partial.submodules.find((item) => item.path === 'partial/nested')).toMatchObject({
+      initialized: false,
+      revisions: { working: null },
+    });
+    const resumed = await applySubmoduleAction(f.git, {
+      repositoryId,
+      cwd: f.parent,
+      snapshot: partial.snapshot,
+      action: {
+        kind: 'update',
+        submoduleId: partial.submodules.find((item) => item.path === 'partial')!.id,
+        recursive: true,
+      },
+    });
+    expect(resumed.status).toBe('applied');
+    expect(await readFile(join(f.parent, 'partial/nested/deep.txt'), 'utf8')).toBe('nested bytes\n');
+    expect(await readFile(join(f.parent, 'parent.txt'), 'utf8')).toBe('parent\n');
+  });
   it('reads clean, dirty, and changed-child revision states without changing Git', async () => {
     const value = await fixture();
     const before = await readSubmoduleContext(value.git, { repositoryId, cwd: value.parent });
@@ -54,6 +263,10 @@ describe('submodule service', () => {
       initialized: true,
       parentStatus: 'clean',
       revisions: { head: value.baseline, index: value.baseline, working: value.baseline },
+      url: value.source,
+      nested: false,
+      ownerPath: '',
+      relativePath: 'modules/demo',
     });
 
     await writeFile(join(value.parent, 'modules/demo/module.txt'), 'dirty\n', 'utf8');

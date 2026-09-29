@@ -17,6 +17,8 @@ import {
 import { GitCancelledError, GitCommandError, GitTimeoutError } from '../git/runner';
 import type { GitCommandResult, GitRunOptions } from '../git/runner';
 import { readReferenceContext } from './reference-service';
+import { clearGitFlowJournal, readGitFlowJournal, writeGitFlowJournal } from './gitflow-journal';
+import type { GitFlowJournal } from './gitflow-journal';
 
 const gitFlowReadTimeoutMs = 15_000;
 const gitFlowWriteTimeoutMs = 120_000;
@@ -31,6 +33,7 @@ const configKeys = {
   featurePrefix: 'gitflow.prefix.feature',
   releasePrefix: 'gitflow.prefix.release',
   hotfixPrefix: 'gitflow.prefix.hotfix',
+  tagPrefix: 'gitflow.prefix.versiontag',
 } as const;
 
 export interface GitFlowRunner {
@@ -111,7 +114,9 @@ export async function readGitFlowContext(
     name: branch.name,
     target: branch.target,
     isHead: branch.isHead,
+    worktreePath: branch.worktreePath,
   }));
+  const journal = await readGitFlowJournal(input.gitDir);
   const branches = config ? flowBranches(references.branches, config) : [];
   const clean = !references.dirty && references.untrackedCount === 0 && references.conflictedCount === 0;
   const capabilities = capabilitiesFor({
@@ -122,6 +127,25 @@ export async function readGitFlowContext(
     branches,
     config,
   });
+  if (journal) {
+    capabilities.canInitialize = false;
+    capabilities.canStart = false;
+    capabilities.canFinish = false;
+    capabilities.initializeReason =
+      capabilities.startReason =
+      capabilities.finishReason =
+        'Continue or stop the saved Git-flow finish first.';
+  }
+  const pendingFinish = journal
+    ? {
+        type: journal.source.type,
+        name: journal.source.name,
+        sourceFullName: journal.source.fullName,
+        step: journal.targets[journal.next]
+          ? `Merge into ${journal.targets[journal.next]!.branch}`
+          : 'Tag and branch cleanup',
+      }
+    : null;
   const status = configuration.status;
   const message =
     status === 'unconfigured'
@@ -129,16 +153,21 @@ export async function readGitFlowContext(
       : status === 'invalid'
         ? configuration.message
         : 'Git-flow is ready.';
-  const snapshot = createSnapshot({
-    configuration,
-    head,
-    localBranches,
-    branches,
-    clean,
-    untrackedCount: references.untrackedCount,
-    conflictedCount: references.conflictedCount,
-    pendingOperation: references.pendingOperation,
-  });
+  const snapshot = createHash('sha256')
+    .update(
+      createSnapshot({
+        configuration,
+        head,
+        localBranches,
+        branches,
+        clean,
+        untrackedCount: references.untrackedCount,
+        conflictedCount: references.conflictedCount,
+        pendingOperation: references.pendingOperation,
+      }),
+    )
+    .update(JSON.stringify(journal))
+    .digest('hex');
 
   return repositoryGitFlowContextSchema.parse({
     repositoryId: input.repositoryId,
@@ -153,6 +182,7 @@ export async function readGitFlowContext(
     conflictedCount: references.conflictedCount,
     pendingOperation: references.pendingOperation,
     capabilities,
+    pendingFinish,
     message,
     snapshot,
   } satisfies RepositoryGitFlowContext);
@@ -168,7 +198,31 @@ export async function applyGitFlowAction(
 
   const progress: ActionProgress = { output: [], createdBranch: null, deletedBranch: null, tag: null };
   try {
+    if (before.pendingFinish && input.action.kind !== 'continue' && input.action.kind !== 'stop')
+      return blockedResult(
+        input,
+        before,
+        input.action.kind,
+        'pending-operation',
+        'Continue or stop the saved Git-flow finish first.',
+        progress,
+        '',
+      );
     switch (input.action.kind) {
+      case 'continue': {
+        const journal = await readGitFlowJournal(input.gitDir);
+        if (!journal) throw new GitFlowRequestError('There is no saved Git-flow finish.');
+        return await resumeFinish(runner, input, journal, progress);
+      }
+      case 'stop':
+        await clearGitFlowJournal(input.gitDir);
+        return appliedResult(
+          input,
+          await readGitFlowContext(runner, input),
+          'stop',
+          'Stopped Git-flow finish. Existing branches, tags, and any pending Git merge are retained.',
+          progress,
+        );
       case 'initialize':
         return await initialize(runner, input as GitFlowActionInputFor<'initialize'>, before, progress);
       case 'start':
@@ -179,7 +233,15 @@ export async function applyGitFlowAction(
   } catch (error) {
     if (error instanceof GitCancelledError || error instanceof GitTimeoutError) throw error;
     if (error instanceof GitFlowRequestError)
-      return blockedResult(input, before, input.action.kind, 'other', error.message, progress, '');
+      return blockedResult(
+        input,
+        await readGitFlowContext(runner, input),
+        input.action.kind,
+        'other',
+        error.message,
+        progress,
+        '',
+      );
     if (!(error instanceof GitCommandError)) throw error;
     const output = displayOutput(error.stdout, error.stderr);
     const classified = classifyFailure(output);
@@ -255,7 +317,7 @@ async function initialize(
     progress.createdBranch = `refs/heads/${config.developBranch}`;
   }
   for (const [field, key] of Object.entries(configKeys) as Array<[keyof RepositoryGitFlowConfig, string]>) {
-    const result = await runGit(runner, input, ['config', '--local', key, config[field]]);
+    const result = await runGit(runner, input, ['config', '--local', key, config[field] ?? '']);
     progress.output.push(displayOutput(result.stdout, result.stderr));
   }
 
@@ -402,7 +464,41 @@ async function finishTopic(
       '',
     );
 
-  const tagName = input.action.type === 'feature' ? null : input.action.name;
+  const tagName =
+    input.action.type === 'feature' ? null : `${before.config.tagPrefix ?? ''}${input.action.name}`;
+  const targets =
+    input.action.type === 'feature'
+      ? [develop]
+      : input.action.mergeIntoDevelop
+        ? [production, develop]
+        : [production];
+  const occupied = targets.find(
+    (target) => target.worktreePath && target.worktreePath !== input.worktreePath,
+  );
+  if (occupied)
+    return blockedResult(
+      input,
+      before,
+      'finish',
+      'other',
+      `The destination '${occupied.name}' is checked out at ${occupied.worktreePath}. Finish from a worktree where the destination is available.`,
+      progress,
+      '',
+    );
+  try {
+    await runGit(runner, input, ['var', 'GIT_COMMITTER_IDENT']);
+  } catch (error) {
+    if (!(error instanceof GitCommandError)) throw error;
+    return blockedResult(
+      input,
+      before,
+      'finish',
+      'identity',
+      'Configure your Git identity before finishing this topic.',
+      progress,
+      '',
+    );
+  }
   if (tagName) {
     const tagProblem = await validateTagName(runner, input.cwd, tagName);
     if (tagProblem) return blockedResult(input, before, 'finish', 'invalid-name', tagProblem, progress, '');
@@ -434,54 +530,155 @@ async function finishTopic(
     }
   }
 
-  await checkoutBranch(runner, input, before.config.productionBranch, progress);
-  await mergeBranch(
-    runner,
-    input,
+  const journal: GitFlowJournal = {
+    version: 1,
+    config: before.config,
     source,
-    before.config.productionBranch,
-    input.action.noFastForward,
+    noFastForward: input.action.noFastForward,
+    keepBranch: input.action.keepBranch,
+    tagMessage: input.action.tagMessage.trim() || `${source.type} ${source.name}`,
+    tag: tagName,
+    targets: targets.map((target) => ({ branch: target.name, before: target.target, result: null })),
+    next: 0,
+    tagged: false,
+  };
+  await writeGitFlowJournal(input.gitDir, journal);
+  return resumeFinish(runner, input, journal, progress);
+}
+
+async function resumeFinish(
+  runner: GitFlowRunner,
+  input: GitFlowActionInput,
+  journal: GitFlowJournal,
+  progress: ActionProgress,
+): Promise<RepositoryGitFlowActionResult> {
+  const read = () => readGitFlowContext(runner, input);
+  let context = await read();
+  if (JSON.stringify(context.config) !== JSON.stringify(journal.config))
+    throw new GitFlowRequestError(
+      'Git-flow configuration changed. Stop this finish and review the branches.',
+    );
+  const source = context.localBranches.find(
+    (branch) => `refs/heads/${branch.name}` === journal.source.fullName,
+  );
+  if (source && source.target !== journal.source.target)
+    throw new GitFlowRequestError(
+      'The topic changed during this finish. Stop and review it before starting again.',
+    );
+  if (!source && journal.next < journal.targets.length)
+    throw new GitFlowRequestError(
+      'The topic branch is missing. Stop this finish and review the retained results.',
+    );
+  for (let index = 0; index < journal.targets.length; index += 1) {
+    const target = journal.targets[index]!;
+    const actual = context.localBranches.find((branch) => branch.name === target.branch);
+    if (!actual) throw new GitFlowRequestError(`The destination '${target.branch}' is missing.`);
+    if (target.result && actual.target !== target.result)
+      throw new GitFlowRequestError(
+        `The completed destination '${target.branch}' changed. Stop and review the finish.`,
+      );
+    if (index >= journal.next && actual.worktreePath && actual.worktreePath !== input.worktreePath)
+      throw new GitFlowRequestError(`The destination '${target.branch}' is checked out in another worktree.`);
+  }
+  for (; journal.next < journal.targets.length;) {
+    const target = journal.targets[journal.next]!;
+    context = await read();
+    if (context.pendingOperation) {
+      if (
+        context.pendingOperation !== 'merge' ||
+        context.head.name !== target.branch ||
+        context.head.commit !== target.before ||
+        context.conflictedCount > 0
+      )
+        throw new GitFlowRequestError(
+          'Resolve the pending merge before continuing Git-flow. Recovery can abort the current merge.',
+        );
+      const mergeHead = await optionalOutput(runner, input.cwd, ['rev-parse', '--verify', 'MERGE_HEAD']);
+      if (mergeHead !== journal.source.target)
+        throw new GitFlowRequestError('The pending merge belongs to another source.');
+      const result = await runGit(runner, input, ['-c', 'core.editor=:', 'merge', '--continue']);
+      progress.output.push(displayOutput(result.stdout, result.stderr));
+      context = await read();
+    }
+    if (!context.clean)
+      throw new GitFlowRequestError('Save or commit local changes before continuing Git-flow.');
+    const actual = context.localBranches.find((branch) => branch.name === target.branch)!;
+    if (actual.target !== target.before) {
+      // A completed command can outlive the app. Accept only the exact FF result or a merge
+      // with the reviewed parents, including a conflict resolved through ordinary Recovery.
+      const parents =
+        (await optionalOutput(runner, input.cwd, ['rev-list', '--parents', '-1', actual.target]))
+          ?.split(' ')
+          .slice(1) ?? [];
+      if (
+        actual.target !== journal.source.target &&
+        !(parents.length === 2 && parents[0] === target.before && parents[1] === journal.source.target)
+      )
+        throw new GitFlowRequestError(`The destination '${target.branch}' changed outside this finish.`);
+    } else {
+      await checkoutBranch(runner, input, target.branch, progress);
+      await mergeBranch(runner, input, journal.source, target.branch, journal.noFastForward, progress);
+    }
+    target.result = (await read()).localBranches.find((branch) => branch.name === target.branch)!.target;
+    journal.next += 1;
+    await writeGitFlowJournal(input.gitDir, journal);
+    if (journal.next === 1) await finishTag(runner, input, journal, progress);
+  }
+  await finishTag(runner, input, journal, progress);
+  context = await read();
+  if (!context.clean || context.pendingOperation)
+    throw new GitFlowRequestError('Finish the pending Git operation before branch cleanup.');
+  const finalBranch = journal.targets.at(-1)!.branch;
+  const currentSource = context.localBranches.find(
+    (branch) => `refs/heads/${branch.name}` === journal.source.fullName,
+  );
+  if (currentSource && currentSource.target !== journal.source.target)
+    throw new GitFlowRequestError('The topic changed before branch cleanup. Its branch has been retained.');
+  await checkoutBranch(runner, input, finalBranch, progress);
+  if (!journal.keepBranch && currentSource)
+    await deleteTopicBranch(runner, input, journal.source.fullName.slice('refs/heads/'.length), progress);
+  await clearGitFlowJournal(input.gitDir);
+  return appliedResult(
+    input,
+    await read(),
+    input.action.kind,
+    `Finished ${journal.source.type} '${journal.source.name}'.`,
     progress,
   );
+}
 
-  if (tagName) {
-    const tagMessage = input.action.tagMessage.trim() || `${input.action.type} ${input.action.name}`;
+async function finishTag(
+  runner: GitFlowRunner,
+  input: GitFlowActionInput,
+  journal: GitFlowJournal,
+  progress: ActionProgress,
+) {
+  if (!journal.tag) return;
+  const target = journal.targets[0]!.result;
+  if (!target) return;
+  if (await refExists(runner, input.cwd, `refs/tags/${journal.tag}`)) {
+    const actual = await optionalOutput(runner, input.cwd, [
+      'rev-parse',
+      '--verify',
+      `refs/tags/${journal.tag}^{commit}`,
+    ]);
+    const type = await optionalOutput(runner, input.cwd, ['cat-file', '-t', `refs/tags/${journal.tag}`]);
+    if (actual !== target || type !== 'tag')
+      throw new GitFlowRequestError(
+        'The version tag changed during the finish. Review it before continuing.',
+      );
+  } else {
     const result = await runGit(
       runner,
       input,
-      ['tag', '--annotate', '--cleanup=whitespace', '--file=-', tagName, 'HEAD'],
-      tagMessage + '\n',
+      ['tag', '--annotate', '--cleanup=whitespace', '--file=-', journal.tag, target],
+      journal.tagMessage + '\n',
     );
     progress.output.push(displayOutput(result.stdout, result.stderr));
-    progress.tag = `refs/tags/${tagName}`;
   }
-
-  if (input.action.type !== 'feature' && !input.action.mergeIntoDevelop) {
-    if (!input.action.keepBranch) {
-      await deleteTopicBranch(runner, input, sourceFullName, progress);
-    }
-    const context = await readGitFlowContext(runner, input);
-    return appliedResult(
-      input,
-      context,
-      'finish',
-      `Finished ${input.action.type} '${input.action.name}' on '${before.config.productionBranch}'.`,
-      progress,
-    );
-  }
-
-  await checkoutBranch(runner, input, before.config.developBranch, progress);
-  await mergeBranch(runner, input, source, before.config.developBranch, input.action.noFastForward, progress);
-  if (!input.action.keepBranch) await deleteTopicBranch(runner, input, sourceFullName, progress);
-
-  const context = await readGitFlowContext(runner, input);
-  return appliedResult(
-    input,
-    context,
-    'finish',
-    `Finished ${input.action.type} '${input.action.name}'${tagName ? ` and created tag '${tagName}'.` : '.'}`,
-    progress,
-  );
+  progress.tag = `refs/tags/${journal.tag}`;
+  journal.tagged = true;
+  await writeGitFlowJournal(input.gitDir, journal);
 }
 
 async function checkoutBranch(
@@ -505,7 +702,7 @@ async function mergeBranch(
   const result = await runGit(runner, input, [
     'merge',
     '--no-edit',
-    ...(noFastForward ? ['--no-ff'] : []),
+    noFastForward ? '--no-ff' : '--ff',
     '-m',
     `Merge branch '${source.fullName.slice('refs/heads/'.length)}' into ${target}`,
     source.target,
@@ -556,10 +753,10 @@ async function readConfiguration(runner: GitFlowRunner, cwd: string): Promise<Co
       config: null,
       message: 'Git-flow is not initialized in this repository.',
     };
-  if (values.some(([, value]) => value === null))
+  if (values.some(([field, value]) => field !== 'tagPrefix' && value === null))
     return { status: 'invalid', config: null, message: 'The gitflow.* configuration is incomplete.' };
 
-  const raw = Object.fromEntries(values.map(([field, value]) => [field, value as string])) as Record<
+  const raw = Object.fromEntries(values.map(([field, value]) => [field, value ?? ''])) as Record<
     keyof RepositoryGitFlowConfig,
     string
   >;
@@ -594,6 +791,8 @@ async function validateConfiguration(
     const problem = await validateBranchName(runner, cwd, `${prefix}sample`);
     if (problem) return `Git does not accept the Git-flow prefix '${prefix}'.`;
   }
+  const tagProblem = await validateTagName(runner, cwd, `${config.tagPrefix ?? ''}sample`);
+  if (tagProblem) return 'Git does not accept that version tag prefix.';
   return null;
 }
 
@@ -710,7 +909,7 @@ function flowBranches(
 function beforeContextBranch(
   context: RepositoryGitFlowContext,
   name: string,
-): { readonly name: string; readonly target: string } | undefined {
+): RepositoryGitFlowContext['localBranches'][number] | undefined {
   return context.localBranches.find((branch) => branch.name === name);
 }
 
@@ -730,6 +929,18 @@ function capabilitiesFor(input: {
     ? input.references.branches.some((branch) => branch.name === input.config!.developBranch)
     : false;
   const currentTopic = input.branches.find((branch) => branch.isHead);
+  const destination =
+    input.config && currentTopic
+      ? input.references.branches.find(
+          (branch) =>
+            branch.name ===
+            (currentTopic.type === 'feature' ? input.config!.developBranch : input.config!.productionBranch),
+        )
+      : undefined;
+  const occupied =
+    destination?.worktreePath && !destination.isHead
+      ? `The destination '${destination.name}' is checked out in another worktree.`
+      : null;
   const initializeReason =
     input.configuration.status === 'configured'
       ? 'Git-flow is already initialized.'
@@ -748,17 +959,14 @@ function capabilitiesFor(input: {
         ? input.configuration.message
         : 'Initialize Git-flow before finishing a topic.'
       : (common ??
+        occupied ??
         (!productionExists || !developExists
           ? 'Both Git-flow base branches must exist.'
           : currentTopic
             ? null
             : 'Check out a feature, release, or hotfix branch to finish it.'));
   return {
-    canInitialize:
-      input.configuration.status === 'unconfigured' &&
-      input.head.state === 'branch' &&
-      input.head.commit !== null &&
-      input.clean,
+    canInitialize: input.configuration.status === 'unconfigured' && common === null,
     initializeReason:
       typeof initializeReason === 'string' ? initializeReason : (initializeReason?.message ?? null),
     canStart:
@@ -769,6 +977,7 @@ function capabilitiesFor(input: {
       common === null &&
       productionExists &&
       developExists &&
+      occupied === null &&
       currentTopic !== undefined,
     finishReason: typeof finishReason === 'string' ? finishReason : (finishReason?.message ?? null),
   };

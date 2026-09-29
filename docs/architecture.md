@@ -1,5 +1,26 @@
 # Architecture and implementation decisions
 
+P09 (2026-09-29): the [topology/Git-flow handoff](reviews/p09-topology.md) supersedes the bounded
+F22/F23/F25 implementation inventory below within the phase. Worktree actions add named detached
+creation and lock/unlock variants; removal validates the registered directory and reviewed filesystem
+state. Submodule topology traverses each owning repository's index and definitions with bounded depth,
+separate HEAD/index/checkout identities, child `.git`/top-level checks, ignored-file removal guards and
+symlink protection. Nested actions execute in their backend-resolved owner. Standard parent/child
+common-directory trees share mutation barriers; unrelated repositories remain independent.
+
+Named `getSubmoduleComparison` extends strict common contracts, the explicit preload and owner-checked
+main handlers together. Local object reads supply the selected staged/unstaged endpoints, bounded
+metadata/graph and ahead/behind counts. No Git semantics, filesystem/process execution or credentials
+move into renderer/shared code. Inspectors cannot invoke the new channel or topology mutations.
+
+Git-flow finish is a durable backend workflow using a versioned atomic per-worktree journal, pinned
+source/target IDs and explicit Continue/Stop actions. Native merge state remains authoritative; completed
+merges/tags survive interruption without automatic rollback. Feature finish targets develop only;
+release/hotfix tags honor `gitflow.prefix.versiontag`. Destination occupancy is checked before writing
+history, and cleanup rechecks the source. Read and mutation lifetimes are separate in topology hooks;
+dialogs freeze a review and reject changes instead of silently adopting a newer snapshot. Sender/frame/
+document checks, trust, context isolation, sandbox, CSP and exact event cleanup are unchanged.
+
 P08 Bisect refresh correction (2026-09-26): [runtime evidence and tests](reviews/p08-bisect-refresh.md)
 establish that background context reads must not toggle operation busy state and swallow pointer clicks.
 The renderer retains the last validated context during reads, claims each action synchronously, and
@@ -810,17 +831,17 @@ credential/password dialog or secret store, full conflict-family parity, merge-p
 interactive rebase, hunk-level stash selection and patch import, syntax/image viewers, full hosting
 integration, automatic updater or final branding. The bounded F21 slice adds rename-aware file History and
 Blame inspectors; directory/selected-code history, copy traversal, restart persistence, and general
-main-graph Back/Forward remain unimplemented or unverified. The bounded F23 slice adds submodule
-inspection and lifecycle actions; nested mutation, interrupted-update recovery, missing-object recovery,
-and conflict continuation remain unimplemented or unverified.
+main-graph Back/Forward remain unimplemented or unverified. P09 supersedes the bounded F23 slice with
+nested lifecycle actions, interrupted-update and missing-object recovery, and verified gitlink conflict
+continuation; see its handoff for limits and independent policies.
 The bounded F24 slice adds local LFS pointer inspection, optional repository-local initialization, and
 verified historical Save As; remote/authenticated transfers, push, locks, track/untrack editing, and
 remote missing-object recovery remain unimplemented or unverified.
 The bounded F25 slice adds native Git-flow initialization plus feature/release/hotfix start and finish
 workflows, including annotated tags and dirty/stale/pending-operation capability guards. Topic rebase,
-publish/track/delete-remote routes, automatic stash/reapply, specialized conflict continuation, and
-worktree-owned topic branches remain unimplemented or unverified; these are separate from F38 Lean
-Branching.
+publish/track/delete-remote routes and automatic stash/reapply remain outside the P09 specification.
+P09 adds saved finish continuation and verifies worktree-owned topics; these remain separate from F38
+Lean Branching.
 Window chrome on macOS and Windows, title-bar double-click and
 real maximize/minimize under a window manager, and screen-reader behavior of the custom menus have
 not yet been verified. Tests establish the local topology, tab/status behavior, manager

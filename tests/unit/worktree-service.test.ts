@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -63,6 +63,63 @@ afterEach(async () => {
 });
 
 describe('worktree service', () => {
+  it('invalidates force-removal reviews when a dirty file changes without changing the path count', async () => {
+    const f = await fixtureRepository();
+    const path = join(f.root, 'reviewed');
+    await apply(f, { kind: 'create', path, sourceFullName: 'refs/heads/feature' });
+    await writeFile(join(path, 'local.txt'), 'old\n');
+    const before = await context(f);
+    const worktreeId = before.worktrees.find((item) => item.path === path)!.id;
+    await writeFile(join(path, 'local.txt'), 'new\n');
+    await expect(apply(f, { kind: 'remove', worktreeId, force: true }, before.snapshot)).rejects.toThrow(
+      'changed after it was read',
+    );
+    expect(await readFile(join(path, 'local.txt'), 'utf8')).toBe('new\n');
+  });
+  it('creates detached worktrees, locks/unlocks them, and protects nested repositories on force removal', async () => {
+    const f = await fixtureRepository();
+    const head = (await f.git.run(['rev-parse', 'HEAD'], { cwd: f.worktree })).stdout.trim();
+    const path = join(f.root, 'detached');
+    expect(
+      await apply(f, { kind: 'create-detached', path: join(f.worktree, 'nested'), commitId: head }),
+    ).toMatchObject({ status: 'blocked', reason: 'invalid-path' });
+    expect(await apply(f, { kind: 'create-detached', path, commitId: head })).toMatchObject({
+      status: 'applied',
+    });
+    const tree = (await context(f)).worktrees.find((item) => item.path === path)!;
+    expect(tree).toMatchObject({ branchName: null, head });
+    expect(await apply(f, { kind: 'lock', worktreeId: tree.id, reason: 'Portable disk' })).toMatchObject({
+      status: 'applied',
+    });
+    expect((await context(f)).worktrees.find((item) => item.id === tree.id)).toMatchObject({
+      locked: true,
+      lockReason: 'Portable disk',
+    });
+    expect(await apply(f, { kind: 'unlock', worktreeId: tree.id })).toMatchObject({ status: 'applied' });
+    const nested = join(path, 'unrelated');
+    await mkdir(nested);
+    await f.git.run(['init', '--quiet'], { cwd: nested });
+    await writeFile(join(nested, 'precious.txt'), 'preserve');
+    expect(await apply(f, { kind: 'remove', worktreeId: tree.id, force: true })).toMatchObject({
+      status: 'blocked',
+      reason: 'invalid-path',
+    });
+    expect(await readFile(join(nested, 'precious.txt'), 'utf8')).toBe('preserve');
+    expect((await f.git.run(['rev-parse', 'main'], { cwd: f.worktree })).stdout.trim()).toBe(head);
+  });
+
+  it('retains locked missing registrations when pruning other stale worktrees', async () => {
+    const f = await fixtureRepository();
+    const path = join(f.root, 'portable');
+    await apply(f, { kind: 'create', path, sourceFullName: 'refs/heads/feature' });
+    const tree = (await context(f)).worktrees.find((item) => item.path === path)!;
+    await apply(f, { kind: 'lock', worktreeId: tree.id, reason: 'Offline' });
+    await rm(path, { recursive: true, force: true });
+    await apply(f, { kind: 'prune' });
+    expect((await context(f)).worktrees).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: tree.id, exists: false, locked: true })]),
+    );
+  });
   it('creates and removes a linked worktree without changing the parent branch', async () => {
     const fixture = await fixtureRepository();
     const linked = join(fixture.root, 'linked');

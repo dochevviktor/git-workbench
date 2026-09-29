@@ -203,6 +203,7 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       getGitFlow: (request) => invoke(requests.getRepositoryGitFlow, request),
       startGitFlowOperation: (request) => invoke(requests.startRepositoryGitFlowOperation, request),
       getSubmodules: (request) => invoke(requests.getRepositorySubmodules, request),
+      getSubmoduleComparison: (request) => invoke(requests.getRepositorySubmoduleComparison, request),
       startSubmoduleOperation: (request) => invoke(requests.startRepositorySubmoduleOperation, request),
       openSubmodule: (request) => invoke(requests.openRepositorySubmodule, request),
       startMergeRebase: (request) => invoke(requests.startRepositoryMergeRebase, request),

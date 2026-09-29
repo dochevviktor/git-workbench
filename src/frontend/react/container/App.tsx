@@ -48,7 +48,8 @@ import type { InteractiveRebaseDialogRequest } from '../components/InteractiveRe
 import { ReferenceDialog } from '../components/ReferenceDialogs';
 import { WorktreeDialog } from '../components/WorktreeDialogs';
 import type { WorktreeDialogRequest } from '../components/WorktreeDialogs';
-import { SubmoduleDialog } from '../components/SubmoduleDialog';
+import { SubmoduleDialog, SubmoduleActionDialog } from '../components/SubmoduleDialog';
+import type { SubmoduleActionDialogRequest } from '../components/SubmoduleDialog';
 import { RecoveryPanel } from '../components/RecoveryPanel';
 import { StashDialogs } from '../components/StashDialogs';
 import type { StashDialogRequest } from '../components/StashDialogs';
@@ -346,7 +347,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   }>();
   const [worktreeDialog, setWorktreeDialog] = useState<WorktreeDialogRequest>();
   const [worktreeFailure, setWorktreeFailure] = useState<string>();
+  const [worktreeSnapshot, setWorktreeSnapshot] = useState<string>();
   const [submoduleDialogOpen, setSubmoduleDialogOpen] = useState(false);
+  const [submoduleActionDialog, setSubmoduleActionDialog] = useState<SubmoduleActionDialogRequest>();
+  const [submoduleSnapshot, setSubmoduleSnapshot] = useState<string>();
   const [submoduleFailure, setSubmoduleFailure] = useState<string>();
   const [stashDialog, setStashDialog] = useState<StashDialogRequest>();
   const development = info?.mode === 'development';
@@ -520,10 +524,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setReferenceFailure(undefined);
   }, []);
 
-  const openWorktreeDialog = useCallback((request: WorktreeDialogRequest) => {
-    setWorktreeFailure(undefined);
-    setWorktreeDialog(request);
-  }, []);
+  const openWorktreeDialog = useCallback(
+    (request: WorktreeDialogRequest) => {
+      setWorktreeFailure(undefined);
+      setWorktreeSnapshot(worktreeContext?.snapshot);
+      setWorktreeDialog(request);
+    },
+    [worktreeContext?.snapshot],
+  );
 
   const closeWorktreeDialog = useCallback(() => {
     setWorktreeDialog(undefined);
@@ -541,7 +549,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             setWorktreeFailure(undefined);
             setReferenceStatus({ message: result.message, blocked: false });
             refresh();
-            if (action.kind === 'create' && result.path) void openRecent(result.path);
+            if ((action.kind === 'create' || action.kind === 'create-detached') && result.path)
+              void openRecent(result.path);
             return;
           }
           setWorktreeFailure(result.message);
@@ -549,6 +558,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         })
         .catch((reason: unknown) => {
           if (activeRepositoryId.current !== owner) return;
+          setWorktreeFailure(reason instanceof Error ? reason.message : 'The worktree action failed.');
           reportError(reason instanceof Error ? reason.message : 'The worktree action failed.');
           reloadWorktrees();
         });
@@ -571,32 +581,40 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   );
 
   const runSubmoduleAction = useCallback(
-    (action: RepositorySubmoduleAction) => {
+    (action: RepositorySubmoduleAction, snapshot = submoduleContext?.snapshot) => {
       const owner = active?.id;
       if (!owner) return;
-      void applySubmodule(action, submoduleContext?.snapshot)
+      setSubmoduleFailure(undefined);
+      void applySubmodule(action, snapshot)
         .then((result) => {
           if (activeRepositoryId.current !== owner) return;
           setReferenceStatus({ message: result.message, blocked: result.status !== 'applied' });
-          if (result.status === 'applied') refresh();
+          if (result.status === 'applied') {
+            setSubmoduleActionDialog(undefined);
+            setSubmoduleDialogOpen(false);
+            refresh();
+          } else setSubmoduleFailure(result.message);
         })
         .catch((reason: unknown) => {
           if (activeRepositoryId.current !== owner) return;
-          reportError(reason instanceof Error ? reason.message : 'The submodule action failed.');
+          setSubmoduleFailure(reason instanceof Error ? reason.message : 'The submodule action failed.');
           reloadSubmodules();
         });
     },
-    [active?.id, applySubmodule, refresh, reloadSubmodules, reportError, submoduleContext?.snapshot],
+    [active?.id, applySubmodule, refresh, reloadSubmodules, submoduleContext?.snapshot],
   );
 
   const updateSubmodule = useCallback(
-    (submodule: RepositorySubmodule) =>
-      runSubmoduleAction({
-        kind: submodule.initialized ? 'update' : 'init',
-        submoduleId: submodule.id,
-        recursive: true,
-      }),
-    [runSubmoduleAction],
+    (submodule: RepositorySubmodule) => {
+      setSubmoduleFailure(undefined);
+      if (submoduleContext)
+        setSubmoduleActionDialog({
+          kind: submodule.initialized ? 'update' : 'init',
+          submodule,
+          snapshot: submoduleContext.snapshot,
+        });
+    },
+    [submoduleContext],
   );
 
   const openStashSave = useCallback(
@@ -793,6 +811,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       newTag: (commit) => openReferenceDialog({ kind: 'new-tag', target: commitTarget(commit) }),
       checkoutCommit: (commit) =>
         openReferenceDialog({ kind: 'checkout-detached', target: commitTarget(commit) }),
+      createWorktree: (commit) => openWorktreeDialog({ kind: 'create', commitId: commit.id }),
       savePatch: (commit) => savePatch({ kind: 'commit', commitId: commit.id }),
       cherryPick: (commit) => openHistoryOperation('cherry-pick', commit),
       revert: (commit) => openHistoryOperation('revert', commit),
@@ -806,6 +825,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       openHistoryOperation,
       openInteractiveRebase,
       openReferenceDialog,
+      openWorktreeDialog,
       referenceBusy,
       referencesReady,
       savePatch,
@@ -833,6 +853,18 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [aiReview, setAiReview] = useState<RepositorySummary>();
   const [gitFlowFailure, setGitFlowFailure] = useState<string>();
+  const [gitFlowSnapshot, setGitFlowSnapshot] = useState<string>();
+  const [gitFlowReview, setGitFlowReview] = useState<typeof gitFlowContext>();
+  const gitFlowReviewGeneration = useRef(0);
+  useEffect(() => {
+    setWorktreeDialog(undefined);
+    setSubmoduleDialogOpen(false);
+    setSubmoduleActionDialog(undefined);
+    setGitFlowDialog(undefined);
+    setGitFlowSnapshot(undefined);
+    setGitFlowReview(undefined);
+    gitFlowReviewGeneration.current += 1;
+  }, [active?.id]);
   const [mergeRebaseDialog, setMergeRebaseDialog] = useState<MergeRebaseDialogRequest>();
   const [mergeRebaseFailure, setMergeRebaseFailure] = useState<string>();
   const [activityOpen, setActivityOpen] = useState(false);
@@ -910,23 +942,49 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     setMergeRebaseFailure(undefined);
   }, []);
 
-  const openGitFlowDialog = useCallback((request: GitFlowDialogRequest) => {
-    setGitFlowFailure(undefined);
-    setGitFlowDialog(request);
-  }, []);
+  const openGitFlowDialog = useCallback(
+    (request: GitFlowDialogRequest) => {
+      const id = active?.id;
+      if (!id) return;
+      const generation = ++gitFlowReviewGeneration.current;
+      setGitFlowFailure(undefined);
+      void window.desktop?.repository.getGitFlow({ id }).then((result) => {
+        if (activeRepositoryId.current !== id || generation !== gitFlowReviewGeneration.current) return;
+        if (!result.ok) {
+          reportError(result.error.message);
+          return;
+        }
+        const review = result.value;
+        setGitFlowReview(review);
+        setGitFlowSnapshot(review.snapshot);
+        setGitFlowDialog(
+          request.kind === 'finish'
+            ? {
+                ...request,
+                branch:
+                  review.branches.find((branch) => branch.fullName === request.branch.fullName) ??
+                  request.branch,
+              }
+            : request,
+        );
+      });
+    },
+    [active?.id, reportError],
+  );
 
   const closeGitFlowDialog = useCallback(() => {
+    gitFlowReviewGeneration.current += 1;
     setGitFlowDialog(undefined);
     setGitFlowFailure(undefined);
   }, []);
 
   const startGitFlow = useCallback(
-    (draft: GitFlowActionDraft) => {
+    (draft: GitFlowActionDraft, snapshot = gitFlowSnapshot ?? gitFlowContext?.snapshot) => {
       const owner = active?.id;
       const current = gitFlowContext;
       if (!owner || !current) return;
       setGitFlowFailure(undefined);
-      const action = { ...draft, snapshot: current.snapshot } as RepositoryGitFlowAction;
+      const action = { ...draft, snapshot: snapshot ?? current.snapshot } as RepositoryGitFlowAction;
       void applyGitFlow(action)
         .then((result) => {
           if (activeRepositoryId.current !== owner) return;
@@ -939,6 +997,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
             setGitFlowFailure(result.message);
             setReferenceStatus({ message: result.message, blocked: true });
             reloadGitFlow();
+            refresh();
+            if (result.context.pendingFinish) setGitFlowDialog(undefined);
           }
         })
         .catch((reason: unknown) => {
@@ -949,7 +1009,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           reloadGitFlow();
         });
     },
-    [active?.id, applyGitFlow, gitFlowContext, refresh, reloadGitFlow],
+    [active?.id, applyGitFlow, gitFlowContext, gitFlowSnapshot, refresh, reloadGitFlow],
   );
 
   /**
@@ -1273,7 +1333,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     ? 'Open a repository first.'
     : active.bare
       ? 'A bare repository has no working tree.'
-      : gitFlowLoading
+      : gitFlowLoading && !gitFlowContext
         ? 'The Git-flow state is still loading.'
         : referenceBusy
           ? 'Another repository operation is running.'
@@ -1290,6 +1350,20 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           ? undefined
           : (gitFlowContext.capabilities.startReason ?? 'Git-flow cannot start a topic here.'));
   const gitFlowItems: MenuEntry[] = compactMenu([
+    gitFlowContext?.pendingFinish !== null &&
+      gitFlowContext?.pendingFinish !== undefined && {
+        id: 'git-flow-continue',
+        label: 'Continue Finish',
+        disabled: referenceBusy || gitFlowContext.conflictedCount > 0,
+        run: () => startGitFlow({ kind: 'continue' }, gitFlowContext.snapshot),
+      },
+    gitFlowContext?.pendingFinish !== null &&
+      gitFlowContext?.pendingFinish !== undefined && {
+        id: 'git-flow-stop',
+        label: 'Stop Finish…',
+        disabled: referenceBusy,
+        run: () => openGitFlowDialog({ kind: 'stop' }),
+      },
     {
       id: 'git-flow-initialize',
       label: 'Initialize…',
@@ -2008,6 +2082,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               : 'Open a repository first.',
             run: () => {
               setSubmoduleFailure(undefined);
+              setSubmoduleSnapshot(submoduleContext?.snapshot);
               setSubmoduleDialogOpen(true);
             },
           },
@@ -2125,6 +2200,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: referenceBusy,
           run: () => runWorktreeAction({ kind: 'prune' }, worktreeContext?.snapshot),
         },
+        !worktree.isMain && {
+          id: 'lock',
+          label: worktree.locked ? 'Unlock Worktree' : 'Lock Worktree…',
+          disabled: referenceBusy,
+          run: () =>
+            worktree.locked
+              ? runWorktreeAction({ kind: 'unlock', worktreeId: worktree.id }, worktreeContext?.snapshot)
+              : openWorktreeDialog({ kind: 'lock', worktree }),
+        },
         menuSeparator,
         { id: 'copy-path', label: 'Copy Path', run: () => copyText(worktree.path) },
       ]),
@@ -2132,7 +2216,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   };
 
   const openWorktreeSectionMenu = (event: ReactMouseEvent<HTMLElement>) => {
-    const current = referenceContext?.branches.find((branch) => branch.isHead);
+    const current = referenceContext?.branches.find((branch) => !branch.isHead && !branch.worktreePath);
     const stale = worktreeContext?.worktrees.some((worktree) => worktree.prunable) ?? false;
     showContextMenu({
       anchor: contextMenuAnchor(event, event.currentTarget),
@@ -2142,9 +2226,17 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           id: 'create',
           label: 'Checkout as Worktree…',
           disabled: !current || referenceBusy,
-          disabledReason: current ? undefined : 'Check out a branch before creating a worktree.',
+          disabledReason: current ? undefined : 'All local branches are already checked out.',
           run: () => {
             if (current) openWorktreeDialog({ kind: 'create', sourceFullName: current.fullName });
+          },
+        },
+        {
+          id: 'detached-worktree',
+          label: 'New Detached Worktree at HEAD…',
+          disabled: !active?.head.commit || referenceBusy,
+          run: () => {
+            if (active?.head.commit) openWorktreeDialog({ kind: 'create', commitId: active.head.commit });
           },
         },
         {
@@ -2189,7 +2281,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           label: 'Synchronize URL',
           disabled: referenceBusy,
           disabledReason: referenceBusy ? 'Another repository operation is running.' : undefined,
-          run: () => runSubmoduleAction({ kind: 'sync', submoduleId: submodule.id, recursive: true }),
+          run: () => {
+            setSubmoduleFailure(undefined);
+            if (submoduleContext)
+              setSubmoduleActionDialog({ kind: 'sync', submodule, snapshot: submoduleContext.snapshot });
+          },
         },
         menuSeparator,
         {
@@ -2197,15 +2293,11 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           label: 'Remove Submodule…',
           danger: true,
           disabled: referenceBusy,
-          run: () => runSubmoduleAction({ kind: 'remove', submoduleId: submodule.id, force: false }),
-        },
-        {
-          id: 'force-remove',
-          label: 'Force Remove Submodule…',
-          danger: true,
-          disabled: referenceBusy,
-          disabledReason: 'Removes the selected child path and its parent registration.',
-          run: () => runSubmoduleAction({ kind: 'remove', submoduleId: submodule.id, force: true }),
+          run: () => {
+            setSubmoduleFailure(undefined);
+            if (submoduleContext)
+              setSubmoduleActionDialog({ kind: 'remove', submodule, snapshot: submoduleContext.snapshot });
+          },
         },
         {
           id: 'add-submodule',
@@ -2213,6 +2305,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           disabled: !active || active.bare || referenceBusy,
           run: () => {
             setSubmoduleFailure(undefined);
+            setSubmoduleSnapshot(submoduleContext?.snapshot);
             setSubmoduleDialogOpen(true);
           },
         },
@@ -2332,6 +2425,13 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                     if (!result.ok) reportError(result.error.message);
                   });
             },
+          },
+          {
+            id: 'git-flow',
+            label: 'Git Flow',
+            disabled: gitFlowUnavailableReason !== undefined,
+            disabledReason: gitFlowUnavailableReason,
+            submenu: gitFlowItems,
           },
           menuSeparator,
           current &&
@@ -2776,6 +2876,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           void setTabOrientation(repositoryListVisible ? 'horizontal' : 'vertical')
         }
         repository={active}
+        worktreeParentName={
+          active && active.gitDir !== active.commonDir && worktreeContext?.repositoryId === active.id
+            ? worktreeContext.worktrees
+                .find((item) => item.isMain)
+                ?.path.split(/[\\/]/u)
+                .filter(Boolean)
+                .at(-1)
+            : undefined
+        }
         tracking={active ? history.tracking : undefined}
         branchItems={branchMenuItems}
         branchDisabledReason={active?.bare ? 'A bare repository has no working tree.' : undefined}
@@ -2786,7 +2895,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           if (headTarget && !referenceBusy) openReferenceDialog({ kind: 'new-branch', target: headTarget });
         }}
         gitFlowItems={gitFlowItems}
-        gitFlowDisabledReason={gitFlowPrimaryDisabledReason}
+        gitFlowDisabledReason={gitFlowUnavailableReason}
+        gitFlowPrimaryDisabledReason={gitFlowPrimaryDisabledReason}
         onGitFlow={gitFlowPrimary}
         stashItems={stashItems}
         stashDisabledReason={stashDisabledReason}
@@ -2810,6 +2920,29 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onCancelOperation={cancelOperation}
       />
       {tabStrip('horizontal')}
+      {gitFlowContext?.repositoryId === active?.id && gitFlowContext?.pendingFinish && (
+        <div className="p09-flow-recovery" role="status">
+          <span>
+            Git-flow: finish {gitFlowContext.pendingFinish.type} '{gitFlowContext.pendingFinish.name}' —{' '}
+            {gitFlowContext.pendingFinish.step}
+            {gitFlowContext.conflictedCount > 0 ? '. Resolve conflicts in Local Changes to continue.' : ''}
+          </span>
+          <button
+            className="button button-small"
+            disabled={referenceBusy || gitFlowContext.conflictedCount > 0}
+            onClick={() => startGitFlow({ kind: 'continue' }, gitFlowContext.snapshot)}
+          >
+            Continue Git-flow
+          </button>
+          <button
+            className="button button-small"
+            disabled={referenceBusy}
+            onClick={() => openGitFlowDialog({ kind: 'stop' })}
+          >
+            Stop Finish…
+          </button>
+        </div>
+      )}
       {active && !active.bare && active.trusted !== false && (
         <RecoveryPanel
           key={active.id}
@@ -3159,10 +3292,10 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           onChanged={refresh}
         />
       )}
-      {gitFlowDialog && gitFlowContext && (
+      {gitFlowDialog && gitFlowReview && (
         <GitFlowDialog
           request={gitFlowDialog}
-          context={gitFlowContext}
+          context={gitFlowReview}
           platform={platform}
           busy={referenceBusy}
           failure={gitFlowFailure}
@@ -3241,7 +3374,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           platform={platform}
           busy={referenceBusy}
           failure={worktreeFailure}
-          onSubmit={(action) => runWorktreeAction(action, worktreeContext?.snapshot)}
+          onSubmit={(action) => runWorktreeAction(action, worktreeSnapshot)}
           onClose={closeWorktreeDialog}
         />
       )}
@@ -3250,12 +3383,30 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           platform={platform}
           busy={referenceBusy}
           failure={submoduleFailure}
-          onSubmit={(action) => {
-            setSubmoduleDialogOpen(false);
-            runSubmoduleAction(action);
-          }}
+          onSubmit={(action) => runSubmoduleAction(action, submoduleSnapshot)}
           onClose={() => {
             setSubmoduleDialogOpen(false);
+            setSubmoduleFailure(undefined);
+          }}
+        />
+      )}
+      {submoduleActionDialog && active?.worktreePath && (
+        <SubmoduleActionDialog
+          request={submoduleActionDialog}
+          repositoryPath={active.worktreePath}
+          descendants={
+            submoduleContext?.submodules.filter(
+              (item) =>
+                item.path === submoduleActionDialog.submodule.path ||
+                item.path.startsWith(`${submoduleActionDialog.submodule.path}/`),
+            ) ?? [submoduleActionDialog.submodule]
+          }
+          platform={platform}
+          busy={referenceBusy}
+          failure={submoduleFailure}
+          onSubmit={(action) => runSubmoduleAction(action, submoduleActionDialog.snapshot)}
+          onClose={() => {
+            setSubmoduleActionDialog(undefined);
             setSubmoduleFailure(undefined);
           }}
         />
