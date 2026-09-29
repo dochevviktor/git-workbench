@@ -4,6 +4,10 @@ Implementation date: 2026-09-29. Linux baseline: Git 2.55.0, Git LFS 3.8.0, GnuP
 Node 24.13.0 and the committed Electron/npm dependencies. This record supersedes the bounded
 F24/F27/F28 handoffs within P10. Native platform and exact Fork parity limits remain below.
 
+Follow-up (2026-09-29): the [P07 focus correction](p07-focus-stability.md) resolves the intermittent
+rebase-action failure retained below. All 72 routine Electron scenarios now pass, with two existing
+opt-in skips. The original P10 verification results remain historical evidence.
+
 ## Scope and evidence
 
 | Requirement                                         | Implementation and independent checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -134,11 +138,12 @@ Native frame/window-manager behavior was not changed or reverified.
   `/tmp/git-workbench-p10-baseline-BWVonV`, passes two of three repeats and fails once with a different
   keyboard-action result (`Add Epsilon` retained instead of `Add Zeta`). Three subsequent baseline
   repeats pass. This establishes preexisting intermittency in that scenario, not an exact root cause
-  or proof that the two assertions have the same cause. No P07 code/assertion was changed.
+  or proof that the two assertions have the same cause. No P07 code/assertion was changed in P10;
+  the subsequent focus correction establishes the cause and fixes the application.
 - One initial desktop smoke run missed a hunk Unstage transition; its unchanged focused replay and
   the full-suite/final targeted smoke pass. This observation is retained rather than claimed as a fix.
 - `git diff --check`: passes. All P10 acceptance criteria are verified for the documented Linux
-  policies; the broad suite is not claimed entirely green.
+  policies. The broad-suite caveat from this checkpoint is closed by the follow-up above.
 
 Tests use only temporary repositories, profiles, caches, generated GPG keys and loopback services.
 Git LFS was absent on the host; the official 3.8.0 Linux executable was downloaded into a temporary

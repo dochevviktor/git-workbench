@@ -1,5 +1,13 @@
 # Git Workbench implementation plan
 
+P07 focus follow-up (2026-09-29): the [stability correction](reviews/p07-focus-stability.md) resolves
+the intermittent rebase-action failure retained by P10. Delayed focus restoration could send a newer
+row's shortcut to the previously moved/edited commit. Focus now settles with the DOM update; four
+controlled failures pass after the fix, with an additional keyboard-navigation regression. All 27
+repeated P07 scenarios pass with the original Git assertions unchanged. `npm run check` passes 630
+tests (one opt-in skip), build passes, and the full headless suite passes all 72 routine scenarios
+(two existing opt-in skips), without failures or automatic retries.
+
 P10 completion (2026-09-29): the [rich-diff/LFS/signing handoff](reviews/p10-rich-diffs-lfs-signing.md)
 supersedes the bounded F24/F27/F28 limitations for the Linux phase. Additional raster formats and
 restricted SVG, zoom/pan, cached LFS images, on-demand exact payload retrieval, authenticated object
@@ -8,7 +16,8 @@ The Fork comparison corrected LFS card framing/metadata and retained bottom imag
 `npm run check` passes 630 tests (one opt-in skip), build passes, and all eight targeted desktop
 scenarios pass. The broad suite records 66 passes, two opt-in skips and one intermittent P07 scenario;
 that scenario also fails on the untouched starting commit, at a different keyboard-action assertion.
-The handoff retains the exact results and native-platform/format/provider limits.
+The P07 follow-up above closes that failure; the handoff retains the historical results and
+native-platform/format/provider limits.
 
 P09 test follow-up (2026-09-29): the [stability correction](reviews/p09-test-stability.md) resolves
 history paging interrupted by unchanged refreshes, displayed-patch copying disabled during refresh,
@@ -203,7 +212,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P04   | Changes, diff, staging, commit/amend, safe discard                   | Complete for Linux (2026-09-23); F08–F11 phase scope, syntax, precise staging/discard, composer and catalogue states verified; see P04 handoff                                                                    | P01 writes, P02/P03 views             |
 | P05   | Branches/tags/remotes, authentication, network operations            | Complete for Linux phase scope (2026-09-23); provider account forms and HTTPS authentication corrected 2026-09-24; see P05 and provider accounts handoffs                                                         | P01 jobs, P02/P04, P06 recovery       |
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                                    | P01/P04/P05 capabilities              |
-| P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                                 | P06                                   |
+| P07   | Interactive rebase and history editing                               | Complete for Linux phase scope; focus correction verified 2026-09-29 with controlled shortcut regressions, 27 repeated P07 scenarios and the full 72-scenario suite passing; see P07 handoffs                     | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Complete for Linux phase scope (2026-09-26); investigation, recovery and patch scope verified; Bisect refresh corrected and all 62 routine Electron scenarios pass; see P08 handoffs                              | P03/P04; recovery for mutations       |
 | P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full suite green after stability follow-up                            | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Complete for Linux phase scope (2026-09-29); bounded rich formats/SVG, zoom, cached LFS images, authenticated transfers, tracking/ownership, GPG defaults and protected-agent workflows verified; see P10 handoff | P04, safe assets; P05 transfers       |
@@ -1038,6 +1047,11 @@ broader feature or platform scope. Historical started-slice paragraphs above ret
 
 Coverage: F16 completion, F18.
 
+Focus follow-up (2026-09-29): [the correction record](reviews/p07-focus-stability.md) closes the
+intermittent keyboard-targeting failure noted in P10. It includes deterministic before/after browser
+events, five new focus regressions and unchanged independent Git outcomes. All 27 repeated P07
+scenarios, 630 routine tests and the full 72-scenario headless Electron suite pass; build passes.
+
 Catalogue anchors: P1-023/P1-024, especially plan-execution and Edit/amend/continue subcases; C04 follows P06.
 
 1. Build a reviewed rebase plan with reorder/pick/reword/edit/squash/fixup/drop, autosquash, quick actions,
@@ -1226,9 +1240,10 @@ inheritance, and protected-key cancellation/interruption is verified through the
 Graphical pinentry, real hosting policies, native platforms and full codec/color parity remain P14.
 
 Verification: 630 tests pass (one existing opt-in skip), build passes, and eight focused desktop
-workflows pass. The full UI run has 66 passes, two opt-in skips and an intermittent P07 keyboard-action
+workflows pass. The original full UI run recorded 66 passes, two opt-in skips and an intermittent P07 keyboard-action
 scenario, also reproduced on untouched `7b2624a` with a different assertion. No P10 acceptance criterion
-remains unverified for the stated Linux policies; the handoff does not claim a fully green broad suite.
+remains unverified for the stated Linux policies. The [P07 focus follow-up](reviews/p07-focus-stability.md)
+now resolves that failure and verifies the entire routine suite.
 
 Catalogue anchors: P2-003/P2-011; C05 handles image/local-LFS slices. P04 owns large text and the safe
 fallback. Signing, authenticated LFS and locks remain separately sourced public-only scope.

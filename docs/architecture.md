@@ -1,5 +1,11 @@
 # Architecture and implementation decisions
 
+P07 focus follow-up (2026-09-29): the [stability correction](reviews/p07-focus-stability.md) consumes
+rebase row-focus requests in a React layout effect after reorder/editor DOM updates. A request revision
+also handles an already-selected destination. There is no deferred focus callback that can override a
+newer focused row and redirect its shortcut. Initial message focus follows the same timing. Backend
+plans, Git execution, IPC/security boundaries and the visual layout are unchanged.
+
 P10 (2026-09-29): the [rich-diff/LFS/signing handoff](reviews/p10-rich-diffs-lfs-signing.md) extends
 existing content contracts with bounded GIF/WebP/BMP/TGA/SVG previews, historical File Tree images
 and cached LFS pixels. TGA normalizes to PNG; other decoding remains in the sandboxed renderer.

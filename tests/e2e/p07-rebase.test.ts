@@ -51,6 +51,166 @@ async function planDialog(page: Page, commitId: string, action = "Rebase 'main' 
   return dialog;
 }
 
+/** Delay application animation callbacks, without delaying Playwright's isolated-world action checks. */
+async function holdApplicationFrames(page: Page) {
+  return page.evaluateHandle(() => {
+    const request = window.requestAnimationFrame;
+    const cancel = window.cancelAnimationFrame;
+    const pending = new Map<number, FrameRequestCallback>();
+    const events: string[] = [];
+    let id = 0;
+    let holding = true;
+    const targetName = (target: EventTarget | null) => {
+      const node = target instanceof Element ? target : null;
+      return (
+        node?.getAttribute('aria-label') ??
+        node?.closest('[data-commit-id]')?.getAttribute('aria-label') ??
+        node?.tagName ??
+        'none'
+      );
+    };
+    const record = (event: Event) =>
+      events.push(
+        `${event.type}:${event instanceof KeyboardEvent ? event.key + ':' : ''}${targetName(event.target)}`,
+      );
+    document.addEventListener('focusin', record, true);
+    document.addEventListener('keydown', record, true);
+    window.requestAnimationFrame = (callback) => {
+      pending.set(--id, callback);
+      return id;
+    };
+    window.cancelAnimationFrame = (handle) => {
+      if (!pending.delete(handle)) cancel.call(window, handle);
+    };
+    return {
+      events,
+      release() {
+        if (!holding) return;
+        holding = false;
+        window.requestAnimationFrame = request;
+        window.cancelAnimationFrame = cancel;
+        const callbacks = [...pending.values()];
+        pending.clear();
+        callbacks.forEach((callback) => callback(performance.now()));
+      },
+      dispose() {
+        window.requestAnimationFrame = request;
+        window.cancelAnimationFrame = cancel;
+        pending.clear();
+        document.removeEventListener('focusin', record, true);
+        document.removeEventListener('keydown', record, true);
+      },
+    };
+  });
+}
+
+for (const origin of ['move', 'message OK', 'message Cancel', 'message Escape'] as const) {
+  test(`P07 ${origin} does not redirect the next row shortcut after a delayed frame`, async () => {
+    const f = await fixture();
+    let app: ElectronApplication | undefined;
+    let frames: Awaited<ReturnType<typeof holdApplicationFrames>> | undefined;
+    try {
+      app = await f.launch();
+      const page = await app.firstWindow();
+      await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
+      expect((await page.evaluate(openTrustedFixture, f.cwd)).ok).toBe(true);
+      await page.reload();
+      const dialog = await planDialog(page, f.base);
+      const row = (name: string) =>
+        dialog.getByTestId('interactive-rebase-row').filter({ hasText: `Add ${name}` });
+      await expect(row('Zeta')).toBeFocused();
+      if (origin !== 'move') {
+        await row('Delta').press('r');
+        await expect(dialog.getByRole('textbox', { name: 'Commit subject', exact: true })).toBeFocused();
+      }
+      frames = await holdApplicationFrames(page);
+      if (origin === 'move') await row('Zeta').press('Control+ArrowDown');
+      else if (origin === 'message Escape')
+        await dialog.getByRole('textbox', { name: 'Commit subject', exact: true }).press('Escape');
+      else
+        await dialog
+          .getByRole('button', { name: origin === 'message OK' ? 'OK' : 'Cancel message', exact: true })
+          .click();
+
+      // This focus is newer user intent. Releasing older callbacks must not change the key's target.
+      const target = row(origin === 'move' ? 'Epsilon' : 'Beta');
+      await target.focus();
+      await frames.evaluate((gate) => gate.release());
+      await page.keyboard.press(origin === 'move' ? 'd' : 'f');
+      await expect(target).toBeFocused();
+      await expect(target).toHaveAttribute(
+        'aria-label',
+        origin === 'move' ? 'Drop Add Epsilon' : 'Fixup Add Beta',
+      );
+      await expect(row('Zeta')).toHaveAttribute('aria-label', 'Pick Add Zeta');
+      await expect(row('Delta')).toHaveAttribute(
+        'aria-label',
+        origin === 'message OK' ? 'Reword Add Delta' : 'Pick Add Delta',
+      );
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      expect(await f.run('rev-parse', 'HEAD')).toBe(f.head);
+      expect(await f.run('status', '--porcelain')).toBe('');
+    } finally {
+      if (frames) {
+        await test.info().attach('focus-and-key-events.json', {
+          body: JSON.stringify(await frames.evaluate((gate) => gate.events), null, 2),
+          contentType: 'application/json',
+        });
+        await frames.evaluate((gate) => gate.dispose());
+        await frames.dispose();
+      }
+      await app?.close();
+      await rm(f.root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('P07 keyboard navigation and editor focus settle before the next input', async () => {
+  const f = await fixture();
+  let app: ElectronApplication | undefined;
+  let frames: Awaited<ReturnType<typeof holdApplicationFrames>> | undefined;
+  try {
+    app = await f.launch();
+    const page = await app.firstWindow();
+    await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
+    expect((await page.evaluate(openTrustedFixture, f.cwd)).ok).toBe(true);
+    await page.reload();
+    const dialog = await planDialog(page, f.base);
+    const row = (name: string) =>
+      dialog.getByTestId('interactive-rebase-row').filter({ hasText: `Add ${name}` });
+    await expect(row('Zeta')).toBeFocused();
+    frames = await holdApplicationFrames(page);
+    await page.keyboard.press('End');
+    await expect(row('Alpha')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(row('Zeta')).toBeFocused();
+    // Browser/assistive focus can differ from the selected row; Home still focuses its destination.
+    await row('Gamma').focus();
+    await page.keyboard.press('Home');
+    await expect(row('Zeta')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(row('Epsilon')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(row('Zeta')).toBeFocused();
+    await page.keyboard.press('r');
+    await expect(dialog.getByRole('textbox', { name: 'Commit subject', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(row('Zeta')).toBeFocused();
+    await row('Beta').focus();
+    await frames.evaluate((gate) => gate.release());
+    await expect(row('Beta')).toBeFocused();
+    await expect(row('Zeta')).toHaveAttribute('aria-label', 'Pick Add Zeta');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(await f.run('rev-parse', 'HEAD')).toBe(f.head);
+    expect(await f.run('status', '--porcelain')).toBe('');
+  } finally {
+    await frames?.evaluate((gate) => gate.dispose());
+    await frames?.dispose();
+    await app?.close();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
 test('P07 plan presentation and Cancel preserve history', async () => {
   const f = await fixture();
   let app: ElectronApplication | undefined;

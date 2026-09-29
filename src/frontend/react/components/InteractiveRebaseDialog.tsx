@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   RepositoryInteractiveRebaseCommand,
   RepositoryInteractiveRebasePlan,
@@ -94,9 +94,11 @@ export function InteractiveRebaseDialog({
   const messageInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const initiallyFocused = useRef(false);
+  const requestedRowFocus = useRef<string | undefined>(undefined);
+  const [rowFocusRevision, setRowFocusRevision] = useState(0);
   const contextMenu = useContextMenu();
   const editingId = editor?.id;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (editingId) {
       messageInput.current?.focus();
       messageInput.current?.parentElement?.scrollIntoView({ block: 'nearest' });
@@ -174,21 +176,25 @@ export function InteractiveRebaseDialog({
     ) ?? [];
 
   const focusRow = (id: string) => {
+    requestedRowFocus.current = id;
+    // Even Home on the selected row may need to return focus from a different element.
+    setRowFocusRevision((revision) => revision + 1);
     setSelectedId(id);
-    requestAnimationFrame(() =>
-      list.current?.querySelector<HTMLElement>('[data-commit-id="' + id + '"]')?.focus(),
-    );
   };
-  useEffect(() => {
-    if (selectedId && !editor) {
+  useLayoutEffect(() => {
+    const requested = requestedRowFocus.current;
+    requestedRowFocus.current = undefined;
+    if (selectedId && (!editor || requested === selectedId)) {
       const row = list.current?.querySelector<HTMLElement>('[data-commit-id="' + selectedId + '"]');
       row?.scrollIntoView({ block: 'nearest' });
-      if (!initiallyFocused.current) {
+      // Focus after React has moved the keyed row or removed the editor, in the same commit.
+      // A later animation callback could steal a newer focus and send the next shortcut to this row.
+      if (requested === selectedId || !initiallyFocused.current) {
         row?.focus();
         initiallyFocused.current = true;
       }
     }
-  }, [selectedId, editor]);
+  }, [selectedId, editor, rows, rowFocusRevision]);
 
   const updateRow = (id: string, update: Partial<Row>) =>
     setRows((current) => current.map((row) => (row.commitId === id ? { ...row, ...update } : row)));

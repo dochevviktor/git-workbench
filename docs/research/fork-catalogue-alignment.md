@@ -1,5 +1,12 @@
 # Fork catalogue alignment — 2026-09-20
 
+P07 focus correction — **2026-09-29**: [runtime evidence and regressions](../reviews/p07-focus-stability.md)
+close the application shortcut-targeting defect against `P1-023-plan-execution-subcase:F1–F3`.
+The original Windows 2.22.0.0 case (2026-09-19), `screen-0367` and linked message/file results were
+rechecked, with high confidence for the captured sequence. New tests control Linux frame timing and
+verify that later focus keeps ownership of the next shortcut. That interleaving is independent
+implementation evidence; the captured editor layout, action/message rules and unknowns are unchanged.
+
 P10 alignment — **2026-09-29**: [implementation and verification](../reviews/p10-rich-diffs-lfs-signing.md)
 maps `P0-026:F1`, `P2-003:F1`, and `P2-011-initialize-download-subcase:F1–F4` to binary/rich image
 viewers and exact historical payload retrieval. Original JSON, screens 0156/0455–0458/0518–0525 and
