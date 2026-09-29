@@ -1,5 +1,11 @@
 # Architecture and implementation decisions
 
+P09 test follow-up (2026-09-29): the [stability correction](reviews/p09-test-stability.md) preserves
+an unchanged history window through refresh and queues invalidations behind active paging/navigation.
+One bounded page plus HEAD/reference comparison determines whether retained pages remain valid; changed
+history follows the existing reload/selection path. Diff Copy as Patch uses the immutable displayed
+text even during a same-target read. No IPC, process, Git mutation or security boundary changes.
+
 P09 (2026-09-29): the [topology/Git-flow handoff](reviews/p09-topology.md) supersedes the bounded
 F22/F23/F25 implementation inventory below within the phase. Worktree actions add named detached
 creation and lock/unlock variants; removal validates the registered directory and reviewed filesystem

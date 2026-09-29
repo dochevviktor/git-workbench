@@ -79,6 +79,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   const [reveal, setReveal] = useState<HistoryRevealRequest>();
   const sessions = useRef(new Map<string, HistorySession>());
   const reads = useRef(new Map<string, string>());
+  const refreshAfterRead = useRef<(() => void) | undefined>(undefined);
   const cancelReads = useCallback(() => {
     for (const [readId, id] of reads.current)
       void window.desktop?.repository.cancelInvestigation({ id, readId });
@@ -127,7 +128,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   }, [cancelReads]);
 
   const requestPage = useCallback(
-    async (
+    async function readPage(
       id: string,
       offset: number,
       replace: boolean,
@@ -136,7 +137,8 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       requestMode: RepositoryHistoryMode,
       anchor?: RepositoryHistoryAnchor,
       selectFirst = false,
-    ) => {
+      retainWindow = false,
+    ): Promise<void> {
       const api = window.desktop;
       if (!api) {
         if (mounted.current && generation.current === requestGeneration) {
@@ -165,8 +167,27 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
           }),
         );
         if (!mounted.current || generation.current !== requestGeneration) return;
-        setStateRepositoryId(id);
         const previous = sessions.current.get(id);
+        if (retainWindow && previous) {
+          const unchanged =
+            page.offset === previous.page.offset &&
+            JSON.stringify(page.head) === JSON.stringify(previous.page.head) &&
+            JSON.stringify(page.references) === JSON.stringify(previous.page.references) &&
+            JSON.stringify(page.commits) === JSON.stringify(previous.page.commits.slice(0, historyPageSize));
+          if (!unchanged) {
+            // A real history change still reloads from the tip and relocates the selected commit.
+            // Do not install an intermediate page from the old numeric offset.
+            await readPage(id, 0, true, requestGeneration, requestFilter, requestMode);
+            return;
+          }
+          // Refresh the read metadata without discarding adjacent pages or issuing a new reveal.
+          // Commit objects are immutable, and the reference/HEAD check covers reachability changes.
+          sessions.current.set(id, { ...previous, page: { ...previous.page, tracking: page.tracking } });
+          setTracking(page.tracking);
+          setError(undefined);
+          return;
+        }
+        setStateRepositoryId(id);
         const current = previous?.page.commits ?? [];
         const known = new Set(current.map((commit) => commit.id));
         const prepend = !replace && previous !== undefined && page.offset < previous.page.offset;
@@ -230,6 +251,11 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
           setLoading(false);
           setLoadingMore(false);
         }
+        if (mounted.current && reads.current.size === 0) {
+          const pendingRefresh = refreshAfterRead.current;
+          refreshAfterRead.current = undefined;
+          pendingRefresh?.();
+        }
       }
     },
     [cancelReads],
@@ -238,6 +264,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
   useEffect(() => {
     const requestGeneration = generation.current + 1;
     generation.current = requestGeneration;
+    refreshAfterRead.current = undefined;
     cancelReads();
     setCommits([]);
     setReferences([]);
@@ -293,23 +320,35 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     setFilter(allHistoryFilter);
   }, [setFilter]);
 
-  const refresh = useCallback(() => {
-    if (!repositoryId) return;
-    const requestGeneration = generation.current + 1;
-    generation.current = requestGeneration;
-    setError(undefined);
-    const pending = navigation.current;
-    void requestPage(
-      repositoryId,
-      0,
-      true,
-      requestGeneration,
-      filter,
-      mode,
-      pending?.kind === 'home' ? undefined : pending,
-      pending?.kind === 'home',
-    );
-  }, [filter, mode, repositoryId, requestPage]);
+  const refresh = useCallback(
+    function refreshWindow() {
+      if (!repositoryId) return;
+      // A watcher refresh must not cancel an accepted paging/navigation request. Read it once that
+      // request has installed its result, coalescing any further invalidations in the meantime.
+      if (reads.current.size > 0) {
+        refreshAfterRead.current = refreshWindow;
+        return;
+      }
+      const requestGeneration = generation.current + 1;
+      generation.current = requestGeneration;
+      setError(undefined);
+      const pending = navigation.current;
+      const cached = sessions.current.get(repositoryId);
+      const retainWindow = pending === undefined && cached !== undefined;
+      void requestPage(
+        repositoryId,
+        retainWindow ? cached.page.offset : 0,
+        true,
+        requestGeneration,
+        filter,
+        mode,
+        pending?.kind === 'home' ? undefined : pending,
+        pending?.kind === 'home',
+        retainWindow,
+      );
+    },
+    [filter, mode, repositoryId, requestPage],
+  );
 
   const loadMore = useCallback(() => {
     if (!repositoryId || loading || loadingMore || !hasMore || nextOffset === null) return;

@@ -1,11 +1,11 @@
 import { openTrustedFixture } from './trusted-fixture';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { GitRunner } from '../../src/backend/git/runner';
+import { GitRunner, GitCommandError } from '../../src/backend/git/runner';
 
 function environment(): Record<string, string> {
   const result = Object.fromEntries(
@@ -275,7 +275,15 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-merge-rebase-ui-'));
   const cwd = join(root, 'work');
   const git = new GitRunner();
-  const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
+  const run = async (...args: string[]) => {
+    try {
+      return (await git.run(args, { cwd })).stdout.trim();
+    } catch (error) {
+      if (error instanceof GitCommandError)
+        throw new Error(`Fixture git ${args.join(' ')} failed: ${error.stderr}`, { cause: error });
+      throw error;
+    }
+  };
   let application: ElectronApplication | undefined;
   try {
     await mkdir(cwd);
@@ -305,10 +313,19 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
     await run('commit', '--quiet', '-m', 'topic');
     await run('checkout', '--quiet', 'main');
 
+    const gate = join(root, 'merge-gate');
+    const wrapper = join(root, 'gated-git.ts');
+    await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
+    await chmod(wrapper, 0o700);
     application = await electron.launch({
       chromiumSandbox: true,
       args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
-      env: environment(),
+      env: {
+        ...environment(),
+        GIT_EXECUTABLE: wrapper,
+        GIT_WORKBENCH_REAL_GIT: (await git.version()).executable,
+        GIT_WORKBENCH_TEST_GIT_GATE: gate,
+      },
     });
     const page = await open(application, cwd);
 
@@ -317,11 +334,24 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
     await featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }).click();
     const dialog = page.getByTestId('reference-dialog');
     await expect(dialog.getByRole('heading', { name: 'Merge Branch', exact: true })).toBeVisible();
+    await writeFile(gate, JSON.stringify({ command: 'merge', phase: 'after' }));
     await dialog.getByTestId('reference-dialog-submit').click();
     await expect(dialog).toHaveCount(0);
     await expect
       .poll(async () => (await run('rev-list', '-1', '--parents', 'HEAD')).split(' ').length)
       .toBe(3);
+    await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('merge:after');
+    const operation = (kind: 'merge' | 'rebase') =>
+      page.evaluate(async (kind) => {
+        const result = await window.desktop!.repository.listOperations();
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value.find((item) => item.kind === kind);
+      }, kind);
+    expect(await operation('merge')).toMatchObject({ status: 'running' });
+    await rm(gate);
+    // A published commit is observable before the Git process and backend job finish. External
+    // fixture mutations must wait for that terminal result rather than competing for the index.
+    await expect.poll(() => operation('merge')).toMatchObject({ status: 'succeeded' });
     expect(await run('show', 'HEAD:feature.txt')).toBe('feature');
 
     await run('checkout', '--quiet', 'rebase-topic');
@@ -343,6 +373,7 @@ test('F16 starts ordinary merge and rebase jobs from branch menus', async () => 
     await dialog.getByTestId('reference-dialog-submit').click();
     await expect(dialog).toHaveCount(0);
     await expect.poll(() => run('log', '-2', '--format=%s')).toBe('topic\ntarget');
+    await expect.poll(() => operation('rebase')).toMatchObject({ status: 'succeeded' });
   } finally {
     await application?.close();
     await rm(root, { recursive: true, force: true });

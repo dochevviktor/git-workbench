@@ -1,6 +1,6 @@
 import { openTrustedFixture } from './trusted-fixture';
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, copyFile, readFile, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { patchFixture } from '../patch-fixture';
 
@@ -14,6 +14,13 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
+    const gate = join(f.root, 'diff-gate');
+    const wrapper = join(f.root, 'gated-git.ts');
+    await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
+    await chmod(wrapper, 0o700);
+    env.GIT_EXECUTABLE = wrapper;
+    env.GIT_WORKBENCH_REAL_GIT = (await f.git.version()).executable;
+    env.GIT_WORKBENCH_TEST_GIT_GATE = gate;
     app = await electron.launch({
       chromiumSandbox: true,
       args: ['.', `--user-data-dir=${join(f.root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
@@ -56,11 +63,37 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
       .getByTestId('working-change')
       .filter({ hasText: 'change.txt' })
       .click();
-    await page.getByTestId('diff-content').click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Copy as Patch', exact: true }).click();
-    await expect
-      .poll(() => app!.evaluate(async ({ clipboard }) => clipboard.readText()))
-      .toContain('diff --git a/change.txt b/change.txt');
+    const content = page.getByTestId('diff-content');
+    await expect(content).toContainText('after');
+    await expect(content).toHaveAttribute('aria-busy', 'false');
+    const displayed = await page.evaluate(
+      async (id) =>
+        window.desktop!.repository.getDiff({
+          id,
+          target: { kind: 'working', area: 'staged', path: 'change.txt', previousPath: null },
+          whitespace: 'normal',
+        }),
+      opened.value.id,
+    );
+    if (!displayed.ok) throw new Error(displayed.error.message);
+    // Hold a same-target refresh while the user copies the visible patch. This deterministically
+    // reproduces the old disabled-menu race without relying on a fast or slow machine.
+    await writeFile(gate, JSON.stringify({ command: 'diff', argument: 'change.txt', phase: 'before' }));
+    try {
+      await page.keyboard.press('F5');
+      await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('diff:before');
+      await expect(content).toHaveAttribute('aria-busy', 'true');
+      await content.click({ button: 'right' });
+      const copy = page.getByRole('menuitem', { name: 'Copy as Patch', exact: true });
+      await expect(copy).toBeEnabled();
+      await copy.click();
+      await expect
+        .poll(() => app!.evaluate(({ clipboard }) => clipboard.readText()))
+        .toBe(displayed.value.content);
+    } finally {
+      await rm(gate, { force: true });
+    }
+    await expect(content).toHaveAttribute('aria-busy', 'false');
     await page.getByRole('button', { name: 'All Commits', exact: true }).click();
 
     await f.run('reset', '--hard', 'HEAD');

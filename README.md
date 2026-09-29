@@ -97,7 +97,8 @@ Missing commits, interrupted initialization and gitlink conflicts retain actiona
 a child closes its tabs. Git-flow initialization includes the version tag prefix; feature finish changes
 develop only, while release/hotfix workflows support annotated tags and optional develop merges.
 Interrupted finishes survive restart with Continue Git-flow and Stop Finish controls. See the
-[P09 handoff](docs/reviews/p09-topology.md) for verification, screenshots and the full-suite caveat.
+[P09 handoff](docs/reviews/p09-topology.md) for verification and screenshots; the
+[stability follow-up](docs/reviews/p09-test-stability.md) resolves its initial full-suite failures.
 
 F24 adds bounded local Git LFS pointer/materialized inspection, optional repository-local
 initialization, exact historical payload Save As with SHA-256 verification, and retrieval progress;

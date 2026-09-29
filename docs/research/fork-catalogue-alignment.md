@@ -1,5 +1,13 @@
 # Fork catalogue alignment — 2026-09-20
 
+P09 test follow-up — **2026-09-29**: [the stability correction](../reviews/p09-test-stability.md)
+keeps P2-017:F1's scrolling/selection distinction through unchanged repository refreshes. Runtime
+evidence identified replacement of retained pages and an unintended second selection reveal.
+Both expanded and collapsed/zoomed tests retain their original pixel tolerance and Git invariants.
+Displayed-patch copying during refresh and waiting for a terminal merge job are independently specified
+and verified with controlled Git gates; P2-005 export and P1-006 No-FF evidence remains unchanged.
+No screenshot layout, private assets, capture status or platform-parity claim is altered.
+
 P09 alignment — **2026-09-29**: [the phase handoff](../reviews/p09-topology.md) supersedes the earlier
 bounded worktree/submodule/Git-flow implementation limits within P09. The original P2-001 create/remove
 F1–F3 and open F1 cases, P2-002 view F1, dirty-watcher F1–F4 and missing-update F1–F3 cases were read

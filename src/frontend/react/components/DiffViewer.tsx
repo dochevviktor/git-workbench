@@ -945,6 +945,9 @@ export function DiffViewer({
         const text = value?.state === 'text' ? value.content : '';
         const available =
           !loading && !error && !!text && text.length <= 1_048_576 && !text.includes('\uFFFD');
+        // Copy the immutable patch displayed when the menu opens. A same-target refresh does not
+        // invalidate those bytes; unloaded/different targets are already excluded by the diff hook.
+        const canCopyPatch = !error && !!text && text.length <= 1_048_576 && !text.includes('\uFFFD');
         const selection = window.getSelection();
         const range = selection?.rangeCount && !selection.isCollapsed ? selection.getRangeAt(0) : undefined;
         const selected =
@@ -991,8 +994,8 @@ export function DiffViewer({
             {
               id: 'copy-as-patch',
               label: 'Copy as Patch',
-              disabled: !available,
-              disabledReason: available
+              disabled: !canCopyPatch,
+              disabledReason: canCopyPatch
                 ? undefined
                 : 'Load a text diff up to 1 MiB without decoding errors to copy it.',
               run: () => {

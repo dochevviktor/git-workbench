@@ -4,7 +4,9 @@ Date: 2026-09-29. Linux. This handoff supersedes the earlier bounded F22/F23/F25
 implementation notes within P09's specified scope. Catalogue capture coverage and
 unobserved Fork variants remain separate from implementation verification.
 
-Status: **complete for P09's Linux scope**. The full-suite caveat below remains explicit.
+Status: **complete for P09's Linux scope**. The [test-stability follow-up](p09-test-stability.md)
+resolves the initial full-suite caveat below: 618 tests and all 65 routine headless Electron scenarios
+now pass. Existing opt-in skips remain; the original verification results are retained as history.
 
 ## Delivered scope
 
@@ -102,7 +104,7 @@ capture and the current compact graph/metadata layout.
   Git-directory layouts, live hosted authentication and native Windows/macOS parity are not newly verified.
   P14 retains these broader parity questions and the catalogue's case-level unknowns.
 
-## Verification
+## Initial verification, before the test-stability follow-up
 
 `npm run check` passes **618 tests**, with one opt-in skip, including type checks, lint and formatting.
 The production build passes. The full headless Electron run reports **62 passed, 3 failed, 2 opt-in

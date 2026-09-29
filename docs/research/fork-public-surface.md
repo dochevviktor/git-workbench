@@ -1,5 +1,13 @@
 # Fork: captured and public feature surface
 
+P09 test follow-up — **2026-09-29**: the [correction record](../reviews/p09-test-stability.md)
+identifies history-window replacement during refresh, disabled displayed-patch copying, and premature
+external fixture mutation after merge. `P2-017:F1` (Windows 2.22.0.0, 2026-09-19; high confidence within
+the trial) remains the captured scrolling/selection and Home/End reference; its original case and
+matching HEAD evidence were rechecked. P2-005 export and P1-006 No-FF cases were also revisited.
+Controlled refresh/process-boundary regressions establish independent Linux behavior, not additional
+Fork observations. The original case-level unknowns, design and native-DPI limits remain unchanged.
+
 P09 implementation — **2026-09-29**: the [phase handoff](../reviews/p09-topology.md) supersedes the
 bounded F22/F23/F25 implementation notes below for the specified Linux phase. Rechecked original
 cases, screenshots and Git evidence: `P2-001-create-remove-subcase:F1–F3`,

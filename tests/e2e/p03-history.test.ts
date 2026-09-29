@@ -267,8 +267,16 @@ for (const collapsed of [false, true]) {
           })
           .toBe(true);
         const { id, beforeY, count } = snapshot!;
-        await button.click();
         const retained = page.locator(`[data-testid="history-commit"][data-commit-id="${id}"]`);
+        // A refresh of unchanged Git state must retain the complete loaded window and the user's
+        // viewport, even when the selected commit is elsewhere. Formerly this reset to the tip and
+        // then re-centred the selection, discarding pages and scrolling the anchor out of view.
+        await page.keyboard.press('F5');
+        await expect(page.locator('.history-view')).toHaveAttribute('aria-busy', 'false');
+        await expect(retained).toHaveAttribute('aria-setsize', String(count));
+        await expect(retained).toBeInViewport();
+        expect(Math.abs((await retained.boundingBox())!.y - beforeY)).toBeLessThan(2);
+        await button.click();
         await expect
           .poll(async () => Number(await retained.getAttribute('aria-setsize')))
           .toBeGreaterThan(count);

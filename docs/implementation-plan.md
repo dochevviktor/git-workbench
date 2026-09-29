@@ -1,13 +1,20 @@
 # Git Workbench implementation plan
 
+P09 test follow-up (2026-09-29): the [stability correction](reviews/p09-test-stability.md) resolves
+history paging interrupted by unchanged refreshes, displayed-patch copying disabled during refresh,
+and premature fixture checkout after merge. All 12 repeated targeted scenarios pass with unchanged
+pixel tolerances and independent Git assertions. `npm run check` passes 618 tests (one opt-in skip),
+build passes, and the complete headless Electron suite passes all 65 routine scenarios (two opt-in
+skips), with no failures or automatic retries.
+
 P09 completion (2026-09-29): the [topology/Git-flow handoff](reviews/p09-topology.md) supersedes the
 earlier bounded F22/F23/F25 limitations within the Linux phase. Safe linked/detached worktrees and
 lock/unlock, nested submodule lifecycle and compact pointer history, missing/interrupted updates,
 gitlink conflicts, and all three Git-flow lifecycles with durable finish recovery are verified.
 Feature finish now leaves production unchanged. `npm run check` passes 618 tests (one opt-in skip),
-build passes, and every P09/legacy topology scenario plus desktop smoke passes. The full UI suite has
-three failures outside P09; all pass isolated reruns and the patch failure also reproduces on the
-untouched baseline. The handoff retains those results and all native-platform/exact-parity limits.
+build passes, and every P09/legacy topology scenario plus desktop smoke passes. The initial full-suite
+failures are resolved by the follow-up above. The handoff retains their historical results and all
+native-platform/exact-parity limits.
 
 P08 Bisect follow-up (2026-09-26): the [refresh correction](reviews/p08-bisect-refresh.md) fixes
 Start/Good/Bad clicks lost during background reads. Last-validated context remains actionable while
@@ -188,7 +195,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P06   | Merge/conflicts, stash, cherry-pick/revert, recovery controls        | Complete for Linux phase scope (2026-09-24); conflict families, file/hunk/line stash, restart recovery, mainline/no-commit operations and safe reset verified; see P06 handoff                          | P01/P04/P05 capabilities              |
 | P07   | Interactive rebase and history editing                               | Complete for Linux phase scope (2026-09-26); plan/quick actions, messages, dependent refs, merge policy, published warnings and restart/backup recovery verified; see P07 handoff                       | P06                                   |
 | P08   | Search, history/blame, reflog, bisect, patches                       | Complete for Linux phase scope (2026-09-26); investigation, recovery and patch scope verified; Bisect refresh corrected and all 62 routine Electron scenarios pass; see P08 handoffs                    | P03/P04; recovery for mutations       |
-| P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full-suite caveat in P09 handoff                            | P02/P05, common-repo queue            |
+| P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full suite green after stability follow-up                  | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Partial; bounded F24 local LFS, F27 PNG/JPEG four-mode image comparison and F28 GPG signing/verification verified; more image formats, native pinentry matrix, authenticated transfers and locks remain | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Partial; five-provider accounts, direct token entry and configurable GitHub OAuth verified with fixtures (2026-09-24); live authorization, renewal and broader hosting remain                           | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences provider account forms corrected (2026-09-24), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                    | P02/P03 plus relevant domain services |
@@ -1189,7 +1196,7 @@ Acceptance:
 Verified: all four criteria above. Worktree/submodule/Git-flow unit suites pass 23 tests; queue,
 gitlink-conflict and IPC tests add cross-service coverage. Three P09 Electron scenarios plus the three
 legacy F22/F23/F25 scenarios pass, including actual application restart. Full checks/build and the
-separate full-suite caveat are recorded in the handoff. Additional Git-flow automation, captured but
+subsequent full-suite correction are recorded in the handoffs. Additional Git-flow automation, captured but
 unexecuted submodule Move/tool variants and native-platform/exact-default parity remain P14 questions.
 
 ## P10 — Rich diffs, LFS, and signing
