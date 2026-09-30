@@ -271,114 +271,165 @@ test('F15 saves a selected working file as a named stash from its context menu',
   }
 });
 
-test('F16 starts ordinary merge and rebase jobs from branch menus', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'git-workbench-merge-rebase-ui-'));
-  const cwd = join(root, 'work');
-  const git = new GitRunner();
-  const run = async (...args: string[]) => {
+for (const startup of ['ready', 'loading', 'dismissed', 'replaced'] as const)
+  test(`F16 starts ordinary merge and rebase jobs from branch menus${startup === 'ready' ? '' : ` (startup ${startup})`}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'git-workbench-merge-rebase-ui-'));
+    const cwd = join(root, 'work');
+    const git = new GitRunner();
+    const run = async (...args: string[]) => {
+      try {
+        return (await git.run(args, { cwd })).stdout.trim();
+      } catch (error) {
+        if (error instanceof GitCommandError)
+          throw new Error(`Fixture git ${args.join(' ')} failed: ${error.stderr}`, { cause: error });
+        throw error;
+      }
+    };
+    let application: ElectronApplication | undefined;
     try {
-      return (await git.run(args, { cwd })).stdout.trim();
-    } catch (error) {
-      if (error instanceof GitCommandError)
-        throw new Error(`Fixture git ${args.join(' ')} failed: ${error.stderr}`, { cause: error });
-      throw error;
+      await mkdir(cwd);
+      await run('init', '--quiet', '--initial-branch=main');
+      await run('config', 'user.name', 'Merge Rebase UI');
+      await run('config', 'user.email', 'merge-rebase-ui@example.test');
+      await run('config', 'commit.gpgsign', 'false');
+      await writeFile(join(cwd, 'base.txt'), 'base\n');
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', 'base');
+      const base = await run('rev-parse', 'HEAD');
+      await run('checkout', '--quiet', '-b', 'feature');
+      await writeFile(join(cwd, 'feature.txt'), 'feature\n');
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', 'feature');
+      await run('checkout', '--quiet', 'main');
+      await writeFile(join(cwd, 'main.txt'), 'main\n');
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', 'main');
+      await run('checkout', '--quiet', '-b', 'rebase-target', base);
+      await writeFile(join(cwd, 'target.txt'), 'target\n');
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', 'target');
+      await run('checkout', '--quiet', '-b', 'rebase-topic', base);
+      await writeFile(join(cwd, 'topic.txt'), 'topic\n');
+      await run('add', '--all');
+      await run('commit', '--quiet', '-m', 'topic');
+      await run('checkout', '--quiet', 'main');
+
+      const gate = join(root, 'merge-gate');
+      const wrapper = join(root, 'gated-git.ts');
+      await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
+      await chmod(wrapper, 0o700);
+      application = await electron.launch({
+        chromiumSandbox: true,
+        args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
+        env: {
+          ...environment(),
+          GIT_EXECUTABLE: wrapper,
+          GIT_WORKBENCH_REAL_GIT: (await git.version()).executable,
+          GIT_WORKBENCH_TEST_GIT_GATE: gate,
+        },
+      });
+      if (startup !== 'ready') {
+        const initialPage = await application.firstWindow();
+        await expect(initialPage.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
+        await application.evaluate(({ ipcMain }) => {
+          const channel = 'repository:get-reference-context';
+          const handlers = (
+            ipcMain as unknown as {
+              _invokeHandlers: Map<string, (...args: unknown[]) => Promise<unknown>>;
+            }
+          )._invokeHandlers;
+          const original = handlers.get(channel);
+          if (!original) throw new Error('Reference context handler was not registered.');
+          const state = globalThis as unknown as { releaseReferenceRead: () => void };
+          const gate = new Promise<void>((resolve) => {
+            state.releaseReferenceRead = resolve;
+          });
+          ipcMain.removeHandler(channel);
+          ipcMain.handle(channel, async (...args: unknown[]) => {
+            await gate;
+            return original(...args);
+          });
+        });
+      }
+      const page = await open(application, cwd);
+
+      await page.getByRole('treeitem', { name: 'feature', exact: true }).click({ button: 'right' });
+      const featureMenu = page.getByRole('menu', { name: 'feature', exact: true });
+      if (startup !== 'ready') {
+        await expect(featureMenu).toBeVisible();
+        await expect(
+          featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }),
+        ).toHaveCount(0);
+        if (startup === 'dismissed') await page.keyboard.press('Escape');
+        if (startup === 'replaced')
+          // The row's left edge remains visible beside the first menu.
+          await page.getByRole('treeitem', { name: 'main', exact: true }).click({
+            button: 'right',
+            position: { x: 8, y: 10 },
+          });
+        await application.evaluate(() =>
+          (globalThis as unknown as { releaseReferenceRead: () => void }).releaseReferenceRead(),
+        );
+        await expect(page.getByRole('button', { name: 'Branch', exact: true })).toBeEnabled();
+        if (startup === 'dismissed' || startup === 'replaced') {
+          await expect(featureMenu).toHaveCount(0);
+          if (startup === 'replaced')
+            await expect(page.getByRole('menu', { name: 'main', exact: true })).toBeVisible();
+          await page.keyboard.press('Escape');
+          await page.getByRole('treeitem', { name: 'feature', exact: true }).click({ button: 'right' });
+        }
+      }
+      await featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }).click();
+      const dialog = page.getByTestId('reference-dialog');
+      await expect(dialog.getByRole('heading', { name: 'Merge Branch', exact: true })).toBeVisible();
+      await writeFile(gate, JSON.stringify({ command: 'merge', phase: 'after' }));
+      await dialog.getByTestId('reference-dialog-submit').click();
+      await expect(dialog).toHaveCount(0);
+      await expect
+        .poll(async () => (await run('rev-list', '-1', '--parents', 'HEAD')).split(' ').length)
+        .toBe(3);
+      await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('merge:after');
+      const operation = (kind: 'merge' | 'rebase') =>
+        page.evaluate(async (kind) => {
+          const result = await window.desktop!.repository.listOperations();
+          if (!result.ok) throw new Error(result.error.message);
+          return result.value.find((item) => item.kind === kind);
+        }, kind);
+      expect(await operation('merge')).toMatchObject({ status: 'running' });
+      await rm(gate);
+      // A published commit is observable before the Git process and backend job finish. External
+      // fixture mutations must wait for that terminal result rather than competing for the index.
+      await expect.poll(() => operation('merge')).toMatchObject({ status: 'succeeded' });
+      expect(await run('show', 'HEAD:feature.txt')).toBe('feature');
+
+      await run('checkout', '--quiet', 'rebase-topic');
+      await page.keyboard.press('F5');
+      await expect(page.locator('.toolbar-repository-branch')).toHaveText('rebase-topic');
+      const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
+      // The target row already existed before checkout; wait for the source/action to refresh too.
+      await expect(async () => {
+        await page.keyboard.press('Escape');
+        await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
+        await expect(
+          rebaseMenu.getByRole('menuitem', {
+            name: "Rebase 'rebase-topic' on 'rebase-target'…",
+            exact: true,
+          }),
+        ).toBeEnabled({ timeout: 500 });
+      }).toPass({ timeout: 10000 });
+      await rebaseMenu
+        .getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true })
+        .click();
+      await expect(dialog.getByRole('heading', { name: 'Rebase Branch', exact: true })).toBeVisible();
+      await dialog.getByTestId('reference-dialog-submit').click();
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => run('log', '-2', '--format=%s')).toBe('topic\ntarget');
+      await expect.poll(() => operation('rebase')).toMatchObject({ status: 'succeeded' });
+    } finally {
+      await application?.close();
+      await rm(root, { recursive: true, force: true });
     }
-  };
-  let application: ElectronApplication | undefined;
-  try {
-    await mkdir(cwd);
-    await run('init', '--quiet', '--initial-branch=main');
-    await run('config', 'user.name', 'Merge Rebase UI');
-    await run('config', 'user.email', 'merge-rebase-ui@example.test');
-    await run('config', 'commit.gpgsign', 'false');
-    await writeFile(join(cwd, 'base.txt'), 'base\n');
-    await run('add', '--all');
-    await run('commit', '--quiet', '-m', 'base');
-    const base = await run('rev-parse', 'HEAD');
-    await run('checkout', '--quiet', '-b', 'feature');
-    await writeFile(join(cwd, 'feature.txt'), 'feature\n');
-    await run('add', '--all');
-    await run('commit', '--quiet', '-m', 'feature');
-    await run('checkout', '--quiet', 'main');
-    await writeFile(join(cwd, 'main.txt'), 'main\n');
-    await run('add', '--all');
-    await run('commit', '--quiet', '-m', 'main');
-    await run('checkout', '--quiet', '-b', 'rebase-target', base);
-    await writeFile(join(cwd, 'target.txt'), 'target\n');
-    await run('add', '--all');
-    await run('commit', '--quiet', '-m', 'target');
-    await run('checkout', '--quiet', '-b', 'rebase-topic', base);
-    await writeFile(join(cwd, 'topic.txt'), 'topic\n');
-    await run('add', '--all');
-    await run('commit', '--quiet', '-m', 'topic');
-    await run('checkout', '--quiet', 'main');
-
-    const gate = join(root, 'merge-gate');
-    const wrapper = join(root, 'gated-git.ts');
-    await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
-    await chmod(wrapper, 0o700);
-    application = await electron.launch({
-      chromiumSandbox: true,
-      args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
-      env: {
-        ...environment(),
-        GIT_EXECUTABLE: wrapper,
-        GIT_WORKBENCH_REAL_GIT: (await git.version()).executable,
-        GIT_WORKBENCH_TEST_GIT_GATE: gate,
-      },
-    });
-    const page = await open(application, cwd);
-
-    await page.getByRole('treeitem', { name: 'feature', exact: true }).click({ button: 'right' });
-    const featureMenu = page.getByRole('menu', { name: 'feature', exact: true });
-    await featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }).click();
-    const dialog = page.getByTestId('reference-dialog');
-    await expect(dialog.getByRole('heading', { name: 'Merge Branch', exact: true })).toBeVisible();
-    await writeFile(gate, JSON.stringify({ command: 'merge', phase: 'after' }));
-    await dialog.getByTestId('reference-dialog-submit').click();
-    await expect(dialog).toHaveCount(0);
-    await expect
-      .poll(async () => (await run('rev-list', '-1', '--parents', 'HEAD')).split(' ').length)
-      .toBe(3);
-    await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('merge:after');
-    const operation = (kind: 'merge' | 'rebase') =>
-      page.evaluate(async (kind) => {
-        const result = await window.desktop!.repository.listOperations();
-        if (!result.ok) throw new Error(result.error.message);
-        return result.value.find((item) => item.kind === kind);
-      }, kind);
-    expect(await operation('merge')).toMatchObject({ status: 'running' });
-    await rm(gate);
-    // A published commit is observable before the Git process and backend job finish. External
-    // fixture mutations must wait for that terminal result rather than competing for the index.
-    await expect.poll(() => operation('merge')).toMatchObject({ status: 'succeeded' });
-    expect(await run('show', 'HEAD:feature.txt')).toBe('feature');
-
-    await run('checkout', '--quiet', 'rebase-topic');
-    await page.keyboard.press('F5');
-    await expect(page.locator('.toolbar-repository-branch')).toHaveText('rebase-topic');
-    const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
-    // The target row already existed before checkout; wait for the source/action to refresh too.
-    await expect(async () => {
-      await page.keyboard.press('Escape');
-      await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
-      await expect(
-        rebaseMenu.getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true }),
-      ).toBeEnabled({ timeout: 500 });
-    }).toPass({ timeout: 10000 });
-    await rebaseMenu
-      .getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true })
-      .click();
-    await expect(dialog.getByRole('heading', { name: 'Rebase Branch', exact: true })).toBeVisible();
-    await dialog.getByTestId('reference-dialog-submit').click();
-    await expect(dialog).toHaveCount(0);
-    await expect.poll(() => run('log', '-2', '--format=%s')).toBe('topic\ntarget');
-    await expect.poll(() => operation('rebase')).toMatchObject({ status: 'succeeded' });
-  } finally {
-    await application?.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  });
 
 test('F18 opens and executes the reviewed interactive rebase plan', async () => {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-interactive-rebase-ui-'));

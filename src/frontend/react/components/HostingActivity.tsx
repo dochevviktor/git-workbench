@@ -209,6 +209,11 @@ export function HostingActivity({
           {error}
         </p>
       )}
+      {page?.preferencesError && (
+        <p role="alert" className="hosting-error">
+          {page.preferencesError} The current results are still available.
+        </p>
+      )}
       {page?.limited && (
         <p role="status">
           GitHub returned incomplete results or more than 1,000 matches. Narrow the filters.

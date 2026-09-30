@@ -182,7 +182,7 @@ export function HostingAccountForm({
             {provider.startsWith('gitlab')
               ? 'Use a personal token with read_user and read_api for browsing, plus read_repository or write_repository for Git.'
               : provider === 'bitbucket'
-                ? 'Use an API token with account and repository read permissions. Git push also needs repository write permission. App passwords are no longer supported.'
+                ? 'Allow read:user:bitbucket, read:workspace:bitbucket and read:repository:bitbucket on your API token. Git push also needs write:repository:bitbucket. App passwords are no longer supported.'
                 : provider === 'bitbucket-server'
                   ? 'Use your username and personal HTTP access token with repository read permission; add write permission for push.'
                   : provider === 'gitea'

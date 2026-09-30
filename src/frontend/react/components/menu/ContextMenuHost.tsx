@@ -89,7 +89,17 @@ export function ContextMenuHost({ platform, children }: ContextMenuHostProps) {
     }
     // A new generation remounts the popup so highlight and submenu state never leak between menus.
     setGeneration((value) => value + 1);
+    requestRef.current = next;
     setRequest(next);
+    let current = next;
+    return (items: readonly MenuEntry[]) => {
+      if (requestRef.current !== current) return;
+      current = { ...current, items };
+      requestRef.current = current;
+      // Loading entries may have different positions. Never retain an index targeting another action.
+      setGeneration((value) => value + 1);
+      setRequest(current);
+    };
   }, []);
 
   const close = useCallback(() => {

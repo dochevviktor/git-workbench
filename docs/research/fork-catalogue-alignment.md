@@ -1,5 +1,22 @@
 # Fork catalogue alignment — 2026-09-20
 
+P11 review correction — **2026-09-30**: the
+[correction record](../reviews/p11-hosting.md#review-correction--2026-09-30) retains the omitted F16
+failure and its controlled reproduction. Rechecked `P1-006-noff-subcase:F1–F2`, its original case,
+`screen-0246` and after refs/graph (Windows 2.22.0.0, 2026-09-19; high confidence within the recorded
+trial). Refreshing an initially incomplete menu while preserving cancellation is independently
+specified Linux behavior; no Fork timing behavior is inferred. Existing P0-013/P1-012 and public
+Accounts/notification comparisons remain applicable; no styling, assets or capture status changed.
+
+The fresh [Bitbucket workspace endpoint](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-workspaces/#api-user-workspaces-get)
+and [API-token scope reference](https://developer.atlassian.com/cloud/bitbucket/rest/intro/#forge-app-and-api-token-scopes),
+accessed 2026-09-30, require the distinct workspace-read scope. High confidence applies to provider
+protocols, not an authenticated Fork capture. Guidance and denied-access errors now name that scope.
+Preference-error credential continuity, retained polling deadlines and isolated browsing cursors have
+synthetic regression coverage. The follow-up passes 660 unit tests and all 78 routine Electron scenarios;
+the handoff retains the earlier saved F16 failure and controlled pre-fix failures instead of treating
+successful reruns as their resolution.
+
 P11 completion — **2026-09-30**: the [hosting handoff](../reviews/p11-hosting.md) supersedes the
 bounded F29/F30 checkpoints within its researched Linux matrix. Rechecked the P0-013 preferences
 dossier, original case/screen-0123 and Git invariance, plus P1-012's local-clone case/screen-0295 and

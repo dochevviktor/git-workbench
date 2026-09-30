@@ -51,6 +51,7 @@ export const hostingAccountsSchema = z.strictObject({
   secureStorageAvailable: z.boolean(),
   gitAccountId: identifier.nullable().default(null),
   githubOAuthAvailable: z.boolean().optional(),
+  preferencesError: z.string().max(500).optional(),
 });
 export const hostingAccountRequestSchema = z.strictObject({ accountId: identifier });
 export const hostingConnectRequestSchema = z
@@ -195,6 +196,7 @@ export const hostingActivityPageSchema = z.strictObject({
   nextPage: pageNumber.nullable(),
   limited: z.boolean(),
   recentSearches: z.array(z.string().max(200)).max(10).optional(),
+  preferencesError: z.string().max(500).optional(),
 });
 export const hostingActivitySelectionSchema = z.strictObject({ accountId: identifier, itemId: identifier });
 export type HostingActivityRequest = z.infer<typeof hostingActivityRequestSchema>;
@@ -208,6 +210,7 @@ export const hostingNotificationPreferenceSchema = z.strictObject({
 });
 export const hostingNotificationSnapshotSchema = z.strictObject({
   revision: z.number().int().nonnegative(),
+  preferencesError: z.string().max(500).optional(),
   accounts: z
     .array(
       z.strictObject({

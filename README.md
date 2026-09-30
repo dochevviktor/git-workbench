@@ -180,7 +180,9 @@ File → Preferences → Accounts has an account sidebar with **+** to add and *
 Choose Gitea, GitHub, GitHub Enterprise, GitLab, GitLab Server, Bitbucket or Bitbucket Server. Enter your
 token directly in the masked field; self-hosted providers also require an HTTPS server URL. Bitbucket
 Cloud uses your Atlassian email and an API token; Bitbucket Server uses your username and a personal
-HTTP access token. GitHub offers Personal
+HTTP access token. For Bitbucket Cloud, enable `read:user:bitbucket`, `read:workspace:bitbucket` and
+`read:repository:bitbucket`; add `write:repository:bitbucket` for push. API-token permissions do not
+implicitly include each other. GitHub offers Personal
 access token or OAuth. Open Repositories to browse accessible repositories and choose an HTTPS/SSH clone
 URL. GitHub and Enterprise have built-in issue/PR lists and notifications; other providers open those pages
 in your browser. GitLab supports nested groups. Self-hosted API requests require a trusted HTTPS
@@ -205,6 +207,10 @@ plaintext fallback is refused. Direct entry is a narrow exception to the earlier
 policy: the token passes once from an uncontrolled password field through the validated login capability
 to main. The field clears on submission, provider/method/server changes and dismissal; tokens are never
 returned to the UI, stored in React/presentation state, repository configuration or logs.
+If hosting preferences are damaged, Accounts shows a warning while keeping credential creation,
+replacement and sign-out available. Automatic notification choices default off and the damaged file is
+preserved. Repair `hosting-preferences.json` in the application profile while the app is closed and
+restart to restore saved notification choices/searches; account credentials do not need to be reset.
 Update token verifies that the replacement belongs to the same account and server. Failed updates retain
 the old credential. Sign out
 removes the app's credential and cancels its pending API reads. Already authenticated Git transfers
@@ -234,8 +240,10 @@ the app. Notifications require a classic token with `notifications` or `repo` sc
 does not support fine-grained tokens. Search is limited to 1,000 results and reports incomplete results.
 Enable Notifications in the Account tab for automatic checks and a compact toolbar inbox. Checks run
 while the app is open, share one schedule across its windows, respect the server's polling/rate limits
-and stop on disable or sign-out. No desktop alert or remote mark-read action is implied. The inbox shows
-up to 100 unread items per account; Accounts supplies further pages. See the
+and stop on disable or sign-out. Server retry deadlines survive toggling notifications, credential
+replacement and closing/reopening the last window within the running app. No desktop alert or remote
+mark-read action is implied. The inbox shows up to 100 unread items per account; Accounts supplies
+further pages. See the
 [P11 handoff](docs/reviews/p11-hosting.md) for verification and live/native/parity limits.
 
 ## Start

@@ -72,10 +72,14 @@ export class HostingService {
     { accountId: string; items: Map<string, HostingActivityItem> }
   >();
   private readonly providers = new Map<string, HostingProvider>();
+  private readonly repositoryProviders = new Map<number, Map<string, HostingProvider>>();
+  private preferencesError = '';
   private readonly renewals = new Map<string, { controller: AbortController; promise: Promise<string> }>();
   private readonly notificationOwners = new Set<number>();
   private readonly notificationListeners = new Set<() => void>();
   private notificationRevision = 0;
+  // Server deadlines outlive the visible inbox and its opt-in/owner/credential resets.
+  private readonly notificationDeadlines = new Map<string, number>();
   private readonly notifications = new Map<
     string,
     {
@@ -87,7 +91,6 @@ export class HostingService {
       controller?: AbortController | undefined;
       failures: number;
       paused: boolean;
-      nextAllowedAt?: number;
     }
   >();
 
@@ -106,12 +109,16 @@ export class HostingService {
       accounts: await Promise.all(
         [...this.entries.values()].map(async (entry) => ({
           ...entry.account,
-          notificationsEnabled: await this.preferences.enabled(entry.account.id),
+          notificationsEnabled: await this.optionalPreference(
+            () => this.preferences.enabled(entry.account.id),
+            false,
+          ),
         })),
       ),
       secureStorageAvailable: this.store.available(),
       gitAccountId: this.entries.keys().next().value ?? null,
       githubOAuthAvailable: this.oauth.available(),
+      preferencesError: this.preferencesError,
     };
   }
 
@@ -357,7 +364,8 @@ export class HostingService {
           this.stopNotifications(account.id);
         });
         this.changedNotifications();
-        if (await this.preferences.enabled(account.id)) this.scheduleNotifications(account.id, 0);
+        if (await this.optionalPreference(() => this.preferences.enabled(account.id), false))
+          this.scheduleNotifications(account.id, 0);
         return account;
       },
       300000,
@@ -381,7 +389,7 @@ export class HostingService {
       this.clearRepositories(accountId);
     });
     this.changedNotifications();
-    await this.preferences.remove(accountId);
+    await this.optionalPreference(() => this.preferences.remove(accountId), undefined);
     return null;
   }
 
@@ -393,7 +401,7 @@ export class HostingService {
     this.repositories.get(owner)?.delete(request.accountId);
     return this.run(owner, request.accountId, async (signal) => {
       const result = hostedRepositoriesSchema.parse(
-        await this.resolveProvider(entry.account.provider, entry.account.serverUrl).repositories(
+        await this.repositoryProvider(owner, entry.account).repositories(
           await this.credential(entry),
           request.page,
           signal,
@@ -458,9 +466,11 @@ export class HostingService {
       selection.items = new Map(result.items.map((item) => [item.id, item]));
       if (request.kind === 'notifications') return result;
       const key = `${request.accountId}/${request.kind}/${request.repositoryId}`;
-      if (request.text.trim()) await this.preferences.remember(key, request.text.trim());
+      if (request.text.trim())
+        await this.optionalPreference(() => this.preferences.remember(key, request.text.trim()), undefined);
+      const recentSearches = await this.optionalPreference(() => this.preferences.recent(key), []);
       this.checkSignal(signal);
-      return { ...result, recentSearches: await this.preferences.recent(key) };
+      return { ...result, recentSearches, preferencesError: this.preferencesError };
     });
   }
   activityUrl(owner: number, request: HostingActivitySelection) {
@@ -536,12 +546,14 @@ export class HostingService {
   async getNotifications(): Promise<HostingNotificationSnapshot> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const revision = this.notificationRevision;
-      const accounts = (await this.list()).accounts.filter((account) =>
+      const listed = await this.list();
+      const accounts = listed.accounts.filter((account) =>
         hostingActivityProviders.includes(account.provider),
       );
       if (revision !== this.notificationRevision) continue;
       return {
         revision,
+        preferencesError: listed.preferencesError,
         accounts: accounts
           .filter((account) => this.entries.has(account.id))
           .map((account) => {
@@ -588,10 +600,13 @@ export class HostingService {
       this.notifications.set(accountId, state);
     }
     if (state.controller || state.timer || state.paused) return;
-    state.timer = setTimeout(() => {
-      state!.timer = undefined;
-      void this.refreshNotifications(accountId).catch(() => undefined);
-    }, delay);
+    state.timer = setTimeout(
+      () => {
+        state!.timer = undefined;
+        void this.refreshNotifications(accountId).catch(() => undefined);
+      },
+      Math.max(delay, this.notificationDeadline(accountId) - Date.now()),
+    );
     state.timer.unref();
   }
   async refreshNotifications(accountId: string) {
@@ -608,7 +623,7 @@ export class HostingService {
       state = this.notifications.get(accountId);
     }
     if (!state || state.controller) return null;
-    if ((state.nextAllowedAt ?? 0) > Date.now())
+    if (this.notificationDeadline(accountId) > Date.now())
       throw new ExpectedBackendError(
         'UNAVAILABLE',
         'The server requires a pause between notification checks. Try again later.',
@@ -648,12 +663,15 @@ export class HostingService {
     } finally {
       clearTimeout(timer);
       state.controller = undefined;
+      const minimum = Math.max(
+        (provider.notificationPollInterval ?? 0) * 1000,
+        (provider.notificationRetryAt ?? 0) - Date.now(),
+      );
+      this.notificationDeadlines.set(
+        accountId,
+        Math.max(this.notificationDeadlines.get(accountId) ?? 0, Date.now() + minimum),
+      );
       if (this.notifications.get(accountId) === state) {
-        const minimum = Math.max(
-          (provider.notificationPollInterval ?? 0) * 1000,
-          (provider.notificationRetryAt ?? 0) - Date.now(),
-        );
-        state.nextAllowedAt = Date.now() + minimum;
         this.changedNotifications();
         this.scheduleNotifications(
           accountId,
@@ -662,6 +680,11 @@ export class HostingService {
       }
     }
     return null;
+  }
+  private notificationDeadline(accountId: string) {
+    for (const [id, deadline] of this.notificationDeadlines)
+      if (deadline <= Date.now()) this.notificationDeadlines.delete(id);
+    return this.notificationDeadlines.get(accountId) ?? 0;
   }
   notificationUrl(request: HostingActivitySelection) {
     const account = this.require(request.accountId).account;
@@ -678,6 +701,7 @@ export class HostingService {
     this.oauthSessions.delete(owner);
     for (const request of this.pending) if (request.owner === owner) request.controller.abort();
     this.repositories.delete(owner);
+    this.repositoryProviders.delete(owner);
     this.activityPages.delete(owner);
     return null;
   }
@@ -764,6 +788,34 @@ export class HostingService {
     }
     return provider;
   }
+  private repositoryProvider(owner: number, account: HostingAccount): HostingProvider {
+    if (!account.provider.startsWith('bitbucket'))
+      return this.resolveProvider(account.provider, account.serverUrl);
+    // Bitbucket continuation state belongs to a browsing owner, not to every window using its token.
+    let providers = this.repositoryProviders.get(owner);
+    if (!providers) {
+      providers = new Map();
+      this.repositoryProviders.set(owner, providers);
+    }
+    let provider = providers.get(account.id);
+    if (!provider) {
+      provider = this.providerFactory(account.provider, account.serverUrl);
+      providers.set(account.id, provider);
+    }
+    return provider;
+  }
+  private async optionalPreference<T>(work: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      // Optional metadata must not conceal an account or turn a completed credential write into failure.
+      this.preferencesError =
+        error instanceof ExpectedBackendError
+          ? error.message
+          : 'Hosting preferences are unavailable. Account credentials can still be managed.';
+      return fallback;
+    }
+  }
   private persist(entries: Map<string, Entry>) {
     const saved = [...entries.values()].flatMap((entry) => (entry.stored ? [entry.stored] : []));
     // Session-only accounts never create a credential file.
@@ -777,6 +829,7 @@ export class HostingService {
   }
   private clearRepositories(accountId: string) {
     for (const repos of this.repositories.values()) repos.delete(accountId);
+    for (const providers of this.repositoryProviders.values()) providers.delete(accountId);
     for (const [owner, page] of this.activityPages)
       if (page.accountId === accountId) this.activityPages.delete(owner);
   }

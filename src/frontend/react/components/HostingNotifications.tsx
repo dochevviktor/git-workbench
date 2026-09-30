@@ -238,6 +238,7 @@ export function HostingNotifications() {
               {account.error && <p role="alert">{account.error}</p>}
             </>
           )}
+          {snapshot.preferencesError && <p role="alert">{snapshot.preferencesError}</p>}
           {error && <p role="alert">{error}</p>}
         </div>
       )}

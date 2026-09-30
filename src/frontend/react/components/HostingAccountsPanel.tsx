@@ -645,6 +645,11 @@ export function HostingAccountsPanel({
               }
             />
           )}
+          {accounts.preferencesError && (
+            <p role="alert" className="hosting-error">
+              {accounts.preferencesError} Account credentials can still be managed.
+            </p>
+          )}
           {error && (
             <p role="alert" className="hosting-error">
               {error}

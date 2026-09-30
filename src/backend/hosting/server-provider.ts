@@ -412,7 +412,9 @@ export class BitbucketProvider implements HostingProvider {
       if (response.status === 401 || response.status === 403)
         throw new ExpectedBackendError(
           'HOSTING_AUTH',
-          'Bitbucket denied access. Update the token and check its permissions.',
+          response.status === 403 && this.id === 'bitbucket' && path.startsWith('/user/workspaces?')
+            ? 'Bitbucket denied workspace access. Check read:workspace:bitbucket on your API token in Accounts.'
+            : 'Bitbucket denied access. Update the token and check its permissions.',
         );
       if (!response.ok) throw this.invalid();
       return await readHostingJson(response);

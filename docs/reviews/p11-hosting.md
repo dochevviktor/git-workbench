@@ -5,6 +5,11 @@ committed Electron dependencies. This supersedes the dated F29/F30 and provider-
 within the researched Linux matrix below. It does not claim live provider authorization or exact
 Fork parity for uncaptured integrations.
 
+The [review correction below](#review-correction--2026-09-30) supersedes the original verification
+statement. The saved F16 failure was missing from this handoff; a passing rerun did not resolve its
+startup race. The corrections are now verified by 660 passing unit tests and 78 passing routine
+Electron scenarios, with the original Git assertions retained.
+
 ## Phase requirements and provider matrix
 
 | Provider                       | Account and repository workflow                                                                                                          | Activity and lifecycle                                                                                                                            |
@@ -108,11 +113,12 @@ escaped/traversing repository paths and ambiguous SSH installations are refused.
 owned repository/local-branch/remote capability and preserves mapped upstream branch names. Public
 hosting and Azure PR entry points still work without an account. Browser handoffs do not submit forms.
 
-## Verification and limits
+## Initial verification and limits
 
 - `npm run check`: 652 passed, six existing opt-in/tool-dependent skips; type, lint and format checks pass.
-- `npm run build` passes (also run by `npm run test:e2e`). The final full headless Electron suite passes
-  **74 scenarios**, with three existing opt-in/tool-dependent skips, no failures and no automatic retries.
+- The original handoff reported build success and **74 passing Electron scenarios**, three skips and
+  no failures. That statement did not acknowledge the saved F16 failure described below and is
+  superseded by the review correction's verification record.
 - Targeted P11/P02 Electron run: all seven scenarios pass. The production preload/renderer smoke and
   existing hosting/provider scenarios passed in the earlier focused run; the final full matrix includes them.
 - Unit contracts cover pagination, origin/workspace guards, malformed responses, rate limits, expiration,
@@ -134,5 +140,77 @@ Windows/macOS execution and native Wayland/display/accessibility matrices remain
 check requires a deliberately configured test account, as the plan specifies. Provider browser pages
 and remote revocation were not exercised live; generated URLs and UI handoffs were checked with fixtures.
 Exact Fork authentication choices, tray behavior, default polling interval, alternate in-app provider
-activity and full review editing remain unclaimed. P11's researched Linux matrix is complete; these
-broader parity/platform questions remain explicit rather than changing the catalogue's capture status.
+activity and full review editing remain unclaimed. The review correction below owns the current
+verification status; broader parity/platform questions do not change the catalogue's capture status.
+
+## Review correction — 2026-09-30
+
+The review of `419b999` found the retained failure for
+`tests/e2e/review-workflows.test.ts:274`, “F16 starts ordinary merge and rebase jobs from branch menus”.
+It timed out after 30 seconds finding `Merge 'feature' into 'main'…`; Git had not started a merge.
+The original artifacts remain in
+`test-results/review-workflows-F16-start-54db7-base-jobs-from-branch-menus/` and `.last-run.json` records
+that failed run. A fresh audit passed 74 routine scenarios and ten F16 repetitions, but a controlled
+delay of the initial reference-context response reproduced the missing menu item. The test waited for
+history, which can render before branch-action metadata. Context menus captured their initial entries
+and never acquired Merge/Rebase when that metadata arrived. This code predates P11.
+
+Corrections:
+
+- Account creation, token replacement, account listing, sign-out and current issue/PR results no longer
+  fail because optional preferences cannot be read or saved. Bounded public warnings use the existing
+  validated account/activity/inbox response contracts. Unreadable notification choices default off;
+  damaged originals remain unchanged and preference writes still report errors. Credentials remain
+  visible and removable. Repair the preference file while the app is closed and restart to restore
+  persistent choices/searches; no credential-store reset is required.
+- Bitbucket Cloud guidance names `read:user:bitbucket`, `read:workspace:bitbucket` and
+  `read:repository:bitbucket`, plus `write:repository:bitbucket` for push. A denied workspace read now
+  identifies the missing permission to check. The mock workflow covers successful identity, denied
+  enumeration, token replacement and successful enumeration. These are distinct API-token scopes in
+  [Atlassian's documentation](https://developer.atlassian.com/cloud/bitbucket/rest/intro/#forge-app-and-api-token-scopes),
+  checked 2026-09-30; the [workspace endpoint](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-workspaces/#api-user-workspaces-get)
+  specifically requires workspace read. High confidence for provider semantics, not observed Fork behavior.
+- Server notification deadlines live separately from inbox contents and timers. Disabling/re-enabling,
+  replacing credentials or closing/reopening the last owner in the running app preserves the deadline.
+  Both manual checks and newly scheduled checks consult it before fetching. Mock `Retry-After: 3600`
+  trials verify that those resets cannot issue another check before the hour expires.
+- Bitbucket repository continuation state is isolated by browsing owner and account and is released on
+  cancellation, account replacement/removal or owner disposal. Cloud and Server tests interleave pages
+  across two owners and verify cancellation cleanup. The current desktop exposes one main window;
+  this closes the service-level defect found during review without claiming a new multiwindow UI.
+- A reference menu opened before its initial metadata arrives can update only that still-open menu.
+  The request handle becomes invalid when the menu closes or is replaced. Refreshing its initial entries
+  resets highlight/submenu indices so an old index cannot select a different action. Repository identity
+  is checked before updating; later normal refreshes still retain the reviewed menu snapshot. Backend
+  Git preconditions and the original merge/rebase Git assertions are unchanged.
+
+Reference evidence: `P1-006-noff-subcase:F1–F2`, original case, `screen-0246` and noff-after refs/graph
+were inspected (Windows 2.22.0.0, 2026-09-19, high confidence for the captured menu route and Git result).
+The delayed-read correction is independently specified Linux behavior, not an inferred Fork timing rule.
+The previously inspected P0-013/P1-012 preferences/Clone evidence and public Accounts references retain
+their limits. No reference assets, application styling or captured Git semantics changed.
+
+Verification history for this correction:
+
+- Before the fix, four new unit cases failed: corrupt preferences and three deadline-reset variants.
+  The controlled F16 loading case also failed against the unchanged production build at the same
+  missing Merge item (32.3 seconds total). Its trace is under
+  `/tmp/git-workbench-p11-fixes-AxVPzP/before/` on this host.
+- The first corrected targeted desktop run passed all four P11 cases and the ordinary/delayed F16
+  cases. Two new fixture variants failed: the gate was installed before IPC registration, and a popup
+  covered the attempted right-click target. The fixtures now wait for desktop readiness before
+  installing the gate and click the other row's exposed edge; no assertion or timeout was weakened.
+- `npm run check`: 660 passed, six existing skips; type, lint and formatting checks pass.
+- All four F16 variants pass in the focused correction run. The controlled loading case falls from
+  its pre-fix timeout to successful merge/rebase execution; dismissal/replacement retain their menu
+  ownership checks. All four P11 desktop cases also pass, including credential management across restart
+  with a damaged preferences file. The generated warning and Bitbucket guidance captures were inspected.
+- `npm run test:e2e -- --output=/tmp/git-workbench-p11-fixes-AxVPzP/full-suite`: build passes and
+  **78 scenarios pass**, with three existing skips, no failures and no automatic retries (5.2 minutes).
+  This includes startup/preload isolation, legacy hosting, narrow-window assertions, all four F16
+  variants and window lifecycle. The original failed artifacts were preserved; the fresh run's
+  `.last-run.json` and screenshots are in the separate output directory above.
+- A final formatting check and `git diff --check` pass after recording these results.
+
+Tests use disposable repositories/profiles, synthetic credentials and provider responses. Live provider
+authorization, actual OS-keyring behavior and native-platform parity remain unverified as above.

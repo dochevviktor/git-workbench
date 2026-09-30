@@ -1,5 +1,16 @@
 # Architecture and implementation decisions
 
+P11 review correction (2026-09-30): optional hosting preference failures return bounded warnings with
+otherwise successful account/activity/inbox results. They cannot conceal accounts or change the reported
+outcome of a completed credential write/removal; unreadable choices disable automatic polling and the
+invalid original remains intact. Existing result schemas validate the added metadata in main/preload;
+no channel, capability, credential boundary or sender policy changes. Notification deadlines outlive
+inbox resets for the running process. Stateful Bitbucket paging belongs to an owner/account and clears
+with cancellation or account disposal. Initial reference menus have identity-guarded update handles;
+closed/replaced menus cannot be revived, and newly available entries reset their highlight indices.
+The [handoff correction](reviews/p11-hosting.md#review-correction--2026-09-30) records the original F16
+failure, deterministic reproduction, changes and verification.
+
 P11 (2026-09-30): the [hosting handoff](reviews/p11-hosting.md) extends the existing provider boundary
 with Bitbucket Cloud/Server accounts, current workspace/offset pagination, Enterprise activity,
 saved title searches and opt-in notification scheduling. Named notification read/configure/refresh/open

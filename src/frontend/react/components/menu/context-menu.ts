@@ -11,9 +11,13 @@ export interface ContextMenuRequest {
   readonly onClose?: (() => void) | undefined;
 }
 
-export const ContextMenuContext = createContext<(request: ContextMenuRequest) => void>(() => undefined);
+/** Updates only the menu that was opened by this request; closing/replacing it invalidates the handle. */
+export type UpdateContextMenu = (items: readonly MenuEntry[]) => void;
+export const ContextMenuContext = createContext<(request: ContextMenuRequest) => UpdateContextMenu>(
+  () => () => undefined,
+);
 
-export function useContextMenu(): (request: ContextMenuRequest) => void {
+export function useContextMenu(): (request: ContextMenuRequest) => UpdateContextMenu {
   return useContext(ContextMenuContext);
 }
 

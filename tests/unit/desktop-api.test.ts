@@ -26,6 +26,34 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('delivers bounded preference warnings with successful account and notification results', async () => {
+    const { api, invoke } = fixture();
+    const warning = 'Hosting preferences could not be read. The original file was left unchanged.';
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { accounts: [], secureStorageAvailable: true, preferencesError: warning },
+    });
+    expect(await api.hosting.listAccounts()).toMatchObject({
+      ok: true,
+      value: { preferencesError: warning },
+    });
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { revision: 1, accounts: [], preferencesError: warning },
+    });
+    expect(await api.hosting.getNotifications()).toMatchObject({
+      ok: true,
+      value: { preferencesError: warning },
+    });
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { revision: 1, accounts: [], preferencesError: 'x'.repeat(501) },
+    });
+    expect(await api.hosting.getNotifications()).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+  });
   it('validates notification controls and snapshots and cleans the exact change subscription', async () => {
     const { api, invoke, emitter } = fixture();
     expect(

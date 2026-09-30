@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RepositoryTrustControl } from '../components/RepositoryTrustControl';
 import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react';
 import type {
@@ -72,6 +72,7 @@ import { collectLaunchFiles } from '../lib/quick-launch-files';
 import type { LaunchItem } from '../lib/quick-launch';
 import { ContextMenuHost } from '../components/menu/ContextMenuHost';
 import { useContextMenu } from '../components/menu/context-menu';
+import type { UpdateContextMenu } from '../components/menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator } from '../components/menu/menu-model';
 import type { MenuEntry } from '../components/menu/menu-model';
 import { useDesktop } from '../hooks/use-desktop';
@@ -161,6 +162,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const history = useRepositoryHistory(lastActive?.id);
   const { refresh: refreshHistory, references, setFilter: setHistoryFilter, requestReveal } = history;
   const showContextMenu = useContextMenu();
+  const pendingReferenceMenu = useRef<
+    | {
+        repositoryId: string;
+        reference: RepositoryHistoryReference;
+        update: UpdateContextMenu;
+      }
+    | undefined
+  >(undefined);
   const [appearance, setAppearance] = usePersistentState<Appearance>(
     'appearance',
     'system',
@@ -2325,7 +2334,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     });
   };
 
-  const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
+  const referenceMenuItems = (reference: RepositoryHistoryReference) => {
     const current = referenceContext?.branches.find((candidate) => candidate.isHead);
     const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
     const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
@@ -2736,8 +2745,32 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     }
     if (reference.fullName.startsWith('refs/heads/') || reference.fullName.startsWith('refs/remotes/'))
       items.push(...customItems('branch', reference.fullName));
-    showContextMenu({ anchor: contextMenuAnchor(event, event.currentTarget), label: reference.name, items });
+    return items;
   };
+  const openReferenceMenu = (reference: RepositoryHistoryReference, event: ReactMouseEvent<HTMLElement>) => {
+    pendingReferenceMenu.current = undefined;
+    const update = showContextMenu({
+      anchor: contextMenuAnchor(event, event.currentTarget),
+      label: reference.name,
+      items: referenceMenuItems(reference),
+      onClose: () => {
+        pendingReferenceMenu.current = undefined;
+      },
+    });
+    if (active && !referencesReady)
+      pendingReferenceMenu.current = { repositoryId: active.id, reference, update };
+  };
+  useLayoutEffect(() => {
+    const pending = pendingReferenceMenu.current;
+    if (!pending) return;
+    if (pending.repositoryId !== active?.id) {
+      pendingReferenceMenu.current = undefined;
+      return;
+    }
+    if (!referencesReady) return;
+    pendingReferenceMenu.current = undefined;
+    pending.update(referenceMenuItems(pending.reference));
+  });
 
   const error = desktop.error ?? repositoryError ?? operationError;
   const launchReferenceReason = !active

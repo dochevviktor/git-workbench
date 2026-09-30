@@ -456,9 +456,205 @@ describe('P11 notification and credential lifetime', () => {
     await expect(prefs.setEnabled('github-42', true)).rejects.toThrow('left unchanged');
     expect(await readFile(path, 'utf8')).toBe('{corrupt original');
   });
+  it('keeps credential creation, replacement, listing and removal usable with corrupt preferences', async () => {
+    const f = await fixture();
+    await f.service.disconnect(f.account.id);
+    const path = join(f.root, 'preferences.json');
+    await writeFile(path, '{corrupt original');
+    const service = new HostingService(
+      f.store,
+      f.provider,
+      undefined,
+      undefined,
+      new HostingPreferencesStore(path),
+    );
+    services.push(service);
+    const account = (await service.connectToken(1, { provider: 'github', remember: true, token }))!;
+    expect(account.id).toBe(f.account.id);
+    expect(await service.list()).toMatchObject({
+      accounts: [{ id: account.id, notificationsEnabled: false }],
+      preferencesError: expect.stringContaining('left unchanged'),
+    });
+    service.attachOwner(1);
+    expect(await service.getNotifications()).toMatchObject({
+      accounts: [{ account: { id: account.id, notificationsEnabled: false }, items: [] }],
+      preferencesError: expect.stringContaining('left unchanged'),
+    });
+    await service.connectToken(1, {
+      accountId: account.id,
+      provider: 'github',
+      remember: true,
+      token: 'replacement-synthetic-token',
+    });
+    const context = {
+      protocol: 'https' as const,
+      host: 'github.com',
+      path: 'example/project.git',
+      username: '',
+    };
+    expect(await service.gitCredentials.get(context)).toMatchObject({
+      password: 'replacement-synthetic-token',
+    });
+    await service.listRepositories(1, { accountId: account.id, page: 1 });
+    expect(
+      await service.listActivity(1, {
+        accountId: account.id,
+        repositoryId: '12',
+        kind: 'issues',
+        page: 1,
+        state: 'open',
+        author: '',
+        assignee: '',
+        text: 'useful query',
+      }),
+    ).toMatchObject({ items: [notification], recentSearches: [], preferencesError: expect.any(String) });
+    await service.disconnect(account.id);
+    expect((await service.list()).accounts).toEqual([]);
+    expect(await service.gitCredentials.get(context)).toBeNull();
+    expect(await f.store.load()).toEqual([]);
+    expect(await readFile(path, 'utf8')).toBe('{corrupt original');
+  });
+  it.each(['toggle', 'owner', 'replacement'] as const)(
+    'retains a server retry deadline across notification %s resets',
+    async (reset) => {
+      const f = await fixture();
+      const transport = vi.fn<typeof fetch>(async (input) => {
+        if (String(input).endsWith('/user')) return Response.json({ id: 42, login: 'example' });
+        return Response.json({}, { status: 429, headers: { 'retry-after': '3600' } });
+      });
+      const service = new HostingService(
+        f.store,
+        new GitHubProvider(transport),
+        undefined,
+        undefined,
+        f.preferences,
+        1000,
+      );
+      services.push(service);
+      vi.useFakeTimers();
+      service.attachOwner(1);
+      await service.setNotifications({ accountId: f.account.id, enabled: true });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(transport).toHaveBeenCalledOnce();
+      const first = Date.now();
+      if (reset === 'toggle') {
+        await service.setNotifications({ accountId: f.account.id, enabled: false });
+        await service.setNotifications({ accountId: f.account.id, enabled: true });
+      } else if (reset === 'owner') {
+        service.disposeOwner(1);
+        service.attachOwner(2);
+        await service.list();
+      } else {
+        await service.connectToken(1, { accountId: f.account.id, provider: 'github', remember: true, token });
+      }
+      const notificationCalls = () =>
+        transport.mock.calls.filter(([input]) => String(input).includes('/notifications?')).length;
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(service.refreshNotifications(f.account.id)).rejects.toThrow('pause');
+      await vi.advanceTimersByTimeAsync(3_599_000);
+      expect(notificationCalls()).toBe(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(notificationCalls()).toBe(2);
+      expect(Date.now() - first).toBeGreaterThanOrEqual(3_600_000);
+    },
+  );
 });
 
 describe('P11 provider matrix', () => {
+  it.each(['bitbucket', 'bitbucket-server'] as const)(
+    'keeps %s pagination independent for each browsing owner and releases it on cancel',
+    async (id) => {
+      const f = await fixture();
+      const transport: typeof fetch = async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith('/user')) return Response.json({ uuid: '{user}', nickname: 'example' });
+        if (url.pathname.endsWith('/users/example')) return Response.json({ id: 42, name: 'example' });
+        if (url.pathname.endsWith('/user/workspaces'))
+          return Response.json({ values: [{ workspace: { slug: 'team' } }] });
+        if (id === 'bitbucket') {
+          const page = Number(url.searchParams.get('page'));
+          return Response.json({
+            values: [{ uuid: `repo-${page}`, full_name: `team/repo-${page}`, is_private: true }],
+            next: `https://api.bitbucket.org/2.0/repositories/team?page=${page + 1}`,
+          });
+        }
+        const offset = Number(url.searchParams.get('start'));
+        return Response.json({
+          values: [
+            { id: offset + 1, project: { key: 'team' }, slug: `repo-${offset / 100 + 1}`, public: false },
+          ],
+          isLastPage: false,
+          nextPageStart: offset + 100,
+        });
+      };
+      const service = new HostingService(
+        f.store,
+        f.provider,
+        (_id, server) => new BitbucketProvider(id, server, transport),
+      );
+      services.push(service);
+      const account = (await service.connectToken(1, {
+        provider: id,
+        remember: false,
+        token,
+        username: id === 'bitbucket' ? 'example@email.test' : 'example',
+        ...(id === 'bitbucket-server' ? { serverUrl: 'https://bb.example' } : {}),
+      }))!;
+      for (const page of [1, 2, 3]) await service.listRepositories(1, { accountId: account.id, page });
+      await service.listRepositories(2, { accountId: account.id, page: 1 });
+      expect(await service.listRepositories(1, { accountId: account.id, page: 4 })).toMatchObject({
+        repositories: [{ fullName: 'team/repo-4' }],
+        page: 4,
+      });
+      service.cancel(1);
+      await expect(service.listRepositories(1, { accountId: account.id, page: 4 })).rejects.toMatchObject({
+        code: 'STALE_SNAPSHOT',
+      });
+      expect(await service.listRepositories(2, { accountId: account.id, page: 2 })).toMatchObject({
+        repositories: [{ fullName: 'team/repo-2' }],
+        page: 2,
+      });
+    },
+  );
+  it('explains the distinct Bitbucket workspace scope and accepts its addition through token replacement', async () => {
+    const f = await fixture();
+    const transport: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/user')) return Response.json({ uuid: '{user}', nickname: 'example' });
+      if (url.pathname.endsWith('/user/workspaces')) {
+        const authorization = new Headers(init?.headers).get('authorization')!;
+        const password = Buffer.from(authorization.slice(6), 'base64').toString('utf8').split(':')[1];
+        if (password !== 'synthetic-with-workspace-scope') return Response.json({}, { status: 403 });
+        return Response.json({ values: [{ workspace: { slug: 'team' } }] });
+      }
+      return Response.json({ values: [{ uuid: '{repo}', full_name: 'team/repo', is_private: true }] });
+    };
+    const service = new HostingService(
+      f.store,
+      f.provider,
+      () => new BitbucketProvider('bitbucket', undefined, transport),
+    );
+    services.push(service);
+    const request = {
+      provider: 'bitbucket' as const,
+      remember: false,
+      username: 'example@email.test',
+      token,
+    };
+    const account = (await service.connectToken(1, request))!;
+    await expect(service.listRepositories(1, { accountId: account.id, page: 1 })).rejects.toThrow(
+      'read:workspace:bitbucket',
+    );
+    expect((await service.list()).accounts.some((item) => item.id === account.id)).toBe(true);
+    await service.connectToken(1, {
+      ...request,
+      accountId: account.id,
+      token: 'synthetic-with-workspace-scope',
+    });
+    expect(await service.listRepositories(1, { accountId: account.id, page: 1 })).toMatchObject({
+      repositories: [{ fullName: 'team/repo' }],
+    });
+  });
   it('uses only registered HTTPS server origins for custom PR forms and includes legacy Azure URLs', () => {
     const accounts: HostingAccount[] = [
       {

@@ -200,6 +200,44 @@ test('P11 opt-in notifications, compact inbox, saved searches, restart and crede
   }
 });
 
+test('P11 damaged preferences leave saved credentials visible, replaceable and removable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'workbench-p11-damaged-ui-'));
+  const profile = join(root, 'profile');
+  const preferences = join(profile, 'hosting-preferences.json');
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  try {
+    await mkdir(profile);
+    await writeFile(preferences, '{damaged original');
+    const first = await launch(profile);
+    app = first.app;
+    let panel = await openAccounts(first.page);
+    await panel.getByLabel('Personal access token:', { exact: true }).fill('synthetic_p11_private_token');
+    await panel.getByRole('checkbox', { name: 'Remember account securely' }).check();
+    await panel.getByRole('button', { name: 'Log in', exact: true }).click();
+    await expect(panel.getByRole('heading', { name: 'example', exact: true })).toBeVisible();
+    await expect(panel.getByRole('alert')).toContainText('Account credentials can still be managed');
+    await expect(panel.getByRole('checkbox', { name: 'Enable Notifications' })).not.toBeChecked();
+    await app.close();
+    app = undefined;
+    const second = await launch(profile);
+    app = second.app;
+    panel = await openAccounts(second.page);
+    await expect(panel.getByRole('heading', { name: 'example', exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Update token…', exact: true }).click();
+    await panel.getByLabel('Personal access token:', { exact: true }).fill('synthetic_replacement_p11_token');
+    await panel.getByRole('button', { name: 'Update token', exact: true }).click();
+    await expect(panel.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+    await second.page.screenshot({ path: test.info().outputPath('p11-preferences-warning.png') });
+    await panel.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await expect(panel).toContainText('No connected accounts');
+    expect(JSON.parse(await readFile(join(profile, 'hosting-credentials.json'), 'utf8')).entries).toEqual([]);
+    expect(await readFile(preferences, 'utf8')).toBe('{damaged original');
+  } finally {
+    await app?.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('P11 Bitbucket Cloud/Server accounts and Enterprise activity retain exact destinations and small-window access', async () => {
   const root = await mkdtemp(join(tmpdir(), 'workbench-p11-providers-ui-'));
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
