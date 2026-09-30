@@ -115,7 +115,7 @@ export function registerAppIpc(
         if (entry.inspector?.parentId === id && !entry.window.isDestroyed()) entry.window.close();
       }
       repositoryService?.disposeWindow(id);
-      hostingService?.cancel(id);
+      hostingService?.disposeOwner(id);
     };
     const normalizedInspector: InspectorEntry | undefined =
       inspector && 'kind' in inspector
@@ -124,6 +124,7 @@ export function registerAppIpc(
           ? { ...inspector, kind: 'commit-details' }
           : undefined;
     windows.set(id, { window, url, cleanup, inspector: normalizedInspector });
+    if (!normalizedInspector) hostingService?.attachOwner(id);
     window.once('closed', cleanup);
   };
 
@@ -305,6 +306,27 @@ export function registerAppIpc(
     });
   }
   if (hostingService) {
+    register(requests.getHostingNotifications, () => hostingService.getNotifications());
+    register(requests.setHostingNotifications, (_window, request) =>
+      hostingService.setNotifications(request),
+    );
+    register(requests.refreshHostingNotifications, (_window, { accountId }) =>
+      hostingService.refreshNotifications(accountId),
+    );
+    const openHostingLink = async (url: string) => {
+      try {
+        await shell.openExternal(url);
+      } catch {
+        throw new ExpectedBackendError('UNAVAILABLE', 'The system browser could not be opened.');
+      }
+      return null;
+    };
+    register(requests.openHostingNotification, (_window, request) =>
+      openHostingLink(hostingService.notificationUrl(request)),
+    );
+    register(requests.manageHostingCredential, (_window, { accountId }) =>
+      openHostingLink(hostingService.credentialManagementUrl(accountId)),
+    );
     register(requests.listHostingActivity, (window, request) =>
       hostingService.listActivity(window.webContents.id, request),
     );
@@ -951,6 +973,14 @@ export function registerAppIpc(
     if (contents.isDestroyed() || !isTrustedDocument(contents.getURL(), entry.url)) return;
     contents.send(events.repositoryInvalidated.channel, events.repositoryInvalidated.payload.parse(event));
   });
+  const releaseNotifications = hostingService?.subscribeNotifications(() => {
+    for (const entry of windows.values()) {
+      if (entry.inspector || entry.window.isDestroyed()) continue;
+      const contents = entry.window.webContents;
+      if (contents.isDestroyed() || !isTrustedDocument(contents.getURL(), entry.url)) continue;
+      contents.send(events.hostingNotificationsChanged.channel, null);
+    }
+  });
 
   return {
     publishRepositoryActivated(window: BrowserWindow, repository: RepositorySummary) {
@@ -966,6 +996,7 @@ export function registerAppIpc(
       disposed = true;
       releaseOperations?.();
       releaseInvalidations?.();
+      releaseNotifications?.();
       for (const channel of channels) ipcMain.removeHandler(channel);
       for (const entry of [...windows.values()]) entry.cleanup();
     },

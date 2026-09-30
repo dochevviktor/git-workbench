@@ -5,6 +5,7 @@ import type {
   RepositorySummary,
 } from '../../../common/ipc/contracts';
 import { ActivityPanel } from './ActivityPanel';
+import { HostingNotifications } from './HostingNotifications';
 import {
   ActivityIcon,
   AppearanceIcon,
@@ -124,6 +125,7 @@ function ToolbarButton({
         className="toolbar-button has-menu"
         items={menuItems}
         menuLabel={label}
+        aria-label={label}
         disabledReason={disabledReason}
         title={label}
         data-testid={testId}
@@ -342,6 +344,7 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-group toolbar-end">
+        <HostingNotifications />
         <ToolbarButton
           icon={<OpenInIcon size={18} />}
           label="Open in"

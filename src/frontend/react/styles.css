@@ -381,8 +381,21 @@ p {
 
 @media (max-width: 1000px) {
   .toolbar-repository {
-    min-width: 176px;
+    min-width: 136px;
     margin-inline: 4px;
+  }
+}
+
+@media (max-width: 850px) {
+  .toolbar-group > .toolbar-button .toolbar-button-label,
+  .toolbar-split-button .toolbar-button-label {
+    display: none;
+  }
+  .toolbar-group > .toolbar-button {
+    min-width: 36px;
+  }
+  .toolbar-split-button .toolbar-split-primary {
+    min-width: 32px;
   }
 }
 
@@ -5277,4 +5290,111 @@ svg.spinning {
 .hosting-activity-items time {
   margin-left: auto;
   font-size: 11px;
+}
+.hosting-notification-preference {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 14px 152px;
+}
+.hosting-account-actions {
+  margin-left: 152px;
+  gap: 8px;
+}
+.hosting-notifications-popover {
+  position: fixed;
+  z-index: 110;
+  width: min(430px, calc(100vw - 16px));
+  max-height: min(540px, calc(100vh - 90px));
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--menu-bg);
+  color: var(--text);
+  box-shadow: 0 6px 24px #0005;
+}
+.hosting-notification-anchor .toolbar-button {
+  min-width: 32px;
+  width: 32px;
+  padding-inline: 2px;
+  height: 100%;
+}
+.hosting-notification-anchor .toolbar-button-label {
+  font-size: 10px;
+}
+.hosting-notifications-popover header,
+.hosting-notification-refresh,
+.hosting-notification-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.hosting-notifications-popover h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.hosting-notification-refresh {
+  margin: 12px 0;
+}
+.hosting-notification-cards {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.hosting-notification-cards li {
+  margin: 8px 0;
+}
+.hosting-notification-cards button {
+  padding: 0;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+  background: var(--sidebar-bg);
+  font: inherit;
+  cursor: pointer;
+}
+.hosting-notification-cards button:hover {
+  background: var(--row-hover);
+}
+.hosting-notification-card-header {
+  padding: 7px 9px;
+  background: light-dark(#0000000b, #ffffff0b);
+}
+.hosting-notification-card-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hosting-notification-card-header time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.hosting-notification-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.hosting-notification-title > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hosting-notification-kind {
+  font-size: 17px;
+  color: var(--text-muted);
+}
+@media (max-width: 650px) {
+  .hosting-account-actions {
+    margin-left: 0;
+  }
+  .hosting-notification-preference {
+    margin-left: 0;
+  }
 }

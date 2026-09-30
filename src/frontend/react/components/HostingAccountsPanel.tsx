@@ -8,7 +8,7 @@ import type {
   HostingOAuthState,
   HostingAccount,
 } from '../../../common/ipc/hosting';
-import { hostingProviderNames } from '../../../common/ipc/hosting';
+import { hostingProviderNames, hostingActivityProviders } from '../../../common/ipc/hosting';
 import { unwrapResult } from '../../../common/ipc/result';
 import type { HostingActivityRequest } from '../../../common/ipc/hosting';
 import { HostingActivity } from './HostingActivity';
@@ -272,7 +272,7 @@ export function HostingAccountsPanel({
               >
                 Repositories
               </button>
-              {account.provider === 'github' && (
+              {hostingActivityProviders.includes(account.provider) && (
                 <button
                   type="button"
                   className="button"
@@ -365,7 +365,7 @@ export function HostingAccountsPanel({
                 </div>
               )}
               {account && !updating && !removing && (
-                <div className="hosting-actions">
+                <div className="hosting-actions hosting-account-actions">
                   {!updating && (
                     <button
                       type="button"
@@ -376,7 +376,7 @@ export function HostingAccountsPanel({
                         setError('');
                       }}
                     >
-                      Update token…
+                      {account.authentication === 'oauth' ? 'Reauthorize…' : 'Update token…'}
                     </button>
                   )}
                   {!defaultForServer && (
@@ -398,7 +398,55 @@ export function HostingAccountsPanel({
                   <button type="button" className="button" disabled={working} onClick={() => void signOut()}>
                     Sign out
                   </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={working}
+                    onClick={() =>
+                      void run(async () => {
+                        unwrapResult(await api().manageCredential({ accountId: account.id }));
+                      })
+                    }
+                  >
+                    {account.authentication === 'oauth' ? 'Manage authorization…' : 'Manage tokens…'}
+                  </button>
                 </div>
+              )}
+              {account && !updating && !removing && hostingActivityProviders.includes(account.provider) && (
+                <label className="hosting-notification-preference">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(account.notificationsEnabled)}
+                    disabled={working}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      const previous = Boolean(account.notificationsEnabled);
+                      setAccounts((value) => ({
+                        ...value,
+                        accounts: value.accounts.map((item) =>
+                          item.id === account.id ? { ...item, notificationsEnabled: enabled } : item,
+                        ),
+                      }));
+                      void run(async (current) => {
+                        try {
+                          unwrapResult(await api().setNotifications({ accountId: account.id, enabled }));
+                          const result = unwrapResult(await api().listAccounts());
+                          if (current()) setAccounts(result);
+                        } catch (error) {
+                          if (current())
+                            setAccounts((value) => ({
+                              ...value,
+                              accounts: value.accounts.map((item) =>
+                                item.id === account.id ? { ...item, notificationsEnabled: previous } : item,
+                              ),
+                            }));
+                          throw error;
+                        }
+                      });
+                    }}
+                  />{' '}
+                  Enable Notifications
+                </label>
               )}
               {account && !updating && (
                 <p className="muted hosting-account-note">
@@ -442,7 +490,9 @@ export function HostingAccountsPanel({
               <p className="muted">
                 {protocol === 'https'
                   ? 'HTTPS uses this account’s token for clone and future Git operations.'
-                  : 'SSH uses your configured SSH keys and agent.'}
+                  : account.provider === 'bitbucket-server'
+                    ? 'SSH uses port 7999. Review the URL in Clone if your server uses another SSH host or port.'
+                    : 'SSH uses your configured SSH keys and agent.'}
               </p>
               <ul className="hosting-repositories">
                 {visible.map((repo) => (
@@ -472,7 +522,7 @@ export function HostingAccountsPanel({
                       >
                         Clone…
                       </button>
-                      {account.provider === 'github' &&
+                      {hostingActivityProviders.includes(account.provider) &&
                         (['issues', 'pull-requests'] as const).map((kind) => (
                           <button
                             type="button"
@@ -495,7 +545,13 @@ export function HostingAccountsPanel({
                             Browse {kind === 'issues' ? 'issues' : 'pull requests'}
                           </button>
                         ))}
-                      {(['website', 'pull-requests', 'issues'] as const).map((destination) => (
+                      {(
+                        [
+                          'website',
+                          'pull-requests',
+                          ...(account.provider === 'bitbucket-server' ? [] : (['issues'] as const)),
+                        ] as const
+                      ).map((destination) => (
                         <button
                           type="button"
                           className="link-button"

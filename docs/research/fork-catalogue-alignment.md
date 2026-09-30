@@ -1,5 +1,28 @@
 # Fork catalogue alignment — 2026-09-20
 
+P11 completion — **2026-09-30**: the [hosting handoff](../reviews/p11-hosting.md) supersedes the
+bounded F29/F30 checkpoints within its researched Linux matrix. Rechecked the P0-013 preferences
+dossier, original case/screen-0123 and Git invariance, plus P1-012's local-clone case/screen-0295 and
+clone-after manifest. These retain high confidence only for Windows 2.22.0.0's sampled local states
+(2026-09-19); authenticated account/activity workflows remain uncaptured.
+
+Public gap references, restored/reviewed 2026-09-30: Windows dark Accounts from
+[TrackerWin #2826](https://github.com/fork-dev/TrackerWin/issues/2826) (2026-07-31, version unstated),
+the undated macOS light inbox on [Fork's product page](https://fork.dev/), and the macOS dark
+[Tracker #2562](https://github.com/fork-dev/Tracker/issues/2562) (2026-02-25, version unstated).
+Medium confidence applies to visible controls/card composition. Account actions and Enable Notifications
+now align with detail values; the compact bell opens two-line repository/time/title cards. Before/after
+light/dark and narrow captures are linked in the handoff. The full routine suite passes after correcting
+the new toolbar's 880px overflow; the original tolerance is unchanged and an independent 780px check passes.
+
+Seven account forms, current Bitbucket API-token/workspace paging, Enterprise activity, persistent title
+queries, opt-in shared notification schedules, expiring device-token renewal and registered-server PR
+handoffs have independent fixture verification. The [fresh source matrix](fork-public-surface.md#p11-hosting-source-refresh--2026-09-30)
+distinguishes provider protocols from observed Fork behavior. Linux toolbar placement, no remote avatars,
+explicit encrypted storage, browser revocation, conventional SSH ports and non-GitHub browser activity
+are deliberate adaptations. Live authorization/native keyrings, alternate OAuth providers, exact polling/
+tray behavior and in-app review editing remain unclaimed. No bundle files/assets/capture status changed.
+
 P07 focus correction — **2026-09-29**: [runtime evidence and regressions](../reviews/p07-focus-stability.md)
 close the application shortcut-targeting defect against `P1-023-plan-execution-subcase:F1–F3`.
 The original Windows 2.22.0.0 case (2026-09-19), `screen-0367` and linked message/file results were

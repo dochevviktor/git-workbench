@@ -34,7 +34,7 @@ async function main() {
   await new Promise<void>((resolve) => {
     const socket = connect(address);
     let response = '';
-    socket.setTimeout(5000, () => socket.destroy());
+    socket.setTimeout(15000, () => socket.destroy());
     socket.on('error', () => socket.destroy());
     socket.on('connect', () => socket.write(`${JSON.stringify({ nonce, context })}\n`));
     socket.on('data', (chunk: Buffer) => {

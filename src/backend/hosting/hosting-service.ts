@@ -13,11 +13,14 @@ import type {
   HostingActivitySelection,
   HostingProviderId,
   HostingOAuthRequest,
+  HostingNotificationPreference,
+  HostingNotificationSnapshot,
 } from '../../common/ipc/hosting';
 import {
   hostingAccountSchema,
   hostedRepositoriesSchema,
   hostingActivityPageSchema,
+  hostingActivityProviders,
 } from '../../common/ipc/hosting';
 import { ExpectedBackendError } from '../errors';
 import type { HostingAccountStore } from './account-store';
@@ -26,9 +29,16 @@ import { GitHubProvider } from './github-provider';
 import type { HostingProvider } from './github-provider';
 import { credentialContextSchema } from '../git/credential-broker';
 import type { GitCredentialContext, GitCredentialSource } from '../git/credential-broker';
-import { hostingServer, ServerHostingProvider } from './server-provider';
-import { GitHubOAuth } from './github-oauth';
+import {
+  hostingServer,
+  createHostingProvider,
+  bitbucketCredential,
+  bitbucketPassword,
+} from './server-provider';
+import { HostingPreferencesStore } from './preferences-store';
+import { GitHubOAuth, decodeOAuthTokens, encodeOAuthTokens } from './github-oauth';
 import type { GitHubDeviceAuthorization } from './github-oauth';
+import { configuredPullRequestUrl } from '../repositories/hosting-service';
 
 type Entry = { account: HostingAccount; stored?: StoredAccount; token?: string };
 type Request = { owner: number; accountId?: string; controller: AbortController };
@@ -61,19 +71,44 @@ export class HostingService {
     number,
     { accountId: string; items: Map<string, HostingActivityItem> }
   >();
+  private readonly providers = new Map<string, HostingProvider>();
+  private readonly renewals = new Map<string, { controller: AbortController; promise: Promise<string> }>();
+  private readonly notificationOwners = new Set<number>();
+  private readonly notificationListeners = new Set<() => void>();
+  private notificationRevision = 0;
+  private readonly notifications = new Map<
+    string,
+    {
+      items: HostingActivityItem[];
+      hasMore: boolean;
+      checkedAt: string | null;
+      error: string;
+      timer?: ReturnType<typeof setTimeout> | undefined;
+      controller?: AbortController | undefined;
+      failures: number;
+      paused: boolean;
+      nextAllowedAt?: number;
+    }
+  >();
 
   constructor(
     private readonly store: HostingAccountStore,
     private readonly provider: HostingProvider = new GitHubProvider(),
-    private readonly providerFactory = (id: HostingProviderId, server?: string): HostingProvider =>
-      new ServerHostingProvider(id, server),
+    private readonly providerFactory = createHostingProvider,
     private readonly oauth = new GitHubOAuth(),
+    private readonly preferences = new HostingPreferencesStore(),
+    private readonly notificationInterval = 300_000,
   ) {}
 
   async list() {
     await this.load();
     return {
-      accounts: [...this.entries.values()].map((entry) => entry.account),
+      accounts: await Promise.all(
+        [...this.entries.values()].map(async (entry) => ({
+          ...entry.account,
+          notificationsEnabled: await this.preferences.enabled(entry.account.id),
+        })),
+      ),
       secureStorageAvailable: this.store.available(),
       gitAccountId: this.entries.keys().next().value ?? null,
       githubOAuthAvailable: this.oauth.available(),
@@ -127,14 +162,24 @@ export class HostingService {
         ({ account }) => hostingServer(account.provider, account.serverUrl).length === length,
       );
       const entry = context.username
-        ? scoped.find((item) => item.account.login.toLowerCase() === context.username.toLowerCase())
+        ? scoped.find(
+            (item) =>
+              item.account.login.toLowerCase() === context.username.toLowerCase() ||
+              (item.account.provider === 'bitbucket' && item.account.id === context.username),
+          )
         : scoped[0];
       if (!entry)
         throw new ExpectedBackendError(
           'HOSTING_AUTH',
           'No matching hosting account. Log in through Preferences → Accounts.',
         );
-      return { username: entry.account.login, password: this.token(entry) };
+      const credential = await this.credential(entry);
+      if (this.entries.get(entry.account.id) !== entry)
+        throw new ExpectedBackendError('HOSTING_AUTH', 'The account is no longer connected.');
+      return {
+        username: entry.account.provider === 'bitbucket' ? 'x-bitbucket-api-token-auth' : entry.account.login,
+        password: entry.account.provider.startsWith('bitbucket') ? bitbucketPassword(credential) : credential,
+      };
     },
   };
 
@@ -159,7 +204,12 @@ export class HostingService {
   }
 
   async connectToken(owner: number, request: HostingConnectRequest) {
-    return this.login(owner, request, async () => request.token);
+    const { username, ...login } = request;
+    return this.login(owner, login, async () =>
+      request.provider.startsWith('bitbucket')
+        ? bitbucketCredential(username!, request.token)
+        : request.token,
+    );
   }
 
   async beginOAuth(owner: number, request: HostingOAuthRequest) {
@@ -205,7 +255,7 @@ export class HostingService {
       const account = await this.login(
         owner,
         { ...session.request, provider: 'github', authentication: 'oauth' },
-        async () => token,
+        async () => (typeof token === 'string' ? token : encodeOAuthTokens(token)),
       );
       return { account, interval: session.state.interval };
     } catch (error) {
@@ -252,12 +302,12 @@ export class HostingService {
         const value = await acquire(signal);
         if (!value || signal.aborted) return null;
         const token = value.trim();
-        if (!/^[\x21-\x7e]{10,4096}$/u.test(token))
+        if (!/^[\x21-\x7e]{10,16384}$/u.test(token))
           throw new ExpectedBackendError(
             'HOSTING_AUTH',
             'Enter a valid access token without spaces or line breaks.',
           );
-        const identity = await provider.identity(token, signal);
+        const identity = await provider.identity(decodeOAuthTokens(token)?.accessToken ?? token, signal);
         if (request.username && identity.login.toLowerCase() !== request.username.toLowerCase())
           throw new ExpectedBackendError(
             'HOSTING_AUTH',
@@ -302,8 +352,12 @@ export class HostingService {
           const next = new Map(this.entries).set(account.id, entry);
           await this.persist(next);
           this.entries = next;
+          this.renewals.get(account.id)?.controller.abort();
           this.clearRepositories(account.id);
+          this.stopNotifications(account.id);
         });
+        this.changedNotifications();
+        if (await this.preferences.enabled(account.id)) this.scheduleNotifications(account.id, 0);
         return account;
       },
       300000,
@@ -314,16 +368,20 @@ export class HostingService {
     await this.load();
     // Abort reads and replacement attempts before allowing their result to reach the UI.
     for (const request of this.pending) if (request.accountId === accountId) request.controller.abort();
+    this.renewals.get(accountId)?.controller.abort();
     for (const [owner, session] of this.oauthSessions)
       if (session.request.accountId === accountId) this.oauthSessions.delete(owner);
     await this.write(async () => {
       this.require(accountId);
+      this.stopNotifications(accountId);
       const next = new Map(this.entries);
       next.delete(accountId);
       await this.persist(next);
       this.entries = next;
       this.clearRepositories(accountId);
     });
+    this.changedNotifications();
+    await this.preferences.remove(accountId);
     return null;
   }
 
@@ -336,7 +394,7 @@ export class HostingService {
     return this.run(owner, request.accountId, async (signal) => {
       const result = hostedRepositoriesSchema.parse(
         await this.resolveProvider(entry.account.provider, entry.account.serverUrl).repositories(
-          this.token(entry),
+          await this.credential(entry),
           request.page,
           signal,
         ),
@@ -360,11 +418,17 @@ export class HostingService {
     const account = this.require(request.accountId).account;
     const server = new URL(hostingServer(account.provider, account.serverUrl));
     const base = server.pathname === '/' ? '' : server.pathname;
+    const path =
+      account.provider === 'bitbucket-server'
+        ? `scm/${repo.fullName.split('/')[0]!.toLowerCase()}/${repo.fullName.split('/')[1]}`
+        : repo.fullName;
     return {
       url:
         request.protocol === 'ssh'
-          ? `git@${server.hostname}:${repo.fullName}.git`
-          : `https://${account.login}@${server.host}${base}/${repo.fullName}.git`,
+          ? account.provider === 'bitbucket-server'
+            ? `ssh://git@${server.hostname}:7999/${repo.fullName}.git`
+            : `git@${server.hostname}:${repo.fullName}.git`
+          : `https://${account.provider === 'bitbucket' ? account.id : account.login}@${server.host}${base}/${path}.git`,
       name: repo.fullName.split('/').at(-1)!,
     };
   }
@@ -382,7 +446,7 @@ export class HostingService {
     return this.run(owner, request.accountId, async (signal) => {
       const result = hostingActivityPageSchema.parse(
         await this.resolveProvider(entry.account.provider, entry.account.serverUrl).activity(
-          this.token(entry),
+          await this.credential(entry),
           request,
           repository,
           signal,
@@ -392,23 +456,222 @@ export class HostingService {
       if (this.entries.get(request.accountId) !== entry || this.activityPages.get(owner) !== selection)
         throw new ExpectedBackendError('STALE_SNAPSHOT', 'The hosting selection changed. Refresh the list.');
       selection.items = new Map(result.items.map((item) => [item.id, item]));
-      return result;
+      if (request.kind === 'notifications') return result;
+      const key = `${request.accountId}/${request.kind}/${request.repositoryId}`;
+      if (request.text.trim()) await this.preferences.remember(key, request.text.trim());
+      this.checkSignal(signal);
+      return { ...result, recentSearches: await this.preferences.recent(key) };
     });
   }
   activityUrl(owner: number, request: HostingActivitySelection) {
-    this.require(request.accountId);
+    const account = this.require(request.accountId).account;
     const page = this.activityPages.get(owner);
     const item = page?.accountId === request.accountId ? page.items.get(request.itemId) : undefined;
     if (!item) throw new ExpectedBackendError('STALE_SNAPSHOT', 'Refresh the list before opening an item.');
     if (item.kind === 'notification' || item.number === null)
-      return `https://github.com/notifications?query=${encodeURIComponent(`repo:${item.repository}`)}`;
-    return `https://github.com/${item.repository}/${item.kind === 'issue' ? 'issues' : 'pull'}/${item.number}`;
+      return `${hostingServer(account.provider, account.serverUrl)}/notifications?query=${encodeURIComponent(`repo:${item.repository}`)}`;
+    return `${hostingServer(account.provider, account.serverUrl)}/${item.repository}/${item.kind === 'issue' ? 'issues' : 'pull'}/${item.number}`;
   }
   repositoryUrl(owner: number, request: HostingRepositoryRequest) {
     const repo = this.repository(owner, request.accountId, request.repositoryId);
     const account = this.require(request.accountId).account;
     const gitlab = account.provider === 'gitlab' || account.provider === 'gitlab-server';
+    if (account.provider === 'bitbucket-server') {
+      const [project, name] = repo.fullName.split('/');
+      return `${hostingServer(account.provider, account.serverUrl)}/projects/${project}/repos/${name}/${request.destination === 'pull-requests' ? 'pull-requests' : request.destination === 'issues' ? 'browse' : 'browse'}`;
+    }
+    if (account.provider === 'bitbucket')
+      return `https://bitbucket.org/${repo.fullName}${request.destination === 'issues' ? '/issues' : request.destination === 'pull-requests' ? '/pull-requests' : ''}`;
     return `${hostingServer(account.provider, account.serverUrl)}/${repo.fullName}${request.destination === 'issues' ? (gitlab ? '/-/issues' : '/issues') : request.destination === 'pull-requests' ? (gitlab ? '/-/merge_requests' : '/pulls') : ''}`;
+  }
+  credentialManagementUrl(accountId: string) {
+    const account = this.require(accountId).account;
+    const server = hostingServer(account.provider, account.serverUrl);
+    if (account.provider === 'bitbucket')
+      return 'https://id.atlassian.com/manage-profile/security/api-tokens';
+    if (account.provider === 'bitbucket-server') return `${server}/plugins/servlet/access-tokens/manage`;
+    if (account.provider.startsWith('gitlab')) return `${server}/-/user_settings/personal_access_tokens`;
+    if (account.provider === 'gitea') return `${server}/user/settings/applications`;
+    return `${server}/settings/${account.authentication === 'oauth' ? 'applications' : 'tokens'}`;
+  }
+  async pullRequestUrl(remote: string, branch: string) {
+    await this.load();
+    return configuredPullRequestUrl(
+      remote,
+      branch,
+      [...this.entries.values()].map((entry) => entry.account),
+    );
+  }
+  attachOwner(owner: number) {
+    this.notificationOwners.add(owner);
+    void this.list()
+      .then((result) => {
+        if (!this.notificationOwners.has(owner)) return;
+        for (const account of result.accounts)
+          if (account.notificationsEnabled) this.scheduleNotifications(account.id, 0);
+      })
+      .catch(() => undefined);
+  }
+  disposeOwner(owner: number) {
+    this.cancel(owner);
+    this.notificationOwners.delete(owner);
+    if (!this.notificationOwners.size) for (const id of this.notifications.keys()) this.stopNotifications(id);
+  }
+  dispose() {
+    for (const owner of [...this.notificationOwners]) this.disposeOwner(owner);
+    for (const request of this.pending) request.controller.abort();
+    for (const renewal of this.renewals.values()) renewal.controller.abort();
+    this.notificationListeners.clear();
+  }
+  subscribeNotifications(listener: () => void) {
+    this.notificationListeners.add(listener);
+    return () => {
+      this.notificationListeners.delete(listener);
+    };
+  }
+  private changedNotifications() {
+    this.notificationRevision++;
+    for (const listener of this.notificationListeners) listener();
+  }
+  async getNotifications(): Promise<HostingNotificationSnapshot> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const revision = this.notificationRevision;
+      const accounts = (await this.list()).accounts.filter((account) =>
+        hostingActivityProviders.includes(account.provider),
+      );
+      if (revision !== this.notificationRevision) continue;
+      return {
+        revision,
+        accounts: accounts
+          .filter((account) => this.entries.has(account.id))
+          .map((account) => {
+            const state = this.notifications.get(account.id);
+            return {
+              account,
+              items: state?.items ?? [],
+              hasMore: state?.hasMore ?? false,
+              checkedAt: state?.checkedAt ?? null,
+              error: state?.error ?? '',
+            };
+          }),
+      };
+    }
+    throw new ExpectedBackendError('STALE_SNAPSHOT', 'The notification accounts changed. Refresh the inbox.');
+  }
+  async setNotifications(request: HostingNotificationPreference) {
+    await this.load();
+    await this.write(async () => {
+      const entry = this.require(request.accountId);
+      if (!hostingActivityProviders.includes(entry.account.provider))
+        throw new ExpectedBackendError(
+          'UNAVAILABLE',
+          'Notifications are supported for GitHub and GitHub Enterprise.',
+        );
+      await this.preferences.setEnabled(request.accountId, request.enabled);
+      this.stopNotifications(request.accountId);
+      if (request.enabled) this.scheduleNotifications(request.accountId, 0);
+    });
+    this.changedNotifications();
+    return null;
+  }
+  private stopNotifications(accountId: string) {
+    const state = this.notifications.get(accountId);
+    clearTimeout(state?.timer);
+    state?.controller?.abort();
+    this.notifications.delete(accountId);
+  }
+  private scheduleNotifications(accountId: string, delay: number) {
+    if (!this.notificationOwners.size || !this.entries.has(accountId)) return;
+    let state = this.notifications.get(accountId);
+    if (!state) {
+      state = { items: [], hasMore: false, checkedAt: null, error: '', failures: 0, paused: false };
+      this.notifications.set(accountId, state);
+    }
+    if (state.controller || state.timer || state.paused) return;
+    state.timer = setTimeout(() => {
+      state!.timer = undefined;
+      void this.refreshNotifications(accountId).catch(() => undefined);
+    }, delay);
+    state.timer.unref();
+  }
+  async refreshNotifications(accountId: string) {
+    await this.load();
+    const entry = this.require(accountId);
+    if (
+      !hostingActivityProviders.includes(entry.account.provider) ||
+      !(await this.preferences.enabled(accountId))
+    )
+      throw new ExpectedBackendError('UNAVAILABLE', 'Enable notifications for this account first.');
+    let state = this.notifications.get(accountId);
+    if (!state) {
+      this.scheduleNotifications(accountId, this.notificationInterval);
+      state = this.notifications.get(accountId);
+    }
+    if (!state || state.controller) return null;
+    if ((state.nextAllowedAt ?? 0) > Date.now())
+      throw new ExpectedBackendError(
+        'UNAVAILABLE',
+        'The server requires a pause between notification checks. Try again later.',
+      );
+    clearTimeout(state.timer);
+    state.timer = undefined;
+    const controller = new AbortController();
+    state.controller = controller;
+    const timer = setTimeout(() => controller.abort(), 11000);
+    const provider = this.resolveProvider(entry.account.provider, entry.account.serverUrl);
+    try {
+      const result = hostingActivityPageSchema.parse(
+        await provider.activity(
+          await this.credential(entry),
+          { accountId, kind: 'notifications', page: 1, all: false, participating: false },
+          undefined,
+          controller.signal,
+        ),
+      );
+      this.checkSignal(controller.signal);
+      if (this.entries.get(accountId) !== entry || this.notifications.get(accountId) !== state) return null;
+      state.items = result.items;
+      state.hasMore = result.nextPage !== null;
+      state.checkedAt = new Date().toISOString();
+      state.error = '';
+      state.failures = 0;
+      state.paused = false;
+    } catch (error) {
+      if (this.notifications.get(accountId) !== state) return null;
+      state.error = controller.signal.aborted
+        ? 'The notification request timed out. Try again later.'
+        : error instanceof ExpectedBackendError
+          ? error.message
+          : 'Notifications could not be checked. Try again later.';
+      state.failures = Math.min(state.failures + 1, 4);
+      state.paused = error instanceof ExpectedBackendError && error.code === 'HOSTING_AUTH';
+    } finally {
+      clearTimeout(timer);
+      state.controller = undefined;
+      if (this.notifications.get(accountId) === state) {
+        const minimum = Math.max(
+          (provider.notificationPollInterval ?? 0) * 1000,
+          (provider.notificationRetryAt ?? 0) - Date.now(),
+        );
+        state.nextAllowedAt = Date.now() + minimum;
+        this.changedNotifications();
+        this.scheduleNotifications(
+          accountId,
+          Math.max(minimum, Math.min(this.notificationInterval * 2 ** state.failures, 3_600_000)),
+        );
+      }
+    }
+    return null;
+  }
+  notificationUrl(request: HostingActivitySelection) {
+    const account = this.require(request.accountId).account;
+    const item = this.notifications.get(account.id)?.items.find((item) => item.id === request.itemId);
+    if (!item)
+      throw new ExpectedBackendError('STALE_SNAPSHOT', 'Refresh notifications before opening this item.');
+    const server = hostingServer(account.provider, account.serverUrl);
+    return item.number === null || item.kind === 'notification'
+      ? `${server}/notifications?query=${encodeURIComponent(`repo:${item.repository}`)}`
+      : `${server}/${item.repository}/${item.kind === 'issue' ? 'issues' : 'pull'}/${item.number}`;
   }
   cancel(owner: number) {
     this.ownerGenerations.set(owner, (this.ownerGenerations.get(owner) ?? 0) + 1);
@@ -435,12 +698,46 @@ export class HostingService {
   }
   private token(entry: Entry) {
     const token = entry.token ?? this.store.unseal(entry.stored!);
-    if (!/^[\x21-\x7e]{10,4096}$/u.test(token))
+    if (!/^[\x21-\x7e]{10,16384}$/u.test(token))
       throw new ExpectedBackendError(
         'HOSTING_AUTH',
         'The saved token is invalid. Update it in Preferences → Accounts.',
       );
     return token;
+  }
+  private async credential(entry: Entry): Promise<string> {
+    const credential = this.token(entry);
+    const tokens = entry.account.authentication === 'oauth' ? decodeOAuthTokens(credential) : null;
+    if (!tokens || tokens.expiresAt > Date.now() + 60_000) return tokens?.accessToken ?? credential;
+    const existing = this.renewals.get(entry.account.id);
+    if (existing) return existing.promise;
+    const controller = new AbortController();
+    const promise = this.write(async () => {
+      this.checkSignal(controller.signal);
+      if (this.entries.get(entry.account.id) !== entry)
+        throw new ExpectedBackendError(
+          'HOSTING_AUTH',
+          'The account changed. Try again with its current authorization.',
+        );
+      const nextTokens = await this.oauth.refresh(tokens, controller.signal);
+      this.checkSignal(controller.signal);
+      const encoded = encodeOAuthTokens(nextTokens);
+      // Serialize credential rotation with sign-out/replacement. The token pair changes atomically.
+      const stored = entry.stored ? this.store.seal(entry.account, encoded) : undefined;
+      const nextEntry: Entry = stored
+        ? { account: entry.account, stored }
+        : { account: entry.account, token: encoded };
+      await this.persist(new Map(this.entries).set(entry.account.id, nextEntry));
+      // Retain entry identity so a successful renewal does not invalidate a reviewed read.
+      if (stored) entry.stored = stored;
+      else entry.token = encoded;
+      return nextTokens.accessToken;
+    }).finally(() => {
+      if (this.renewals.get(entry.account.id)?.controller === controller)
+        this.renewals.delete(entry.account.id);
+    });
+    this.renewals.set(entry.account.id, { controller, promise });
+    return promise;
   }
   private load() {
     this.loaded ??= this.store
@@ -458,7 +755,14 @@ export class HostingService {
     return this.loaded;
   }
   private resolveProvider(id: HostingProviderId, server?: string): HostingProvider {
-    return id === 'github' ? this.provider : this.providerFactory(id, server);
+    if (id === 'github') return this.provider;
+    const key = `${id}/${server ?? ''}`;
+    let provider = this.providers.get(key);
+    if (!provider) {
+      provider = this.providerFactory(id, server);
+      this.providers.set(key, provider);
+    }
+    return provider;
   }
   private persist(entries: Map<string, Entry>) {
     const saved = [...entries.values()].flatMap((entry) => (entry.stored ? [entry.stored] : []));

@@ -121,7 +121,11 @@ describe('IPC sender and window lifecycle', () => {
       subscribeOperations: () => releaseOperations,
       subscribeInvalidations: () => () => undefined,
     } as unknown as RepositoryService;
-    const hosting = { cancel: vi.fn() } as unknown as HostingService;
+    const hosting = {
+      disposeOwner: vi.fn(),
+      attachOwner: vi.fn(),
+      subscribeNotifications: () => () => undefined,
+    } as unknown as HostingService;
     const ipc = registerAppIpc(service, hosting);
     const window = new TestWindow(60);
     const contents = window.webContents;
@@ -134,7 +138,7 @@ describe('IPC sender and window lifecycle', () => {
     expect(contents.listenerCount('did-start-loading')).toBe(0);
     expect(window.eventNames()).toEqual([]);
     expect(service.disposeWindow).toHaveBeenCalledExactlyOnceWith(60);
-    expect(hosting.cancel).toHaveBeenCalledExactlyOnceWith(60);
+    expect(hosting.disposeOwner).toHaveBeenCalledExactlyOnceWith(60);
     expect(await handlers.get(requests.getWindowState.channel)?.(event)).toMatchObject({
       ok: false,
       error: { code: 'FORBIDDEN' },
@@ -146,7 +150,7 @@ describe('IPC sender and window lifecycle', () => {
       window.emit('closed');
     }).not.toThrow();
     expect(service.disposeWindow).toHaveBeenCalledTimes(1);
-    expect(hosting.cancel).toHaveBeenCalledTimes(1);
+    expect(hosting.disposeOwner).toHaveBeenCalledTimes(1);
     expect(releaseOperations).toHaveBeenCalledTimes(1);
   });
 
@@ -273,6 +277,9 @@ describe('IPC sender and window lifecycle', () => {
     const hosting = {
       list: vi.fn(async () => ({ accounts: [], secureStorageAvailable: false })),
       cancel: vi.fn(),
+      disposeOwner: vi.fn(),
+      attachOwner: vi.fn(),
+      subscribeNotifications: () => () => undefined,
     } as unknown as HostingService;
     const ipc = registerAppIpc(undefined, hosting);
     const window = new TestWindow(20);
@@ -303,6 +310,11 @@ describe('IPC sender and window lifecycle', () => {
       requests.connectHostingAccount,
       requests.beginHostingOAuth,
       requests.pollHostingOAuth,
+      requests.getHostingNotifications,
+      requests.setHostingNotifications,
+      requests.refreshHostingNotifications,
+      requests.openHostingNotification,
+      requests.manageHostingCredential,
     ]) {
       const activityHandler = handlers.get(contract.channel)!;
       expect(await activityHandler(inspector.event(), {})).toMatchObject({
@@ -317,7 +329,7 @@ describe('IPC sender and window lifecycle', () => {
       ).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
     }
     window.emit('closed');
-    expect(hosting.cancel).toHaveBeenCalledWith(20);
+    expect(hosting.disposeOwner).toHaveBeenCalledWith(20);
     ipc.dispose();
   });
   it('rejects inspector mutations even from its registered top frame', async () => {

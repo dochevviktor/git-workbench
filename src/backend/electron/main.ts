@@ -9,6 +9,7 @@ import { forwardedRepositoryPaths, repositoryPathsFromArguments } from './launch
 import { ExpectedBackendError } from '../errors';
 import { HostingAccountStore } from '../hosting/account-store';
 import { HostingService } from '../hosting/hosting-service';
+import { HostingPreferencesStore } from '../hosting/preferences-store';
 import { GitInstanceStore } from '../git/instance-store';
 import { GitRunner } from '../git/runner';
 
@@ -61,8 +62,13 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
           encrypt: (value) => safeStorage.encryptString(value),
           decrypt: (value) => safeStorage.decryptString(value),
         }),
+        undefined,
+        undefined,
+        undefined,
+        new HostingPreferencesStore(join(app.getPath('userData'), 'hosting-preferences.json')),
       );
       const repositories = new RepositoryService({
+        hostingPullRequestUrl: (remote, branch) => hosting.pullRequestUrl(remote, branch),
         runner: new GitRunner({
           ...(gitInstance.executable ? { executable: gitInstance.executable } : {}),
           credentials: {
@@ -129,6 +135,7 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         else focusWindow();
       });
       app.once('will-quit', () => {
+        hosting.dispose();
         repositories.dispose();
         ipc.dispose();
       });

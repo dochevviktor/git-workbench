@@ -10,6 +10,8 @@ import { ExpectedBackendError } from '../errors';
 
 export interface HostingProvider {
   readonly id: HostingProviderId;
+  readonly notificationPollInterval?: number;
+  readonly notificationRetryAt?: number;
   identity(token: string, signal: AbortSignal): Promise<{ id: string; login: string }>;
   repositories(token: string, page: number, signal: AbortSignal): Promise<HostedRepositories>;
   activity(
@@ -37,8 +39,13 @@ const reposSchema = z
 
 /** Fixed origin and paths: neither API payload URLs nor Link headers can receive credentials. */
 export class GitHubProvider implements HostingProvider {
-  readonly id = 'github' as const;
-  constructor(private readonly transport: typeof fetch = (input, init) => fetch(input, init)) {}
+  notificationPollInterval = 60;
+  notificationRetryAt = 0;
+  constructor(
+    private readonly transport: typeof fetch = (input, init) => fetch(input, init),
+    readonly id: HostingProviderId = 'github',
+    private readonly api = 'https://api.github.com',
+  ) {}
 
   async activity(
     token: string,
@@ -70,9 +77,10 @@ export class GitHubProvider implements HostingProvider {
       return {
         items: parsed.data.map((item) => {
           // Recognize only exact GitHub subject paths. Unknown subjects open the repository's inbox.
-          const match = item.subject.url?.match(
-            /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\/(issues|pulls)\/([1-9]\d*)$/u,
-          );
+          const subjectPath = item.subject.url?.startsWith(`${this.api}/repos/`)
+            ? item.subject.url.slice(`${this.api}/repos/`.length)
+            : '';
+          const match = subjectPath.match(/^([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\/(issues|pulls)\/([1-9]\d*)$/u);
           const valid =
             match &&
             match[1] === item.repository.full_name &&
@@ -135,7 +143,7 @@ export class GitHubProvider implements HostingProvider {
       !parsed.success ||
       parsed.data.items.some(
         (item) =>
-          item.repository_url !== `https://api.github.com/repos/${repo}` ||
+          item.repository_url !== `${this.api}/repos/${repo}` ||
           Boolean(item.pull_request) !== (request.kind === 'pull-requests'),
       )
     )
@@ -190,7 +198,7 @@ export class GitHubProvider implements HostingProvider {
 
   private async get(path: string, token: string, signal: AbortSignal) {
     try {
-      const response = await this.transport(`https://api.github.com${path}`, {
+      const response = await this.transport(`${this.api}${path}`, {
         method: 'GET',
         redirect: 'error',
         signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
@@ -201,6 +209,28 @@ export class GitHubProvider implements HostingProvider {
           'User-Agent': 'Git-Workbench',
         },
       });
+      if (path.startsWith('/notifications?')) {
+        const interval = Number(response.headers.get('x-poll-interval'));
+        if (Number.isInteger(interval) && interval > 0 && interval <= 86400)
+          this.notificationPollInterval = interval;
+        if (response.status === 429 || response.status === 403) {
+          const retry = response.headers.get('retry-after');
+          const retryAt =
+            retry && /^\d+$/u.test(retry)
+              ? Date.now() + Number(retry) * 1000
+              : retry
+                ? Date.parse(retry)
+                : NaN;
+          const resetAt = Number(response.headers.get('x-ratelimit-reset')) * 1000;
+          const maximum = Date.now() + 86_400_000;
+          this.notificationRetryAt = Math.max(
+            this.notificationRetryAt,
+            ...[retryAt, resetAt].filter(
+              (value) => Number.isFinite(value) && value > Date.now() && value <= maximum,
+            ),
+          );
+        }
+      }
       if (!response.ok) await response.body?.cancel().catch(() => undefined);
       if (response.status === 401)
         throw new ExpectedBackendError(

@@ -262,10 +262,12 @@ export interface RepositoryServiceOptions {
   readonly maxSourceDirectories?: number;
   readonly maxOpenTabs?: number;
   readonly sourceScanOptions?: SourceScanOptions;
+  readonly hostingPullRequestUrl?: (remote: string, branch: string) => Promise<string | null>;
 }
 
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
+  private readonly hostingPullRequestUrl: RepositoryServiceOptions['hostingPullRequestUrl'];
   readonly ai = new AiService();
 
   previewAi(owner: number, request: AiPreviewRequest) {
@@ -326,6 +328,7 @@ export class RepositoryService {
   private invalidationRevision = 0;
 
   constructor(options: RepositoryServiceOptions) {
+    this.hostingPullRequestUrl = options.hostingPullRequestUrl;
     this.workspaceStorageDirectory = dirname(options.storagePath);
     this.settingsFiles = [
       options.storagePath,
@@ -1656,11 +1659,13 @@ export class RepositoryService {
     });
     const sourceBranch =
       branch.upstreamRemote === request.remote ? (branch.upstreamBranch ?? branch.name) : branch.name;
-    const url = pullRequestUrl(raw.stdout.trim(), sourceBranch);
+    const url =
+      pullRequestUrl(raw.stdout.trim(), sourceBranch) ??
+      (await this.hostingPullRequestUrl?.(raw.stdout.trim(), sourceBranch));
     if (!url)
       throw new ExpectedBackendError(
         'UNAVAILABLE',
-        'Browser pull requests are supported for github.com, gitlab.com, bitbucket.org, and dev.azure.com remotes.',
+        'Choose a supported public hosting remote, or connect an account for this server in Preferences → Accounts.',
       );
     return url;
   }

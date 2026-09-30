@@ -1,5 +1,26 @@
 # Architecture and implementation decisions
 
+P11 (2026-09-30): the [hosting handoff](reviews/p11-hosting.md) extends the existing provider boundary
+with Bitbucket Cloud/Server accounts, current workspace/offset pagination, Enterprise activity,
+saved title searches and opt-in notification scheduling. Named notification read/configure/refresh/open
+and credential-management capabilities extend runtime contracts, explicit preload and authorized main
+handlers together. Notifications share one account schedule across main windows; change events target
+only trusted main documents and retain exact listener cleanup. Owner disposal, replacement, disable and
+sign-out cancel or invalidate reads; revision checks prevent stale account snapshots. Public preferences
+use a separate bounded atomic version-1 store; tokens remain in the encrypted credential store.
+
+GitHub device OAuth requests offline_access and accepts both legacy non-expiring tokens and documented
+expiring token pairs. Main encrypts access/refresh credentials together, coalesces renewal before expiry
+and serializes rotation with account writes. Expired/revoked renewal or changed client registration
+requires reauthorization. No client secret, refresh token or API email/password pair enters response DTOs,
+Git argv/config/environment or renderer state. The private helper's bounded socket lifetime now allows
+the existing ten-second renewal HTTP budget. Bitbucket HTTPS clone URLs select an opaque account ID;
+the helper provides the provider's static Git username and actual token. Self-hosted PR handoffs derive
+only from registered server metadata and owned branch/remote state; public URLs remain account independent.
+Linux adds a compact toolbar inbox and responsive account controls, with no OS alert or remote read-state
+mutation. Browser credential management does not claim successful remote revocation. Sandbox, isolation,
+CSP, sender/frame/document checks and inspector denial remain intact; live/native/parity gates remain explicit.
+
 P07 focus follow-up (2026-09-29): the [stability correction](reviews/p07-focus-stability.md) consumes
 rebase row-focus requests in a React layout effect after reorder/editor DOM updates. A request revision
 also handles an already-selected destination. There is no deferred focus callback that can override a

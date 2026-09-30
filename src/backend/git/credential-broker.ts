@@ -16,7 +16,7 @@ export const credentialContextSchema = z.strictObject({
   path: z
     .string()
     .max(512)
-    .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\/?$/u)
+    .regex(/^[A-Za-z0-9_~.-]+(?:\/[A-Za-z0-9_~.-]+)+\/?$/u)
     .refine((path) => path.split('/').every((part) => !['.', '..'].includes(part))),
   username: z
     .string()
@@ -59,7 +59,8 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
     socket.on('error', () => socket.destroy());
-    socket.setTimeout(5000, () => socket.destroy());
+    // Device OAuth renewal can use the provider's bounded 10-second HTTP request.
+    socket.setTimeout(15000, () => socket.destroy());
     let input = '';
     let answered = false;
     socket.on('data', (chunk: Buffer) => {

@@ -11,6 +11,8 @@ export const hostingProviderSchema = z.enum([
   'github-enterprise',
   'gitlab',
   'gitlab-server',
+  'bitbucket',
+  'bitbucket-server',
 ]);
 export type HostingProviderId = z.infer<typeof hostingProviderSchema>;
 export const hostingProviderNames: Record<HostingProviderId, string> = {
@@ -19,7 +21,10 @@ export const hostingProviderNames: Record<HostingProviderId, string> = {
   'github-enterprise': 'GitHub Enterprise',
   gitlab: 'GitLab',
   'gitlab-server': 'GitLab Server',
+  bitbucket: 'Bitbucket',
+  'bitbucket-server': 'Bitbucket Server',
 };
+export const hostingActivityProviders: readonly HostingProviderId[] = ['github', 'github-enterprise'];
 // Public server metadata only; canonicalization and destination policy belong to main.
 export const hostingServerUrlSchema = z
   .string()
@@ -39,6 +44,7 @@ export const hostingAccountSchema = z.strictObject({
   authentication: z.enum(['token', 'oauth']).optional(),
   login,
   storage: z.enum(['session', 'keyring']),
+  notificationsEnabled: z.boolean().optional(),
 });
 export const hostingAccountsSchema = z.strictObject({
   accounts: z.array(hostingAccountSchema).max(20),
@@ -53,6 +59,11 @@ export const hostingConnectRequestSchema = z
     remember: z.boolean(),
     provider: hostingProviderSchema,
     serverUrl: hostingServerUrlSchema.optional(),
+    username: z
+      .string()
+      .max(254)
+      .regex(/^[A-Za-z0-9_.@+-]*$/u)
+      .optional(),
     // Write-only, transient credential entry. Never included in an account/result or persisted UI state.
     token: z
       .string()
@@ -61,7 +72,14 @@ export const hostingConnectRequestSchema = z
       .regex(/^[\x21-\x7e]+$/u),
   })
   .refine((value) =>
-    ['github', 'gitlab'].includes(value.provider) ? !value.serverUrl : Boolean(value.serverUrl),
+    ['github', 'gitlab', 'bitbucket'].includes(value.provider) ? !value.serverUrl : Boolean(value.serverUrl),
+  )
+  .refine((value) =>
+    value.provider === 'bitbucket'
+      ? Boolean(value.username && /^[^@]+@[^@]+\.[^@]+$/u.test(value.username))
+      : value.provider === 'bitbucket-server'
+        ? Boolean(value.username)
+        : !value.username,
   );
 export const hostingOAuthRequestSchema = z.strictObject({
   accountId: identifier.optional(),
@@ -90,7 +108,7 @@ export const hostedRepositorySchema = z.strictObject({
     .string()
     .min(3)
     .max(500)
-    .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/u)
+    .regex(/^[A-Za-z0-9_~.-]+(?:\/[A-Za-z0-9_~.-]+)+$/u)
     .refine((value) => value.split('/').every((part) => part !== '.' && part !== '..')),
   private: z.boolean(),
   archived: z.boolean(),
@@ -115,7 +133,7 @@ export const hostingCloneTargetSchema = z.strictObject({
     .string()
     .max(1200)
     .regex(
-      /^(?:https:\/\/(?:[A-Za-z0-9_.-]+@)?(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]+)?\/|git@[A-Za-z0-9.-]+:)[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.git$/u,
+      /^(?:https:\/\/(?:[A-Za-z0-9_.-]+@)?(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]+)?\/|ssh:\/\/git@(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]+)?\/|git@[A-Za-z0-9.-]+:)[A-Za-z0-9_.~-]+(?:\/[A-Za-z0-9_.~-]+)+\.git$/u,
     ),
   name: z.string().min(1).max(100),
 });
@@ -176,9 +194,31 @@ export const hostingActivityPageSchema = z.strictObject({
   page: pageNumber,
   nextPage: pageNumber.nullable(),
   limited: z.boolean(),
+  recentSearches: z.array(z.string().max(200)).max(10).optional(),
 });
 export const hostingActivitySelectionSchema = z.strictObject({ accountId: identifier, itemId: identifier });
 export type HostingActivityRequest = z.infer<typeof hostingActivityRequestSchema>;
 export type HostingActivityItem = z.infer<typeof hostingActivityItemSchema>;
 export type HostingActivityPage = z.infer<typeof hostingActivityPageSchema>;
 export type HostingActivitySelection = z.infer<typeof hostingActivitySelectionSchema>;
+
+export const hostingNotificationPreferenceSchema = z.strictObject({
+  accountId: identifier,
+  enabled: z.boolean(),
+});
+export const hostingNotificationSnapshotSchema = z.strictObject({
+  revision: z.number().int().nonnegative(),
+  accounts: z
+    .array(
+      z.strictObject({
+        account: hostingAccountSchema,
+        items: z.array(hostingActivityItemSchema).max(100),
+        hasMore: z.boolean(),
+        checkedAt: z.iso.datetime().nullable(),
+        error: z.string().max(500),
+      }),
+    )
+    .max(20),
+});
+export type HostingNotificationPreference = z.infer<typeof hostingNotificationPreferenceSchema>;
+export type HostingNotificationSnapshot = z.infer<typeof hostingNotificationSnapshotSchema>;

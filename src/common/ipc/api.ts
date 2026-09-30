@@ -149,6 +149,8 @@ import type {
   HostingOAuthRequest,
   HostingOAuthState,
   HostingOAuthResult,
+  HostingNotificationPreference,
+  HostingNotificationSnapshot,
 } from './hosting';
 
 import type { SettingsTarget, SaveGitSettings, GitSettings, GitInstance } from './settings';
@@ -191,6 +193,12 @@ export interface DesktopApi {
     run(request: ExternalToolRun): Promise<IpcResult<RepositoryOperation>>;
   };
   readonly hosting: {
+    getNotifications(): Promise<IpcResult<HostingNotificationSnapshot>>;
+    setNotifications(request: HostingNotificationPreference): Promise<IpcResult<null>>;
+    refreshNotifications(request: { accountId: string }): Promise<IpcResult<null>>;
+    openNotification(request: HostingActivitySelection): Promise<IpcResult<null>>;
+    manageCredential(request: { accountId: string }): Promise<IpcResult<null>>;
+    onNotificationsChanged(listener: () => void): Unsubscribe;
     listActivity(request: HostingActivityRequest): Promise<IpcResult<HostingActivityPage>>;
     openActivity(request: HostingActivitySelection): Promise<IpcResult<null>>;
     listAccounts(): Promise<IpcResult<HostingAccounts>>;

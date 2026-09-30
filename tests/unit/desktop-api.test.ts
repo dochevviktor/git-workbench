@@ -26,6 +26,38 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates notification controls and snapshots and cleans the exact change subscription', async () => {
+    const { api, invoke, emitter } = fixture();
+    expect(
+      await api.hosting.setNotifications({
+        accountId: 'github-42',
+        enabled: true,
+        token: 'not-admitted',
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(await api.hosting.setNotifications({ accountId: 'github-42', enabled: true })).toMatchObject({
+      ok: true,
+    });
+    expect(invoke).toHaveBeenLastCalledWith('hosting:set-notifications', {
+      accountId: 'github-42',
+      enabled: true,
+    });
+    invoke.mockResolvedValueOnce({ ok: true, value: { revision: 1, accounts: [], token: 'not-admitted' } });
+    expect(await api.hosting.getNotifications()).toMatchObject({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR' },
+    });
+    const listener = vi.fn();
+    const release = api.hosting.onNotificationsChanged(listener);
+    emitter.emit(events.hostingNotificationsChanged.channel, {}, { token: 'not-admitted' });
+    expect(listener).not.toHaveBeenCalled();
+    emitter.emit(events.hostingNotificationsChanged.channel, {}, null);
+    expect(listener).toHaveBeenCalledOnce();
+    release();
+    release();
+    expect(emitter.listenerCount(events.hostingNotificationsChanged.channel)).toBe(0);
+  });
   it('validates P10 LFS management inputs/results without admitting commands, endpoints or forced unlocks', async () => {
     const { api, invoke } = fixture();
     const id = `repo-${'a'.repeat(64)}`;

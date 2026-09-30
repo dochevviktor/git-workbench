@@ -174,12 +174,15 @@ retains its saved copy for explicit Recovery Apply.
 
 Create Pull Request opens a form on GitHub.com, GitLab.com, Bitbucket.org, or Azure DevOps in the system
 browser. It does not submit the form or require storing hosting credentials in this application.
+Self-hosted Enterprise/GitLab/Gitea/Bitbucket destinations require an account registered for that server.
 
 File → Preferences → Accounts has an account sidebar with **+** to add and **−** to remove an account.
-Choose Gitea, GitHub, GitHub Enterprise, GitLab or GitLab Server. Enter your token directly in the masked
-field; Gitea, Enterprise and GitLab Server also require an HTTPS server URL. GitHub offers Personal
+Choose Gitea, GitHub, GitHub Enterprise, GitLab, GitLab Server, Bitbucket or Bitbucket Server. Enter your
+token directly in the masked field; self-hosted providers also require an HTTPS server URL. Bitbucket
+Cloud uses your Atlassian email and an API token; Bitbucket Server uses your username and a personal
+HTTP access token. GitHub offers Personal
 access token or OAuth. Open Repositories to browse accessible repositories and choose an HTTPS/SSH clone
-URL. GitHub also retains its built-in issue/PR lists and notifications; other providers open those pages
+URL. GitHub and Enterprise have built-in issue/PR lists and notifications; other providers open those pages
 in your browser. GitLab supports nested groups. Self-hosted API requests require a trusted HTTPS
 certificate and do not follow redirects.
 
@@ -193,6 +196,9 @@ With multiple accounts, **Use as default for Git** selects the account for that 
 a username. Hosted HTTPS clone URLs include the selected public username, so subsequent operations
 keep using that account. You can also use `https://LOGIN@SERVER/OWNER/REPO.git` for an existing remote.
 Tokens never appear in URLs or Git configuration, and the app does not install a global Git helper.
+Bitbucket Cloud clone URLs select the account by its opaque ID; the private helper supplies Bitbucket's
+static API-token Git username. Bitbucket Server SSH defaults to port 7999; review its Clone URL for a
+custom host/port. Accessible Bitbucket workspace pages include shared repositories.
 
 Accounts default to session-only storage. Remembering a token requires a secure OS keyring; Linux's
 plaintext fallback is refused. Direct entry is a narrow exception to the earlier no-renderer-secrets
@@ -203,25 +209,34 @@ Update token verifies that the replacement belongs to the same account and serve
 the old credential. Sign out
 removes the app's credential and cancels its pending API reads. Already authenticated Git transfers
 may finish; future transfers stop using that account. Neither action clears your clipboard nor revokes
-the token on the provider. There is no background hosting activity polling.
+the token on the provider. **Manage tokens/Manage authorization** opens that provider's settings so you
+can revoke it remotely; the app does not claim that opening the page revoked a credential.
 
 GitHub OAuth uses device authorization in your system browser and checks the optional username against
 the authorized account. Configure the application's registered public client ID before launch:
 `GIT_WORKBENCH_GITHUB_CLIENT_ID=YOUR_CLIENT_ID npm run dev`. Enable **device flow** in that GitHub OAuth
 App's settings. No client secret is bundled or required. Without registration, the OAuth option explains
 the missing setup and token login remains usable. OAuth requests `repo`, `read:user` and `notifications`;
-Cancel or closing Preferences stops authorization. Expired/revoked OAuth tokens require signing in again;
-automatic refresh-token renewal is not implemented. No real OAuth registration or live provider
-credentials were used for the [2026-09-24 verification](docs/reviews/provider-accounts.md).
-SSH clone URLs assume the server's conventional `git` user and port 22; adjust the Clone URL for custom SSH routing.
+Cancel or closing Preferences stops authorization. When GitHub returns expiring device credentials,
+access/refresh tokens stay together in main and are renewed automatically before expiry. Remembered
+pairs use the same encrypted store; legacy non-expiring tokens still work. Expired/revoked refresh
+tokens or a changed client registration require Reauthorize. The flow also requests `offline_access`.
+No real OAuth registration or live provider credentials were used for the
+[P11 verification](docs/reviews/p11-hosting.md). Other SSH clone URLs assume the server's conventional
+`git` user and port 22; adjust the Clone URL for custom SSH routing.
 
 In Accounts, Notifications lists your GitHub inbox with unread/all and participation filters.
 Repositories → Browse issues / Browse pull requests opens paged lists with state, author, assignee
-and title filters. Apply filters searches GitHub; recent title phrases are kept while Accounts is open.
+and title filters. Apply filters searches the selected GitHub server; recent title phrases survive
+restart and remain scoped to the account, repository and list kind.
 Refresh checks for updates. Item titles open in your browser without marking notifications read in
 the app. Notifications require a classic token with `notifications` or `repo` scope; GitHub's endpoint
 does not support fine-grained tokens. Search is limited to 1,000 results and reports incomplete results.
-See the [F30 handoff](docs/reviews/f30-hosting-activity.md) for verification and remaining limits.
+Enable Notifications in the Account tab for automatic checks and a compact toolbar inbox. Checks run
+while the app is open, share one schedule across its windows, respect the server's polling/rate limits
+and stop on disable or sign-out. No desktop alert or remote mark-read action is implied. The inbox shows
+up to 100 unread items per account; Accounts supplies further pages. See the
+[P11 handoff](docs/reviews/p11-hosting.md) for verification and live/native/parity limits.
 
 ## Start
 

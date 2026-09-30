@@ -31,7 +31,7 @@ export function HostingAccountForm({
   const [remember, setRemember] = useState(account?.storage === 'keyring' && secureStorage);
   // Password bytes stay in this uncontrolled input until submission, never in React/persisted state.
   const tokenInput = useRef<HTMLInputElement>(null);
-  const selfHosted = !['github', 'gitlab'].includes(provider);
+  const selfHosted = !['github', 'gitlab', 'bitbucket'].includes(provider);
   const oauth = provider === 'github' && authentication === 'oauth';
   const tokenLabel =
     provider === 'gitea' ? 'Access token' : provider === 'gitlab-server' ? 'Token' : 'Personal access token';
@@ -48,7 +48,13 @@ export function HostingAccountForm({
         }
         const token = tokenInput.current?.value.trim() ?? '';
         if (tokenInput.current) tokenInput.current.value = '';
-        onToken({ ...selection, provider, ...(selfHosted ? { serverUrl: serverUrl.trim() } : {}), token });
+        onToken({
+          ...selection,
+          provider,
+          ...(selfHosted ? { serverUrl: serverUrl.trim() } : {}),
+          ...(provider.startsWith('bitbucket') ? { username: username.trim() } : {}),
+          token,
+        });
       }}
     >
       <fieldset disabled={busy} className="hosting-login-fields">
@@ -105,6 +111,24 @@ export function HostingAccountForm({
             </select>
           </>
         )}
+        {provider.startsWith('bitbucket') && (
+          <>
+            <label htmlFor="hosting-bitbucket-user">
+              {provider === 'bitbucket' ? 'Atlassian email:' : 'Username:'}
+            </label>
+            <input
+              id="hosting-bitbucket-user"
+              type={provider === 'bitbucket' ? 'email' : 'text'}
+              required
+              maxLength={254}
+              value={username}
+              onChange={(event) => {
+                setUsername(event.target.value);
+                if (tokenInput.current) tokenInput.current.value = '';
+              }}
+            />
+          </>
+        )}
         {oauth ? (
           <>
             <label htmlFor="hosting-username">Username:</label>
@@ -157,9 +181,13 @@ export function HostingAccountForm({
           <p className="muted hosting-form-wide">
             {provider.startsWith('gitlab')
               ? 'Use a personal token with read_user and read_api for browsing, plus read_repository or write_repository for Git.'
-              : provider === 'gitea'
-                ? 'Allow user and repository access. Git push also requires write permission.'
-                : 'Allow repository access. Fine-grained tokens need Contents read for fetch and read/write for push. Organization authorization may also be required.'}
+              : provider === 'bitbucket'
+                ? 'Use an API token with account and repository read permissions. Git push also needs repository write permission. App passwords are no longer supported.'
+                : provider === 'bitbucket-server'
+                  ? 'Use your username and personal HTTP access token with repository read permission; add write permission for push.'
+                  : provider === 'gitea'
+                    ? 'Allow user and repository access. Git push also requires write permission.'
+                    : 'Allow repository access. Fine-grained tokens need Contents read for fetch and read/write for push. Organization authorization may also be required.'}
           </p>
         )}
         <div className="hosting-actions hosting-form-wide">

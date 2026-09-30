@@ -48,6 +48,8 @@ import {
   hostingRepositoryRequestSchema,
   hostingCloneSelectionSchema,
   hostingCloneTargetSchema,
+  hostingNotificationPreferenceSchema,
+  hostingNotificationSnapshotSchema,
 } from './hosting';
 
 export interface RequestContract<Input, Output> {
@@ -2673,6 +2675,23 @@ export const requests = {
   previewCustomCommand: request('custom-commands:preview', customPreviewRequestSchema, customPreviewSchema),
   runCustomCommand: request('custom-commands:run', customRunSchema, repositoryOperationSchema),
   listHostingAccounts: request('hosting:list-accounts', z.undefined(), hostingAccountsSchema),
+  getHostingNotifications: request(
+    'hosting:get-notifications',
+    z.undefined(),
+    hostingNotificationSnapshotSchema,
+  ),
+  setHostingNotifications: request(
+    'hosting:set-notifications',
+    hostingNotificationPreferenceSchema,
+    z.null(),
+  ),
+  refreshHostingNotifications: request(
+    'hosting:refresh-notifications',
+    hostingAccountRequestSchema,
+    z.null(),
+  ),
+  openHostingNotification: request('hosting:open-notification', hostingActivitySelectionSchema, z.null()),
+  manageHostingCredential: request('hosting:manage-credential', hostingAccountRequestSchema, z.null()),
   listHostingActivity: request(
     'hosting:list-activity',
     hostingActivityRequestSchema,
@@ -3148,6 +3167,7 @@ export const requests = {
 } as const;
 
 export const events = {
+  hostingNotificationsChanged: { channel: 'hosting:notifications-changed', payload: z.null() },
   settingsChanged: { channel: 'settings:changed', payload: z.null() },
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
   repositoryActivated: { channel: 'repository:activated', payload: repositorySummarySchema },

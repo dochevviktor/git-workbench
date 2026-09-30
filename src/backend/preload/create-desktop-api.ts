@@ -101,6 +101,12 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       run: (request) => invoke(requests.runExternalTool, request),
     },
     hosting: {
+      getNotifications: () => invoke(requests.getHostingNotifications, undefined),
+      setNotifications: (request) => invoke(requests.setHostingNotifications, request),
+      refreshNotifications: (request) => invoke(requests.refreshHostingNotifications, request),
+      openNotification: (request) => invoke(requests.openHostingNotification, request),
+      manageCredential: (request) => invoke(requests.manageHostingCredential, request),
+      onNotificationsChanged: (listener) => subscribe(events.hostingNotificationsChanged, listener),
       listActivity: (request) => invoke(requests.listHostingActivity, request),
       openActivity: (request) => invoke(requests.openHostingActivity, request),
       listAccounts: () => invoke(requests.listHostingAccounts, undefined),

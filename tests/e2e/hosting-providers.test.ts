@@ -86,6 +86,8 @@ test('provider account forms, token entry, OAuth, removal and cancellation in Pr
       'GitHub Enterprise',
       'GitLab',
       'GitLab Server',
+      'Bitbucket',
+      'Bitbucket Server',
     ]);
     await expect(panel.getByRole('button', { name: 'Remove account', exact: true })).toBeDisabled();
     await expect(panel.getByLabel('Personal access token:', { exact: true })).toHaveAttribute(
@@ -118,7 +120,9 @@ test('provider account forms, token entry, OAuth, removal and cancellation in Pr
       await expect(panel).toContainText(
         id!.startsWith('gitlab') ? 'group/subgroup/project' : 'example/project',
       );
-      await expect(panel.getByRole('button', { name: 'Notifications', exact: true })).toHaveCount(0);
+      await expect(panel.getByRole('button', { name: 'Notifications', exact: true })).toHaveCount(
+        id === 'github-enterprise' ? 1 : 0,
+      );
       const account = (await page.evaluate(async () => {
         const result = await window.desktop!.hosting.listAccounts();
         return result.ok ? result.value.accounts.at(-1) : undefined;

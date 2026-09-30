@@ -10,6 +10,34 @@ export interface GitHubDeviceAuthorization {
   nextPollAt: number;
 }
 
+const secret = z
+  .string()
+  .min(10)
+  .max(4096)
+  .regex(/^[\x21-\x7e]+$/u);
+const tokensSchema = z.strictObject({
+  accessToken: secret,
+  refreshToken: secret,
+  expiresAt: z.number().int().positive(),
+  refreshExpiresAt: z.number().int().positive(),
+  clientId: z.string().min(5).max(100),
+});
+export type GitHubOAuthTokens = z.infer<typeof tokensSchema>;
+export function encodeOAuthTokens(tokens: GitHubOAuthTokens) {
+  return `oauth:${Buffer.from(JSON.stringify(tokensSchema.parse(tokens))).toString('base64')}`;
+}
+export function decodeOAuthTokens(credential: string): GitHubOAuthTokens | null {
+  if (!credential.startsWith('oauth:')) return null;
+  try {
+    return tokensSchema.parse(JSON.parse(Buffer.from(credential.slice(6), 'base64').toString('utf8')));
+  } catch {
+    throw new ExpectedBackendError(
+      'HOSTING_AUTH',
+      'The saved OAuth credential is invalid. Reauthorize this account.',
+    );
+  }
+}
+
 /** Device authorization uses our registered public client ID; no bundled client secret. */
 export class GitHubOAuth {
   constructor(
@@ -28,7 +56,7 @@ export class GitHubOAuth {
       );
     const body = await this.post(
       '/login/device/code',
-      { client_id: this.clientId, scope: 'repo read:user notifications' },
+      { client_id: this.clientId, scope: 'repo read:user notifications offline_access' },
       signal,
     );
     const parsed = z
@@ -54,7 +82,10 @@ export class GitHubOAuth {
       nextPollAt: this.now() + data.interval * 1000,
     };
   }
-  async poll(state: GitHubDeviceAuthorization, signal: AbortSignal): Promise<string | null> {
+  async poll(
+    state: GitHubDeviceAuthorization,
+    signal: AbortSignal,
+  ): Promise<string | GitHubOAuthTokens | null> {
     if (this.now() >= state.expiresAt)
       throw new ExpectedBackendError('HOSTING_AUTH', 'GitHub authorization expired. Start OAuth again.');
     if (this.now() < state.nextPollAt) return null;
@@ -78,6 +109,9 @@ export class GitHubOAuth {
           .optional(),
         token_type: z.string().optional(),
         error: z.string().optional(),
+        refresh_token: secret.optional(),
+        expires_in: z.number().int().min(1).max(31_536_000).optional(),
+        refresh_token_expires_in: z.number().int().min(1).max(63_072_000).optional(),
       })
       .safeParse(body);
     if (!parsed.success)
@@ -98,7 +132,76 @@ export class GitHubOAuth {
           ? 'GitHub authorization was denied. Start OAuth again when ready.'
           : 'GitHub authorization expired or failed. Start OAuth again.',
       );
-    return parsed.data.access_token;
+    return this.tokens(parsed.data);
+  }
+  private tokens(data: {
+    access_token?: string | undefined;
+    refresh_token?: string | undefined;
+    expires_in?: number | undefined;
+    refresh_token_expires_in?: number | undefined;
+  }): string | GitHubOAuthTokens {
+    if (!data.access_token)
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'GitHub returned an invalid OAuth credential. Reauthorize this account.',
+      );
+    if (
+      data.refresh_token === undefined &&
+      data.expires_in === undefined &&
+      data.refresh_token_expires_in === undefined
+    )
+      return data.access_token;
+    if (!data.refresh_token || !data.expires_in || !data.refresh_token_expires_in)
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'GitHub returned an incomplete expiring credential. Reauthorize this account.',
+      );
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: this.now() + data.expires_in * 1000,
+      refreshExpiresAt: this.now() + data.refresh_token_expires_in * 1000,
+      clientId: this.clientId,
+    };
+  }
+  async refresh(tokens: GitHubOAuthTokens, signal: AbortSignal): Promise<GitHubOAuthTokens> {
+    if (!this.available() || tokens.clientId !== this.clientId)
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'The OAuth app changed. Reauthorize this account with this installation.',
+      );
+    if (tokens.refreshExpiresAt <= this.now())
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'GitHub authorization expired. Reauthorize this account.',
+      );
+    const body = await this.post(
+      '/login/oauth/access_token',
+      { client_id: this.clientId, grant_type: 'refresh_token', refresh_token: tokens.refreshToken },
+      signal,
+    );
+    const parsed = z
+      .object({
+        access_token: secret.optional(),
+        refresh_token: secret.optional(),
+        expires_in: z.number().int().min(1).max(31_536_000).optional(),
+        refresh_token_expires_in: z.number().int().min(1).max(63_072_000).optional(),
+        token_type: z.string().optional(),
+        error: z.string().optional(),
+      })
+      .safeParse(body);
+    if (!parsed.success || parsed.data.error || parsed.data.token_type?.toLowerCase() !== 'bearer')
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'GitHub authorization was revoked or expired. Reauthorize this account.',
+      );
+    const result = this.tokens(parsed.data);
+    if (typeof result === 'string')
+      throw new ExpectedBackendError(
+        'HOSTING_AUTH',
+        'GitHub returned an incomplete renewed credential. Reauthorize this account.',
+      );
+    return result;
   }
   private async post(path: string, values: Record<string, string>, signal: AbortSignal) {
     try {

@@ -36,7 +36,11 @@ export function HostingActivity({
       if (!alive.current || generation.current !== id) return;
       setPage(result);
       setRequest(query);
-      if (query.kind !== 'notifications' && query.text.trim()) {
+      if (result.recentSearches) {
+        searches.set(searchKey, result.recentSearches);
+        setRecent(result.recentSearches);
+      }
+      if (!result.recentSearches && query.kind !== 'notifications' && query.text.trim()) {
         const next = [query.text.trim(), ...recent.filter((value) => value !== query.text.trim())].slice(
           0,
           10,
