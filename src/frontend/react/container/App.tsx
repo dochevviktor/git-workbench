@@ -13,6 +13,7 @@ import type {
   RepositoryMergeRebaseAction,
   RepositoryNetworkRequest,
   RepositoryReferenceAction,
+  RepositoryReferenceContext,
   RepositoryRemoteAction,
   RepositoryLocalChangesPreview,
   RepositoryPatchTarget,
@@ -410,6 +411,7 @@ function Workbench({
   const previewGeneration = useRef(0);
   const [dialogSnapshot, setDialogSnapshot] = useState<string>();
   const [referenceDialog, setReferenceDialog] = useState<ReferenceDialogRequest>();
+  const [reviewedReferenceContext, setReviewedReferenceContext] = useState<RepositoryReferenceContext>();
   const [referenceFailure, setReferenceFailure] = useState<{
     readonly message: string;
     readonly canForce: boolean;
@@ -580,15 +582,42 @@ function Workbench({
 
   const openReferenceDialog = useCallback(
     (request: ReferenceDialogRequest, snapshot = referenceContext?.snapshot) => {
-      previewGeneration.current += 1;
+      const generation = ++previewGeneration.current;
       setPreviewError(undefined);
       setReferenceFailure(undefined);
       setReferenceStatus(undefined);
+      // Reference menus can outlive a watcher refresh. Review choices and their stale guard
+      // must come from the same complete read, not an old menu and a newer live context.
+      if (request.kind === 'delete-references' || request.kind === 'set-upstream') {
+        const owner = activeRepositoryId.current;
+        if (!owner) return;
+        void window.desktop?.repository.getReferenceContext({ id: owner }).then((result) => {
+          if (activeRepositoryId.current !== owner || previewGeneration.current !== generation) return;
+          if (!result.ok) {
+            reportError(result.error.message);
+            return;
+          }
+          const context = result.value;
+          const branch =
+            request.kind === 'set-upstream'
+              ? context.branches.find((candidate) => candidate.fullName === request.branch.fullName)
+              : undefined;
+          if (request.kind === 'set-upstream' && !branch) {
+            reportError('The branch no longer exists. Refresh the repository and try again.');
+            return;
+          }
+          setReviewedReferenceContext(context);
+          setDialogSnapshot(context.snapshot);
+          setReferenceDialog(branch ? { kind: 'set-upstream', branch } : request);
+        });
+        return;
+      }
+      setReviewedReferenceContext(referenceContext);
       setDialogSnapshot(snapshot);
       if (request.kind.startsWith('checkout') || request.kind === 'new-branch') loadLocalChangesPreview();
       setReferenceDialog(request);
     },
-    [loadLocalChangesPreview, referenceContext?.snapshot],
+    [loadLocalChangesPreview, referenceContext, reportError],
   );
 
   const closeReferenceDialog = useCallback(() => {
@@ -996,14 +1025,37 @@ function Workbench({
 
   const openNetworkDialog = useCallback(
     (request: NetworkDialogRequest) => {
-      previewGeneration.current += 1;
+      const generation = ++previewGeneration.current;
       setPreviewError(undefined);
       setNetworkFailure(undefined);
+      if (request.kind === 'pull') {
+        const owner = activeRepositoryId.current;
+        if (!owner) return;
+        // History and reference refreshes complete independently. The destination's expected
+        // commit must be read when opening Pull, not retained from an earlier toolbar render.
+        void window.desktop?.repository.getReferenceContext({ id: owner }).then((result) => {
+          if (activeRepositoryId.current !== owner || previewGeneration.current !== generation) return;
+          if (!result.ok) {
+            reportError(result.error.message);
+            return;
+          }
+          const branch = result.value.branches.find(
+            (candidate) => candidate.fullName === request.branch.fullName,
+          );
+          if (!branch) {
+            reportError('The branch no longer exists. Refresh the repository and try again.');
+            return;
+          }
+          setDialogSnapshot(result.value.snapshot);
+          loadLocalChangesPreview();
+          setNetworkDialog({ kind: 'pull', branch });
+        });
+        return;
+      }
       setDialogSnapshot(referenceContext?.snapshot);
-      if (request.kind === 'pull') loadLocalChangesPreview();
       setNetworkDialog(request);
     },
-    [loadLocalChangesPreview, referenceContext?.snapshot],
+    [loadLocalChangesPreview, referenceContext?.snapshot, reportError],
   );
 
   const closeNetworkDialog = useCallback(() => {
@@ -3554,7 +3606,7 @@ function Workbench({
       {referenceDialog && (
         <ReferenceDialog
           request={referenceDialog}
-          context={referenceContext}
+          context={reviewedReferenceContext}
           preview={localChangesPreview}
           platform={platform}
           busy={referenceBusy}

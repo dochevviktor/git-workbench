@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -131,28 +132,31 @@ describe('P06 complete operation states', () => {
     expect(await f.run('status', '--porcelain')).toBe('');
   });
 
-  it('preserves raw symbolic-link target bytes when selecting a conflict source', async () => {
-    const f = await fixture();
-    const versions = [Buffer.from('base'), Buffer.from([0x61, 0xff]), Buffer.from([0x62, 0xfe])];
-    const ids = [];
-    for (const bytes of versions)
-      ids.push(
-        (await f.git.run(['hash-object', '-w', '--stdin'], { cwd: f.cwd, stdin: bytes })).stdout.trim(),
+  it.skipIf(!testPlatform.posix)(
+    'preserves raw symbolic-link target bytes when selecting a conflict source',
+    async () => {
+      const f = await fixture();
+      const versions = [Buffer.from('base'), Buffer.from([0x61, 0xff]), Buffer.from([0x62, 0xfe])];
+      const ids = [];
+      for (const bytes of versions)
+        ids.push(
+          (await f.git.run(['hash-object', '-w', '--stdin'], { cwd: f.cwd, stdin: bytes })).stdout.trim(),
+        );
+      await f.git.run(['update-index', '-z', '--index-info'], {
+        cwd: f.cwd,
+        stdin: ids.map((id, index) => `120000 ${id} ${index + 1}\tlink\0`).join(''),
+      });
+      await symlink(versions[1]!, join(f.cwd, 'link'));
+      const state = await f.service.getConflicts(1, { id: f.id, path: 'link' });
+      expect(state.selected?.shape).toBe('symlink');
+      await f.service.resolveConflict(
+        { id: f.id, path: 'link', snapshot: state.snapshot, choice: 'theirs' },
+        1,
       );
-    await f.git.run(['update-index', '-z', '--index-info'], {
-      cwd: f.cwd,
-      stdin: ids.map((id, index) => `120000 ${id} ${index + 1}\tlink\0`).join(''),
-    });
-    await symlink(versions[1]!, join(f.cwd, 'link'));
-    const state = await f.service.getConflicts(1, { id: f.id, path: 'link' });
-    expect(state.selected?.shape).toBe('symlink');
-    await f.service.resolveConflict(
-      { id: f.id, path: 'link', snapshot: state.snapshot, choice: 'theirs' },
-      1,
-    );
-    expect(await readlink(join(f.cwd, 'link'), { encoding: 'buffer' })).toEqual(versions[2]);
-    expect(await f.run('ls-files', '--stage', 'link')).toContain(`120000 ${ids[2]} 0`);
-  });
+      expect(await readlink(join(f.cwd, 'link'), { encoding: 'buffer' })).toEqual(versions[2]);
+      expect(await f.run('ls-files', '--stage', 'link')).toContain(`120000 ${ids[2]} 0`);
+    },
+  );
   it('refuses an unborn stash before Stage new files can alter the index', async () => {
     const f = await fixture();
     await f.run('checkout', '--orphan', 'unborn');

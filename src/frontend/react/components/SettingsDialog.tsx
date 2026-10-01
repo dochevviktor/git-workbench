@@ -585,7 +585,7 @@ export function SettingsDialog({
                   <input
                     value={prefix}
                     maxLength={32}
-                    disabled={busy}
+                    disabled={!settings || busy}
                     onChange={(event) => setPrefix(event.target.value)}
                   />
                 </label>
@@ -595,7 +595,7 @@ export function SettingsDialog({
                     value={url}
                     maxLength={2048}
                     placeholder="https://tracker.example/issues/{id}"
-                    disabled={busy}
+                    disabled={!settings || busy}
                     onChange={(event) => setUrl(event.target.value)}
                   />
                 </label>

@@ -72,7 +72,19 @@ test('Windows native controls, CRLF commit, profile restart and OS encryption', 
         application!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isMinimized()),
       )
       .toBe(true);
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.restore());
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.restore();
+    });
+    await expect
+      .poll(() =>
+        application!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isMinimized()),
+      )
+      .toBe(false);
+    // Restore completes asynchronously on Windows; focusing a still-minimized window can be ignored.
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.focus());
+    await expect
+      .poll(() => application!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isFocused()))
+      .toBe(true);
 
     await writeFile(join(cwd, 'hello.txt'), 'initial\r\ncommitted on Windows\r\n');
     await page.getByRole('button', { name: /^Local Changes/u }).click();

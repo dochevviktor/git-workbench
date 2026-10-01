@@ -19,6 +19,7 @@ import type {
 } from '../../src/common/ipc/contracts';
 
 const temporaryDirectories: string[] = [];
+const services: RepositoryService[] = [];
 const branchHead = { state: 'branch', name: 'main', commit: 'a'.repeat(40) } as const;
 
 interface Fixture {
@@ -51,6 +52,7 @@ async function fixture(backgroundFetchIntervalMs = 20 * 60 * 1_000): Promise<Fix
     runner: git,
     backgroundFetchIntervalMs,
   });
+  services.push(service);
   const summary = await service.open(1, worktree);
   await service.setTrust(1, summary.id, true);
   return { root, worktree, remote, git, service, repositoryId: summary.id };
@@ -84,6 +86,10 @@ async function runOperation(
 }
 
 afterEach(async () => {
+  for (const service of services.splice(0)) {
+    service.dispose();
+    await service.settled();
+  }
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );

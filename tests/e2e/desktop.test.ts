@@ -426,7 +426,19 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(
       unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }),
     ).toBeVisible({ timeout: 10_000 });
+    // The watcher can first expose the untracked fixture, before add/commit/modify has settled.
+    // Select the final modified entry and wait for its own diff, not a previous two-line patch.
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'line-selection.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }).click();
+    await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+      'line-selection.txt',
+    );
+    await expect(page.getByTestId('diff-content').locator('.diff-cell.add')).toContainText('selected');
     await expect(page.locator('.diff-body.unified').getByTestId('diff-line-select')).toHaveCount(2);
     await page.locator('.diff-body.unified .diff-cell.add input').check();
     await expect(page.getByTestId('diff-selection-stage')).toBeVisible();
@@ -444,7 +456,16 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' })).toBeVisible({
       timeout: 10_000,
     });
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'discard.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' }).click();
+    await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+      'discard.txt',
+    );
     await expect(page.getByTestId('diff-hunk-discard')).toHaveCount(2);
     await page
       .getByTestId('diff-change-region')
@@ -470,6 +491,12 @@ test('production build loads its isolated preload and renderer', async () => {
       timeout: 10_000,
     });
     // A hunk button can belong to the preceding snapshot. Measure only after the exact new bytes arrive.
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'long-line.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
     await expect(page.getByTestId('diff-content')).toContainText(`long-${'x'.repeat(2_000)}`);
     await page
@@ -515,6 +542,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(composer.getByTestId('commit-submit')).toHaveText('Commit');
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' }).click();
+      await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+        'history.txt',
+      );
       await page
         .getByTestId('diff-change-region')
         .first()
@@ -569,6 +599,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await chmod(hookPath, 0o755);
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+        'long-line.txt',
+      );
       await page
         .getByTestId('diff-change-region')
         .first()

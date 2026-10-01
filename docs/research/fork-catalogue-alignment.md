@@ -1,12 +1,19 @@
 # Fork catalogue alignment — 2026-09-20
 
+Windows implementation correction — **2026-10-01**: the
+[compatibility follow-up](../reviews/windows-compatibility.md) supersedes F32/F33/F37's Windows
+exclusions and the initial failing-suite status below. F07/F08/F09/F21/F23/F27 also receive native path,
+diff, background-refresh or test-harness corrections. Evidence concerns this implementation, with high confidence for
+the exercised fixtures; P2-013/P2-015 and other original case/finding unknowns remain unchanged.
+No private capture or asset was altered, and no layout/screenshot equivalence is inferred.
+
 Windows portability follow-up — **2026-10-01**: see the [Windows audit](../reviews/windows-portability-audit.md).
 The earlier P2-013 sizing and P2-015 restart anchors retain their original confidence and unknowns.
 Native window controls, programmatic bounds, CRLF commits and profile restart now have independent
 Windows 11 implementation evidence; no new Fork behavior or visual equivalence is inferred. The linked
 private catalogue is absent here, so this pass changes no layout/styles or private references.
-F22 native path normalization and the watcher correction are backend portability fixes. Windows feature
-coverage remains partial, including explicit F32/F37 exclusions and the remaining failing tests.
+F22 native path normalization and the watcher correction are backend portability fixes. That initial
+checkpoint retained F32/F37 exclusions and failing tests, superseded by the implementation correction above.
 
 P14 audit — **2026-10-01**: the [audit ledger and deviations](../reviews/p14-release-audit.md) connect
 F01–F38 to catalogue/public evidence and independent tests. Original P2-012:F1 light/dark Local Changes

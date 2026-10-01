@@ -34,9 +34,13 @@ Use the requested phase and its acceptance criteria as the scope. Preserve unrel
 
 ## Local graphical testing
 
-- This host uses `wayland-bridge.service` to forward its display through waypipe with `--no-gpu --xwls`.
+- Detect the host OS. The bridge instructions below apply only to the Linux host. Windows Electron
+  tests use native windows; keep them serial and preserve the sandbox. `npm run test:capabilities`
+  reports automatic OS/tool/symlink selection. Use `npm.cmd` when PowerShell blocks `npm.ps1`.
+
+- The Linux host uses `wayland-bridge.service` to forward its display through waypipe with `--no-gpu --xwls`.
   `idea.service` inherits `WAYLAND_DISPLAY=wayland-piped` and forwarded PulseAudio, but not `DISPLAY`.
-- `npm run test:e2e` is headless by default: it runs Electron on Ozone's `headless` platform, drops
+- On Linux, `npm run test:e2e` is headless by default: it runs Electron on Ozone's `headless` platform, drops
   `DISPLAY` and `WAYLAND_DISPLAY` from the child environment, and never opens a window on the user's
   desktop. Use it as is; do not put the test on a real display for routine work.
 - To watch a run, set `ELECTRON_TEST_OZONE_PLATFORM=x11` and read the bridge's X11 display from

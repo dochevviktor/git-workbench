@@ -126,7 +126,13 @@ test('F29 accounts, paged repositories, browser links, clone selection and sign-
     await openAccounts();
     let accounts = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await expect(accounts).toContainText('No connected accounts');
-    await expect(accounts.getByRole('checkbox')).toBeDisabled();
+    const secureStorage = await app.evaluate(
+      ({ safeStorage }) =>
+        safeStorage.isEncryptionAvailable() &&
+        (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+    );
+    await expect(accounts.getByRole('checkbox')).toBeEnabled({ enabled: secureStorage });
+    await expect(accounts.getByRole('checkbox')).not.toBeChecked();
     await accounts.getByLabel('Authentication Type:', { exact: true }).selectOption('oauth');
     await expect(accounts.getByLabel('Username:', { exact: true })).toBeVisible();
     await expect(accounts).toContainText('GitHub OAuth is not configured');

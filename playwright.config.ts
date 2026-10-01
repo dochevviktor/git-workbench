@@ -9,6 +9,7 @@ export default defineConfig({
   workers: 1,
   // One launch walks the whole local workflow, from opening a repository to committing.
   timeout: 90_000,
+  expect: { timeout: process.platform === 'win32' ? 15000 : 5000 },
   reporter: 'list',
   use: { trace: 'retain-on-failure' },
 });

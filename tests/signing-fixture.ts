@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { GitRunner } from '../src/backend/git/runner';
 import type { GitRunOptions } from '../src/backend/git/runner';
+import { gpgHome } from './platform';
 
 const execute = promisify(execFile);
 export async function signingFixture(options: { protected?: boolean } = {}) {
@@ -13,7 +14,7 @@ export async function signingFixture(options: { protected?: boolean } = {}) {
   const gnupg = join(root, 'gnupg');
   const env = {
     ...process.env,
-    GNUPGHOME: gnupg,
+    GNUPGHOME: gpgHome(gnupg),
     GIT_CONFIG_GLOBAL: join(root, 'global-config'),
     GIT_CONFIG_NOSYSTEM: '1',
   };
@@ -24,7 +25,7 @@ export async function signingFixture(options: { protected?: boolean } = {}) {
   };
   const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
   const cleanup = async () => {
-    await execute('gpgconf', ['--homedir', gnupg, '--kill', 'gpg-agent']).catch(() => undefined);
+    await execute('gpgconf', ['--homedir', gpgHome(gnupg), '--kill', 'gpg-agent']).catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   };
   try {

@@ -1,12 +1,16 @@
 # Git Workbench
 
-Windows verification (2026-10-01): the [Windows audit](docs/reviews/windows-portability-audit.md)
-records native application tests, remaining suite failures and the local unsigned NSIS installer.
-Windows support remains partial; a successful package does not imply all Linux workflows are portable.
+Windows implementation (2026-10-01): the [compatibility follow-up](docs/reviews/windows-compatibility.md)
+records native custom commands, external tools, AI adapters and Git/diff/path corrections, plus test
+selection by OS and installed capabilities. `npm run test:capabilities` explains this host's selection.
+Linux-specific cases are skipped automatically; supported Windows workflows remain tested.
 In PowerShell use `npm.cmd` when execution policy blocks `npm.ps1`. `npm.cmd run package` builds
 `release/Git Workbench Setup 0.1.0.exe`; `npm.cmd run test:package -- "C:\path\Git Workbench.exe"`
 tests an installed executable. Git 2.43+ must be installed separately and available on PATH.
 Ozone headless testing is Linux-specific: Electron tests use native windows on Windows.
+Windows Bash commands require Git for Windows' Bash. Select native executables or Node CLI entry points
+for external tools/AI; Node entry points require an installed Node runtime. Configure external viewers
+to wait until closed. Batch and PowerShell launchers require an explicit interpreter for custom tools.
 
 P14's [audit and feature ledger](docs/reviews/p14-release-audit.md) records verified Linux behavior,
 remaining parity limits, performance measurements and release gates. The audit fixes composing-input

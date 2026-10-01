@@ -173,7 +173,9 @@ export function SubmoduleActionDialog({
     >
       <dt>Location:</dt>
       <dd className="p09-path">
-        {repositoryPath}/{submodule.path}
+        {platform === 'win32'
+          ? `${repositoryPath}\\${submodule.path.replaceAll('/', '\\')}`
+          : `${repositoryPath}/${submodule.path}`}
       </dd>
       <dt>Repository:</dt>
       <dd className="p09-path">{submodule.url || 'URL unavailable'}</dd>

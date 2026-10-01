@@ -1,5 +1,15 @@
 # P14 audit and Linux release candidate — 2026-10-01
 
+Windows implementation update: [OS-aware tests and Windows workflows](windows-compatibility.md)
+supersedes the initial Windows feature exclusions. P14 retains the release gates below.
+
+Windows coverage extension (2026-10-01): F07/F08/F21/F23/F27 native path/diff corrections and
+F32/F33/F37 process adapters pass the Windows fixtures. Final verification passes 697 unit/integration
+tests and all 88 routine desktop scenarios, with 10 and four explicit skips respectively. Live vendor
+tools, accounts and the remaining native-platform matrices in the feature ledger stay unverified.
+The unsigned Windows NSIS installer also passes installation, all eight installed-app scenarios and
+uninstall cleanup; its checksum and evidence are recorded in the follow-up.
+
 Windows follow-up: [the separate portability audit](windows-portability-audit.md) records native Windows
 results and NSIS checks from 2026-10-01. It supersedes the statement that Windows has no local verification,
 without extending the Linux results below to Windows or marking P14 complete.
@@ -203,7 +213,8 @@ saved drafts; unsaved input at the instant of a process/system crash is not prom
 sequencer and Recovery artifacts remain authoritative for interrupted writes.
 
 No release was published, no signing identity was used and no automatic updater/feed is configured.
-Windows/macOS are outside this release verification despite their retained build target definitions.
+The original release verification below covers Linux. The linked Windows follow-up adds native Windows
+and NSIS evidence; macOS remains unverified.
 
 ## Verification and remaining gates
 

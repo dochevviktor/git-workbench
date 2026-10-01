@@ -1,11 +1,20 @@
 # Fork: captured and public feature surface
 
+Windows implementation correction — **2026-10-01**: the
+[compatibility follow-up](../reviews/windows-compatibility.md) supersedes the initial F32/F33/F37
+Windows exclusions below. Native process execution, Git diff/search/path and staging-refresh corrections and OS-aware
+test selection are independently verified Git Workbench behavior (high confidence for exercised
+fixtures). Existing catalogue finding IDs and unknowns are unchanged. No new Fork observation or
+visual parity is claimed; the private linked catalogue remains absent and untouched. Runtime and
+vendor documentation URLs, access dates and remaining live-platform limits are in the follow-up.
+
 Windows implementation verification — **2026-10-01**: the [Windows audit](../reviews/windows-portability-audit.md)
 records independent evidence for F01/F08–F11/F22/F34 and packaging. Native controls, a CRLF commit,
 restart and synthetic OS encryption were exercised on Windows 11; these are high-confidence observations
 of Git Workbench, **not new Fork observations**. Later broad/installed runs retained a native staging
-failure; the focused pass does not establish general Windows reliability. Custom process commands (F32) and agent CLI adapters
-(F37) still explicitly refuse Windows. The private bundle's linked catalogue is absent on this host;
+failure; the focused pass alone did not establish general Windows reliability. At that checkpoint,
+custom commands (F32) and agent adapters (F37) refused Windows; the correction above supersedes this.
+The private bundle's linked catalogue is absent on this host;
 no screenshot parity comparison or new capture claim is made, and no private asset was changed.
 
 P13 reference/implementation audit — **2026-10-01**: the

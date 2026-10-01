@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+Windows implementation follow-up (2026-10-01): [verification and limits](reviews/windows-compatibility.md).
+Main-owned process adapters launch native Windows executables or explicit Node entry points without
+an implicit shell, preserve the Windows system/profile environment, and drain native process-tree
+termination for commands and AI. Git for Windows supplies optional Bash. POSIX process groups remain.
+Git diff uses Git's `/dev/null` convention; filesystem containment uses native separators; literal
+path search avoids Windows backslash normalization. The renderer and IPC security boundaries are unchanged.
+
 Windows audit (2026-10-01): [verification and limits](reviews/windows-portability-audit.md).
 Git processes disable optional locks so background status reads cannot rewrite the index and create
 a watcher refresh loop; mandatory mutation locks remain enabled. Worktree registration paths are

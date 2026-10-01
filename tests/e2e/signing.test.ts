@@ -3,8 +3,10 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { signingFixture } from '../signing-fixture';
+import { testPlatform } from '../platform';
 
 test('F28 signing key, signed commit, verification and signed tag through Electron', async () => {
+  test.skip(!testPlatform.gpg, 'Requires installed GPG and gpgconf.');
   const f = await signingFixture();
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {

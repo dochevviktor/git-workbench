@@ -33,6 +33,7 @@ import { gitCapabilities } from '../../src/backend/git/capabilities';
 import { requests } from '../../src/common/ipc/contracts';
 import { canInvokeCommitInspector } from '../../src/backend/electron/commit-inspector-policy';
 import { operationFixture } from '../operation-fixture';
+import { testPlatform, processState } from '../platform';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 const script = resolve('tests/fixtures/operation-process.ts');
@@ -103,7 +104,7 @@ describe('P01 execution boundary', () => {
     vi.stubEnv('GIT_CONFIG_KEY_0', 'user.name');
     vi.stubEnv('GIT_CONFIG_VALUE_0', 'injected');
     expect(await f.run('config', 'user.name')).toBe('Operation Fixture');
-    expect(await f.run('rev-parse', '--show-toplevel')).toBe(f.cwd);
+    expect(resolve(await f.run('rev-parse', '--show-toplevel'))).toBe(f.cwd);
     expect(await f.run('ls-files', '-z')).toContain('-file café');
     await expect(access(trace)).rejects.toThrow();
   });
@@ -119,15 +120,7 @@ describe('P01 execution boundary', () => {
     const pid = Number(await readFile(marker, 'utf8'));
     controller.abort();
     await stopped;
-    await expect
-      .poll(async () => {
-        try {
-          return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
-        } catch {
-          return 'gone';
-        }
-      })
-      .toMatch(/^(?:Z|gone)$/u);
+    await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
   });
 
   it('bounds signalled reads, removes queued cancellations and drains shutdown', async () => {
@@ -229,8 +222,16 @@ describe('P01 repository trust', () => {
     const hook = join(f.cwd, '.git', 'hooks', 'post-checkout');
     await copyFile(script, hook);
     await chmod(hook, 0o700);
-    await f.run('config', 'core.fsmonitor', hook);
-    await f.run('config', 'filter.fixture.clean', `${process.execPath} ${script} hook`);
+    await f.run(
+      'config',
+      'core.fsmonitor',
+      `"${process.execPath.replaceAll('\\', '/')}" "${script.replaceAll('\\', '/')}" hook`,
+    );
+    await f.run(
+      'config',
+      'filter.fixture.clean',
+      `"${process.execPath.replaceAll('\\', '/')}" "${script.replaceAll('\\', '/')}" hook`,
+    );
     await writeFile(join(f.cwd, '.gitattributes'), '*.txt filter=fixture\n');
     vi.stubEnv('GIT_WORKBENCH_FIXTURE_MARKER', marker);
     const storagePath = join(f.root, 'profile', 'recent.json');
@@ -267,7 +268,7 @@ describe('P01 repository trust', () => {
     expect(requests.setRepositoryTrust.input.safeParse({ id: opened.id, trusted: 'yes' }).success).toBe(
       false,
     );
-    expect((await stat(`${storagePath}.trust`)).mode & 0o777).toBe(0o600);
+    if (testPlatform.posix) expect((await stat(`${storagePath}.trust`)).mode & 0o777).toBe(0o600);
   });
 
   it('fails closed for corrupt trust files and for a replaced Git directory', async () => {
@@ -377,15 +378,7 @@ describe('P01 durable activity', () => {
       service.dispose();
       await service.settled();
       const pid = Number(await readFile(marker, 'utf8'));
-      await expect
-        .poll(async () => {
-          try {
-            return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
-          } catch {
-            return 'gone';
-          }
-        })
-        .toMatch(/^(?:Z|gone)$/u);
+      await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
       await expect(access(queuedMarker)).rejects.toThrow();
     },
   );

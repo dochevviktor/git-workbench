@@ -16,7 +16,8 @@ async function nativeWatches() {
   return contents.reduce((sum, content) => sum + (content.match(/^inotify wd:/gmu)?.length ?? 0), 0);
 }
 
-it.runIf(process.env.P14_BENCHMARK === '1')(
+// This resource-budget fixture reads Linux inotify/file-descriptor counters from /proc.
+it.runIf(process.env.P14_BENCHMARK === '1' && process.platform === 'linux')(
   'P14 monorepo, watcher storm, concurrent worktrees, statistics and cancellation budgets',
   async () => {
     const root = await mkdtemp(join(tmpdir(), 'workbench-p14-scale-'));

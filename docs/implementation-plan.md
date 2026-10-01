@@ -1,10 +1,16 @@
 # Git Workbench implementation plan
 
+Windows implementation follow-up (2026-10-01): [OS-aware verification and supported workflows](reviews/windows-compatibility.md)
+supersedes the initial Windows exclusions below. F32/F33/F37 now have Windows process adapters;
+untracked diffs/images, literal search and historical Save As have native path fixes. Shared tests
+remain enabled, with capability-based exclusions for POSIX semantics and optional installed tools.
+P14's live-service, clean-host, signing and broader native-device gates remain partial.
+
 Windows verification extension (2026-10-01): the [Windows portability audit](reviews/windows-portability-audit.md)
 records this host's application, E2E and NSIS installation checks. Background index-refresh loops and
 inconsistent worktree path identities are corrected; test configuration and common fixtures are portable.
-Windows and P14 remain **partial**, with remaining test failures and unsupported workflows recorded
-separately from successful native smoke/packaging checks. Historical Linux verification below is unchanged.
+That initial checkpoint retained failing tests and unsupported workflows; the implementation follow-up
+above records their corrections. Historical Linux verification below is unchanged, and P14 remains partial.
 
 P14 audit (2026-10-01): the [release audit](reviews/p14-release-audit.md) records all F01–F38 scopes,
 reference/test links and remaining unknowns. Corrections cover IME-triggered commits, modal shortcuts,
@@ -242,6 +248,13 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Windows extension verified 2026-10-01: **697 unit/integration tests pass (10 explicit skips)** and
+the complete native desktop suite passes **88 scenarios (four explicit skips)**. OS/capability selection,
+F32/F33/F37 native process adapters, Git path/diff corrections and refresh-race fixes are covered in the
+[Windows follow-up](reviews/windows-compatibility.md). The unsigned NSIS installer installs/uninstalls
+successfully and passes all eight installed-app scenarios. The historical Linux phase statuses below remain;
+P14's clean-host, native-device, live-service and public-release gates are still partial.
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                                                                   | Depends on                            |
 | ----- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |

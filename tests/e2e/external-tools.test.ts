@@ -1,4 +1,5 @@
 import { openTrustedFixture } from './trusted-fixture';
+import { launchOptions } from './launch-options';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,12 +35,7 @@ test('F33 settings, historical diff, terminal, merge review, removal and restart
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
-    const launch = () =>
-      electron.launch({
-        chromiumSandbox: true,
-        args: ['.', `--user-data-dir=${profile}`, '--ozone-platform=headless', '--disable-gpu'],
-        env,
-      });
+    const launch = () => electron.launch(launchOptions(profile, env));
     app = await launch();
     await app.evaluate(({ dialog }, executable) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [executable] });

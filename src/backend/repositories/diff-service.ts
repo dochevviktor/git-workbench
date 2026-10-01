@@ -1,4 +1,3 @@
-import { devNull } from 'node:os';
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
@@ -161,7 +160,8 @@ function diffArguments(
   }
   if (target.area === 'staged') args.push('--cached');
   if (target.area === 'untracked' || target.area === 'ignored') {
-    return args.concat(['--no-index', '--', devNull, target.path]);
+    // Git for Windows understands /dev/null; Node's \\.\nul is not a Git path.
+    return args.concat(['--no-index', '--', '/dev/null', target.path]);
   }
   return args.concat(['--', ...(target.area === 'unstaged' ? [target.path] : pathsForTarget(target))]);
 }

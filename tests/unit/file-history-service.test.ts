@@ -1,3 +1,4 @@
+import { fixtureName, testPlatform } from '../platform';
 import { mkdir, mkdtemp, rm, writeFile, readFile, symlink, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -144,13 +145,15 @@ describe('repository file history and blame service', () => {
       });
       expect(await readFile(join(root, 'export.dat'))).toEqual(bytes);
       await expect(service.saveRevisionFile(43, request, join(cwd, 'bytes.dat'))).rejects.toThrow(/outside/u);
-      await symlink(cwd, join(root, 'alias'));
-      await expect(service.saveRevisionFile(43, request, join(root, 'alias/bytes.dat'))).rejects.toThrow(
-        /outside/u,
-      );
-      await symlink(join(cwd, 'bytes.dat'), join(root, 'symbolic'));
+      if (testPlatform.symlinks) {
+        await symlink(cwd, join(root, 'alias'), 'dir');
+        await expect(service.saveRevisionFile(43, request, join(root, 'alias/bytes.dat'))).rejects.toThrow(
+          /outside/u,
+        );
+        await symlink(join(cwd, 'bytes.dat'), join(root, 'symbolic'));
+      }
       await link(join(cwd, 'bytes.dat'), join(root, 'hard'));
-      for (const name of ['symbolic', 'hard'])
+      for (const name of testPlatform.symlinks ? ['symbolic', 'hard'] : ['hard'])
         await expect(service.saveRevisionFile(43, request, join(root, name))).rejects.toThrow(/links/u);
       expect(await readFile(join(cwd, 'bytes.dat'), 'utf8')).toBe('local work');
       await service.close(43, id);
@@ -170,7 +173,7 @@ describe('repository file history and blame service', () => {
     const service = new RepositoryService({ storagePath: join(root, 'recent.json'), runner });
     try {
       const { id } = await service.initialize(45, cwd, false);
-      const path = 'notes 𝄞\nwith\ttabs.txt';
+      const path = fixtureName('notes 𝄞\nwith\ttabs.txt');
       await writeFile(join(cwd, path), 'attributed\n');
       const commitId = await commit(runner, cwd, 'Unicode pathname');
       expect((await service.getBlame(45, id, commitId, path)).lines[0]).toMatchObject({

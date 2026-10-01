@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   forwardedRepositoryPaths,
@@ -42,10 +42,10 @@ describe('repository launch arguments', () => {
         '/work',
         true,
       ),
-    ).toEqual(['/work/repo one', '/work/-repo']);
+    ).toEqual([resolve('/work/repo one'), resolve('/work/-repo')]);
     expect(
       repositoryPathsFromArguments(['/app', '--disable-gpu', '/one', '/one', '--', '-two'], '/work', false),
-    ).toEqual(['/one', '/work/-two']);
+    ).toEqual([resolve('/one'), resolve('/work/-two')]);
   });
   it('rejects URLs, NULs and ambiguous switch values and bounds a launch to twenty paths', () => {
     expect(
@@ -54,7 +54,7 @@ describe('repository launch arguments', () => {
         '/work',
         false,
       ),
-    ).toEqual(['/work/good']);
+    ).toEqual([resolve('/work/good')]);
     expect(
       repositoryPathsFromArguments(
         ['/app', ...Array.from({ length: 30 }, (_, index) => `/repo-${index}`)],

@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promis
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hasGitLfs, lfsFixture } from '../helpers/lfs-fixture';
+import { testPlatform } from '../platform';
 import { saveLfsPayload } from '../../src/backend/repositories/lfs-service';
 import type { LfsAction } from '../../src/common/ipc/lfs';
 import type { RepositoryOperation } from '../../src/common/ipc/contracts';
@@ -72,75 +73,83 @@ describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
       ),
     ).rejects.toThrow('outside');
   });
-  it('tracks patterns with a stale guard, transfers objects and verifies lock ownership before unlocking', async () => {
-    const f = await fixture();
-    const context = await f.service.getLfsContext(1, f.repository.id);
-    expect(context.patterns).toContainEqual({ pattern: '*.bin', source: '.gitattributes', lockable: false });
-    expect(f.requests).toEqual([]);
-    expect(context.remotes[0]).toMatchObject({
-      endpoint: `${f.origin}/org/repo.git/info/lfs`,
-      pushUrl: `${f.origin}/org/repo.git/info/lfs`,
-    });
-    expect(await f.wait(f.service.startLfsInitialization(1, { id: f.repository.id }))).toMatchObject({
-      status: 'succeeded',
-    });
-    expect(await readFile(join(f.cwd, '.git/hooks/pre-push'), 'utf8')).toContain('git lfs pre-push');
-    expect(await f.act({ kind: 'track', pattern: '*.psd', lockable: true })).toMatchObject({
-      status: 'succeeded',
-    });
-    const stale = await f.wait(
-      f.service.startLfsOperation(1, {
-        id: f.repository.id,
-        snapshot: context.snapshot,
-        action: { kind: 'untrack', pattern: '*.bin' },
-      }),
-    );
-    expect(stale.status).toBe('failed');
-    expect(stale.message).toContain('changed');
-    expect(await f.act({ kind: 'untrack', pattern: '*.psd' })).toMatchObject({ status: 'succeeded' });
-    expect(await f.act({ kind: 'fetch', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
-    const cached = join(f.cwd, '.git/lfs/objects', f.oid.slice(0, 2), f.oid.slice(2, 4), f.oid);
-    await writeFile(cached, Buffer.alloc(f.payload.length, 1));
-    const canRefetch = (await f.service.getLfsContext(1, f.repository.id)).supportsRefetch;
-    const requestsBeforeRefetch = f.requests.length;
-    const refetched = await f.act({ kind: 'fetch', remote: 'origin', refetch: true });
-    if (canRefetch) {
-      expect(refetched).toMatchObject({ status: 'succeeded' });
-      expect(await readFile(cached)).toEqual(f.payload);
-    } else {
-      expect(refetched).toMatchObject({ status: 'failed' });
-      expect(refetched.message).toContain('does not support');
-      expect(f.requests).toHaveLength(requestsBeforeRefetch);
-      expect(await readFile(cached)).toEqual(Buffer.alloc(f.payload.length, 1));
-      // Restore only the disposable fixture cache before testing the unrelated push/lock workflow.
-      await writeFile(cached, f.payload);
-    }
-    f.objects.clear();
-    expect(await f.act({ kind: 'push', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
-    expect(f.objects.get(f.oid)).toEqual(f.payload);
-    expect(await f.act({ kind: 'lock', remote: 'origin', path: 'sample.bin' })).toMatchObject({
-      status: 'succeeded',
-    });
-    const lock = [...f.locks.values()][0]!;
-    expect(lock.path).toBe('sample.bin');
-    const result = await f.act({ kind: 'locks', remote: 'origin' });
-    expect(result).toMatchObject({
-      status: 'succeeded',
-      result: { kind: 'lfs-locks', value: { locks: [{ ours: true, path: 'sample.bin' }] } },
-    });
-    lock.owner.name = 'bob';
-    expect(await f.act({ kind: 'unlock', remote: 'origin', path: lock.path, lockId: lock.id })).toMatchObject(
-      { status: 'failed' },
-    );
-    expect(f.locks.size).toBe(1);
-    lock.owner.name = 'alice';
-    expect(await f.act({ kind: 'unlock', remote: 'origin', path: lock.path, lockId: lock.id })).toMatchObject(
-      { status: 'succeeded' },
-    );
-    expect(f.locks.size).toBe(0);
-    expect(await f.git('rev-parse', 'HEAD')).toBe(f.head);
-    expect(await readFile(join(f.cwd, 'sample.bin'), 'utf8')).toBe(f.pointer);
-  }, 20_000);
+  it(
+    'tracks patterns with a stale guard, transfers objects and verifies lock ownership before unlocking',
+    async () => {
+      const f = await fixture();
+      const context = await f.service.getLfsContext(1, f.repository.id);
+      expect(context.patterns).toContainEqual({
+        pattern: '*.bin',
+        source: '.gitattributes',
+        lockable: false,
+      });
+      expect(f.requests).toEqual([]);
+      expect(context.remotes[0]).toMatchObject({
+        endpoint: `${f.origin}/org/repo.git/info/lfs`,
+        pushUrl: `${f.origin}/org/repo.git/info/lfs`,
+      });
+      expect(await f.wait(f.service.startLfsInitialization(1, { id: f.repository.id }))).toMatchObject({
+        status: 'succeeded',
+      });
+      expect(await readFile(join(f.cwd, '.git/hooks/pre-push'), 'utf8')).toContain('git lfs pre-push');
+      expect(await f.act({ kind: 'track', pattern: '*.psd', lockable: true })).toMatchObject({
+        status: 'succeeded',
+      });
+      const stale = await f.wait(
+        f.service.startLfsOperation(1, {
+          id: f.repository.id,
+          snapshot: context.snapshot,
+          action: { kind: 'untrack', pattern: '*.bin' },
+        }),
+      );
+      expect(stale.status).toBe('failed');
+      expect(stale.message).toContain('changed');
+      expect(await f.act({ kind: 'untrack', pattern: '*.psd' })).toMatchObject({ status: 'succeeded' });
+      expect(await f.act({ kind: 'fetch', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
+      const cached = join(f.cwd, '.git/lfs/objects', f.oid.slice(0, 2), f.oid.slice(2, 4), f.oid);
+      await writeFile(cached, Buffer.alloc(f.payload.length, 1));
+      const canRefetch = (await f.service.getLfsContext(1, f.repository.id)).supportsRefetch;
+      const requestsBeforeRefetch = f.requests.length;
+      const refetched = await f.act({ kind: 'fetch', remote: 'origin', refetch: true });
+      if (canRefetch) {
+        expect(refetched).toMatchObject({ status: 'succeeded' });
+        expect(await readFile(cached)).toEqual(f.payload);
+      } else {
+        expect(refetched).toMatchObject({ status: 'failed' });
+        expect(refetched.message).toContain('does not support');
+        expect(f.requests).toHaveLength(requestsBeforeRefetch);
+        expect(await readFile(cached)).toEqual(Buffer.alloc(f.payload.length, 1));
+        // Restore only the disposable fixture cache before testing the unrelated push/lock workflow.
+        await writeFile(cached, f.payload);
+      }
+      f.objects.clear();
+      expect(await f.act({ kind: 'push', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
+      expect(f.objects.get(f.oid)).toEqual(f.payload);
+      expect(await f.act({ kind: 'lock', remote: 'origin', path: 'sample.bin' })).toMatchObject({
+        status: 'succeeded',
+      });
+      const lock = [...f.locks.values()][0]!;
+      expect(lock.path).toBe('sample.bin');
+      const result = await f.act({ kind: 'locks', remote: 'origin' });
+      expect(result).toMatchObject({
+        status: 'succeeded',
+        result: { kind: 'lfs-locks', value: { locks: [{ ours: true, path: 'sample.bin' }] } },
+      });
+      lock.owner.name = 'bob';
+      expect(
+        await f.act({ kind: 'unlock', remote: 'origin', path: lock.path, lockId: lock.id }),
+      ).toMatchObject({ status: 'failed' });
+      expect(f.locks.size).toBe(1);
+      lock.owner.name = 'alice';
+      expect(
+        await f.act({ kind: 'unlock', remote: 'origin', path: lock.path, lockId: lock.id }),
+      ).toMatchObject({ status: 'succeeded' });
+      expect(f.locks.size).toBe(0);
+      expect(await f.git('rev-parse', 'HEAD')).toBe(f.head);
+      expect(await readFile(join(f.cwd, 'sample.bin'), 'utf8')).toBe(f.pointer);
+    },
+    testPlatform.windows ? 60000 : 20000,
+  );
   it('handles authentication, missing and corrupt objects and cancellation without a partial destination', async () => {
     const f = await fixture();
     f.setRejectAuth(true);
@@ -208,6 +217,7 @@ describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
       ),
     ).toMatchObject({ status: 'failed' });
     expect(f.requests).toEqual([]);
+    if (!testPlatform.symlinks) return; // Storage and remote guards above run on every platform.
     const external = join(f.root, 'attributes');
     await writeFile(external, 'retained\n');
     await rm(join(f.cwd, '.gitattributes'));

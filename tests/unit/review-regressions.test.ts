@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -132,42 +133,45 @@ afterEach(async () => {
 });
 
 describe('review correctness regressions', () => {
-  it('stages and diffs literal wildcard, bracket, and colon filenames without including other paths', async () => {
-    const f = await fixture();
-    for (const path of ['note*.txt', 'notes.txt', '[ab].txt', 'a.txt', ':(glob)*.txt'])
-      await writeFile(join(f.cwd, path), 'original\n');
-    await f.run('add', '--all');
-    await f.run('commit', '--quiet', '-m', 'paths');
-    for (const path of ['note*.txt', 'notes.txt', '[ab].txt', 'a.txt', ':(glob)*.txt'])
-      await writeFile(join(f.cwd, path), `edited ${path}\n`);
-    const previous = process.env.GIT_GLOB_PATHSPECS;
-    process.env.GIT_GLOB_PATHSPECS = '1';
-    try {
-      for (const path of ['note*.txt', '[ab].txt', ':(glob)*.txt']) {
-        const diff = await f.service.getDiff(
-          1,
-          f.id,
-          { kind: 'working', area: 'unstaged', path, previousPath: null },
-          'normal',
-        );
-        expect(diff.content.match(/^diff --git /gmu)).toHaveLength(1);
-        await f.service.applyWorkingChange(1, {
-          id: f.id,
-          action: 'stage',
-          targets: [{ area: 'unstaged', path, previousPath: null }],
-          selection: { kind: 'file' },
-          snapshot: null,
-        });
+  it.skipIf(!testPlatform.posix)(
+    'stages and diffs literal wildcard, bracket, and colon filenames without including other paths',
+    async () => {
+      const f = await fixture();
+      for (const path of ['note*.txt', 'notes.txt', '[ab].txt', 'a.txt', ':(glob)*.txt'])
+        await writeFile(join(f.cwd, path), 'original\n');
+      await f.run('add', '--all');
+      await f.run('commit', '--quiet', '-m', 'paths');
+      for (const path of ['note*.txt', 'notes.txt', '[ab].txt', 'a.txt', ':(glob)*.txt'])
+        await writeFile(join(f.cwd, path), `edited ${path}\n`);
+      const previous = process.env.GIT_GLOB_PATHSPECS;
+      process.env.GIT_GLOB_PATHSPECS = '1';
+      try {
+        for (const path of ['note*.txt', '[ab].txt', ':(glob)*.txt']) {
+          const diff = await f.service.getDiff(
+            1,
+            f.id,
+            { kind: 'working', area: 'unstaged', path, previousPath: null },
+            'normal',
+          );
+          expect(diff.content.match(/^diff --git /gmu)).toHaveLength(1);
+          await f.service.applyWorkingChange(1, {
+            id: f.id,
+            action: 'stage',
+            targets: [{ area: 'unstaged', path, previousPath: null }],
+            selection: { kind: 'file' },
+            snapshot: null,
+          });
+        }
+      } finally {
+        if (previous === undefined) delete process.env.GIT_GLOB_PATHSPECS;
+        else process.env.GIT_GLOB_PATHSPECS = previous;
       }
-    } finally {
-      if (previous === undefined) delete process.env.GIT_GLOB_PATHSPECS;
-      else process.env.GIT_GLOB_PATHSPECS = previous;
-    }
-    expect((await f.run('diff', '--cached', '--name-only')).split('\n').sort()).toEqual(
-      [':(glob)*.txt', '[ab].txt', 'note*.txt'].sort(),
-    );
-    expect(await f.run('diff', '--name-only')).toBe('a.txt\nnotes.txt');
-  });
+      expect((await f.run('diff', '--cached', '--name-only')).split('\n').sort()).toEqual(
+        [':(glob)*.txt', '[ab].txt', 'note*.txt'].sort(),
+      );
+      expect(await f.run('diff', '--name-only')).toBe('a.txt\nnotes.txt');
+    },
+  );
 
   it('retains the selected branch namespace when a tag has the same name', async () => {
     const f = await fixture();

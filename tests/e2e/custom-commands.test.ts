@@ -1,4 +1,5 @@
 import { openTrustedFixture } from './trusted-fixture';
+import { launchOptions } from './launch-options';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,12 +30,7 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
-    const launch = () =>
-      electron.launch({
-        chromiumSandbox: true,
-        args: ['.', `--user-data-dir=${profile}`, '--ozone-platform=headless', '--disable-gpu'],
-        env,
-      });
+    const launch = () => electron.launch(launchOptions(profile, env));
     app = await launch();
     await app.evaluate(({ dialog, shell }, path) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
@@ -174,8 +170,10 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
     await openManager();
     await manager.getByRole('button', { name: 'Read-only Status repository · Enabled' }).click();
     await manager.getByLabel('Action', { exact: true }).selectOption('process');
-    await manager.getByLabel('Executable', { exact: true }).fill('/usr/bin/printf');
-    await manager.getByLabel('Arguments (JSON array)', { exact: true }).fill('["%s", "${repo:path}"]');
+    await manager.getByLabel('Executable', { exact: true }).fill(process.execPath);
+    await manager
+      .getByLabel('Arguments (JSON array)', { exact: true })
+      .fill(JSON.stringify(['-e', 'process.stdout.write(process.argv[1])', '--', '${repo:path}']));
     await manager.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(manager.getByLabel('Executable', { exact: true })).toHaveCount(0);
     await manager.getByRole('button', { name: 'Close', exact: true }).click();

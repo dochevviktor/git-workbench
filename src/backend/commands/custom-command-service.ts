@@ -15,6 +15,12 @@ import type { OperationHandle, OperationOutcome } from '../operations/operation-
 import type { CustomCommandStore } from './custom-command-store';
 import { customPreviewSchema } from '../../common/ipc/custom-commands';
 import { ExpectedBackendError } from '../errors';
+import {
+  findBash,
+  programInvocation,
+  selectedEnvironment,
+  terminateProcessTree,
+} from '../processes/platform-process';
 
 interface Prepared {
   owner: number;
@@ -208,14 +214,8 @@ export async function runCustomCommand(
     await openUrl(preview.action.url);
     return { status: 'succeeded', message: 'Opened in the system browser.', output: '' };
   }
-  if (process.platform === 'win32')
-    throw new ExpectedBackendError(
-      'UNAVAILABLE',
-      'Custom process commands currently require Linux or macOS.',
-    );
   const action = preview.action;
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of [
+  const env = selectedEnvironment([
     'PATH',
     'HOME',
     'USER',
@@ -236,28 +236,46 @@ export async function runCustomCommand(
     'XDG_DATA_DIRS',
     'PULSE_SERVER',
     'DBUS_SESSION_BUS_ADDRESS',
-  ])
-    if (process.env[key]) env[key] = process.env[key];
+  ]);
   for (const [key, value] of Object.entries(preview.variables)) env[commandEnvironmentName(key)] = value;
   env.GIT_TERMINAL_PROMPT = '0';
+  let invocation;
+  try {
+    if (action.kind === 'bash') {
+      const bash = await findBash();
+      if (!bash)
+        return {
+          status: 'failed',
+          message: 'Bash is unavailable. Install Git for Windows or choose a process command.',
+          output: '',
+        };
+      invocation = { executable: bash, args: ['--noprofile', '--norc', '-p', '-c', action.script] };
+    } else invocation = await programInvocation(action.executable, action.args);
+  } catch {
+    return {
+      status: 'failed',
+      message:
+        'The configured program could not be started. Select a native executable or a Node CLI; scripts need an explicit interpreter.',
+      output: '',
+    };
+  }
+  if (handle.signal.aborted) return { status: 'failed', message: 'Cancelled before execution.', output: '' };
   return new Promise((resolve) => {
-    const child = spawn(
-      action.kind === 'bash' ? '/bin/bash' : action.executable,
-      action.kind === 'bash' ? ['--noprofile', '--norc', '-p', '-c', action.script] : action.args,
-      { cwd: preview.cwd, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const child = spawn(invocation.executable, invocation.args, {
+      cwd: preview.cwd,
+      env,
+      shell: false,
+      windowsHide: true,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let reason = '';
     let output = '';
     let size = 0;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let termination = Promise.resolve();
     const kill = (signal: NodeJS.Signals) => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, signal);
-        } catch {
-          /* already exited */
-        }
-      }
+      termination = Promise.all([termination, terminateProcessTree(child, signal)]).then(() => undefined);
     };
     const stop = (message: string) => {
       if (reason) return;
@@ -287,14 +305,16 @@ export async function runCustomCommand(
       clearTimeout(timer);
       clearTimeout(killTimer);
       handle.signal.removeEventListener('abort', cancel);
-      // A background child must not outlive the supervised command and its repository lock.
-      kill('SIGKILL');
-      resolve({
-        status: !reason && code === 0 ? 'succeeded' : 'failed',
-        message:
-          reason || (code === 0 ? 'Command completed.' : `Command exited with status ${code ?? 'unknown'}.`),
-        output,
-      });
+      if (process.platform !== 'win32') kill('SIGKILL');
+      void termination.then(() =>
+        resolve({
+          status: !reason && code === 0 ? 'succeeded' : 'failed',
+          message:
+            reason ||
+            (code === 0 ? 'Command completed.' : `Command exited with status ${code ?? 'unknown'}.`),
+          output,
+        }),
+      );
     });
     if (handle.signal.aborted) cancel();
   });

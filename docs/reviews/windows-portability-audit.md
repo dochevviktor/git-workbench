@@ -1,5 +1,8 @@
 # Windows portability and installer audit — 2026-10-01
 
+**Historical audit:** the [Windows implementation follow-up](windows-compatibility.md) supersedes the
+feature exclusions and failing-suite status below. This record preserves the original findings.
+
 **Windows support is partial.** The application builds and runs on this Windows host, but the complete
 test suite is not green. The native smoke and successful NSIS packaging must not be interpreted as
 full Windows feature verification. P14 remains partial, and macOS was not tested.

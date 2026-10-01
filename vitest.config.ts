@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts'],
     clearMocks: true,
     maxWorkers: 2,
+    expect: { poll: { timeout: process.platform === 'win32' ? 15000 : 5000 } },
     ...(process.platform === 'win32' ? { testTimeout: 30000, hookTimeout: 30000 } : {}),
   },
 });

@@ -51,14 +51,24 @@ test('opens CLI and second-instance repositories without reload and restores win
     await page.evaluate(() => {
       Object.assign(window, { launchTestMarker: 'retained' });
     });
+    await application.evaluate(({ app }) => {
+      app.on('second-instance', (_event, argv, cwd, data) => {
+        Object.assign(globalThis, { launchForwarding: { argv, cwd, data } });
+      });
+    });
 
     const secondArgs = [...args];
     if (!executablePath) secondArgs[0] = process.cwd();
-    const child = spawn(application.process().spawnfile, [...secondArgs, '--', './-second'], {
-      cwd: root,
-      env: launchEnvironment(),
-      stdio: 'ignore',
-    });
+    const child = spawn(
+      await application.evaluate(() => process.execPath),
+      [...secondArgs, '--', './-second'],
+      {
+        cwd: root,
+        env: launchEnvironment(),
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
@@ -76,6 +86,11 @@ test('opens CLI and second-instance repositories without reload and restores win
     });
     await expect(
       page.getByRole('tab', { name: /-second, Working-tree status unavailable/u }),
+      JSON.stringify(
+        await application.evaluate(
+          () => (globalThis as unknown as { launchForwarding: unknown }).launchForwarding,
+        ),
+      ),
     ).toHaveAttribute('aria-selected', 'true');
     expect(
       await page.evaluate(() => (window as unknown as { launchTestMarker: string }).launchTestMarker),

@@ -1,3 +1,4 @@
+import { processState } from '../platform';
 import { access, readFile, copyFile, chmod, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -66,15 +67,7 @@ test('P01 repeated quit drains a running Git hook before exiting', async () => {
     });
     await exited;
     app = undefined;
-    await expect
-      .poll(async () => {
-        try {
-          return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
-        } catch {
-          return 'gone';
-        }
-      })
-      .toMatch(/^(?:Z|gone)$/u);
+    await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
     expect(await f.run('rev-parse', 'HEAD')).toBe(before);
     expect(await f.run('diff', '--cached', '--name-only')).toBe('pending.txt');
   } finally {
@@ -177,10 +170,13 @@ test('P01 trust, queryable cancellation and Fork Activity layout', async () => {
     await expect(activity).toContainText('No automatic fetches');
     await page.getByRole('tab', { name: 'All', exact: true }).click();
     await page.setViewportSize({ width: 880, height: 600 });
-    const bounds = await activity.boundingBox();
-    expect(bounds!.x).toBeGreaterThanOrEqual(0);
-    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(880);
-    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(600);
+    // Native Windows resizing can still be delivering layout frames when the CDP call returns.
+    await expect(async () => {
+      const bounds = await activity.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(880);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(600);
+    }).toPass({ timeout: 5000 });
     await page.screenshot({ path: 'test-results/p01-activity-narrow.png' });
     await page.keyboard.press('Escape');
     await expect(activity).toHaveCount(0);
@@ -196,15 +192,7 @@ test('P01 trust, queryable cancellation and Fork Activity layout', async () => {
     await expect(activity).toContainText('Cancelling');
     await expect(activity.getByTestId('activity-row')).toContainText('Cancelled');
     const pid = Number(await readFile(marker, 'utf8'));
-    await expect
-      .poll(async () => {
-        try {
-          return (await readFile(`/proc/${pid}/stat`, 'utf8')).split(' ')[2];
-        } catch {
-          return 'gone';
-        }
-      })
-      .toMatch(/^(?:Z|gone)$/u);
+    await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
     await page.screenshot({ path: 'test-results/p01-activity-cancelled.png' });
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Repository settings', exact: true }).click();

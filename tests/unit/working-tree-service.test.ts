@@ -1,3 +1,4 @@
+import { fixtureName } from '../platform';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -88,7 +89,7 @@ describe('working-tree status service', () => {
     await git.run(['add', '--', 'partial.txt'], { cwd: repository });
     await writeFile(join(repository, 'partial.txt'), 'staged and unstaged\n', 'utf8');
     await git.run(['mv', '--', 'old name.txt', 'new name.txt'], { cwd: repository });
-    await writeFile(join(repository, 'untracked\nfile.txt'), 'untracked\n', 'utf8');
+    await writeFile(join(repository, fixtureName('untracked\nfile.txt')), 'untracked\n', 'utf8');
     await writeFile(join(repository, '.gitignore'), 'ignored.txt\n', 'utf8');
     await writeFile(join(repository, 'ignored.txt'), 'ignored\n', 'utf8');
     if (process.platform !== 'win32') await chmod(join(repository, 'new name.txt'), 0o755);
@@ -122,7 +123,7 @@ describe('working-tree status service', () => {
     );
     expect(visible.untracked).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ path: 'untracked\nfile.txt', status: 'untracked' }),
+        expect.objectContaining({ path: fixtureName('untracked\nfile.txt'), status: 'untracked' }),
         expect.objectContaining({ path: '.gitignore', status: 'untracked' }),
       ]),
     );

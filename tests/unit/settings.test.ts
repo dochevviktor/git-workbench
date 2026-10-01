@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -216,7 +217,7 @@ describe('F34 scoped settings', () => {
     const f = await fixture();
     const included = join(f.root, 'identity');
     await writeFile(included, '[user]\n name = Included\n');
-    await writeFile(f.global, `[include]\n path = ${included}\n`);
+    await f.run('config', '--file', f.global, 'include.path', included);
     const before = await f.read();
     expect(before.effectiveName.origin).toBe(`file:${included}`);
     await writeFile(included, '[user]\n name = Externally changed\n');
@@ -259,18 +260,21 @@ describe('F34 scoped settings', () => {
     expect(canInvokeCommitInspector(requests.saveGitSettings.channel, { id: 'repo' })).toBe(false);
     expect(canInvokeCommitInspector(requests.getGitSettings.channel, { id: null })).toBe(false);
   });
-  it('resolves global write scope and preserves symlink destinations', async () => {
-    const f = await fixture();
-    const home = join(f.root, 'home');
-    await mkdir(join(home, '.config/git'), { recursive: true });
-    const xdg = join(home, '.config/git/config');
-    await writeFile(xdg, '');
-    expect(await globalConfigPath({ HOME: home })).toBe(xdg);
-    const link = join(home, '.gitconfig');
-    await symlink(f.global, link);
-    expect(await globalConfigPath({ HOME: home })).toBe(link);
-    const settings = await f.service.read(null, f.root, link);
-    await f.service.save(f.root, link, { ...input(settings), name: 'Through link' });
-    expect(await readFile(f.global, 'utf8')).toContain('Through link');
-  });
+  it.skipIf(!testPlatform.symlinks)(
+    'resolves global write scope and preserves symlink destinations',
+    async () => {
+      const f = await fixture();
+      const home = join(f.root, 'home');
+      await mkdir(join(home, '.config/git'), { recursive: true });
+      const xdg = join(home, '.config/git/config');
+      await writeFile(xdg, '');
+      expect(await globalConfigPath({ HOME: home })).toBe(xdg);
+      const link = join(home, '.gitconfig');
+      await symlink(f.global, link);
+      expect(await globalConfigPath({ HOME: home })).toBe(link);
+      const settings = await f.service.read(null, f.root, link);
+      await f.service.save(f.root, link, { ...input(settings), name: 'Through link' });
+      expect(await readFile(f.global, 'utf8')).toContain('Through link');
+    },
+  );
 });

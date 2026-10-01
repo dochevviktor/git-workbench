@@ -5,6 +5,7 @@ import { _electron as electron, expect } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import { GitRunner } from '../../src/backend/git/runner';
 import { openTrustedFixture } from './trusted-fixture';
+import { launchOptions } from './launch-options';
 
 export async function auditFixture(gatedGit = false) {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-p14-'));
@@ -45,11 +46,7 @@ export async function auditFixture(gatedGit = false) {
       env.GIT_WORKBENCH_TEST_GIT_GATE = gate;
     }
     const started = performance.now();
-    app = await electron.launch({
-      chromiumSandbox: true,
-      args: ['.', `--user-data-dir=${profile}`, '--ozone-platform=headless', '--disable-gpu'],
-      env,
-    });
+    app = await electron.launch(launchOptions(profile, env));
     const page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     const startupMs = performance.now() - started;

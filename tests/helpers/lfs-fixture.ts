@@ -9,8 +9,10 @@ import { promisify } from 'node:util';
 import { GitRunner } from '../../src/backend/git/runner';
 import type { GitRunOptions } from '../../src/backend/git/runner';
 import { RepositoryService } from '../../src/backend/repositories/repository-service';
+import { testPlatform } from '../platform';
 
 export function hasGitLfs() {
+  if (!testPlatform.openssl) return false;
   try {
     execFileSync('git', ['lfs', 'version'], { stdio: 'ignore' });
     return true;

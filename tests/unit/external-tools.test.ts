@@ -1,3 +1,4 @@
+import { fixtureName, testPlatform } from '../platform';
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,10 +15,13 @@ import { canInvokeInspector } from '../../src/backend/electron/commit-inspector-
 const roots: string[] = [];
 const services: RepositoryService[] = [];
 afterEach(async () => {
-  services.splice(0).forEach((service) => service.dispose());
+  for (const service of services.splice(0)) {
+    service.dispose();
+    await service.settled();
+  }
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-async function fixture(path = "-value ' $(touch injected);\n.txt") {
+async function fixture(path = fixtureName("-value ' $(touch injected);\n.txt")) {
   const root = await mkdtemp(join(tmpdir(), 'workbench-f33-'));
   roots.push(root);
   const cwd = join(root, "Café '$() ; repository");
@@ -239,9 +243,11 @@ describe('F33 external tools', () => {
     const target: ExternalTarget = { kind: 'working', path: f.path, area: 'unstaged', line: 37 };
     const result = await f.execute(reader, target);
     expect(JSON.parse(result.output)).toEqual([f.cwd, join(f.cwd, f.path), '37', f.cwd]);
-    await symlink(join(f.cwd, f.path), join(f.cwd, 'link'));
-    await f.run('add', '--', 'link');
-    expect((await f.execute(reader, { ...target, path: 'link' })).status).toBe('failed');
+    if (testPlatform.symlinks) {
+      await symlink(join(f.cwd, f.path), join(f.cwd, 'link'));
+      await f.run('add', '--', 'link');
+      expect((await f.execute(reader, { ...target, path: 'link' })).status).toBe('failed');
+    }
     expect((await f.execute({ ...reader, executable: join(f.root, 'missing') }, target)).message).toMatch(
       /missing|executable/u,
     );

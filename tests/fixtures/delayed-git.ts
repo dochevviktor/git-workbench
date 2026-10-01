@@ -13,8 +13,9 @@ if (delayed) {
       process.exit(0),
     );
   });
+  await writeFile(`${process.env.GIT_WORKBENCH_DELAY_MARKER!}.pid`, String(process.pid));
   await writeFile(process.env.GIT_WORKBENCH_DELAY_MARKER!, 'log started');
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, process.platform === 'win32' ? 10000 : 2000));
 }
 const child = spawn(executable, args, { stdio: 'inherit' });
 child.once('error', () => {

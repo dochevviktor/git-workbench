@@ -120,7 +120,9 @@ test('P12 workspaces own windows, tab colors and saved layouts; profile preferen
       );
       expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
       await other.close();
-      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+      await expect
+        .poll(() => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length))
+        .toBe(1);
     }
     await home.bringToFront();
     await home.keyboard.press('Control+1');

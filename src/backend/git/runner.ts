@@ -9,6 +9,7 @@ import type { GitAuthenticationPolicy } from './authentication-policy';
 import { createCredentialBroker, credentialProgress } from './credential-broker';
 import type { GitCredentialBridge } from './credential-broker';
 import { ExpectedBackendError } from '../errors';
+import { programInvocation } from '../processes/platform-process';
 
 const defaultOutputLimit = 2 * 1024 * 1024;
 const defaultTimeout = 30_000;
@@ -319,11 +320,12 @@ export class GitRunner {
     );
     const commandArgs = literal ? ['--literal-pathspecs', ...args] : [...args];
     this.logger?.({ command: displayCommand(executable, commandArgs), cwd: redactArgument(options.cwd) });
+    const invocation = await programInvocation(executable, commandArgs);
 
     return new Promise<GitCommandResult>((resolve, reject) => {
       let child: ChildProcessWithoutNullStreams;
       try {
-        child = spawn(executable, commandArgs, {
+        child = spawn(invocation.executable, invocation.args, {
           cwd: options.cwd,
           env: {
             ...controlledEnvironment(options.env, options.authentication),

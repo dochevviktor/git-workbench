@@ -1,13 +1,14 @@
 import { constants } from 'node:fs';
 import { access, realpath, stat } from 'node:fs/promises';
 import { delimiter, isAbsolute, join, resolve, sep } from 'node:path';
+import { programInvocation } from '../processes/platform-process';
 
 async function isExecutable(candidate: string): Promise<boolean> {
   try {
     await access(candidate, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
-    return (
-      (await stat(candidate)).isFile() && (process.platform !== 'win32' || /\.(?:exe|com)$/iu.test(candidate))
-    );
+    if (!(await stat(candidate)).isFile()) return false;
+    if (process.platform === 'win32') await programInvocation(candidate, []);
+    return true;
   } catch {
     return false;
   }

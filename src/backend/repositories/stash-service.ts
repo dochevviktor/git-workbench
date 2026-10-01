@@ -1,4 +1,3 @@
-import { devNull } from 'node:os';
 import { ExpectedBackendError } from '../errors';
 import type {
   RepositoryPatchTarget,
@@ -304,7 +303,7 @@ async function readWorkingPatch(
             '--binary',
             '--no-index',
             '--',
-            devNull,
+            '/dev/null',
             path,
           ],
           { ...readOptions(cwd, patchOutputLimit), stdoutEncoding: 'base64' },

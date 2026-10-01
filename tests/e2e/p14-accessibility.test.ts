@@ -192,6 +192,16 @@ test('P14 scaled keyboard navigation, forced colors and renderer crash recovery 
         ),
       )
       .toBe('connected');
+    // Preload connection precedes repository restoration. A native JS click has no locator auto-wait.
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
+            '[...document.querySelectorAll("button")].some(button => button.textContent.startsWith("Local Changes") && !button.disabled)',
+          ),
+        ),
+      )
+      .toBe(true);
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
         '[...document.querySelectorAll("button")].find(button => button.textContent.startsWith("Local Changes"))?.click()',

@@ -18,7 +18,11 @@ const child = spawn(
     'test',
     'tests/e2e/desktop.test.ts',
     'tests/e2e/p14-package.test.ts',
+    'tests/e2e/p14-commit-refresh.test.ts',
     'tests/e2e/windows-native.test.ts',
+    'tests/e2e/custom-commands.test.ts',
+    'tests/e2e/external-tools.test.ts',
+    'tests/e2e/p13-ai.test.ts',
     '--output=release/p14/package-verified',
   ],
   {

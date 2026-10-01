@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -96,8 +97,9 @@ describe('submodule service', () => {
       state: 'uninitialized',
       revisions: { working: null },
     });
+    if (!testPlatform.symlinks) return; // The uninitialized-child assertion above remains portable.
     await rm(join(f.parent, 'modules/demo'), { recursive: true });
-    await symlink(f.source, join(f.parent, 'modules/demo'));
+    await symlink(f.source, join(f.parent, 'modules/demo'), 'dir');
     const linked = await readSubmoduleContext(f.git, { repositoryId, cwd: f.parent });
     expect(linked.submodules[0]?.initialized).toBe(false);
     expect(

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { GitRunner } from '../../src/backend/git/runner';
+import { testPlatform, processState } from '../platform';
 
 test('P02 manager folders, aliases, summaries, default source and automatic discovery', async () => {
   const root = await mkdtemp(join(tmpdir(), 'workbench-p02-ui-'));
@@ -325,9 +326,15 @@ test('P02 a delayed history response cannot replace the active repository', asyn
     await expect.poll(() => readFile(marker, 'utf8').catch(() => '')).toBe('log started');
     await page.getByRole('tab', { name: /^Fast, /u }).click();
     await expect(page.getByTestId('history-commit').first()).toContainText('Fast history');
-    await expect
-      .poll(() => readFile(`${marker}.done`, 'utf8').catch(() => ''), { timeout: 5000 })
-      .toBe('log cancelled');
+    if (testPlatform.windows) {
+      // Windows tree termination does not invoke a POSIX SIGTERM handler.
+      const pid = Number(await readFile(`${marker}.pid`, 'utf8'));
+      await expect.poll(() => processState(pid)).toBe('gone');
+    } else {
+      await expect
+        .poll(() => readFile(`${marker}.done`, 'utf8').catch(() => ''), { timeout: 5000 })
+        .toBe('log cancelled');
+    }
     await expect(page.getByTestId('history-commit').first()).toContainText('Fast history');
     await expect(page.getByTestId('history-commit').filter({ hasText: 'Slow history' })).toHaveCount(0);
   } finally {

@@ -244,7 +244,7 @@ test('P05 force preview refuses a moved remote after fetch, and stale-branch bat
     await f.git(['push', 'origin', '--delete', 'stale-a', 'stale-b']);
     await page.keyboard.press('F5');
     const tree = page.getByRole('tree', { name: 'References', exact: true });
-    await expect(tree.getByRole('treeitem', { name: /stale-a/u })).toBeVisible();
+    await expect(tree.locator('[role="treeitem"][title="refs/heads/stale-a"]')).toBeVisible();
     await tree.getByRole('treeitem', { name: 'Branches', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Select Stale Local Branches…', exact: true }).click();
     await expect(dialog.getByRole('checkbox', { name: /stale-a/u })).toBeChecked();
