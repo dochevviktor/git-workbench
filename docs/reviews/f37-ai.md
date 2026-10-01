@@ -1,5 +1,9 @@
 # F37 — Optional AI messages and diff review
 
+Superseded within P13 by the [2026-10-01 completion handoff](p13-statistics-ai.md): named CLI/local
+adapters, public saved choices, custom requests and amend generation are now implemented. The original
+OpenAI-only checkpoint and test results below remain historical evidence, not the current provider scope.
+
 Implementation date: 2026-09-22. A bounded OpenAI API workflow; full external-agent parity remains
 partial. No live provider account or credentials were used during implementation or testing.
 

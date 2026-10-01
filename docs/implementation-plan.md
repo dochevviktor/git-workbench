@@ -238,7 +238,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P10   | Binary/image diffs, LFS, signing                                     | Complete for Linux phase scope (2026-09-29); bounded rich formats/SVG, zoom, cached LFS images, authenticated transfers, tracking/ownership, GPG defaults and protected-agent workflows verified; see P10 handoff                        | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Complete for researched Linux matrix; review corrections verified (2026-09-30): credential/preferences isolation, Bitbucket scopes/cursors, polling deadlines and F16 readiness; all 78 routine Electron scenarios pass; see P11 handoff | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Complete for Linux phase scope (2026-10-01); workspace windows/layouts, expanded Preferences, command/tool defaults, keyboard and retention verified; see P12 handoff; native/platform parity gates remain P14                           | P02/P03 plus relevant domain services |
-| P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                                                              | P03 history; P12 tools for AI         |
+| P13   | Statistics and explicitly enabled AI integrations                    | Complete for independently specified Linux phase scope (2026-10-01): nested statistics, CLI/local AI adapters, saved public choices, prompts and amend verified; live-provider/native/P14 gates remain; see P13 handoff                  | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                                  | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
@@ -1578,6 +1578,24 @@ Acceptance for these two deliverables:
 ## P13 — Statistics and optional AI integrations
 
 Coverage: F35, F37. These are separate slices; AI is never required for normal Git use.
+
+Completion — **2026-10-01**: [P13 handoff](reviews/p13-statistics-ai.md) supersedes the bounded
+checkpoints below. Statistics now aligns with P2-010's nested folder/file tiles and narrow activity
+sidebar, with compact calculation options and bounded/paged rendering. Existing independent UTC,
+raw-author and Git activity tests pass. AI adds named Claude Code/Codex/Cursor CLI adapters and local
+Ollama alongside OpenAI; custom commit/review requests, versioned saved public choices, disabled
+restart, and root/first-parent amend generation complete the specified Linux workflows. Preview/Send,
+editable draft guards, owner cancellation, private keys and inert results are retained. Shutdown drains
+agent cleanup. Current vendor contracts and locally installed Codex/Claude help were checked; actual
+provider calls were replaced by deterministic HTTP/process stand-ins during testing.
+
+Verified: `npm run check` (693 passing tests, 6 existing skips; type/lint/format pass), `npm run build`
+via `test:e2e`, and all four focused Electron scenarios (F35, F37, P13 and desktop isolation/preload/
+commit/hooks). Light/dark/narrow captures were compared with original P2-010, P0-013/P0-030 and public
+Commit preferences evidence. No user repository, live provider credentials, private bundle or app
+reference assets were changed. Live provider/version/model compatibility, Windows/macOS execution,
+native frame/scaling/accessibility and P14 large-history budgets remain explicitly unverified release
+gates; no exact undocumented Fork AI/aggregation parity is claimed.
 
 F35 bounded slice verified 2026-09-22: Repository Statistics and Treemap, UTC date filtering,
 monthly chart/contributor table/donut, weighted selectable file/folder activity and Commits/Authors

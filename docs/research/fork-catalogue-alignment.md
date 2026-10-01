@@ -1,5 +1,29 @@
 # Fork catalogue alignment — 2026-09-20
 
+P13 alignment — **2026-10-01**: [implementation and verification record](../reviews/p13-statistics-ai.md).
+`P2-010:F1` (2026-09-19, Windows 2.22.0.0, 96 DPI, high confidence for the sampled state) now maps to
+compact range/options controls, nested neutral treemap groups with independent file icons, selected
+blue borders and a narrow Commits/Authors sidebar with contribution bars. The orange chart and
+contributor table/donut remain. Original case, screens 0515–0517 and linked Git manifests/graphs were
+reviewed before edits and compared with Linux light/dark/narrow captures afterward. Explicit dates,
+UTC/raw-author metrics, total monthly series, Unicode paths, bounded/paged rendering and a shared modal
+remain deliberate adaptations. Aggregation and tile algorithms are still unknown in Fork.
+
+F37 has no private AI case. `P0-013-general-git-subcase:F1–F4` and `P0-030:F1` retain their original
+2026-09-19 settings/composer/Git scope. The restored Windows/light
+[TrackerWin 2808 image](https://github.com/fork-dev/TrackerWin/issues/2808) (2026-06-22, version unstated)
+supports the additional Preferences → Commit entry point. [Windows](https://fork.dev/releasenoteswin)
+and [Mac](https://fork.dev/releasenotes) release claims and current vendor CLI/API sources, accessed
+2026-10-01, are linked in the handoff. Claude Windows/Mac, Codex Mac and Cursor Mac messages remain
+distinct documented inventories, not inferred cross-platform behavior.
+
+The new provider/default-request pages, remembered public choices, session activation, explicit preview
+and Send, root/first-parent amend and local Ollama are independently specified. Fresh captures cover
+light/dark and 720-pixel layouts; request actions remain visible while content scrolls. All AI output
+is inert, credentials remain outside DTOs, and controlled tests preserve Git refs/index/worktree.
+Live providers and native frame/scaling/accessibility matrices remain unverified. No private artifact,
+case coverage status or reference image was changed; no capture alone is counted as implementation.
+
 P12 alignment — **2026-10-01**: [implementation and retention record](../reviews/p12-productivity-workspaces.md).
 `P0-008-toolbar-dropdown-subcase:F3` and `P0-005-tab-sidebar-subcase:F1` guide the workspace dropdown
 and named additive repository list; separate window ownership, saved layouts and tab colors have an

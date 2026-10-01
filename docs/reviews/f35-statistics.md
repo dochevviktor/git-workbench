@@ -1,5 +1,9 @@
 # F35 repository statistics — 2026-09-22
 
+Superseded within P13 by the [2026-10-01 completion handoff](p13-statistics-ai.md). The metric/backend
+specification below remains current; nested folder tiles, compact options and paged details replace
+the earlier presentation limits. Historical test results below retain their original date/scope.
+
 The bounded Statistics/Treemap workflow is implemented through Repository > Statistics… and
 Repository > Repository Treemap… (also discoverable through the existing Quick Launch projection).
 P13 remains partial: F37 AI integrations are separate and unimplemented by this change.

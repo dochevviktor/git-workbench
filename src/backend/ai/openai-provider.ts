@@ -25,6 +25,25 @@ const responseSchema = z.object({
     .max(100),
 });
 
+export async function readAiResponse(response: Response): Promise<unknown> {
+  if (!response.body) throw new Error('Empty response');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 512 * 1024) throw new Error('Response limit');
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+}
+
 /** No tools, URL input, conversation, response persistence, redirects or automatic retries. */
 export class OpenAiProvider implements AiProvider {
   constructor(private readonly transport: typeof fetch = (url, init) => fetch(url, init)) {}
@@ -56,22 +75,7 @@ export class OpenAiProvider implements AiProvider {
                 : 'OpenAI could not complete the request. No automatic retry was made.';
         throw new ExpectedBackendError('UNAVAILABLE', message);
       }
-      if (!response.body) throw new Error('Empty response');
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.length;
-          if (size > 512 * 1024) throw new Error('Response limit');
-          chunks.push(value);
-        }
-      } finally {
-        await reader.cancel().catch(() => undefined);
-      }
-      const parsed = responseSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      const parsed = responseSchema.parse(await readAiResponse(response));
       const text = parsed.output
         .filter((item) => item.type === 'message' && item.role === 'assistant')
         .flatMap((item) => item.content ?? [])

@@ -146,6 +146,7 @@ test('F37 opt-in setup, exact preview, editable draft, range review, cancellatio
     });
     await page.screenshot({ path: test.info().outputPath('f37-review-dark.png') });
     await page.setViewportSize({ width: 720, height: 680 });
+    await expect(review.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
     await page.screenshot({ path: test.info().outputPath('f37-review-narrow.png') });
     await review.getByRole('button', { name: 'New preview' }).click();
     await review.getByRole('checkbox', { name: /I reviewed this material/u }).check();

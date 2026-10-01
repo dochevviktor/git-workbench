@@ -213,11 +213,12 @@ export function registerAppIpc(
         return null;
       }),
     );
-    register(requests.getAiSettings, () => repositoryService.ai.settings());
+    register(requests.getAiSettings, () => repositoryService.ai.getSettings());
     register(requests.configureAi, (window, request) =>
-      repositoryService.ai.configure(window.webContents.id, request.model, async () => {
+      repositoryService.ai.configure(window.webContents.id, request, async (kind) => {
         const selected = await dialog.showOpenDialog(window, {
-          title: 'Select OpenAI API key file (session only)',
+          title:
+            kind === 'key' ? 'Select AI API key file (session only)' : 'Select installed AI agent executable',
           properties: ['openFile'],
         });
         return selected.canceled ? null : (selected.filePaths[0] ?? null);

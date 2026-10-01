@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RepositorySummary } from '../../../common/ipc/contracts';
-import type { AiPreview, AiSettings, AiTarget } from '../../../common/ipc/ai';
-import { aiModelSchema, aiTargetSchema } from '../../../common/ipc/ai';
+import type { AiPreview, AiSettings, AiTarget, AiProviderId } from '../../../common/ipc/ai';
+import {
+  aiConfigureSchema,
+  aiProviderNames,
+  aiProviderSchema,
+  defaultAiPrompts,
+  aiTargetSchema,
+} from '../../../common/ipc/ai';
 import { unwrapResult } from '../../../common/ipc/result';
 import './ai.css';
 
 function errorText(reason: unknown) {
   return reason instanceof Error ? reason.message : 'AI is unavailable.';
+}
+
+function executionLabel(provider: AiProviderId) {
+  return provider === 'ollama'
+    ? 'Local server · 127.0.0.1:11434'
+    : provider === 'openai'
+      ? 'Remote API'
+      : 'Installed CLI · Remote model';
 }
 
 function useAiDialog(onClose: () => void, id?: string) {
@@ -34,6 +48,11 @@ export function AiSettingsDialog({ onClose }: { onClose(): void }) {
   const { dialog, generation, close } = useAiDialog(onClose);
   const [settings, setSettings] = useState<AiSettings>();
   const [model, setModel] = useState('');
+  const [provider, setProvider] = useState<AiProviderId>('openai');
+  const [commitPrompt, setCommitPrompt] = useState(defaultAiPrompts.commit);
+  const [reviewPrompt, setReviewPrompt] = useState(defaultAiPrompts.review);
+  const [remember, setRemember] = useState(false);
+  const [tab, setTab] = useState<'provider' | 'prompts'>('provider');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -45,6 +64,10 @@ export function AiSettingsDialog({ onClose }: { onClose(): void }) {
         if (current) {
           setSettings(value);
           setModel(value.model ?? '');
+          setProvider(value.provider);
+          setCommitPrompt(value.commitPrompt);
+          setReviewPrompt(value.reviewPrompt);
+          setRemember(value.remember);
         }
       })
       .catch((reason: unknown) => {
@@ -54,18 +77,28 @@ export function AiSettingsDialog({ onClose }: { onClose(): void }) {
       current = false;
     };
   }, []);
-  const update = async (disable: boolean) => {
+  const request = { model, provider, commitPrompt, reviewPrompt, remember };
+  const agent = provider !== 'openai' && provider !== 'ollama';
+  const usesKey = provider === 'openai' || provider === 'cursor';
+  const sameProvider = provider === settings?.provider;
+  const configured = sameProvider && settings.enabled;
+  const claimed = useRef(false);
+  const update = async (disable: boolean, selectExecutable = false, replaceKey = false) => {
     const api = window.desktop;
-    if (!api) return;
+    if (!api || claimed.current) return;
+    claimed.current = true;
     const current = ++generation.current.value;
     setBusy(true);
     setError('');
     try {
-      const value = unwrapResult(await (disable ? api.ai.disable() : api.ai.configure({ model })));
+      const value = unwrapResult(
+        await (disable ? api.ai.disable() : api.ai.configure({ ...request, selectExecutable, replaceKey })),
+      );
       if (current === generation.current.value) setSettings(value);
     } catch (reason) {
       if (current === generation.current.value) setError(errorText(reason));
     } finally {
+      claimed.current = false;
       if (current === generation.current.value) setBusy(false);
     }
   };
@@ -82,44 +115,169 @@ export function AiSettingsDialog({ onClose }: { onClose(): void }) {
     >
       <div className="dialog-content">
         <h2>AI Integration</h2>
-        <p>OpenAI · Remote API · {settings?.enabled ? 'Enabled for this session' : 'Disabled'}</p>
+        <nav className="ai-tabs" aria-label="AI settings pages">
+          <button type="button" aria-pressed={tab === 'provider'} onClick={() => setTab('provider')}>
+            Provider
+          </button>
+          <button type="button" aria-pressed={tab === 'prompts'} onClick={() => setTab('prompts')}>
+            Default requests
+          </button>
+        </nav>
         <p>
-          Generate commit messages and review diffs. Each request shows the exact material before you send it.
-          An OpenAI API account and billing are required.
+          {configured ? 'Enabled for this session' : 'Disabled'} · {executionLabel(provider)}
         </p>
-        <label>
-          Model
+        {tab === 'provider' ? (
+          <>
+            <label className="ai-setting-row">
+              AI agent
+              <select
+                aria-label="AI provider"
+                value={provider}
+                disabled={busy}
+                onChange={(event) => setProvider(aiProviderSchema.parse(event.target.value))}
+              >
+                {aiProviderSchema.options.map((value) => (
+                  <option value={value} key={value}>
+                    {aiProviderNames[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Model
+              <input
+                aria-label="AI model"
+                value={model}
+                placeholder={
+                  provider === 'ollama'
+                    ? 'Name of an installed local model'
+                    : 'Model name available to your account'
+                }
+                maxLength={128}
+                disabled={busy}
+                onChange={(event) => setModel(event.target.value)}
+              />
+            </label>
+            {agent && (
+              <div className="ai-executable">
+                <span title={sameProvider ? (settings.executable ?? undefined) : undefined}>
+                  {sameProvider && settings.executable
+                    ? settings.executable
+                    : 'Select your installed CLI when enabling.'}
+                </span>
+                {sameProvider && settings.executable && (
+                  <button
+                    type="button"
+                    className="button button-small"
+                    disabled={busy || !aiConfigureSchema.safeParse(request).success}
+                    onClick={() => void update(false, true)}
+                  >
+                    Change executable…
+                  </button>
+                )}
+              </div>
+            )}
+            <p className="muted">
+              {provider === 'ollama'
+                ? 'Uses an already installed local model. Start Ollama separately with cloud features disabled. No model is downloaded by this app.'
+                : usesKey
+                  ? `Select a text file containing your ${aiProviderNames[provider]} API key. The key stays in memory until Disable or quit. An API account with available usage is required.`
+                  : `Install ${aiProviderNames[provider]} and sign in through its terminal login first. This app does not read or store the agent’s login credentials.`}
+            </p>
+            <p className="muted">
+              Setup sends no repository content. Each request has a preview and a separate Send action.
+            </p>
+          </>
+        ) : (
+          <>
+            <label>
+              Commit message request
+              <textarea
+                aria-label="Commit message request"
+                rows={4}
+                maxLength={3000}
+                value={commitPrompt}
+                disabled={busy}
+                onChange={(event) => setCommitPrompt(event.target.value)}
+              />
+            </label>
+            <label>
+              Code review request
+              <textarea
+                aria-label="Code review request"
+                rows={4}
+                maxLength={3000}
+                value={reviewPrompt}
+                disabled={busy}
+                onChange={(event) => setReviewPrompt(event.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="button"
+              disabled={busy}
+              onClick={() => {
+                setCommitPrompt(defaultAiPrompts.commit);
+                setReviewPrompt(defaultAiPrompts.review);
+              }}
+            >
+              Restore default requests
+            </button>
+            <p className="muted">
+              The displayed diff is added automatically. Requests are plain text; do not include credentials.
+              The app always adds instructions to treat the diff as data and return text without running
+              tools.
+            </p>
+          </>
+        )}
+        <label className="ai-check">
           <input
-            aria-label="AI model"
-            value={model}
-            placeholder="Enter a text model ID available to your project"
-            maxLength={128}
+            type="checkbox"
+            checked={remember}
             disabled={busy}
-            onChange={(event) => setModel(event.target.value)}
+            onChange={(event) => setRemember(event.target.checked)}
           />
+          Remember model, executable and requests
         </label>
         <p className="muted">
-          Select a text file containing your API key. The key stays in application memory until you disable AI
-          or quit. Nothing is sent during setup; credentials and model availability are checked on your first
-          request.
+          Remembered choices are saved in this app’s profile. AI starts disabled after restart; keys and
+          results are never saved with these choices.
         </p>
         {error && <p role="alert">{error}</p>}
         <div className="dialog-actions">
           <button
             type="button"
             className="button primary"
-            disabled={busy || !aiModelSchema.safeParse(model).success}
+            disabled={busy || !settings || !aiConfigureSchema.safeParse(request).success}
             onClick={() => void update(false)}
           >
-            {settings?.enabled ? 'Replace key / model…' : 'Select key file and enable…'}
+            {configured
+              ? 'Save settings'
+              : usesKey
+                ? 'Select key file and enable…'
+                : agent && (!sameProvider || !settings?.executable)
+                  ? 'Select executable and enable…'
+                  : 'Enable for this session'}
           </button>
+          {usesKey && configured && (
+            <button
+              type="button"
+              className="button"
+              disabled={busy || !aiConfigureSchema.safeParse(request).success}
+              onClick={() => void update(false, false, true)}
+            >
+              Replace key…
+            </button>
+          )}
           <button
             type="button"
             className="button"
             disabled={!settings?.enabled || busy}
             onClick={() => void update(true)}
           >
-            Disable and forget key
+            {settings?.provider === 'openai' || settings?.provider === 'cursor'
+              ? 'Disable and forget key'
+              : 'Disable'}
           </button>
           <button type="button" className="button" onClick={close}>
             Close
@@ -138,7 +296,7 @@ export function AiRequestDialog({
   draftAvailable = true,
 }: {
   repository: RepositorySummary;
-  mode: 'staged' | 'range';
+  mode: 'staged' | 'amend' | 'range';
   onClose(): void;
   onUseDraft?(text: string): void;
   draftAvailable?: boolean;
@@ -192,10 +350,14 @@ export function AiRequestDialog({
       current = false;
     };
   }, [mode, repository.id]);
-  const target: AiTarget = mode === 'staged' ? { kind: 'staged' } : { kind: 'range', base, head, mergeBase };
+  const target: AiTarget = mode !== 'range' ? { kind: mode } : { kind: 'range', base, head, mergeBase };
+  const provider = preview?.provider ?? settings?.provider ?? 'openai';
+  const providerName = aiProviderNames[provider];
+  const claimed = useRef(false);
   const perform = async (send: boolean) => {
     const api = window.desktop;
-    if (!api) return;
+    if (!api || claimed.current) return;
+    claimed.current = true;
     const current = ++generation.current.value;
     setBusy(true);
     setError('');
@@ -215,6 +377,7 @@ export function AiRequestDialog({
     } catch (reason) {
       if (current === generation.current.value) setError(errorText(reason));
     } finally {
+      claimed.current = false;
       if (current === generation.current.value) setBusy(false);
     }
   };
@@ -223,7 +386,7 @@ export function AiRequestDialog({
       <dialog
         ref={dialog}
         className="dialog ai-dialog"
-        aria-label={mode === 'staged' ? 'Generate Commit Message' : 'AI Code Review'}
+        aria-label={mode !== 'range' ? 'Generate Commit Message' : 'AI Code Review'}
         onKeyDown={(event) => event.stopPropagation()}
         onCancel={(event) => {
           event.preventDefault();
@@ -231,12 +394,12 @@ export function AiRequestDialog({
         }}
       >
         <div className="dialog-content">
-          <h2>{mode === 'staged' ? 'Generate Commit Message' : 'AI Code Review'}</h2>
+          <h2>{mode !== 'range' ? 'Generate Commit Message' : 'AI Code Review'}</h2>
           <p className="ai-scope">
             {repository.name} · {repository.path}
           </p>
           <p>
-            OpenAI · Remote API · {settings?.enabled ? settings.model : 'Disabled'}{' '}
+            {providerName} · {executionLabel(provider)} · {settings?.enabled ? settings.model : 'Disabled'}{' '}
             <button
               type="button"
               className="button button-small"
@@ -302,16 +465,20 @@ export function AiRequestDialog({
                 This is a fixed snapshot. Later repository changes are not added to this request.
               </p>
               <details>
-                <summary>Instructions sent to OpenAI</summary>
+                <summary>Instructions sent to {providerName}</summary>
                 <pre>{preview.instructions}</pre>
               </details>
               <pre className="ai-material" aria-label="Material to send" tabIndex={0}>
                 {preview.material}
               </pre>
               <p className="muted">
-                Response storage is disabled for this request. Provider abuse-monitoring retention may still
-                apply. Cancel stops waiting but cannot recall data already sent. The app keeps this preview
-                and review in memory only; using a generated message saves it as your ordinary commit draft.
+                {provider === 'openai'
+                  ? 'Response storage is disabled for this request. Provider abuse-monitoring retention may still apply. '
+                  : provider === 'ollama'
+                    ? 'The request goes to your local Ollama server. Its logging settings apply. '
+                    : 'Your installed agent sends the preview to its provider. Provider retention and managed policies apply; CLI session persistence is disabled or isolated in a temporary directory. '}
+                Cancel stops the request but cannot recall data already sent. The app keeps this preview and
+                review in memory only; using a generated message saves it as your ordinary commit draft.
               </p>
               {!sent && (
                 <label className="ai-check">
@@ -320,14 +487,14 @@ export function AiRequestDialog({
                     checked={approved}
                     onChange={(event) => setApproved(event.target.checked)}
                   />
-                  I reviewed this material and want to send it to OpenAI.
+                  I reviewed this material and want to send it to {providerName}.
                 </label>
               )}
             </>
           )}
           {result && (
             <label>
-              {mode === 'staged' ? 'Editable generated message' : 'Review findings (unverified)'}
+              {mode !== 'range' ? 'Editable generated message' : 'Review findings (unverified)'}
               <textarea
                 aria-label="AI result"
                 value={result}
@@ -337,14 +504,14 @@ export function AiRequestDialog({
               />
             </label>
           )}
-          {result && mode === 'staged' && !draftAvailable && (
+          {result && mode !== 'range' && !draftAvailable && (
             <p role="alert">
               The commit draft or staged changes changed while this dialog was open. Close and generate again;
               your current draft has been preserved.
             </p>
           )}
           {error && <p role="alert">{error}</p>}
-          {busy && <p role="status">{sent ? 'Waiting for OpenAI…' : 'Preparing local preview…'}</p>}
+          {busy && <p role="status">{sent ? `Waiting for ${providerName}…` : 'Preparing local preview…'}</p>}
           <div className="dialog-actions">
             {(!preview || sent) && (
               <button
@@ -363,7 +530,7 @@ export function AiRequestDialog({
                 disabled={busy || !approved}
                 onClick={() => void perform(true)}
               >
-                Send to OpenAI
+                Send to {providerName}
               </button>
             )}
             {result && onUseDraft && (

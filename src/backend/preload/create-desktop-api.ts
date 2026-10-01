@@ -74,7 +74,12 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
     },
     ai: {
       getSettings: () => invoke(requests.getAiSettings, undefined),
-      configure: (request) => invoke(requests.configureAi, request, 310000),
+      configure: (request) => {
+        const parsed = requests.configureAi.input.safeParse(request);
+        return parsed.success
+          ? invoke(requests.configureAi, parsed.data, 310000)
+          : Promise.resolve(failure('INVALID_REQUEST', 'The request is not valid.'));
+      },
       disable: () => invoke(requests.disableAi, undefined),
       preview: (request) => invoke(requests.previewAi, request, 15000),
       send: (request) => invoke(requests.sendAi, request, 130000),

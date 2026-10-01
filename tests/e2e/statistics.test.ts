@@ -46,7 +46,7 @@ test('F35 statistics and treemap: totals, dates, selection, empty state, refresh
     await dialog.getByRole('button', { name: 'Authors', exact: true }).click();
     await expect(dialog.locator('aside')).toContainText('Bob <bob@example.test>');
     await page.screenshot({ path: test.info().outputPath('f35-treemap-light.png') });
-    await dialog.locator('.statistics-tile').filter({ hasText: 'docs' }).click();
+    await dialog.getByRole('button', { name: /docs 1/ }).click();
     await dialog.locator('.statistics-tile').filter({ hasText: 'café' }).click();
     await expect(dialog.locator('aside')).toContainText('café');
     await page.evaluate(() => {
@@ -67,12 +67,14 @@ test('F35 statistics and treemap: totals, dates, selection, empty state, refresh
     await f.commit('New history', '2025-04-01T00:00:00Z');
     await dialog.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(dialog.locator('.statistics-summary')).toContainText('4 commits');
+    await dialog.getByText('Calculation options', { exact: true }).click();
     await dialog.getByLabel('Computation limit').selectOption('2');
     await expect(dialog.getByText(/Higher limits increase/)).toContainText('20,000 commits');
     await expect(dialog.getByText(/Higher limits increase/)).toContainText('CPU and memory');
     await dialog.getByRole('button', { name: 'Apply range', exact: true }).click();
     await expect(dialog.locator('.statistics-summary')).toContainText('4 commits');
     await page.setViewportSize({ width: 760, height: 640 });
+    await dialog.getByText('Calculation options', { exact: true }).click();
     await page.screenshot({ path: test.info().outputPath('f35-statistics-narrow-dark.png') });
     await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
     await page.keyboard.press('Escape');

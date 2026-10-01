@@ -144,7 +144,13 @@ export function CommitComposer({
   const [body, setBody] = usePersistentState(`repository.${repository.id}.commit.body`, '', isString);
   const setAmend = onAmendChange;
   const [committing, setCommitting] = useState(false);
-  const [aiDraft, setAiDraft] = useState<{ subject: string; body: string; token: string; id: string }>();
+  const [aiDraft, setAiDraft] = useState<{
+    subject: string;
+    body: string;
+    token: string;
+    id: string;
+    amend: boolean;
+  }>();
   const [signing, setSigning] = useState<RepositorySigningMode>('inherit');
   const [signingOpen, setSigningOpen] = useState(false);
   const mounted = useRef(true);
@@ -371,8 +377,8 @@ export function CommitComposer({
       {
         id: 'generate-message',
         label: 'Generate Message…',
-        disabled: busy || committing || amend || stagedCount === 0 || conflictedCount > 0,
-        run: () => setAiDraft({ subject, body, token: changeToken, id: repository.id }),
+        disabled: busy || committing || (!amend && stagedCount === 0) || conflictedCount > 0,
+        run: () => setAiDraft({ subject, body, token: changeToken, id: repository.id, amend }),
       },
       { id: 'commit-signing', label: 'Signing…', disabled: committing, run: () => setSigningOpen(true) },
       menuSeparator,
@@ -610,13 +616,13 @@ export function CommitComposer({
       {aiDraft && aiDraft.id === repository.id && (
         <AiRequestDialog
           repository={repository}
-          mode="staged"
+          mode={aiDraft.amend ? 'amend' : 'staged'}
           onClose={() => setAiDraft(undefined)}
           draftAvailable={
             aiDraft.subject === subject &&
             aiDraft.body === body &&
             aiDraft.token === changeToken &&
-            !amend &&
+            aiDraft.amend === amend &&
             !committing
           }
           onUseDraft={(text) => {

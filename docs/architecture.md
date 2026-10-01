@@ -1,5 +1,27 @@
 # Architecture and implementation decisions
 
+P13 (2026-10-01): the [statistics/AI handoff](reviews/p13-statistics-ai.md) extends the existing fixed
+AI contracts, explicit preload and authorized main handlers with provider selection, public saved
+choices, custom instructions and an amend target. Settings use a versioned atomic profile file;
+activation and app-owned keys remain session-only. Invalid saved data is retained for recovery.
+Immutable previews bind provider/model/instructions/material to the existing owner/repository token;
+configuration changes, Disable and lifecycle cancellation invalidate them. Main computes amended
+material against the first parent/empty tree without staging or writing objects.
+
+OpenAI retains fixed-origin HTTP. Ollama uses a fixed loopback endpoint and rejects remote-model
+metadata before sending the diff. Named Claude/Codex/Cursor adapters select an executable natively,
+use fixed argv with prompt data on stdin, and run outside the checkout with constrained tool settings.
+Main supervises POSIX process groups, bounds output/time, suppresses raw diagnostics and removes
+temporary request directories. AI cleanup joins the existing application shutdown drain. Cursor keys
+stay in the child environment; Claude/Codex retain tool-owned login. Live vendor compatibility and
+managed-tool policies remain explicit external boundaries. No generic process/URL/filesystem API,
+credential DTO, inspector capability, CSP, sandbox or sender/frame/document policy is added or relaxed.
+
+Statistics retains its independently defined cached aggregation. The renderer adds bounded nested
+folder tiles, paged activity detail/path lists and compact calculation options following P2-010.
+Generated drafts also guard amend-mode identity; review text remains inert. The handoff records
+before/after screenshots, independent metric tests, provider test doubles and remaining native/live gates.
+
 P12 (2026-10-01): [productivity/workspace handoff](reviews/p12-productivity-workspaces.md) defines
 one main-window owner per named workspace. New fixed workspace list/edit/open capabilities extend strict
 contracts, preload and authorized main handlers together; inspectors are denied. Metadata edits and

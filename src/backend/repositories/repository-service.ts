@@ -273,11 +273,11 @@ export interface RepositoryServiceOptions {
 /** Owns canonical repository identities, sessions, and local repository-manager workflows. */
 export class RepositoryService {
   private readonly hostingPullRequestUrl: RepositoryServiceOptions['hostingPullRequestUrl'];
-  readonly ai = new AiService();
+  readonly ai: AiService;
 
   previewAi(owner: number, request: AiPreviewRequest) {
     const repository = this.operationRepository(owner, request.id);
-    if (request.target.kind === 'staged' && !repository.worktreePath)
+    if (request.target.kind !== 'range' && !repository.worktreePath)
       throw new ExpectedBackendError('UNAVAILABLE', 'Staged AI messages require a working tree.');
     return this.ai.preview(this.runner, owner, repository.worktreePath ?? repository.commonDir, request);
   }
@@ -339,6 +339,7 @@ export class RepositoryService {
   private invalidationRevision = 0;
 
   constructor(options: RepositoryServiceOptions) {
+    this.ai = new AiService(undefined, { storagePath: `${options.storagePath}.ai` });
     this.hostingPullRequestUrl = options.hostingPullRequestUrl;
     this.workspaceStorageDirectory = dirname(options.storagePath);
     this.settingsFiles = [
@@ -347,6 +348,7 @@ export class RepositoryService {
       options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
       `${options.workspaceStoragePath ?? `${options.storagePath}.workspace`}.names`,
       `${options.storagePath}.productivity`,
+      `${options.storagePath}.ai`,
       join(this.workspaceStorageDirectory, 'window-state.json'),
     ];
     this.store = new RecentRepositoryStore({
@@ -3980,7 +3982,7 @@ export class RepositoryService {
   }
 
   async settled(): Promise<void> {
-    await Promise.all([this.operations.settled(), this.runner.settled()]);
+    await Promise.all([this.operations.settled(), this.runner.settled(), this.ai.settled()]);
   }
 
   private async withRepositoryMutation<T>(

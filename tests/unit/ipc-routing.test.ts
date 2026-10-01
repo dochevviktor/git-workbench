@@ -245,7 +245,16 @@ describe('IPC sender and window lifecycle', () => {
   it('authorizes AI settings only in main windows and releases its exact reload listener', async () => {
     const service = {
       ai: {
-        settings: vi.fn(() => ({ enabled: false, model: null, provider: 'openai', storage: 'session' })),
+        getSettings: vi.fn(async () => ({
+          enabled: false,
+          model: null,
+          provider: 'openai',
+          storage: 'session',
+          remember: false,
+          executable: null,
+          commitPrompt: 'Message',
+          reviewPrompt: 'Review',
+        })),
         cancel: vi.fn(() => null),
       },
       disposeWindow: vi.fn(),

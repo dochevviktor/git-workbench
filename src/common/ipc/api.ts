@@ -1,7 +1,7 @@
 import type { Statistics, StatisticsRequest } from './statistics';
 import type { Workspaces, WorkspaceEdit } from './workspaces';
 import type { LfsContext, LfsOperationRequest } from './lfs';
-import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
+import type { AiConfigure, AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
   RepositorySubmoduleComparisonRequest,
   RepositorySubmoduleComparison,
@@ -168,7 +168,7 @@ export interface DesktopApi {
   };
   readonly ai: {
     getSettings(): Promise<IpcResult<AiSettings>>;
-    configure(request: { model: string }): Promise<IpcResult<AiSettings>>;
+    configure(request: AiConfigure): Promise<IpcResult<AiSettings>>;
     disable(): Promise<IpcResult<AiSettings>>;
     preview(request: AiPreviewRequest): Promise<IpcResult<AiPreview>>;
     send(request: AiSend): Promise<IpcResult<AiResult>>;

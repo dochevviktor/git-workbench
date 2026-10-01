@@ -1,5 +1,31 @@
 # Fork: captured and public feature surface
 
+P13 reference/implementation audit — **2026-10-01**: the
+[statistics/AI handoff](../reviews/p13-statistics-ai.md) completes the independently specified Linux
+F35/F37 workflow. `P2-010:F1` (Windows 2.22.0.0, 2026-09-19; high-confidence sampled UI) guides compact
+date controls, orange monthly activity, contributor table/donut, nested neutral tiles, file icons,
+blue selection and Commits/Authors detail bars. Original case, screens 0515–0517 and recovery-spanning
+Git manifests/graphs were inspected. Exact metrics/date defaults/tile algorithms remain unknown;
+HEAD-only UTC/raw-author semantics, bounded rendering and the shared modal are independent choices.
+
+F37 remains public-only. [Windows notes](https://fork.dev/releasenoteswin) document Claude messages/review
+(2.14/2.15, 2025-11-21/2025-12-12); [Mac notes](https://fork.dev/releasenotes) document Codex/custom
+requests (2.64, 2026-03-06) and Cursor messages (2.70, 2026-09-04). Confidence is high for advertised
+capabilities only; Windows Codex/Cursor behavior is unclaimed. The existing
+[TrackerWin 2808 screenshot](https://github.com/fork-dev/TrackerWin/issues/2808) (Windows/light,
+2026-06-22, version unstated) and `P0-013-general-git-subcase:F1–F4`/`P0-030:F1` guide surrounding
+settings/composer presentation, not AI authentication or invocation semantics.
+
+Current official [Claude](https://code.claude.com/docs/en/cli-reference),
+[Codex](https://learn.chatgpt.com/docs/developer-commands?surface=cli),
+[Cursor](https://cursor.com/docs/cli/reference/parameters) and
+[Ollama](https://docs.ollama.com/api/chat) contracts were checked on this date. The handoff records exact
+sources, permissions, retention and platform differences. Native executable/key-file selection,
+immutable preview/Send, local-only Ollama, editable requests, saved public choices with disabled restart,
+and first-parent amend generation are independent implementation policies. CLI/API test doubles verify
+the Linux application boundary; live provider/version/model compatibility remains unverified. No new
+public image was needed; the restored 226-image library and private bundle remain unchanged/unbundled.
+
 P12 reference/implementation audit — **2026-10-01**: the
 [productivity/workspace handoff](../reviews/p12-productivity-workspaces.md) maps F02/F03 extensions,
 F31–F34 and F38 to their phase scope, retention matrix, tests and limits. Primary Windows 2.22.0.0
@@ -1244,9 +1270,9 @@ F38's dated handoff records an independently specified local workflow; Fork exec
 | F32 | Contextual custom commands, action editor, forms and shared definitions               | D: [activity][activity], [releases][win]; B: P2-008                                                                                  | P12 complete for Linux policy (2026-10-01): embedded editor, five targets/forms, reviewed execution, disabled imports, foreground/background output and cancellation verified; Fork-format and native parity unclaimed                                                                                                                              | P12 / C05                     |
 | F33 | External tools, historical-content handoff, terminal/file manager and CLI opening     | D: [activity][activity], [releases][win]; B: P2-009                                                                                  | P12 complete for Linux policy (2026-10-01): tool defaults, selected historical/working Ctrl+D, reviewed text merges, terminal/file manager and CLI verified; binary/daemon/native variants remain explicit limits                                                                                                                                   | P02, P12 / C05                |
 | F34 | Chrome, menus, themes, preferences, focus, splitters and state retention              | D/O: [releases][win], [history][history-image]; B: P0-003–013, P2-012–016                                                            | P12 complete for supported Linux scope (2026-10-01): Preferences, scoped Git identity/signing/template/issue settings, layouts, shortcuts, local avatars and retention verified; Updates and native parity remain P14                                                                                                                               | P03, P04, P12, P14 / C01, C06 |
-| F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                                                                                       | Bounded slice verified; UTC/raw-author metrics, date chart/contributors and cancellable cached file activity; independent rules and limits in [F35 handoff](../reviews/f35-statistics.md)                                                                                                                                                           | P13 / C05                     |
+| F35 | Statistics/date chart/contributors and file activity treemap                          | D: [product][home], [releases][win]; B: P2-010                                                                                       | P13 Linux scope complete (2026-10-01): verified UTC/raw-author metrics, cancellable cached activity, nested folder/file tiles and paged Commits/Authors details; exact Fork algorithms and P14 performance remain unclaimed. [Handoff](../reviews/p13-statistics-ai.md)                                                                             | P13 / C05                     |
 | F36 | Patch export/import, applicability preflight and clipboard routes                     | D: [releases][win], [releases][mac]; B: P2-005                                                                                       | P08 Linux scope complete (2026-09-26): byte-preserving import/export, staged conflicts, mailboxes, merge-parent export and unusual Linux paths verified; safety refusals/platform limits in [P08 handoff](../reviews/p08-investigation.md)                                                                                                          | P08 / C05                     |
-| F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only; O: TrackerWin 2808                                                                 | Partial; session-only OpenAI API messages and diff review verified; CLI adapters/platform matrix remain. [Handoff](../reviews/f37-ai.md)                                                                                                                                                                                                            | P13                           |
+| F37 | Optional external AI commit-message/review integrations                               | D: [releases][mac], [releases][win]; public-only; O: TrackerWin 2808                                                                 | P13 independent Linux workflow complete (2026-10-01): OpenAI, Claude/Codex/Cursor CLI and local Ollama, saved choices/prompts, amend/range previews and inert output verified with stand-ins; live vendor/native compatibility remains unverified. [Handoff](../reviews/p13-statistics-ai.md)                                                       | P13                           |
 | F38 | Lean Branching Start/Sync/Finish                                                      | B-UI: P0-008-toolbar-dropdown-subcase:F1; effects U; public proposal TrackerWin 1432                                                 | P12 complete for the independently specified local workflow (2026-10-01): reviewed Start/Sync/Finish, P06 recovery and persisted base; exact Fork execution and remote-ref restoration remain unclaimed                                                                                                                                             | P06 prerequisites, P12        |
 
 Recent release notes also describe conflict previews, rebase-dependent-reference updates, richer worktree

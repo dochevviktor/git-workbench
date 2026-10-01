@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FileIcon, FolderIcon } from './Icons';
 import type { Statistics, StatisticsLimitScale } from '../../../common/ipc/statistics';
 import { statisticsLimits, statisticsLimitScaleSchema } from '../../../common/ipc/statistics';
 import { unwrapResult } from '../../../common/ipc/result';
@@ -29,7 +30,11 @@ export function RepositoryStatistics({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
   useEffect(() => {
+    const previous = document.activeElement;
     dialog.current?.showModal();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
   }, []);
   useEffect(() => {
     const api = window.desktop;
@@ -75,6 +80,8 @@ export function RepositoryStatistics({
       ref={dialog}
       className="dialog statistics-dialog"
       aria-label="Repository Statistics"
+      data-view={view}
+      onKeyDown={(event) => event.stopPropagation()}
       onClose={onClose}
     >
       <header>
@@ -104,20 +111,35 @@ export function RepositoryStatistics({
         <label>
           To <input aria-label="To date" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <label>
-          Computation limit{' '}
-          <select
-            aria-label="Computation limit"
-            value={limitScale}
-            disabled={busy}
-            onChange={(event) => setLimitScale(statisticsLimitScaleSchema.parse(Number(event.target.value)))}
-          >
-            <option value={1}>Standard (10,000 commits)</option>
-            <option value={2}>2× (20,000 commits)</option>
-            <option value={5}>5× (50,000 commits)</option>
-            <option value={10}>10× (100,000 commits)</option>
-          </select>
-        </label>
+        <details className="statistics-options">
+          <summary>Calculation options</summary>
+          <label>
+            Computation limit{' '}
+            <select
+              aria-label="Computation limit"
+              value={limitScale}
+              disabled={busy}
+              onChange={(event) =>
+                setLimitScale(statisticsLimitScaleSchema.parse(Number(event.target.value)))
+              }
+            >
+              <option value={1}>Standard (10,000 commits)</option>
+              <option value={2}>2× (20,000 commits)</option>
+              <option value={5}>5× (50,000 commits)</option>
+              <option value={10}>10× (100,000 commits)</option>
+            </select>
+          </label>
+          <p className="statistics-policy" role={limitScale > 1 ? 'status' : undefined}>
+            Range limits: {limits.commits.toLocaleString()} commits, {limits.paths.toLocaleString()} paths,{' '}
+            {limits.changes.toLocaleString()} file changes. Higher limits increase CPU and memory use, can
+            slow the interface, and may take up to {Math.ceil(limits.timeoutMs / 1000)} seconds. Apply range
+            or Refresh to use the selected limit.
+          </p>
+          <p className="statistics-policy">
+            HEAD history · UTC author dates · exact name/email (no mailmap) · merges counted once; file
+            changes versus first parent · renames counted as delete/add.
+          </p>
+        </details>
         <button type="submit" disabled={busy || Boolean(from && to && from > to)}>
           Apply range
         </button>
@@ -139,16 +161,6 @@ export function RepositoryStatistics({
           </button>
         )}
       </form>
-      <p className="statistics-policy" role={limitScale > 1 ? 'status' : undefined}>
-        Range limits: {limits.commits.toLocaleString()} commits, {limits.paths.toLocaleString()} paths,{' '}
-        {limits.changes.toLocaleString()} file changes. Higher limits increase CPU and memory use, can slow
-        the interface, and may take up to {Math.ceil(limits.timeoutMs / 1000)} seconds. Apply range or Refresh
-        to use the selected limit.
-      </p>
-      <p className="statistics-policy">
-        HEAD history · UTC author dates · exact name/email (no mailmap) · merges counted once; file changes
-        versus first parent · renames counted as delete/add.
-      </p>
       <main className="statistics-content" aria-busy={busy}>
         {busy && <p role="status">Calculating repository activity…</p>}
         {error && <p role="alert">{error}</p>}
@@ -303,6 +315,7 @@ interface Tile {
   path: string;
   weight: number;
   folder: boolean;
+  children?: Tile[];
 }
 function TileLayout({
   tiles,
@@ -318,6 +331,23 @@ function TileLayout({
   if (!tiles.length) return null;
   if (tiles.length === 1) {
     const tile = tiles[0]!;
+    if (tile.children?.length)
+      return (
+        <div className="statistics-folder">
+          <button
+            type="button"
+            className="statistics-folder-heading"
+            title={`Expand ${tile.path}`}
+            onClick={() => onSelect(tile)}
+          >
+            <FolderIcon />
+            {tile.name} <small>{tile.weight}</small>
+          </button>
+          <div className="statistics-folder-content">
+            <TileLayout tiles={tile.children} onSelect={onSelect} selected={selected} depth={depth + 1} />
+          </div>
+        </div>
+      );
     return (
       <button
         type="button"
@@ -330,7 +360,10 @@ function TileLayout({
           {tile.folder ? '▸ ' : ''}
           {tile.name}
         </span>
-        <strong>{tile.weight}</strong>
+        <strong>
+          {tile.folder ? <FolderIcon /> : <FileIcon />}
+          {tile.weight}
+        </strong>
       </button>
     );
   }
@@ -357,35 +390,66 @@ function ActivityTreemap({ data }: { readonly data: Statistics }) {
   const [selected, setSelected] = useState(data.files[0]?.path ?? '');
   const [tab, setTab] = useState<'commits' | 'authors'>('commits');
   const [filter, setFilter] = useState('');
-  const groups = new Map<string, Tile>();
-  for (const file of data.files) {
-    if (
-      !file.path.startsWith(directory) ||
-      !file.path.toLocaleLowerCase().includes(filter.toLocaleLowerCase())
-    )
-      continue;
-    const relative = file.path.slice(directory.length);
-    const slash = relative.indexOf('/');
-    const name = slash < 0 ? relative : relative.slice(0, slash);
-    const path = `${directory}${name}${slash < 0 ? '' : '/'}`;
-    const tile = groups.get(path) ?? { name, path, weight: 0, folder: slash >= 0 };
-    tile.weight += file.commits.length;
-    groups.set(path, tile);
-  }
-  const tiles = [...groups.values()].sort((a, b) => b.weight - a.weight || a.path.localeCompare(b.path));
+  const [detailPage, setDetailPage] = useState(0);
+  const [pathPage, setPathPage] = useState(0);
+  const matching = useMemo(
+    () =>
+      data.files
+        .filter(
+          (file) =>
+            file.path.startsWith(directory) &&
+            file.path.toLocaleLowerCase().includes(filter.toLocaleLowerCase()),
+        )
+        .sort((a, b) => b.commits.length - a.commits.length || a.path.localeCompare(b.path)),
+    [data.files, directory, filter],
+  );
+  const tiles = useMemo(() => {
+    const group = (files: Statistics['files'], prefix: string, depth: number): Tile[] => {
+      const entries = new Map<string, { tile: Tile; files: Statistics['files'] }>();
+      for (const file of files) {
+        const relative = file.path.slice(prefix.length);
+        const slash = relative.indexOf('/');
+        const folder = slash >= 0;
+        const name = folder ? relative.slice(0, slash) : relative;
+        const path = `${prefix}${name}${folder ? '/' : ''}`;
+        const entry = entries.get(path) ?? { tile: { name, path, weight: 0, folder }, files: [] };
+        entry.tile.weight += file.commits.length;
+        entry.files.push(file);
+        entries.set(path, entry);
+      }
+      return [...entries.values()]
+        .map(({ tile, files }) => ({
+          ...tile,
+          ...(tile.folder && depth < 3 ? { children: group(files, tile.path, depth + 1) } : {}),
+        }))
+        .sort((a, b) => b.weight - a.weight || a.path.localeCompare(b.path));
+    };
+    return group(matching.slice(0, 300), directory, 0);
+  }, [matching, directory]);
   const commits = (data.files.find((file) => file.path === selected)?.commits ?? []).map(
     (index) => data.commits[index]!,
   );
   const authors = new Map<string, number>();
   for (const commit of commits) authors.set(commit.author, (authors.get(commit.author) ?? 0) + 1);
   const select = (tile: Tile) => {
-    if (tile.folder) setDirectory(tile.path);
-    else setSelected(tile.path);
+    if (tile.folder) {
+      setDirectory(tile.path);
+      setPathPage(0);
+    } else {
+      setSelected(tile.path);
+      setDetailPage(0);
+    }
   };
   return (
     <>
       <div className="statistics-range">
-        <button type="button" onClick={() => setDirectory('')}>
+        <button
+          type="button"
+          onClick={() => {
+            setDirectory('');
+            setPathPage(0);
+          }}
+        >
           Repository root
         </button>
         <button
@@ -394,6 +458,7 @@ function ActivityTreemap({ data }: { readonly data: Statistics }) {
           onClick={() => {
             const parent = directory.slice(0, -1).split('/').slice(0, -1).join('/');
             setDirectory(parent ? `${parent}/` : '');
+            setPathPage(0);
           }}
         >
           Up
@@ -403,11 +468,16 @@ function ActivityTreemap({ data }: { readonly data: Statistics }) {
           aria-label="Filter activity paths"
           placeholder="Filter paths"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setPathPage(0);
+          }}
         />
       </div>
       <p className="statistics-policy">
         Tile area = commit touches per path (including deleted paths). Select a folder to expand.
+        {matching.length > 300 &&
+          ' Showing the 300 busiest matching paths. Filter or use the path list to find others.'}
       </p>
       <div className="statistics-treemap">
         <section aria-label="File activity treemap">
@@ -415,18 +485,38 @@ function ActivityTreemap({ data }: { readonly data: Statistics }) {
           {!tiles.length && <p>No matching paths.</p>}
         </section>
         <aside>
-          <h3>{selected || 'Select a file'}</h3>
+          <h3>
+            <FileIcon />
+            {selected.split('/').at(-1) || 'Select a file'}
+          </h3>
+          <p className="statistics-policy">
+            {selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : '/'}
+          </p>
           <nav aria-label="File activity details">
-            <button type="button" aria-pressed={tab === 'commits'} onClick={() => setTab('commits')}>
+            <button
+              type="button"
+              aria-pressed={tab === 'commits'}
+              onClick={() => {
+                setTab('commits');
+                setDetailPage(0);
+              }}
+            >
               Commits
             </button>
-            <button type="button" aria-pressed={tab === 'authors'} onClick={() => setTab('authors')}>
+            <button
+              type="button"
+              aria-pressed={tab === 'authors'}
+              onClick={() => {
+                setTab('authors');
+                setDetailPage(0);
+              }}
+            >
               Authors
             </button>
           </nav>
           {tab === 'commits' ? (
             <ul>
-              {commits.map((commit) => (
+              {commits.slice(detailPage * 100, (detailPage + 1) * 100).map((commit) => (
                 <li key={commit.oid} title={`${commit.author}\n${commit.oid}`}>
                   <span>{commit.subject || '(no subject)'}</span>
                   <small>{commit.date}</small>
@@ -437,30 +527,67 @@ function ActivityTreemap({ data }: { readonly data: Statistics }) {
             <ul>
               {[...authors]
                 .sort((a, b) => b[1] - a[1])
+                .slice(detailPage * 100, (detailPage + 1) * 100)
                 .map(([author, count]) => (
-                  <li key={author}>
+                  <li key={author} className="statistics-author-activity">
                     <span>{author}</span>
                     <strong>{count}</strong>
+                    <progress max={commits.length} value={count} aria-label={`${author}: ${count} commits`} />
                   </li>
                 ))}
             </ul>
           )}
+          <StatisticsPager
+            page={detailPage}
+            count={tab === 'commits' ? commits.length : authors.size}
+            onChange={setDetailPage}
+          />
         </aside>
       </div>
       <details>
         <summary>All activity paths (accessible list)</summary>
         <ul>
-          {data.files
-            .filter((file) => file.path.includes(filter))
-            .map((file) => (
-              <li key={file.path}>
-                <button type="button" onClick={() => setSelected(file.path)}>
-                  {file.path} · {file.commits.length}
-                </button>
-              </li>
-            ))}
+          {matching.slice(pathPage * 100, (pathPage + 1) * 100).map((file) => (
+            <li key={file.path}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(file.path);
+                  setDetailPage(0);
+                }}
+              >
+                {file.path} · {file.commits.length}
+              </button>
+            </li>
+          ))}
         </ul>
+        <StatisticsPager page={pathPage} count={matching.length} onChange={setPathPage} />
       </details>
     </>
+  );
+}
+
+function StatisticsPager({
+  page,
+  count,
+  onChange,
+}: {
+  page: number;
+  count: number;
+  onChange(page: number): void;
+}) {
+  if (count <= 100 && page === 0) return null;
+  return (
+    <div className="statistics-range">
+      <button type="button" disabled={page === 0} onClick={() => onChange(page - 1)}>
+        Previous
+      </button>
+      <span>
+        {Math.min(count, page * 100 + 1)}–{Math.min(count, (page + 1) * 100)} of {count}
+      </span>
+      <button type="button" disabled={(page + 1) * 100 >= count} onClick={() => onChange(page + 1)}>
+        Next
+      </button>
+    </div>
   );
 }

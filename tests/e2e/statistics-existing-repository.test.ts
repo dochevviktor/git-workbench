@@ -54,6 +54,7 @@ test('statistics on an existing large repository', async () => {
     await page.screenshot({ path: test.info().outputPath('statistics-existing-range.png') });
     await dialog.getByLabel('From date').fill('');
     await dialog.getByLabel('To date').fill('');
+    await dialog.getByText('Calculation options', { exact: true }).click();
     await dialog.getByLabel('Computation limit').selectOption('2');
     await expect(dialog.getByText(/Higher limits increase/)).toBeVisible();
     await dialog.getByRole('button', { name: 'Apply range', exact: true }).click();

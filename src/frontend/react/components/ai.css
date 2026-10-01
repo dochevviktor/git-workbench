@@ -2,6 +2,7 @@
   width: min(760px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
+  overflow: hidden;
 }
 .dialog.ai-settings {
   width: min(574px, calc(100vw - 32px));
@@ -10,6 +11,7 @@
   display: grid;
   gap: 12px;
   overflow: auto;
+  max-height: calc(100vh - 34px);
 }
 .ai-dialog h2,
 .ai-dialog p {
@@ -23,6 +25,41 @@
 .ai-dialog textarea {
   width: 100%;
   min-width: 0;
+}
+.ai-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ai-tabs button {
+  padding: 8px 14px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text);
+}
+.ai-tabs button[aria-pressed='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.ai-dialog .ai-setting-row {
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: center;
+}
+.ai-dialog select {
+  min-width: 0;
+  width: 100%;
+}
+.ai-executable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ai-executable span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ai-dialog textarea {
   resize: vertical;
@@ -57,4 +94,10 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  position: sticky;
+  bottom: -20px;
+  background: var(--window);
+  padding: 12px 0 20px;
+  margin-bottom: -20px;
+  border-top: 1px solid var(--border);
 }

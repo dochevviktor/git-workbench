@@ -3,14 +3,14 @@
   width: min(1400px, 94vw);
   max-width: 94vw;
   height: 88vh;
-  padding: 18px;
+  padding: 12px 18px;
   color: var(--text);
   background: var(--bg);
 }
 .statistics-dialog[open] {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 .statistics-dialog header,
 .statistics-dialog footer,
@@ -39,6 +39,31 @@
   display: flex;
   gap: 8px;
 }
+.statistics-dialog nav button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.statistics-options {
+  margin-left: auto;
+  position: relative;
+  font-size: 12px;
+  max-width: 420px;
+}
+.statistics-options summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.statistics-options[open] {
+  flex-basis: 100%;
+  max-width: none;
+  padding: 8px;
+  border: 1px solid var(--border);
+  order: 1;
+}
+.statistics-options .statistics-policy {
+  margin-top: 6px;
+}
 .statistics-dialog button,
 .statistics-dialog input,
 .statistics-dialog select {
@@ -66,8 +91,16 @@
   flex: 1;
   overflow: auto;
   min-height: 0;
-  padding: 12px;
+  padding: 16px 28px;
   border: 1px solid var(--border);
+  background: var(--window);
+}
+.statistics-dialog[data-view='treemap'] .statistics-content {
+  padding: 10px;
+}
+.statistics-content h3 {
+  font-size: 14px;
+  font-weight: 600;
 }
 .statistics-policy {
   margin: 0;
@@ -97,8 +130,8 @@
 }
 .statistics-contributors {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
+  grid-template-columns: minmax(240px, 30%) minmax(0, 1fr);
+  gap: 48px;
   margin-top: 20px;
 }
 .statistics-contributors section {
@@ -116,19 +149,19 @@
   overflow-wrap: anywhere;
 }
 .statistics-donut {
-  width: 230px;
-  height: 230px;
+  width: min(320px, 100%);
+  aspect-ratio: 1;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  margin: 24px auto;
+  margin: 24px 20px;
 }
 .statistics-donut span {
   display: grid;
   place-content: center;
   text-align: center;
-  width: 100px;
-  height: 100px;
+  width: 32%;
+  aspect-ratio: 1;
   border-radius: 50%;
   background: var(--bg);
   font-size: 24px;
@@ -151,8 +184,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 10px;
-  min-height: 440px;
-  height: 54vh;
+  min-height: 400px;
+  height: 60vh;
   margin: 10px 0;
 }
 .statistics-treemap > section {
@@ -167,6 +200,34 @@
 }
 .statistics-tile-split > div {
   min-width: 0;
+  min-height: 0;
+}
+.statistics-folder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px;
+}
+.statistics-dialog .statistics-folder-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 22px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px;
+  border: 0;
+  font-size: 11px;
+  overflow: hidden;
+}
+.statistics-folder-heading svg {
+  color: #eebc57;
+}
+.statistics-folder-content {
+  flex: 1;
   min-height: 0;
 }
 .statistics-dialog .statistics-tile[aria-pressed='true'] {
@@ -190,9 +251,17 @@
 }
 .statistics-tile strong {
   margin: auto;
-  font-size: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
   font-weight: normal;
   color: var(--text-muted);
+}
+.statistics-tile strong svg {
+  width: 26px;
+  height: 26px;
 }
 .statistics-treemap aside {
   overflow: auto;
@@ -200,8 +269,22 @@
   padding: 8px;
 }
 .statistics-treemap h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 0;
   overflow-wrap: anywhere;
+}
+.statistics-treemap .statistics-author-activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+.statistics-author-activity progress {
+  grid-column: 1 / -1;
+  height: 4px;
+  width: 100%;
+  accent-color: var(--accent);
 }
 .statistics-treemap ul {
   padding: 0;

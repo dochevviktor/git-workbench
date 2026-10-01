@@ -8,18 +8,23 @@ destinations are trusted as explicitly created repositories. Activity remains qu
 its panel or reloading the renderer; cancellation does not promise rollback. See the
 [P01 verification and policy](docs/reviews/p01-infrastructure.md).
 
-F37 adds optional AI messages and diff reviews. File → AI Integration (or Preferences → Integration)
-lets you enter an OpenAI API text model ID and select a text file containing your API key. Setup is
-session-only and makes no network request. In Local Changes, Commit options → Generate Message previews staged changes;
-Repository → AI Code Review previews a branch or commit range. Review the exact material and explicitly
-Send before any code leaves the machine. Generated messages are editable drafts; reviews cannot execute
-commands or change Git state. Disable forgets the app's key and cancels pending work. Provider billing
-and retention still apply; Claude/Codex/Cursor CLI adapters are not implemented. See the
-[F37 scope and limits](docs/reviews/f37-ai.md).
+P13 adds optional AI messages and diff reviews through OpenAI, installed Claude Code/Codex/Cursor CLIs,
+or a local Ollama server. File → AI Integration (also Preferences → Commit/Integration) selects the
+provider, model and editable default requests. Remember saves public choices; AI starts disabled after
+restart. OpenAI/Cursor keys come from a native text-file chooser and stay in memory for the session.
+Claude/Codex use their existing terminal login. Ollama uses an already installed local model on port
+11434; start its daemon separately with `OLLAMA_NO_CLOUD=1`.
 
-F35 adds Repository > Statistics… and Repository Treemap…: local monthly activity, contributor shares,
-date filtering and selectable file activity with Commits/Authors details. Reads are cached, cancellable
-and bounded; see the [metric rules and limits](docs/reviews/f35-statistics.md).
+Commit options → Generate Message previews staged changes or the full amended commit; Repository →
+AI Code Review previews a branch/commit range. Each request requires preview and Send. Generated
+messages stay editable, and review output has no execution or Git mutation action. Disable forgets
+app-owned keys and stops pending work. Provider billing/retention and installed-tool policies apply.
+Live provider sessions remain unverified; see the [P13 contracts and limits](docs/reviews/p13-statistics-ai.md).
+
+Repository → Statistics… / Repository Treemap… shows local monthly activity, contributor shares,
+date filtering and nested file/folder tiles with Commits/Authors details. Calculation options exposes
+larger computation budgets and the UTC/raw-author metric policy. Reads are cached, cancellable and
+bounded; see the [metric specification](docs/reviews/f35-statistics.md) and P13 handoff.
 
 A Linux-first Git desktop client in early development. **Git Workbench is a working name.**
 The long-term target is Fork's captured Windows workflows and publicly documented feature families,

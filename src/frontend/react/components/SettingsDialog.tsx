@@ -484,6 +484,10 @@ export function SettingsDialog({
               Signing mode and repository signing key are available in the commit composer and tag dialog. Git
               commit templates continue to follow Git configuration.
             </p>
+            <h3 className="settings-section-title">Generate Commit Message</h3>
+            <button type="button" className="button" onClick={ai}>
+              AI Integration…
+            </button>
           </section>
         )}
         {page === 'Git' && (
