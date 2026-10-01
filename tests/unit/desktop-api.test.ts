@@ -26,6 +26,31 @@ function fixture() {
 afterEach(() => vi.useRealTimers());
 
 describe('preload capability API', () => {
+  it('validates workspace inputs/results and releases the exact workspace event listener', async () => {
+    const { api, invoke, emitter } = fixture();
+    expect(await api.workspace.open({ id: '../../profile', newWindow: true })).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(await api.workspace.open({ id: 'default', newWindow: true })).toEqual({ ok: true, value: null });
+    expect(invoke).toHaveBeenLastCalledWith('workspace:open', { id: 'default', newWindow: true });
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { revision: 0, activeId: 'default', entries: [], executable: '/bad' },
+    });
+    expect(await api.workspace.list()).toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });
+    for (let index = 0; index < 20; index++) {
+      const listener = vi.fn();
+      const release = api.workspace.onChanged(listener);
+      emitter.emit(events.workspacesChanged.channel, {}, null);
+      emitter.emit(events.workspacesChanged.channel, {}, { unexpected: true });
+      expect(listener).toHaveBeenCalledTimes(1);
+      release();
+      release();
+      expect(emitter.listenerCount(events.workspacesChanged.channel)).toBe(0);
+    }
+  });
   it('delivers bounded preference warnings with successful account and notification results', async () => {
     const { api, invoke } = fixture();
     const warning = 'Hosting preferences could not be read. The original file was left unchanged.';
@@ -631,6 +656,7 @@ describe('preload capability API', () => {
     await expect(api.window.command({ action: 'minimize' })).resolves.toEqual({ ok: true, value: null });
     expect(invoke).toHaveBeenCalledWith(requests.windowCommand.channel, { action: 'minimize' });
     expect(Object.keys(api)).toEqual([
+      'workspace',
       'ai',
       'customCommands',
       'settings',

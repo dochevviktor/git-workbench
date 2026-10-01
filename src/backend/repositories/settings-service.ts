@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, open, rename, unlink, mkdtemp, writeFile, rm, realpath } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { gitSettingsSchema, issueRuleSchema, saveGitSettingsSchema } from '../../common/ipc/settings';
+import {
+  gitSettingsSchema,
+  issueRuleSchema,
+  saveGitSettingsSchema,
+  gitOptionKeys,
+} from '../../common/ipc/settings';
 import type { GitSettings, SaveGitSettings } from '../../common/ipc/settings';
 import { ExpectedBackendError } from '../errors';
 import { GitCommandError } from '../git/runner';
@@ -103,7 +108,10 @@ export class GitSettingsService {
         );
       }
     }
-    const values = { id, path, name, email, effectiveName, effectiveEmail, issueRule };
+    const options = await Promise.all(
+      gitOptionKeys.map(async (key) => ({ key, value: await own(key), effective: await effective(key) })),
+    );
+    const values = { id, path, name, email, effectiveName, effectiveEmail, issueRule, options };
     return gitSettingsSchema.parse({ ...values, snapshot: hash(JSON.stringify([values, hash(raw)])) });
   }
 
@@ -122,7 +130,10 @@ export class GitSettingsService {
     if (
       before.name === request.name &&
       before.email === request.email &&
-      JSON.stringify(before.issueRule) === JSON.stringify(request.issueRule)
+      JSON.stringify(before.issueRule) === JSON.stringify(request.issueRule) &&
+      (request.options ?? []).every(
+        (entry) => entry.value === before.options?.find((item) => item.key === entry.key)?.value,
+      )
     )
       return before;
     const lockPath = `${before.path}.lock`;
@@ -142,6 +153,11 @@ export class GitSettingsService {
       const changes = [
         ['user.name', request.name, before.name],
         ['user.email', request.email, before.email],
+        ...(request.options ?? []).map((entry) => [
+          entry.key,
+          entry.value,
+          before.options?.find((item) => item.key === entry.key)?.value ?? null,
+        ]),
         ...(request.id === null
           ? []
           : [

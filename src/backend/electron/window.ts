@@ -15,11 +15,19 @@ function windowChrome(): BrowserWindowConstructorOptions {
     : { frame: false };
 }
 
-export function createMainWindow(attachWindow: (window: BrowserWindow, url: string) => void): BrowserWindow {
+export function createMainWindow(
+  attachWindow: (window: BrowserWindow, url: string) => void,
+  workspaceId = 'default',
+): BrowserWindow {
   const rendererFile = join(__dirname, '../renderer/index.html');
   const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL || undefined;
   const rendererUrl = devUrl ?? pathToFileURL(rendererFile).href;
-  const stateStore = new WindowStateStore(join(app.getPath('userData'), 'window-state.json'));
+  const stateStore = new WindowStateStore(
+    join(
+      app.getPath('userData'),
+      workspaceId === 'default' ? 'window-state.json' : `window-state-${workspaceId}.json`,
+    ),
+  );
   const primary = screen.getPrimaryDisplay();
   const workAreas = [
     primary.workArea,

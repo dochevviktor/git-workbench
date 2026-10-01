@@ -14,7 +14,7 @@ import { useCommitContext } from '../hooks/use-commit-context';
 import { isNumberBetween, usePersistentState } from '../hooks/use-persistent-state';
 import { ChevronDownIcon, RecentMessagesIcon } from './Icons';
 import { MenuButton } from './menu/MenuButton';
-import { menuSeparator, planned } from './menu/menu-model';
+import { menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
 const recentMessageLabelLength = 72;
@@ -103,6 +103,7 @@ interface CommitComposerProps {
   /** A staging action is running; commits wait for it. */
   readonly busy: boolean;
   readonly onCommitted: () => void;
+  readonly onPush?: ((commitId: string) => void) | undefined;
 }
 
 /** Fork's composer: subject with a length counter and recent messages, description, Amend, Commit. */
@@ -115,8 +116,21 @@ export function CommitComposer({
   onAmendChange,
   busy,
   onCommitted,
+  onPush,
 }: CommitComposerProps) {
   const [subjectLengthGuide] = usePersistentState('commit.subjectGuide', 50, isNumberBetween(30, 120));
+  const [monospace] = usePersistentState(
+    'commit.monospace',
+    false,
+    (value): value is boolean => typeof value === 'boolean',
+  );
+  const [subjectLimit] = usePersistentState('commit.subjectLimit', 72, isNumberBetween(30, 200));
+  const [pageGuide] = usePersistentState('commit.pageGuide', 72, isNumberBetween(0, 200));
+  const [reviewPush] = usePersistentState(
+    'commit.reviewPush',
+    false,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   const [spellCheck] = usePersistentState(
     'commit.spellCheck',
     true,
@@ -210,7 +224,7 @@ export function CommitComposer({
   );
 
   const commit = useCallback(
-    async (skipHooks: boolean) => {
+    async (skipHooks: boolean, push = false) => {
       const api = window.desktop;
       if (!api || !value || context.loading || committing) return;
       setCommitting(true);
@@ -272,6 +286,7 @@ export function CommitComposer({
         draftBeforeAmend.current = undefined;
         refreshContext();
         onCommitted();
+        if (push || reviewPush) onPush?.(result.commitId);
       } catch (reason: unknown) {
         if (!mounted.current) return;
         setError(reason instanceof Error ? reason.message : 'The commit could not be completed.');
@@ -286,6 +301,8 @@ export function CommitComposer({
       committing,
       context.loading,
       onCommitted,
+      onPush,
+      reviewPush,
       refreshContext,
       repository.id,
       setAmend,
@@ -368,11 +385,24 @@ export function CommitComposer({
         run: () => void commit(true),
       },
       menuSeparator,
-      { id: 'commit-and-push', label: 'Commit and Push…', ...planned('Pushing', 'P05') },
+      {
+        id: 'commit-and-push',
+        label: 'Commit and Push…',
+        shortcut: 'Mod+Shift+Enter',
+        disabled:
+          Boolean(blockedReason) ||
+          !onPush ||
+          value?.head.state !== 'branch' ||
+          Boolean(value?.pendingOperation),
+        run: () => void commit(false, true),
+      },
     ],
     [
       blockedReason,
       commit,
+      onPush,
+      value?.head.state,
+      value?.pendingOperation,
       failure?.canSkipHooks,
       busy,
       committing,
@@ -389,7 +419,8 @@ export function CommitComposer({
   const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || blockedReason) return;
     event.preventDefault();
-    void commit(false);
+    if (event.shiftKey && (!onPush || value?.head.state !== 'branch' || value?.pendingOperation)) return;
+    void commit(false, event.shiftKey);
   };
 
   const notices = [
@@ -406,7 +437,7 @@ export function CommitComposer({
 
   return (
     <form
-      className="commit-composer"
+      className={`commit-composer${monospace ? ' commit-monospace' : ''}`}
       aria-label="Commit"
       data-testid="commit-composer"
       onSubmit={(event) => event.preventDefault()}
@@ -471,7 +502,7 @@ export function CommitComposer({
             onChange={(event) => setSubject(event.target.value)}
           />
           <span
-            className={`composer-counter${remaining < 0 ? ' over' : ''}`}
+            className={`composer-counter${[...subject].length > subjectLimit ? ' over' : remaining < 0 ? ' guide-warning' : ''}`}
             aria-label={
               remaining < 0
                 ? `${-remaining} characters over the ${subjectLengthGuide}-character subject guide`
@@ -497,6 +528,13 @@ export function CommitComposer({
           value={body}
           placeholder="Description"
           aria-label="Commit description"
+          style={
+            pageGuide
+              ? {
+                  backgroundImage: `linear-gradient(to right, transparent ${pageGuide}ch, var(--border) ${pageGuide}ch, var(--border) calc(${pageGuide}ch + 1px), transparent calc(${pageGuide}ch + 1px))`,
+                }
+              : undefined
+          }
           spellCheck={spellCheck}
           data-testid="commit-description"
           readOnly={rebaseContinue}

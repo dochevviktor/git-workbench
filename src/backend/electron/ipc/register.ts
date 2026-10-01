@@ -63,6 +63,7 @@ export function registerAppIpc(
   repositoryService?: RepositoryService,
   hostingService?: HostingService,
   gitInstances?: GitInstanceStore,
+  openWorkspace?: (owner: BrowserWindow, id: string, newWindow: boolean) => Promise<void>,
 ) {
   const windows = new Map<
     number,
@@ -75,6 +76,12 @@ export function registerAppIpc(
   >();
   const openingInspectors = new Map<number, number>();
   const channels: string[] = [];
+  let workspaceChanges = Promise.resolve<unknown>(undefined);
+  const changeWorkspace = <T>(work: () => Promise<T>): Promise<T> => {
+    const next = workspaceChanges.then(work, work);
+    workspaceChanges = next.catch(() => undefined);
+    return next;
+  };
   let disposed = false;
 
   const attachWindow = (window: BrowserWindow, url: string, inspector?: InspectorAttachment) => {
@@ -183,6 +190,29 @@ export function registerAppIpc(
 
   register(requests.getWindowState, (window) => windowState(window));
   if (repositoryService) {
+    register(requests.getWorkspaces, (window) => repositoryService.getWorkspaces(window.webContents.id));
+    register(requests.editWorkspace, (window, request) =>
+      changeWorkspace(async () => {
+        const result = await repositoryService.editWorkspace(window.webContents.id, request);
+        for (const entry of windows.values()) {
+          if (
+            !entry.inspector &&
+            !entry.window.isDestroyed() &&
+            isTrustedDocument(entry.window.webContents.getURL(), entry.url)
+          )
+            entry.window.webContents.send(events.workspacesChanged.channel, null);
+        }
+        return result;
+      }),
+    );
+    register(requests.openWorkspace, (window, request) =>
+      changeWorkspace(async () => {
+        if (!openWorkspace)
+          throw new ExpectedBackendError('UNAVAILABLE', 'Workspace windows are unavailable.');
+        await openWorkspace(window, request.id, request.newWindow);
+        return null;
+      }),
+    );
     register(requests.getAiSettings, () => repositoryService.ai.settings());
     register(requests.configureAi, (window, request) =>
       repositoryService.ai.configure(window.webContents.id, request.model, async () => {
@@ -217,6 +247,17 @@ export function registerAppIpc(
     register(requests.getGitSettings, (window, request) =>
       repositoryService.getGitSettings(window.webContents.id, request.id),
     );
+    const changedSettings = async <T>(write: Promise<T>): Promise<T> => {
+      const value = await write;
+      for (const entry of windows.values())
+        if (!entry.window.isDestroyed() && isTrustedDocument(entry.window.webContents.getURL(), entry.url))
+          entry.window.webContents.send(events.settingsChanged.channel, null);
+      return value;
+    };
+    register(requests.getProductivityPreferences, () => repositoryService.getProductivityPreferences());
+    register(requests.setProductivityPreferences, (_window, request) =>
+      changedSettings(repositoryService.setProductivityPreferences(request)),
+    );
     register(requests.saveGitSettings, async (window, request) => {
       const result = await repositoryService.saveGitSettings(window.webContents.id, request);
       for (const entry of windows.values()) {
@@ -234,10 +275,10 @@ export function registerAppIpc(
     });
     register(requests.listExternalTools, () => repositoryService.externalTools.store.list());
     register(requests.saveExternalTool, (_window, request) =>
-      repositoryService.externalTools.store.save(request),
+      changedSettings(repositoryService.externalTools.store.save(request)),
     );
     register(requests.removeExternalTool, (_window, request) =>
-      repositoryService.externalTools.store.remove(request),
+      changedSettings(repositoryService.externalTools.store.remove(request)),
     );
     register(requests.runExternalTool, (window, request) =>
       repositoryService.startExternalTool(window.webContents.id, request),
@@ -251,8 +292,8 @@ export function registerAppIpc(
     });
     const store = () => repositoryService.customCommands.store;
     register(requests.listCustomCommands, () => store().list());
-    register(requests.saveCustomCommand, (_window, request) => store().save(request));
-    register(requests.removeCustomCommand, (_window, request) => store().remove(request));
+    register(requests.saveCustomCommand, (_window, request) => changedSettings(store().save(request)));
+    register(requests.removeCustomCommand, (_window, request) => changedSettings(store().remove(request)));
     register(requests.previewCustomCommand, (window, request) =>
       repositoryService.previewCustomCommand(window.webContents.id, request),
     );
@@ -286,7 +327,7 @@ export function registerAppIpc(
         );
       }
       if (window.isDestroyed()) return null;
-      return store().import(data);
+      return changedSettings(store().import(data));
     });
     register(requests.exportCustomCommand, async (window, request) => {
       const content = await store().export(request);
@@ -626,14 +667,14 @@ export function registerAppIpc(
     register(requests.getRepositoryTabPreferences, (window) =>
       repositoryService.getTabPreferences(window.webContents.id),
     );
-    register(requests.setRepositoryTabOrientation, (_window, { tabOrientation }) =>
-      repositoryService.setTabOrientation(tabOrientation),
+    register(requests.setRepositoryTabOrientation, (window, { tabOrientation }) =>
+      repositoryService.setTabOrientation(tabOrientation, window.webContents.id),
     );
     register(requests.selectRepositoryTab, (window, { id }) =>
       repositoryService.selectTab(window.webContents.id, id),
     );
-    register(requests.setRepositoryListVisible, (_window, { visible }) =>
-      repositoryService.setTabOrientation(visible ? 'vertical' : 'horizontal'),
+    register(requests.setRepositoryListVisible, (window, { visible }) =>
+      repositoryService.setTabOrientation(visible ? 'vertical' : 'horizontal', window.webContents.id),
     );
     register(requests.reorderRepositoryTabs, (window, { ids }) =>
       repositoryService.reorderTabs(window.webContents.id, ids),
@@ -680,8 +721,20 @@ export function registerAppIpc(
     register(requests.rescanSourceDirectory, (window, { id }) =>
       repositoryService.rescanSourceDirectory(window.webContents.id, id),
     );
-    register(requests.getRepositoryHistory, (window, { id, offset, limit, filter, anchor, mode, readId }) =>
-      repositoryService.getHistory(window.webContents.id, id, offset, limit, filter, anchor, mode, readId),
+    register(
+      requests.getRepositoryHistory,
+      (window, { id, offset, limit, filter, anchor, mode, readId, sortOrder }) =>
+        repositoryService.getHistory(
+          window.webContents.id,
+          id,
+          offset,
+          limit,
+          filter,
+          anchor,
+          mode,
+          readId,
+          sortOrder,
+        ),
     );
     register(requests.getRepositoryCommitChanges, (window, { id, commitId }) =>
       repositoryService.getCommitChanges(window.webContents.id, id, commitId),

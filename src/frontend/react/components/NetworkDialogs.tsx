@@ -9,6 +9,7 @@ import type {
   RepositoryPushPreview,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { useProductivityPreferences } from '../hooks/use-productivity-preferences';
 import { referenceNameProblem } from '../lib/references';
 import type { Platform } from '../lib/platform';
 import { DialogShell } from './DialogShell';
@@ -216,10 +217,12 @@ function RemoteSelect({
 }
 
 function FetchDialog({ remotes, failure, onStart, ...rest }: NetworkDialogProps) {
+  const preferences = useProductivityPreferences();
   const [remote, setRemote] = useState(remotes[0]?.name ?? '');
   const [all, setAll] = useState(false);
   const [prune, setPrune] = useState(true);
-  const [tags, setTags] = useState(true);
+  const [tagChoice, setTags] = useState<boolean>();
+  const tags = tagChoice ?? preferences.value?.fetchAllTags ?? true;
 
   return (
     <DialogShell

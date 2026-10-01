@@ -23,6 +23,8 @@ export const customFieldSchema = z.strictObject({
   initial: text(4096),
 });
 export const customDefinitionSchema = z.strictObject({
+  waitForExit: z.boolean().optional(),
+  showOutput: z.enum(['always', 'on-error']).optional(),
   name: text(100).trim().min(1),
   target: customTargetSchema,
   action: customActionSchema,
@@ -52,6 +54,8 @@ export const customPreviewRequestSchema = z.strictObject({
   inputs: z.array(text(4096)).max(8),
 });
 export const customPreviewSchema = z.strictObject({
+  waitForExit: z.boolean().optional(),
+  showOutput: z.enum(['always', 'on-error']).optional(),
   token: identifier,
   name: text(100),
   cwd: text(32768),

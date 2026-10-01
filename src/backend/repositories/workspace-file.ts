@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { z } from 'zod';
 
@@ -23,8 +23,12 @@ export class WorkspaceFile<T> {
       const valid = this.schema.parse(next);
       await mkdir(dirname(this.path), { recursive: true });
       const temporary = `${this.path}.${randomUUID()}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(valid, null, 2)}\n`, { mode: 0o600 });
-      await rename(temporary, this.path);
+      try {
+        await writeFile(temporary, `${JSON.stringify(valid, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+        await rename(temporary, this.path);
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+      }
       this.value = valid;
     });
   }

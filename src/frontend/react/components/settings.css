@@ -3,16 +3,34 @@
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
 }
-.settings-dialog .dialog-content {
+.settings-dialog > .dialog-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 34px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.settings-dialog > .dialog-content > .settings-page,
+.settings-dialog > .dialog-content > .custom-commands-panel,
+.settings-dialog > .dialog-content > .hosting-panel {
+  min-height: 0;
   overflow: auto;
+}
+.settings-dialog > .dialog-content > h2,
+.settings-dialog > .dialog-content > .settings-tabs,
+.settings-dialog > .dialog-content > .dialog-actions {
+  flex-shrink: 0;
 }
 .settings-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   border-bottom: 1px solid var(--border);
 }
 .settings-tabs button {
-  padding: 10px 11px;
+  padding: 9px 7px;
+  white-space: nowrap;
+  font-size: 12px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
@@ -24,7 +42,9 @@
 }
 .settings-page {
   display: grid;
-  gap: 12px;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 8px;
   padding: 16px 0;
 }
 .settings-section-title {
@@ -50,6 +70,35 @@
 }
 .dialog.settings-accounts-dialog {
   width: min(850px, calc(100vw - 32px));
+}
+.dialog.settings-tools-dialog {
+  width: min(920px, calc(100vw - 32px));
+}
+.settings-tools-dialog .settings-page {
+  display: block;
+}
+.settings-tools-dialog .external-tools-panel label {
+  display: grid;
+  grid-template-columns: 135px minmax(0, 1fr);
+  align-items: center;
+}
+.settings-tools-dialog .external-tools-panel label:has(input[type='checkbox']) {
+  display: flex;
+}
+.settings-tools-dialog .settings-page input[type='checkbox'] {
+  width: auto;
+}
+.custom-commands-panel .dialog-content {
+  padding: 16px 0 0;
+}
+.settings-tools-dialog .external-tools-panel > .dialog-actions {
+  display: none;
+}
+.external-tools-panel > p {
+  padding-bottom: 12px;
+}
+.composer-counter.guide-warning {
+  color: var(--text-muted);
 }
 .settings-accounts-dialog .dialog-content {
   padding-bottom: 12px;
@@ -79,6 +128,90 @@
 .settings-effective {
   overflow-wrap: anywhere;
   user-select: text;
+}
+.workspace-settings-list {
+  display: grid;
+  gap: 3px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 4px;
+}
+.workspace-settings-list button {
+  text-align: left;
+}
+.workspace-settings-list [aria-pressed='true'] {
+  background: var(--row-selected);
+}
+.shortcut-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shortcut-setting label {
+  flex: 1;
+}
+.settings-diff-preview {
+  font-family: var(--font-mono);
+  overflow: auto;
+  white-space: pre;
+  border: 1px solid var(--border);
+  padding: 6px;
+}
+.settings-sources {
+  border: 1px solid var(--border);
+  max-height: 110px;
+  overflow: auto;
+}
+.settings-sources > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+}
+.settings-sources span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-diff-remove {
+  background: light-dark(#ffe5e5, #512c30);
+}
+.settings-diff-add {
+  background: light-dark(#e4fbe5, #294b32);
+}
+.app[data-avatars='hidden'] .avatar {
+  display: none;
+}
+.commit-monospace input,
+.commit-monospace textarea {
+  font-family: var(--font-mono);
+}
+.workspace-tab[data-color='red'] {
+  --tab-color: #d96161;
+}
+.workspace-tab[data-color='orange'] {
+  --tab-color: #d98b42;
+}
+.workspace-tab[data-color='yellow'] {
+  --tab-color: #bba333;
+}
+.workspace-tab[data-color='green'] {
+  --tab-color: #5f9c6d;
+}
+.workspace-tab[data-color='blue'] {
+  --tab-color: #548dc4;
+}
+.workspace-tab[data-color='purple'] {
+  --tab-color: #a178c4;
+}
+.workspace-tab:not([data-color='none']) {
+  box-shadow: inset 0 3px var(--tab-color);
+}
+.vertical .workspace-tab:not([data-color='none']) {
+  box-shadow: inset 3px 0 var(--tab-color);
 }
 .settings-effective {
   font-size: 12px;

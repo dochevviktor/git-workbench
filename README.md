@@ -248,6 +248,29 @@ further pages. See the
 
 ## Start
 
+The toolbar workspace menu (initially **Work**) and File → Workspaces manage named workspaces.
+Each has its own window, tabs/order/colors, repository list, window bounds and pane sizes. Configure
+Workspaces creates/renames/removes sets and opens another window; switching focuses an existing window
+or replaces the current one after its replacement loads. A running operation blocks closing its owner
+through Switch Workspace. Save Current Layout, Restore Saved Layout and Reset Pane Sizes affect only
+that workspace. Tab colors are in the tab context menu. Normal startup reopens the last active workspace;
+other saved sets remain available. See the [P12 handoff](docs/reviews/p12-productivity-workspaces.md).
+
+Preferences now embeds external tools and custom commands. General adds source folders, syntax,
+date/topological ordering, compact labels, branch-space replacement, dirty indicators and local/hidden
+avatars. Commit adds font/guide controls and optional reviewed Push after commit. Ctrl/Cmd+Shift+Enter
+commits then opens Push; Cancel keeps the local commit without sending it. Git's expandable defaults
+edit signing and commit-template configuration with explicit scope, origin and inheritance. Shortcuts
+records Ctrl+Alt+letter (Cmd+Option on macOS) bindings with conflict checks and Reset.
+
+Custom commands can continue in Activity with Wait for Exit disabled, or show foreground output only
+on failure. Imported definitions still require explicit enabling and every execution retains review.
+External tools have per-kind defaults: Ctrl/Cmd+D opens a selected historical/working diff for review;
+Ctrl/Cmd+Alt+T opens the configured terminal, and Ctrl/Cmd+Alt+O opens the file manager. Lean Branching
+remembers the chosen base across restart. Git verbose output, fetch-tag defaults and safe opt-in
+submodule updates after checkout are profile preferences; no automatic updater or avatar network request
+is implied.
+
 File → Preferences (Ctrl/Cmd+,) provides appearance, diff font/marks, commit presentation, automatic fetch,
 global Git identity and Git executable selection, plus access to tools, accounts and custom commands.
 Appearance/presentation/fetch apply immediately; identity uses Save/Cancel. Save Git instance takes effect

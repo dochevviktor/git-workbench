@@ -124,6 +124,8 @@ export class CustomCommandService {
       cwd: summary.path,
       action,
       variables,
+      waitForExit: command.waitForExit,
+      showOutput: command.showOutput,
     });
     if (!parsed.success)
       invalid('Expanded command exceeds the supported size. Shorten its arguments or inputs.');

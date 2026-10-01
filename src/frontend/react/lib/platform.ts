@@ -1,4 +1,5 @@
 import type { AppInfo } from '../../../common/ipc/contracts';
+import { resolveShortcut } from './shortcut-preferences';
 
 export type Platform = AppInfo['platform'];
 
@@ -41,6 +42,7 @@ function shortcutParts(shortcut: string) {
  * Key names follow `KeyboardEvent.key`; `Plus` stands for the `+` character.
  */
 export function formatShortcut(shortcut: string, platform: Platform): string {
+  shortcut = resolveShortcut(shortcut);
   const { parts, key = '' } = shortcutParts(shortcut);
   if (platform === 'darwin') {
     const symbols = macModifierOrder
@@ -58,6 +60,7 @@ export function formatShortcut(shortcut: string, platform: Platform): string {
 
 /** The `aria-keyshortcuts` spelling, for example `Control+Shift+T`. */
 export function ariaShortcut(shortcut: string, platform: Platform): string {
+  shortcut = resolveShortcut(shortcut);
   const names: Readonly<Record<string, string>> = {
     Mod: platform === 'darwin' ? 'Meta' : 'Control',
     Ctrl: 'Control',
@@ -70,6 +73,7 @@ export function ariaShortcut(shortcut: string, platform: Platform): string {
 }
 
 export function matchesShortcut(event: KeyboardEvent, shortcut: string, platform: Platform): boolean {
+  shortcut = resolveShortcut(shortcut);
   const { parts, key } = shortcutParts(shortcut);
   if (!key) return false;
   const mac = platform === 'darwin';

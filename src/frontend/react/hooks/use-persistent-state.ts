@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import { WorkspaceScope, scopedPreference } from '../lib/workspace-layout';
 
 const storagePrefix = 'git-workbench.';
 
@@ -42,6 +43,8 @@ export function usePersistentState<Value>(
   fallback: Value,
   accept: (value: unknown) => value is Value,
 ): readonly [Value, (value: Value) => void] {
+  const workspace = useContext(WorkspaceScope);
+  key = scopedPreference(key, workspace);
   const [value, setValue] = useState<Value>(() => readStored(key, fallback, accept));
   useEffect(() => {
     const changed = () => setValue(readStored(key, fallback, accept));

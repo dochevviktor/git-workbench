@@ -26,14 +26,14 @@
   padding: 0;
   min-width: 0;
 }
-.external-tools-dialog label {
+:is(.external-tools-dialog, .external-tools-panel) label {
   display: grid;
   gap: 4px;
   margin-bottom: 10px;
 }
-.external-tools-dialog input,
-.external-tools-dialog select,
-.external-tools-dialog textarea {
+:is(.external-tools-dialog, .external-tools-panel) input,
+:is(.external-tools-dialog, .external-tools-panel) select,
+:is(.external-tools-dialog, .external-tools-panel) textarea {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -44,13 +44,13 @@
   color: var(--text);
   font: inherit;
 }
-.external-tools-dialog .dialog-actions {
+:is(.external-tools-dialog, .external-tools-panel) .dialog-actions {
   gap: 6px;
 }
 .external-tools-grid aside .button[aria-pressed='true'] {
   background: var(--row-context);
 }
-.external-tools-dialog pre {
+:is(.external-tools-dialog, .external-tools-panel) pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

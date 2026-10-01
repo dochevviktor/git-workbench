@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workspacesSchema, workspaceEditSchema, workspaceOpenSchema } from './workspaces';
 import { lfsContextSchema, lfsLocksSchema, lfsOperationRequestSchema } from './lfs';
 import {
   aiSettingsSchema,
@@ -11,6 +12,7 @@ import {
 } from './ai';
 import { statisticsRequestSchema, statisticsCancelSchema, statisticsSchema } from './statistics';
 import {
+  productivityPreferencesSchema,
   settingsTargetSchema,
   gitSettingsSchema,
   saveGitSettingsSchema,
@@ -447,6 +449,7 @@ export const repositoryHistoryAnchorSchema = z.discriminatedUnion('kind', [
 export const repositoryHistoryModeSchema = z.enum(['normal', 'reflog']);
 
 export const repositoryHistoryRequestSchema = z.strictObject({
+  sortOrder: z.enum(['topological', 'date']).optional(),
   id: repositoryIdSchema,
   offset: z.number().int().nonnegative().max(1_000_000),
   limit: z.number().int().min(1).max(100),
@@ -2643,6 +2646,19 @@ export const repositoryCommitDetailsContextSchema = z.strictObject({
 });
 
 export const requests = {
+  getProductivityPreferences: request(
+    'settings:get-productivity',
+    z.undefined(),
+    productivityPreferencesSchema,
+  ),
+  setProductivityPreferences: request(
+    'settings:set-productivity',
+    productivityPreferencesSchema,
+    productivityPreferencesSchema,
+  ),
+  getWorkspaces: request('workspace:list', z.undefined(), workspacesSchema),
+  editWorkspace: request('workspace:edit', workspaceEditSchema, workspacesSchema),
+  openWorkspace: request('workspace:open', workspaceOpenSchema, z.null()),
   getAiSettings: request('ai:get-settings', z.undefined(), aiSettingsSchema),
   configureAi: request('ai:configure', aiConfigureSchema, aiSettingsSchema),
   disableAi: request('ai:disable', z.undefined(), aiSettingsSchema),
@@ -3169,6 +3185,7 @@ export const requests = {
 export const events = {
   hostingNotificationsChanged: { channel: 'hosting:notifications-changed', payload: z.null() },
   settingsChanged: { channel: 'settings:changed', payload: z.null() },
+  workspacesChanged: { channel: 'workspace:changed', payload: z.null() },
   windowStateChanged: { channel: 'window:state-changed', payload: windowStateSchema },
   repositoryActivated: { channel: 'repository:activated', payload: repositorySummarySchema },
   repositoryInvalidated: { channel: 'repository:invalidated', payload: repositoryInvalidationSchema },

@@ -1,4 +1,5 @@
 import type { ReferenceChip } from '../lib/references';
+import { usePersistentState } from '../hooks/use-persistent-state';
 import { laneColorClass } from '../lib/graph-geometry';
 import { CheckIcon, RemoteIcon, StashItemIcon, TagIcon } from './Icons';
 
@@ -14,6 +15,11 @@ export function ReferenceChipList({
   readonly lane: number;
 }) {
   const laneClass = laneColorClass(lane);
+  const [compact] = usePersistentState(
+    'history.compactLabels',
+    false,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   return (
     <span className="ref-chips">
       {chips.map((chip) => {
@@ -41,7 +47,7 @@ export function ReferenceChipList({
             <span className={classes.join(' ')}>
               <span className="ref-chip-label">
                 {chip.current && chip.kind === 'branch' && <CheckIcon size={11} strokeWidth={2.25} />}
-                {chip.label}
+                {compact ? chip.label.split('/').at(-1) : chip.label}
               </span>
             </span>
           </span>

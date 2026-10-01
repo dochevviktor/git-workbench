@@ -30,6 +30,7 @@ export interface HistoryRunner {
 }
 
 export interface ReadHistoryInput {
+  readonly sortOrder?: 'topological' | 'date' | undefined;
   readonly repositoryId: string;
   readonly cwd: string;
   readonly head: RepositoryHead;
@@ -282,7 +283,11 @@ function historyArguments(
   const argumentsList = ['log'];
   if (filter.kind !== 'reference' && !(filter.kind === 'commit-search' && filter.scope === 'current-branch'))
     argumentsList.push('--all');
-  argumentsList.push('--topo-order', '--no-decorate', '--no-color');
+  argumentsList.push(
+    input.sortOrder === 'date' ? '--date-order' : '--topo-order',
+    '--no-decorate',
+    '--no-color',
+  );
   if (filter.kind === 'commit-search') {
     // Search text is passed as one argument and treated literally. It never becomes shell code or
     // a regular expression supplied by the renderer.

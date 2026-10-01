@@ -20,6 +20,8 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
   app.quit();
 } else {
   let mainWindow: BrowserWindow | null = null;
+  const mainWindows = new Map<number, BrowserWindow>();
+  const mainWorkspaceIds = new Map<number, string>();
   let openRequestedPaths = (paths: readonly string[]) => {
     launchPaths.push(...paths.slice(0, 20));
   };
@@ -81,7 +83,51 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         managerStoragePath: join(app.getPath('userData'), 'repository-manager.json'),
         workspaceStoragePath: join(app.getPath('userData'), 'repository-workspace.json'),
       });
-      const ipc = registerAppIpc(repositories, hosting, gitInstances);
+      let workspaceQueue = Promise.resolve();
+      let quitting = false;
+      const ipc = registerAppIpc(repositories, hosting, gitInstances, (owner, id, newWindow) => {
+        const action = workspaceQueue.then(async () => {
+          if (owner.isDestroyed()) return;
+          const state = await repositories.getWorkspaces(owner.webContents.id);
+          if (!state.entries.some((entry) => entry.id === id))
+            throw new ExpectedBackendError('INVALID_REQUEST', 'That workspace no longer exists.');
+          if (state.activeId === id) return;
+          if (
+            !newWindow &&
+            repositories
+              .listOperations(owner.webContents.id)
+              .some((operation) => operation.status === 'running')
+          )
+            throw new ExpectedBackendError(
+              'OPERATION_FAILED',
+              'Wait for running operations, or open the workspace in a new window.',
+            );
+          await repositories.namedWorkspaces.activate(id);
+          const existingOwner = repositories.workspaceOwner(id);
+          const target = existingOwner === undefined ? openWindow(id) : mainWindows.get(existingOwner);
+          if (!target || target.isDestroyed())
+            throw new ExpectedBackendError('UNAVAILABLE', 'The workspace window closed. Try again.');
+          mainWindow = target;
+          if (loadedWindows.has(target.webContents.id)) focusWindow();
+          else
+            target.webContents.once('did-finish-load', () => {
+              if (!target.isDestroyed()) {
+                target.show();
+                target.focus();
+              }
+            });
+          if (!newWindow) {
+            // Keep at least one main window alive and let this request return before closing its sender.
+            const closeSource = () => {
+              if (!owner.isDestroyed()) owner.close();
+            };
+            if (loadedWindows.has(target.webContents.id)) setImmediate(closeSource);
+            else target.webContents.once('did-finish-load', closeSource);
+          }
+        });
+        workspaceQueue = action.catch(() => undefined);
+        return action;
+      });
       installApplicationMenu();
       const loadedWindows = new Set<number>();
       let openQueue = Promise.resolve();
@@ -115,23 +161,41 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
           .catch((error: unknown) => console.error('Unable to handle repository launch', error));
       };
 
-      const openWindow = () => {
-        mainWindow = createMainWindow(ipc.attachWindow);
-        const windowId = mainWindow.webContents.id;
-        mainWindow.webContents.on('did-start-loading', () => hosting.cancel(windowId));
-        mainWindow.webContents.once('did-finish-load', () => {
+      const openWindow = (workspaceId: string) => {
+        const window = createMainWindow((created, url) => {
+          repositories.bindWorkspace(created.webContents.id, workspaceId);
+          ipc.attachWindow(created, url);
+        }, workspaceId);
+        mainWindow = window;
+        const windowId = window.webContents.id;
+        mainWindows.set(windowId, window);
+        mainWorkspaceIds.set(windowId, workspaceId);
+        window.on('focus', () => {
+          mainWindow = window;
+          if (!quitting) void repositories.namedWorkspaces.activate(workspaceId).catch(() => undefined);
+        });
+        window.webContents.on('did-start-loading', () => hosting.cancel(windowId));
+        window.webContents.once('did-finish-load', () => {
           loadedWindows.add(windowId);
           if (launchPaths.length) openRequestedPaths(launchPaths.splice(0, 20));
         });
-        mainWindow.once('closed', () => {
+        window.once('closed', () => {
           loadedWindows.delete(windowId);
-          mainWindow = null;
+          mainWindows.delete(windowId);
+          mainWorkspaceIds.delete(windowId);
+          if (mainWindow === window) mainWindow = [...mainWindows.values()].at(-1) ?? null;
+          if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
+            const remaining = mainWorkspaceIds.get(mainWindow.webContents.id);
+            if (remaining) void repositories.namedWorkspaces.activate(remaining).catch(() => undefined);
+          }
         });
+        return window;
       };
 
-      openWindow();
+      openWindow((await repositories.namedWorkspaces.read()).lastActiveId);
       app.on('activate', () => {
-        if (!mainWindow) openWindow();
+        if (!mainWindow)
+          void repositories.namedWorkspaces.read().then((state) => openWindow(state.lastActiveId));
         else focusWindow();
       });
       app.once('will-quit', () => {
@@ -139,7 +203,6 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         repositories.dispose();
         ipc.dispose();
       });
-      let quitting = false;
       let drained = false;
       app.on('before-quit', (event) => {
         if (drained) return;
@@ -147,7 +210,7 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         if (quitting) return;
         quitting = true;
         repositories.dispose();
-        void repositories.settled().finally(() => {
+        void Promise.allSettled([repositories.settled(), repositories.namedWorkspaces.read()]).finally(() => {
           drained = true;
           app.quit();
         });

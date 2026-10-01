@@ -95,6 +95,10 @@ import { shortHash } from '../lib/format';
 import { detectPlatform, formatShortcut, matchesShortcut } from '../lib/platform';
 import type { Platform } from '../lib/platform';
 import { workspaceShortcuts } from '../lib/workspace-shortcuts';
+import { useWorkspaces } from '../hooks/use-workspaces';
+import { WorkspacesDialog } from '../components/WorkspacesDialog';
+import { WorkspaceScope, restoreWorkspaceLayout, saveWorkspaceLayout } from '../lib/workspace-layout';
+import { workspaceColorSchema } from '../../../common/ipc/workspaces';
 
 const appearances = ['system', 'light', 'dark'] as const;
 type Appearance = (typeof appearances)[number];
@@ -110,17 +114,38 @@ type Desktop = ReturnType<typeof useDesktop>;
 
 export default function App() {
   const desktop = useDesktop();
+  const workspaces = useWorkspaces();
   const [detectedPlatform] = useState(detectPlatform);
   const platform = desktop.info?.platform ?? detectedPlatform;
 
   return (
     <ContextMenuHost platform={platform}>
-      <Workbench desktop={desktop} platform={platform} />
+      {workspaces.value ? (
+        <WorkspaceScope value={workspaces.value.activeId}>
+          <Workbench desktop={desktop} platform={platform} workspaces={workspaces} />
+        </WorkspaceScope>
+      ) : (
+        <main role={workspaces.error ? 'alert' : 'status'}>
+          {workspaces.error || desktop.error || 'Opening workspace…'}
+          {workspaces.error && <button onClick={() => void workspaces.refresh()}>Retry</button>}
+        </main>
+      )}
     </ContextMenuHost>
   );
 }
 
-function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly platform: Platform }) {
+function Workbench({
+  desktop,
+  platform,
+  workspaces,
+}: {
+  readonly desktop: Desktop;
+  readonly platform: Platform;
+  readonly workspaces: ReturnType<typeof useWorkspaces>;
+}) {
+  const workspaceState = workspaces.value!;
+  const workspace = workspaceState.entries.find((entry) => entry.id === workspaceState.activeId)!;
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const externalTools = useExternalTools();
   const { info, windowState, windowCommand } = desktop;
   const repositories = useRepositories();
@@ -156,6 +181,38 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     select,
     setTabOrientation,
   } = repositories;
+  const openWorkspace = async (id: string, newWindow: boolean) => {
+    const result = await window.desktop?.workspace.open({ id, newWindow });
+    if (result && !result.ok) throw new Error(result.error.message);
+    setWorkspacesOpen(false);
+  };
+  const layoutAction = (kind: 'save' | 'restore' | 'reset') => {
+    try {
+      if (kind === 'save') saveWorkspaceLayout(workspace.id);
+      else restoreWorkspaceLayout(workspace.id, kind === 'reset');
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : 'Cannot change layout.');
+    }
+  };
+  const workspaceItems: MenuEntry[] = [
+    { id: 'workspaces-heading', label: 'Workspaces', disabled: true },
+    ...workspaceState.entries.map((entry) => ({
+      id: `workspace-${entry.id}`,
+      label: entry.name,
+      checked: entry.id === workspace.id,
+      checkable: 'radio' as const,
+      run: () => {
+        void openWorkspace(entry.id, false).catch((reason: unknown) =>
+          reportError(reason instanceof Error ? reason.message : 'Cannot open workspace.'),
+        );
+      },
+    })),
+    menuSeparator,
+    { id: 'workspaces-configure', label: 'Configure Workspaces…', run: () => setWorkspacesOpen(true) },
+    { id: 'workspace-save-layout', label: 'Save Current Layout', run: () => layoutAction('save') },
+    { id: 'workspace-restore-layout', label: 'Restore Saved Layout', run: () => layoutAction('restore') },
+    { id: 'workspace-reset-layout', label: 'Reset Pane Sizes', run: () => layoutAction('reset') },
+  ];
   const [initializeOpen, setInitializeOpen] = useState(false);
   const initialize = useCallback(() => setInitializeOpen(true), []);
   // History stays loaded for the last repository tab while the Repository Manager tab is in front.
@@ -175,6 +232,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     'system',
     isOneOf(appearances),
   );
+  const [avatars] = usePersistentState('avatars', 'initials', isOneOf(['initials', 'hidden']));
   const [sidebarWidth, setSidebarWidth] = usePersistentState(
     'layout.sidebarWidth',
     248,
@@ -202,11 +260,16 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const [customRun, setCustomRun] = useState<{ command: CustomCommand; context: CustomContext }>();
   useEffect(() => {
     let current = true;
-    void window.desktop?.customCommands.list().then((result) => {
-      if (current && result.ok) setCustomCommands(result.value);
-    });
+    const load = () => {
+      void window.desktop?.customCommands.list().then((result) => {
+        if (current && result.ok) setCustomCommands(result.value);
+      });
+    };
+    load();
+    const release = window.desktop?.settings.onChanged(load);
     return () => {
       current = false;
+      release?.();
     };
   }, []);
   const customItems = (target: CustomContext['target'], value: string): MenuEntry[] =>
@@ -856,7 +919,21 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     refreshSignal,
     bisectChanged,
   );
-  const [leanBases, setLeanBases] = useState<Record<string, string>>({});
+  const [leanBases, setLeanBases] = usePersistentState<Record<string, string>>(
+    'lean.bases',
+    {},
+    (value): value is Record<string, string> =>
+      Boolean(
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        Object.entries(value).length <= 1000 &&
+        Object.entries(value).every(
+          ([key, base]) =>
+            /^repo-[a-f0-9]{64}$/u.test(key) && typeof base === 'string' && base.length <= 1024,
+        ),
+      ),
+  );
   const [leanDialog, setLeanDialog] = useState<{ id: string; kind: 'start' | 'sync' | 'finish' }>();
   const [gitFlowDialog, setGitFlowDialog] = useState<GitFlowDialogRequest>();
   const [statisticsView, setStatisticsView] = useState<'statistics' | 'treemap'>();
@@ -1500,6 +1577,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       const is = (shortcut: string) => matchesShortcut(event, shortcut, platform);
       if (event.isComposing || document.querySelector('dialog[open]')) return;
       if (is('Mod+P')) setQuickLaunchOpen(true);
+      else if (is('Mod+Alt+T') && active)
+        externalTools.openDefault(active.id, { kind: 'repository' }, 'terminal');
+      else if (is('Mod+Alt+O') && active) openInFileManager({ kind: 'open', id: active.id });
       else if (is('Mod+V')) {
         if (
           (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]')) ||
@@ -1556,6 +1636,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     aboutOpen,
+    externalTools,
+    openInFileManager,
     quickLaunchOpen,
     cloneOpen,
     customCommandsOpen,
@@ -1619,6 +1701,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
       mnemonic: 'f',
       items: compactMenu([
         { id: 'new-tab', label: 'New Tab', shortcut: 'Mod+T', run: openManagerTab },
+        { id: 'workspaces', label: 'Workspaces', submenu: workspaceItems },
         {
           id: 'quick-launch',
           label: 'Quick Launch…',
@@ -2038,6 +2121,28 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         },
         ...(repository ? externalTools.items(repository.id, { kind: 'repository' }) : []),
         repository && { id: 'copy-path', label: 'Copy Path', run: () => copyText(repository.path) },
+        repository && {
+          id: 'tab-color',
+          label: 'Tab Color',
+          submenu: workspaceColorSchema.options.map((color) => ({
+            id: `tab-color-${color}`,
+            label: color === 'none' ? 'Default' : color[0]!.toUpperCase() + color.slice(1),
+            checked: (workspace.tabColors[repository.id] ?? 'none') === color,
+            checkable: 'radio' as const,
+            run: () => {
+              void workspaces
+                .edit({
+                  kind: 'color',
+                  revision: workspaceState.revision,
+                  repositoryId: repository.id,
+                  color,
+                })
+                .catch((reason: unknown) =>
+                  reportError(reason instanceof Error ? reason.message : 'Cannot save tab color.'),
+                );
+            },
+          })),
+        },
       ]),
     });
   };
@@ -2876,6 +2981,8 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
   const tabStrip = (orientation: 'horizontal' | 'vertical') => (
     <RepositoryTabs
       tabs={tabs}
+      workspaceName={workspace.name}
+      colors={workspace.tabColors}
       activeId={activeTabId}
       orientation={orientation}
       closeDisabled={repositoryBusy}
@@ -2900,6 +3007,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
     <div
       className={`app${repositoryListVisible ? ' repository-list-visible' : ''}`}
       data-theme={appearance}
+      data-avatars={avatars}
       data-platform={platform}
       data-desktop-status={desktopStatus}
     >
@@ -2911,6 +3019,9 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
         onWindowCommand={windowCommand}
       />
       <Toolbar
+        workspaceName={workspace.name}
+        workspaceItems={workspaceItems}
+        consoleItems={active ? externalTools.items(active.id, { kind: 'repository' }) : []}
         onQuickLaunch={() => setQuickLaunchOpen(true)}
         quickLaunchShortcut={formatShortcut('Mod+P', platform)}
         repositoryListVisible={repositoryListVisible}
@@ -3132,6 +3243,28 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
                   onVisibleCountChange={onVisibleCountChange}
                   refreshSignal={refreshSignal}
                   onCommitted={refresh}
+                  onPush={(commitId) => {
+                    const id = active.id;
+                    void window.desktop?.repository.getReferenceContext({ id }).then((result) => {
+                      if (activeRepositoryId.current !== id) return;
+                      if (!result.ok) {
+                        reportError(result.error.message);
+                        return;
+                      }
+                      if (result.value.head.commit !== commitId || result.value.head.state !== 'branch') {
+                        reportError(
+                          'The checkout changed after committing. Review the branch before pushing.',
+                        );
+                        return;
+                      }
+                      setDialogSnapshot(result.value.snapshot);
+                      setNetworkFailure(undefined);
+                      setNetworkDialog({
+                        kind: 'push',
+                        branch: result.value.branches.find((branch) => branch.isHead),
+                      });
+                    });
+                  }}
                   operationBusy={Boolean(activeOperation)}
                   submodules={submoduleContext?.submodules ?? []}
                   onOpenSubmodule={openSubmodule}
@@ -3204,8 +3337,14 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
               if (result.ok) setAutomaticFetch(result.value.enabled);
             });
           }}
-          tools={externalTools.settings}
-          commands={() => setCustomCommandsOpen(true)}
+          commandDefinitions={customCommands}
+          onCommandsChanged={setCustomCommands}
+          sources={openManagerTab}
+          sourceDirectories={manager?.sourceDirectories ?? []}
+          addSource={() => void addSourceDirectory()}
+          removeSource={(id) => void removeSourceDirectory(id)}
+          sourceBusy={repositoryBusy}
+          sourceError={repositoryError}
           onClone={(target) => {
             setHostedCloneTarget(target);
             setSettingsTarget(undefined);
@@ -3327,7 +3466,7 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           id={leanDialog.id}
           kind={leanDialog.kind}
           initialBase={leanBase ?? undefined}
-          onBaseChange={(base) => setLeanBases((previous) => ({ ...previous, [leanDialog.id]: base }))}
+          onBaseChange={(base) => setLeanBases({ ...leanBases, [leanDialog.id]: base })}
           platform={platform}
           repositoryBusy={referenceBusy}
           onClose={() => setLeanDialog(undefined)}
@@ -3351,6 +3490,15 @@ function Workbench({ desktop, platform }: { readonly desktop: Desktop; readonly 
           platform={platform}
           contextKey={`${active?.id}:${referenceContext?.snapshot}:${referenceBusy}`}
           onClose={() => setQuickLaunchOpen(false)}
+        />
+      )}
+      {workspacesOpen && (
+        <WorkspacesDialog
+          value={workspaceState}
+          edit={workspaces.edit}
+          reload={workspaces.refresh}
+          open={openWorkspace}
+          onClose={() => setWorkspacesOpen(false)}
         />
       )}
       {lfsRepository && (

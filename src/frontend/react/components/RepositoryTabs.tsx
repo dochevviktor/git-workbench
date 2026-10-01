@@ -2,6 +2,8 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import type { RepositorySummary, RepositoryTabOrientation } from '../../../common/ipc/contracts';
 import { tabStatusLabel } from '../lib/repository-labels';
 import { CloseIcon, PlusIcon, RepositoryIcon } from './Icons';
+import type { WorkspaceColor } from '../../../common/ipc/workspaces';
+import { usePersistentState } from '../hooks/use-persistent-state';
 
 export interface WorkspaceTab {
   readonly id: string;
@@ -11,6 +13,8 @@ export interface WorkspaceTab {
 }
 
 interface RepositoryTabsProps {
+  readonly workspaceName?: string;
+  readonly colors?: Readonly<Record<string, WorkspaceColor>>;
   readonly tabs: readonly WorkspaceTab[];
   readonly activeId: string | undefined;
   readonly orientation: RepositoryTabOrientation;
@@ -29,6 +33,8 @@ function tabLabel(tab: WorkspaceTab): string {
 }
 
 export function RepositoryTabs({
+  workspaceName = 'Work',
+  colors = {},
   tabs,
   activeId,
   orientation,
@@ -39,6 +45,11 @@ export function RepositoryTabs({
   onContextMenu,
   onReorder,
 }: RepositoryTabsProps) {
+  const [showDirty] = usePersistentState(
+    'tabs.showDirty',
+    true,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   const closable = (tab: WorkspaceTab) => tab.kind === 'repository' || tabs.length > 1;
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>, index: number) => {
@@ -72,7 +83,7 @@ export function RepositoryTabs({
 
   return (
     <div className={`workspace-tabs ${orientation}`}>
-      {orientation === 'vertical' && <div className="repository-list-heading">Workspace</div>}
+      {orientation === 'vertical' && <div className="repository-list-heading">{workspaceName}</div>}
       <div
         className="workspace-tab-list"
         role={orientation === 'horizontal' ? 'tablist' : 'listbox'}
@@ -93,6 +104,7 @@ export function RepositoryTabs({
               tabIndex={selected ? 0 : -1}
               title={tab.repository?.path ?? tab.title}
               data-kind={tab.kind}
+              data-color={colors[tab.id] ?? 'none'}
               draggable={tab.kind === 'repository' && !closeDisabled}
               onDragStart={(event) => {
                 event.dataTransfer.effectAllowed = 'move';
@@ -133,7 +145,7 @@ export function RepositoryTabs({
                   <RepositoryIcon size={14} />
                 </span>
               )}
-              {dirty && (
+              {dirty && showDirty && (
                 <span
                   className="workspace-tab-dirty"
                   data-testid="tab-dirty-indicator"

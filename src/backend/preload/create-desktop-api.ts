@@ -66,6 +66,12 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
   };
 
   return {
+    workspace: {
+      list: () => invoke(requests.getWorkspaces, undefined),
+      edit: (request) => invoke(requests.editWorkspace, request),
+      open: (request) => invoke(requests.openWorkspace, request),
+      onChanged: (listener) => subscribe(events.workspacesChanged, listener),
+    },
     ai: {
       getSettings: () => invoke(requests.getAiSettings, undefined),
       configure: (request) => invoke(requests.configureAi, request, 310000),
@@ -85,6 +91,8 @@ export function createDesktopApi(transport: IpcTransport, timeoutMs = 15_000): D
       run: (request) => invoke(requests.runCustomCommand, request),
     },
     settings: {
+      getProductivity: () => invoke(requests.getProductivityPreferences, undefined),
+      setProductivity: (request) => invoke(requests.setProductivityPreferences, request),
       getGitInstance: () => invoke(requests.getGitInstance, undefined),
       saveGitInstance: (request) => invoke(requests.saveGitInstance, request),
       pickGitInstance: () => invoke(requests.pickGitInstance, undefined, 310_000),

@@ -1,5 +1,29 @@
 # Fork catalogue alignment — 2026-09-20
 
+P12 alignment — **2026-10-01**: [implementation and retention record](../reviews/p12-productivity-workspaces.md).
+`P0-008-toolbar-dropdown-subcase:F3` and `P0-005-tab-sidebar-subcase:F1` guide the workspace dropdown
+and named additive repository list; separate window ownership, saved layouts and tab colors have an
+explicit independent Linux specification. `P0-013-general-git-subcase:F1–F4` guides compact tabs,
+source folders, the diff preview and General/Git controls. Preferences now embeds the tool and custom
+command editors from `P2-009-configuration-subcase:F1` and `P2-008-create-execute-remove-subcase:F1–F5`.
+`P2-009-custom-viewer-subcase:F2` supplies the historical Ctrl+D route. Original cases, full screenshots,
+UIA and no-mutation comparisons were consulted; capture dates are 2026-09-19/20, Windows 2.22.0.0,
+96 DPI, high confidence within each trial. Unchecked command options and workspace configuration
+outcomes remain uncaptured; new behavior is not relabeled as observed Fork behavior.
+
+The restored public Windows Commit screenshot from [TrackerWin #2808](https://github.com/fork-dev/TrackerWin/issues/2808)
+(2026-06-22, light, unspecified version; accessed 2026-10-01) supplements guide/spelling controls.
+The [Windows notes](https://fork.dev/releasenoteswin), [Quick Launch article](https://fork.dev/blog/posts/quick-launch/)
+and [Lean Branching proposal](https://github.com/fork-dev/TrackerWin/issues/1432) provide public-only
+context. The newer 2.23 release does not replace the catalogue baseline. No new screenshot was added
+to the public manifest; all 226 existing references remain local and unbundled.
+
+The explicit retention matrix follows P0-028/P0-032 and P2-015: ordinary restart selects HEAD/Commit;
+drafts/recovery and useful pane dimensions persist independently. The first desktop run exposed the
+new workspace button overflowing at 880 pixels; the compact toolbar threshold was corrected while
+retaining the original zero-overflow assertion. Native Wayland frame/physical monitor checks remain
+unclaimed. Reference coverage statuses and case-level unknowns are unchanged.
+
 P11 review correction — **2026-09-30**: the
 [correction record](../reviews/p11-hosting.md#review-correction--2026-09-30) retains the omitted F16
 failure and its controlled reproduction. Rechecked `P1-006-noff-subcase:F1–F2`, its original case,

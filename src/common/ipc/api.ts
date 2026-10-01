@@ -1,4 +1,5 @@
 import type { Statistics, StatisticsRequest } from './statistics';
+import type { Workspaces, WorkspaceEdit } from './workspaces';
 import type { LfsContext, LfsOperationRequest } from './lfs';
 import type { AiSettings, AiPreviewRequest, AiPreview, AiSend, AiResult } from './ai';
 import type {
@@ -154,10 +155,17 @@ import type {
 } from './hosting';
 
 import type { SettingsTarget, SaveGitSettings, GitSettings, GitInstance } from './settings';
+import type { ProductivityPreferences } from './settings';
 export type Unsubscribe = () => void;
 
 /** This is the entire capability surface available to a renderer. */
 export interface DesktopApi {
+  readonly workspace: {
+    list(): Promise<IpcResult<Workspaces>>;
+    edit(request: WorkspaceEdit): Promise<IpcResult<Workspaces>>;
+    open(request: { id: string; newWindow: boolean }): Promise<IpcResult<null>>;
+    onChanged(listener: () => void): Unsubscribe;
+  };
   readonly ai: {
     getSettings(): Promise<IpcResult<AiSettings>>;
     configure(request: { model: string }): Promise<IpcResult<AiSettings>>;
@@ -167,6 +175,8 @@ export interface DesktopApi {
     cancel(request: { id?: string }): Promise<IpcResult<null>>;
   };
   readonly settings: {
+    getProductivity(): Promise<IpcResult<ProductivityPreferences>>;
+    setProductivity(request: ProductivityPreferences): Promise<IpcResult<ProductivityPreferences>>;
     getGitInstance(): Promise<IpcResult<GitInstance>>;
     saveGitInstance(request: GitInstance): Promise<IpcResult<GitInstance>>;
     pickGitInstance(): Promise<IpcResult<string | null>>;

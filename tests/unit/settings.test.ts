@@ -58,6 +58,47 @@ const input = (value: GitSettings) => ({
 });
 
 describe('F34 scoped settings', () => {
+  it('atomically saves global signing/template defaults and repository overrides while retaining unrelated values', async () => {
+    const f = await fixture();
+    const template = join(f.root, 'message template.txt');
+    await writeFile(template, 'Reviewed subject\n\nBody\n');
+    const global = await f.service.read(null, f.cwd, f.global);
+    await f.service.save(f.cwd, f.global, {
+      ...input(global),
+      options: [
+        { key: 'user.signingkey', value: 'A'.repeat(40) },
+        { key: 'commit.gpgsign', value: 'true' },
+        { key: 'tag.gpgsign', value: 'false' },
+        { key: 'commit.template', value: template },
+      ],
+    });
+    expect(await f.run('config', '--bool', 'commit.gpgsign')).toBe('true');
+    expect(await f.run('config', 'commit.template')).toBe(template);
+    expect(await f.run('config', 'alias.retained')).toBe('status');
+    const local = await f.read();
+    expect(local.options?.find((entry) => entry.key === 'user.signingkey')?.effective).toMatchObject({
+      value: 'A'.repeat(40),
+      scope: 'global',
+    });
+    await f.service.save(f.cwd, f.path, {
+      ...input(local),
+      options: [{ key: 'commit.gpgsign', value: 'false' }],
+    });
+    expect(await f.run('config', '--bool', 'commit.gpgsign')).toBe('false');
+    await f.service.save(f.cwd, f.path, {
+      ...input(await f.read()),
+      options: [{ key: 'commit.gpgsign', value: null }],
+    });
+    expect(await f.run('config', '--bool', 'commit.gpgsign')).toBe('true');
+    const before = await readFile(f.global);
+    const noOp = await f.service.read(null, f.cwd, f.global);
+    await f.service.save(f.cwd, f.global, input(noOp));
+    expect(await readFile(f.global)).toEqual(before);
+    await f.run('config', '--global', 'tag.gpgsign', 'yes');
+    await expect(
+      f.service.save(f.cwd, f.global, { ...input(noOp), options: [{ key: 'commit.template', value: null }] }),
+    ).rejects.toThrow('changed outside');
+  });
   it('does not remove a new writer lock acquired immediately after publishing', async () => {
     const f = await fixture();
     const { rename } = await vi.importActual<typeof fs>('node:fs/promises');

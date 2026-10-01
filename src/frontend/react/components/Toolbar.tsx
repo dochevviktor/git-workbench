@@ -26,6 +26,9 @@ import { MenuButton } from './menu/MenuButton';
 import type { MenuEntry } from './menu/menu-model';
 
 interface ToolbarProps {
+  readonly workspaceName: string;
+  readonly workspaceItems: readonly MenuEntry[];
+  readonly consoleItems: readonly MenuEntry[];
   readonly onQuickLaunch: () => void;
   readonly quickLaunchShortcut: string;
   readonly repositoryListVisible: boolean;
@@ -179,6 +182,9 @@ function progressText(operation: RepositoryOperation): string {
 }
 
 export function Toolbar({
+  workspaceName,
+  workspaceItems,
+  consoleItems,
   onQuickLaunch,
   quickLaunchShortcut,
   repositoryListVisible,
@@ -354,9 +360,19 @@ export function Toolbar({
         <ToolbarButton
           icon={<TerminalIcon size={18} />}
           label="Console"
-          disabledReason={noRepository ?? 'Opening a console is not available yet (planned for P12).'}
+          disabledReason={
+            noRepository ??
+            (consoleItems.length ? undefined : 'Configure a terminal in Preferences → Integration.')
+          }
+          menuItems={consoleItems}
         />
         <ToolbarButton icon={<AppearanceIcon size={18} />} label="Appearance" menuItems={appearanceItems} />
+        <ToolbarButton
+          testId="toolbar-workspace"
+          icon={<RepositoryIcon size={18} />}
+          label={workspaceName}
+          menuItems={workspaceItems}
+        />
       </div>
     </div>
   );

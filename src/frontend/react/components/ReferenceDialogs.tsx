@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react';
+import { isOneOf, usePersistentState } from '../hooks/use-persistent-state';
 import { SignatureCheck, SigningControls } from './SigningControls';
 import type { RepositorySigningMode } from '../../../common/ipc/contracts';
 import type { ReactNode } from 'react';
@@ -173,6 +174,7 @@ function NameField({
   readonly suggestions?: readonly string[];
 }) {
   const fieldId = useId();
+  const [spaces] = usePersistentState('branch.spaces', 'keep', isOneOf(['keep', '-', '_']));
   return (
     <>
       <dt>
@@ -193,7 +195,13 @@ function NameField({
           onFocus={selectOnFocus ? (event) => event.target.select() : undefined}
           data-testid="reference-name"
           list={suggestions.length ? `${fieldId}-folders` : undefined}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) =>
+            onChange(
+              spaces !== 'keep' && !label.includes('Tag')
+                ? event.target.value.replaceAll(' ', spaces)
+                : event.target.value,
+            )
+          }
         />
         {suggestions.length > 0 && (
           <datalist id={`${fieldId}-folders`}>

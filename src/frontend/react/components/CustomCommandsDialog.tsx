@@ -19,31 +19,38 @@ const blank = (): CustomDefinition => ({
 const api = () => window.desktop!.customCommands;
 const message = (error: unknown) => (error instanceof Error ? error.message : 'The command request failed.');
 
-function useCommandDialog() {
+function useCommandDialog(embedded = false) {
   const dialog = useRef<HTMLDialogElement>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
+    if (embedded)
+      return () => {
+        alive.current = false;
+      };
     const focus = document.activeElement;
     dialog.current?.showModal();
     return () => {
       alive.current = false;
       if (focus instanceof HTMLElement && focus.isConnected) focus.focus();
     };
-  }, []);
+  }, [embedded]);
   return { dialog, alive };
 }
 
 export function CustomCommandsDialog({
+  embedded = false,
   commands,
   onChanged,
   onClose,
 }: {
+  readonly embedded?: boolean;
   readonly commands: CustomCommand[];
   readonly onChanged: (commands: CustomCommand[]) => void;
   readonly onClose: () => void;
 }) {
-  const { dialog, alive } = useCommandDialog();
+  const { dialog, alive } = useCommandDialog(embedded);
+  const Container = embedded ? 'section' : 'dialog';
   const [selected, setSelected] = useState<CustomCommand>();
   const [draft, setDraft] = useState<CustomDefinition>();
   const [enabled, setEnabled] = useState(false);
@@ -85,7 +92,14 @@ export function CustomCommandsDialog({
     setSelected(command);
     setDraft(
       command
-        ? { name: command.name, target: command.target, action: command.action, fields: command.fields }
+        ? {
+            name: command.name,
+            target: command.target,
+            action: command.action,
+            fields: command.fields,
+            waitForExit: command.waitForExit,
+            showOutput: command.showOutput,
+          }
         : blank(),
     );
     setEnabled(command?.enabled ?? false);
@@ -120,9 +134,11 @@ export function CustomCommandsDialog({
       setSelected(undefined);
     });
   return (
-    <dialog
-      ref={dialog}
-      className="dialog custom-commands-dialog"
+    <Container
+      ref={(node) => {
+        if (node instanceof HTMLDialogElement) dialog.current = node;
+      }}
+      className={embedded ? 'custom-commands-panel' : 'dialog custom-commands-dialog'}
       aria-label="Custom Commands"
       onCancel={(event) => {
         event.preventDefault();
@@ -130,7 +146,7 @@ export function CustomCommandsDialog({
       }}
     >
       <div className="dialog-content">
-        <h2>Custom Commands</h2>
+        {!embedded && <h2>Custom Commands</h2>}
         <div className="custom-command-layout">
           <aside className="custom-command-list" aria-label="Saved commands">
             <div className="custom-command-entries">
@@ -382,6 +398,26 @@ export function CustomCommandsDialog({
               <label className="custom-checkbox">
                 <input
                   type="checkbox"
+                  disabled={busy}
+                  checked={draft.waitForExit ?? true}
+                  onChange={(event) => setDraft({ ...draft, waitForExit: event.target.checked })}
+                />
+                Wait for Exit
+              </label>
+              <label className="custom-checkbox">
+                <input
+                  type="checkbox"
+                  disabled={busy}
+                  checked={draft.showOutput !== 'on-error'}
+                  onChange={(event) =>
+                    setDraft({ ...draft, showOutput: event.target.checked ? 'always' : 'on-error' })
+                  }
+                />
+                Always Show Output
+              </label>
+              <label className="custom-checkbox">
+                <input
+                  type="checkbox"
                   checked={enabled}
                   disabled={busy}
                   onChange={(event) => setEnabled(event.target.checked)}
@@ -416,7 +452,10 @@ export function CustomCommandsDialog({
               inserted as script source.
             </p>
             <p>URL variable values are URL encoded. File commands refer to the working path.</p>
-            <p>Processes wait for exit, always show output, and stop after 5 minutes or 64 KiB of output.</p>
+            <p className="muted">
+              Background commands continue in Activity with output and cancellation. Processes stop after 5
+              minutes or 64 KiB of output.
+            </p>
           </aside>
         </div>
         {removing && selected && (
@@ -483,12 +522,14 @@ export function CustomCommandsDialog({
           >
             Save
           </button>
-          <button type="button" className="button" disabled={busy} onClick={onClose}>
-            Close
-          </button>
+          {!embedded && (
+            <button type="button" className="button" disabled={busy} onClick={onClose}>
+              Close
+            </button>
+          )}
         </div>
       </div>
-    </dialog>
+    </Container>
   );
 }
 
@@ -618,10 +659,12 @@ export function CustomCommandRunDialog({
         {operation && (
           <section aria-label="Command output">
             <p role="status">{operation.message}</p>
-            <label>
-              Details
-              <textarea aria-label="Details" readOnly rows={12} value={operation.output} />
-            </label>
+            {(preview?.showOutput !== 'on-error' || operation.status === 'failed') && (
+              <label>
+                Details
+                <textarea aria-label="Details" readOnly rows={12} value={operation.output} />
+              </label>
+            )}
           </section>
         )}
         {error && <p role="alert">{error}</p>}
@@ -636,6 +679,7 @@ export function CustomCommandRunDialog({
                   if (preview) {
                     const result = unwrapResult(await api().run({ token: preview.token }));
                     if (alive.current) setStarted(result);
+                    if (alive.current && preview.waitForExit === false) onClose();
                   } else {
                     const result = unwrapResult(
                       await api().preview({ commandId: command.id, context, inputs }),

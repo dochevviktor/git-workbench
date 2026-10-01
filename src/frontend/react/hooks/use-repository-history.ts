@@ -9,6 +9,7 @@ import type {
   RepositoryHistoryMode,
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
+import { isOneOf, usePersistentState } from './use-persistent-state';
 
 const historyPageSize = 100;
 const allHistoryFilter = { kind: 'all' } as const satisfies RepositoryHistoryFilter;
@@ -38,6 +39,7 @@ function historyRequestKey(filter: RepositoryHistoryFilter, mode: RepositoryHist
 }
 
 interface HistorySession {
+  readonly sortOrder: string;
   readonly page: RepositoryHistoryPage;
   readonly filter: RepositoryHistoryFilter;
   readonly mode: RepositoryHistoryMode;
@@ -52,6 +54,11 @@ export type RepositoryHistory = ReturnType<typeof useRepositoryHistory>;
 export type HistoryFilter = RepositoryHistoryFilter;
 
 export function useRepositoryHistory(repositoryId: string | undefined) {
+  const [sortOrder] = usePersistentState(
+    'history.sortOrder',
+    'topological',
+    isOneOf(['topological', 'date'] as const),
+  );
   const [stateRepositoryId, setStateRepositoryId] = useState<string>();
   const [commits, setCommits] = useState<RepositoryHistoryCommit[]>([]);
   const [references, setReferences] = useState<RepositoryHistoryReference[]>([]);
@@ -116,7 +123,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
     ownedMode.repositoryId === repositoryId
       ? ownedMode.mode
       : ((repositoryId ? sessions.current.get(repositoryId)?.mode : undefined) ?? 'normal');
-  const filterKey = historyRequestKey(filter, mode);
+  const filterKey = `${sortOrder}:${historyRequestKey(filter, mode)}`;
 
   useEffect(() => {
     mounted.current = true;
@@ -157,6 +164,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       try {
         const page = unwrapResult(
           await api.repository.getHistory({
+            sortOrder,
             id,
             readId,
             offset,
@@ -212,6 +220,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
           nextOffset: prepend ? previous.page.nextOffset : page.nextOffset,
         };
         sessions.current.set(id, {
+          sortOrder,
           page: mergedPage,
           filter: requestFilter,
           mode: requestMode,
@@ -258,7 +267,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
         }
       }
     },
-    [cancelReads],
+    [cancelReads, sortOrder],
   );
 
   useEffect(() => {
@@ -283,7 +292,12 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       return;
     }
     const cached = sessions.current.get(repositoryId);
-    if (cached && cached.mode === mode && historyFilterKey(cached.filter) === historyFilterKey(filter)) {
+    if (
+      cached &&
+      cached.sortOrder === sortOrder &&
+      cached.mode === mode &&
+      historyFilterKey(cached.filter) === historyFilterKey(filter)
+    ) {
       setStateRepositoryId(repositoryId);
       setCommits(cached.page.commits);
       setReferences(cached.page.references);
@@ -298,7 +312,7 @@ export function useRepositoryHistory(repositoryId: string | undefined) {
       return;
     }
     void requestPage(repositoryId, 0, true, requestGeneration, filter, mode);
-  }, [filter, mode, repositoryId, requestPage, cancelReads]);
+  }, [filter, mode, repositoryId, requestPage, cancelReads, sortOrder]);
 
   const setFilter = useCallback(
     (next: RepositoryHistoryFilter) => {

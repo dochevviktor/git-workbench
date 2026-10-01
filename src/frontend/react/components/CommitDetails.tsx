@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { repositorySessionMap } from '../lib/repository-session';
+import { detectPlatform, matchesShortcut } from '../lib/platform';
 import { IssueLinks } from './IssueLinks';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import type {
@@ -1079,6 +1080,39 @@ export function CommitDetails({
     <section
       className={collapsed ? 'commit-details details-collapsed' : 'commit-details'}
       aria-label="Commit details"
+      onKeyDown={(event) => {
+        if (
+          standalone ||
+          event.isDefaultPrevented() ||
+          !repositoryId ||
+          !commit ||
+          (event.target instanceof Element && event.target.closest('input, textarea, dialog'))
+        )
+          return;
+        if (matchesShortcut(event.nativeEvent, 'Mod+D', detectPlatform())) {
+          const treeFile = [...directories.values()]
+            .flatMap((directory) => (directory.status === 'loaded' ? directory.tree.entries : []))
+            .find(
+              (entry) => entry.type === 'blob' && `tree:${encodeURIComponent(entry.path)}` === treeActiveKey,
+            );
+          const path =
+            activeTab === 'changes'
+              ? selectedChange?.path
+              : activeTab === 'tree'
+                ? treeFile?.path
+                : event.target instanceof Element
+                  ? event.target.closest<HTMLElement>('[data-commit-path]')?.dataset.commitPath
+                  : undefined;
+          if (!path) return;
+          event.preventDefault();
+          event.stopPropagation();
+          externalTools.openDefault(
+            repositoryId,
+            { kind: 'revision', commitId: commit.id, path, line: 1 },
+            'diff',
+          );
+        }
+      }}
     >
       <div className="details-header">
         <div className="details-tabs" role="tablist" aria-label="Commit detail views">

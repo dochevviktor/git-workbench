@@ -33,15 +33,32 @@ const templates: Record<ExternalTool['kind'], string[]> = {
 };
 const captions = { diff: 'Diff in', editor: 'Open in', merge: 'Merge in', terminal: 'Open in' };
 
-function Modal({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
+function Modal({
+  title,
+  onClose,
+  children,
+  embedded = false,
+}: {
+  title: string;
+  onClose(): void;
+  children: ReactNode;
+  embedded?: boolean;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
+    if (embedded) return;
     const previous = document.activeElement;
     ref.current?.showModal();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [embedded]);
+  if (embedded)
+    return (
+      <section className="external-tools-panel" aria-label={title}>
+        {children}
+      </section>
+    );
   return (
     <dialog
       ref={ref}
@@ -61,11 +78,13 @@ function Modal({ title, onClose, children }: { title: string; onClose(): void; c
 }
 
 function Settings({
+  embedded = false,
   tools,
   changed,
   onClose,
   loadError,
 }: {
+  embedded?: boolean;
   tools: ExternalTool[];
   changed(tools: ExternalTool[]): void;
   onClose(): void;
@@ -80,7 +99,15 @@ function Settings({
   const select = (tool?: ExternalTool) => {
     setSelected(tool);
     setDefinition(
-      tool ? { kind: tool.kind, name: tool.name, executable: tool.executable, args: tool.args } : initial,
+      tool
+        ? {
+            kind: tool.kind,
+            name: tool.name,
+            executable: tool.executable,
+            args: tool.args,
+            isDefault: tool.isDefault,
+          }
+        : initial,
     );
     setArgs(JSON.stringify(tool?.args ?? initial.args));
     setError('');
@@ -99,12 +126,15 @@ function Settings({
   };
   return (
     <Modal
+      embedded={embedded}
       title="External Tools"
       onClose={() => {
         if (!busy) onClose();
       }}
     >
-      <p className="muted">Application profile · Save applies this tool; Close discards unsaved edits.</p>
+      <p className="muted">
+        Application profile · Save applies this tool; leaving this page discards unsaved edits.
+      </p>
       {loadError && <p role="alert">{loadError}</p>}
       <div className="external-tools-grid">
         <aside aria-label="Configured tools">
@@ -221,7 +251,20 @@ function Settings({
             </button>
             <label>
               Arguments (JSON array)
-              <textarea rows={3} value={args} onChange={(event) => setArgs(event.target.value)} />
+              <textarea
+                rows={3}
+                spellCheck={false}
+                value={args}
+                onChange={(event) => setArgs(event.target.value)}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={definition.isDefault ?? false}
+                onChange={(event) => setDefinition({ ...definition, isDefault: event.target.checked })}
+              />
+              Use as default
             </label>
             <p className="muted">
               Each array entry is one argument. Variables: {templates[definition.kind].join(', ')}
@@ -434,20 +477,35 @@ export function ExternalToolsProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState('');
   useEffect(() => {
     let alive = true;
-    void window.desktop?.externalTools.list().then((result) => {
-      if (alive) {
-        if (result.ok) {
-          setTools(result.value);
-          setLoadError('');
-        } else setLoadError(result.error.message);
-      }
-    });
+    const load = () => {
+      void window.desktop?.externalTools.list().then((result) => {
+        if (alive) {
+          if (result.ok) {
+            setTools(result.value);
+            setLoadError('');
+          } else setLoadError(result.error.message);
+        }
+      });
+    };
+    load();
+    const release = window.desktop?.settings.onChanged(load);
     return () => {
       alive = false;
+      release?.();
     };
   }, [settings]);
   const context: ToolContext = {
+    settingsPanel: (
+      <Settings embedded tools={tools} changed={setTools} loadError={loadError} onClose={() => undefined} />
+    ),
     settings: () => setSettings(true),
+    openDefault: (repositoryId, target, kind) => {
+      const tool =
+        tools.find((entry) => entry.kind === kind && entry.isDefault) ??
+        tools.find((entry) => entry.kind === kind);
+      if (tool) setLaunch({ repositoryId, target, tool });
+      else setSettings(true);
+    },
     items: (repositoryId, target, onDraft, kinds) =>
       tools
         .filter((tool) => !kinds || kinds.includes(tool.kind))
@@ -461,6 +519,15 @@ export function ExternalToolsProvider({ children }: { children: ReactNode }) {
         .map((tool) => ({
           id: `external-${tool.id}`,
           label: `${captions[tool.kind]} ${tool.name}…`,
+          shortcut:
+            tool.kind === 'diff' &&
+            tool.id ===
+              (
+                tools.find((entry) => entry.kind === 'diff' && entry.isDefault) ??
+                tools.find((entry) => entry.kind === 'diff')
+              )?.id
+              ? 'Mod+D'
+              : undefined,
           run: () => setLaunch({ repositoryId, target, tool, onDraft }),
         })),
   };

@@ -121,6 +121,11 @@ import { RecentRepositoryStore, recentPathStatus } from './recent-store';
 import { RepositoryManagerStore } from './repository-manager-store';
 import type { SourceDirectoryRecord } from './repository-manager-store';
 import { RepositoryTabStore } from './repository-tab-store';
+import { NamedWorkspaces } from './named-workspaces';
+import { WorkspaceFile } from './workspace-file';
+import { productivityPreferencesSchema } from '../../common/ipc/settings';
+import type { ProductivityPreferences } from '../../common/ipc/settings';
+import type { WorkspaceEdit, Workspaces } from '../../common/ipc/workspaces';
 import { scanSourceDirectory } from './source-scanner';
 import type { SourceScanOptions, SourceScanResult } from './source-scanner';
 import { readRepositoryHistory } from './history-service';
@@ -287,6 +292,12 @@ export class RepositoryService {
   private readonly store: RecentRepositoryStore;
   private readonly managerStore: RepositoryManagerStore;
   private readonly tabStore: RepositoryTabStore;
+  readonly namedWorkspaces: NamedWorkspaces;
+  private readonly productivity: WorkspaceFile<ProductivityPreferences>;
+  private readonly workspaceOwners = new Map<number, string>();
+  private readonly closedWorkspaceOwners = new Set<number>();
+  private readonly workspaceTabs = new Map<string, RepositoryTabStore>();
+  private readonly tabStorePath: string;
   private readonly runner: ReadCoordinator;
   private readonly repositoryRunner: RepositoryGitRunner;
   private readonly trust: RepositoryTrustStore;
@@ -334,6 +345,8 @@ export class RepositoryService {
       options.storagePath,
       options.managerStoragePath ?? `${options.storagePath}.manager`,
       options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
+      `${options.workspaceStoragePath ?? `${options.storagePath}.workspace`}.names`,
+      `${options.storagePath}.productivity`,
       join(this.workspaceStorageDirectory, 'window-state.json'),
     ];
     this.store = new RecentRepositoryStore({
@@ -345,6 +358,19 @@ export class RepositoryService {
       maxSourceDirectories: options.maxSourceDirectories ?? 10,
     });
     this.maxOpenTabs = Math.max(1, Math.min(options.maxOpenTabs ?? 20, 20));
+    this.tabStorePath = options.workspaceStoragePath ?? `${options.storagePath}.workspace`;
+    this.productivity = new WorkspaceFile(
+      `${options.storagePath}.productivity`,
+      productivityPreferencesSchema,
+      () => ({
+        version: 1,
+        revision: 0,
+        fetchAllTags: true,
+        verboseGitOutput: false,
+        updateSubmodulesOnCheckout: false,
+      }),
+    );
+    this.namedWorkspaces = new NamedWorkspaces(`${this.tabStorePath}.names`);
     this.tabStore = new RepositoryTabStore({
       filePath: options.workspaceStoragePath ?? `${options.storagePath}.workspace`,
       maxTabs: this.maxOpenTabs,
@@ -448,8 +474,8 @@ export class RepositoryService {
       );
     }
     await this.remember(summary);
-    await this.tabStore.addTab({ id: summary.id, path: summary.path });
-    await this.tabStore.setActiveRepositoryId(summary.id);
+    await this.tabStoreFor(ownerId).addTab({ id: summary.id, path: summary.path });
+    await this.tabStoreFor(ownerId).setActiveRepositoryId(summary.id);
     if (generation !== this.ownerGenerations.get(ownerId))
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.addSession(ownerId, summary);
@@ -504,8 +530,8 @@ export class RepositoryService {
       );
     }
     await this.remember(summary);
-    await this.tabStore.addTab({ id: summary.id, path: summary.path });
-    await this.tabStore.setActiveRepositoryId(summary.id);
+    await this.tabStoreFor(ownerId).addTab({ id: summary.id, path: summary.path });
+    await this.tabStoreFor(ownerId).setActiveRepositoryId(summary.id);
     if (generation !== this.ownerGenerations.get(ownerId))
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.addSession(ownerId, summary);
@@ -730,13 +756,13 @@ export class RepositoryService {
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'That repository is not open in this window.');
     }
 
-    const preferences = await this.tabStore.getPreferences();
-    await this.tabStore.removeTab(id);
+    const preferences = await this.tabStoreFor(ownerId).getPreferences();
+    await this.tabStoreFor(ownerId).removeTab(id);
     if (preferences.activeRepositoryId === id) {
       const ids = [...ownerSessions.keys()];
       const index = ids.indexOf(id);
       const nextActiveId = ids[index - 1] ?? ids[index + 1] ?? null;
-      await this.tabStore.setActiveRepositoryId(nextActiveId);
+      await this.tabStoreFor(ownerId).setActiveRepositoryId(nextActiveId);
     }
     for (const operationId of this.backgroundFetch.remove(ownerId, id))
       this.operations.cancel(ownerId, operationId);
@@ -751,7 +777,54 @@ export class RepositoryService {
 
   async getTabPreferences(ownerId: number): Promise<RepositoryTabPreferences> {
     await this.ensureSessions(ownerId);
-    return this.tabStore.getPreferences();
+    return this.tabStoreFor(ownerId).getPreferences();
+  }
+
+  private tabStoreFor(ownerId: number): RepositoryTabStore {
+    if (this.closedWorkspaceOwners.has(ownerId))
+      throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The workspace window closed.');
+    const id = this.workspaceOwners.get(ownerId) ?? 'default';
+    if (id === 'default') return this.tabStore;
+    let store = this.workspaceTabs.get(id);
+    if (!store) {
+      store = new RepositoryTabStore({ filePath: `${this.tabStorePath}.${id}`, maxTabs: this.maxOpenTabs });
+      this.workspaceTabs.set(id, store);
+    }
+    return store;
+  }
+
+  /** A main window keeps one workspace identity for its entire lifetime. */
+  bindWorkspace(ownerId: number, id: string): void {
+    if (this.sessions.has(ownerId) || this.workspaceOwners.has(ownerId))
+      throw new ExpectedBackendError('INVALID_REQUEST', 'This window already owns a workspace.');
+    this.workspaceOwners.set(ownerId, id);
+    this.closedWorkspaceOwners.delete(ownerId);
+  }
+
+  workspaceOwner(id: string): number | undefined {
+    return [...this.workspaceOwners].find(([, workspace]) => workspace === id)?.[0];
+  }
+
+  async getWorkspaces(ownerId: number): Promise<Workspaces> {
+    const saved = await this.namedWorkspaces.read();
+    return {
+      revision: saved.revision,
+      activeId: this.workspaceOwners.get(ownerId) ?? 'default',
+      entries: saved.entries.map((entry) => ({
+        ...entry,
+        open: this.workspaceOwner(entry.id) !== undefined,
+      })),
+    };
+  }
+
+  async editWorkspace(ownerId: number, request: WorkspaceEdit): Promise<Workspaces> {
+    if (request.kind === 'color') this.operationRepository(ownerId, request.repositoryId);
+    await this.namedWorkspaces.edit(
+      request,
+      this.workspaceOwners.get(ownerId) ?? 'default',
+      new Set(this.workspaceOwners.values()),
+    );
+    return this.getWorkspaces(ownerId);
   }
 
   /** Give a bounded read-only inspector its own session without persisting a tab or scheduling fetch. */
@@ -779,14 +852,17 @@ export class RepositoryService {
     ) {
       throw new ExpectedBackendError('INVALID_REQUEST', 'The tab order changed. Refresh and try again.');
     }
-    await this.tabStore.reorder(ids);
+    await this.tabStoreFor(ownerId).reorder(ids);
     this.sessions.set(ownerId, new Map(ids.map((id) => [id, current.get(id)!])));
     return this.listOpen(ownerId);
   }
 
-  async setTabOrientation(tabOrientation: RepositoryTabOrientation): Promise<RepositoryTabPreferences> {
-    await this.tabStore.setTabOrientation(tabOrientation);
-    return this.tabStore.getPreferences();
+  async setTabOrientation(
+    tabOrientation: RepositoryTabOrientation,
+    ownerId = 0,
+  ): Promise<RepositoryTabPreferences> {
+    await this.tabStoreFor(ownerId).setTabOrientation(tabOrientation);
+    return this.tabStoreFor(ownerId).getPreferences();
   }
 
   async selectTab(ownerId: number, id: string): Promise<RepositoryTabPreferences> {
@@ -797,8 +873,8 @@ export class RepositoryService {
         'That repository tab is not open in this window.',
       );
     }
-    await this.tabStore.setActiveRepositoryId(id);
-    return this.tabStore.getPreferences();
+    await this.tabStoreFor(ownerId).setActiveRepositoryId(id);
+    return this.tabStoreFor(ownerId).getPreferences();
   }
 
   async getHistory(
@@ -810,6 +886,7 @@ export class RepositoryService {
     anchor?: RepositoryHistoryAnchor,
     mode?: RepositoryHistoryMode,
     readId?: string,
+    sortOrder?: 'topological' | 'date',
   ): Promise<RepositoryHistoryPage> {
     return this.investigate(ownerId, id, readId, async (runner) => {
       await this.requireGit();
@@ -852,6 +929,7 @@ export class RepositoryService {
           filter,
           anchor,
           mode,
+          sortOrder,
         });
       } catch (error) {
         throw this.mapGitFailure(error, 'Git could not read the selected repository history.');
@@ -1193,7 +1271,7 @@ export class RepositoryService {
           changesSnapshot,
           request.action.kind,
           async () => {
-            const result = await applyReferenceAction(this.runner, {
+            let result = await applyReferenceAction(this.runner, {
               signal,
               onCommand,
               onOutput: progress?.appendOutput,
@@ -1211,6 +1289,54 @@ export class RepositoryService {
                 'OPERATION_FAILED',
                 `${result.message} Saved changes are available in Recovery.`,
               );
+            const checksOut =
+              action.kind === 'checkout-branch' ||
+              action.kind === 'checkout-remote-branch' ||
+              action.kind === 'checkout-commit' ||
+              (action.kind === 'create-branch' && action.checkout);
+            if (
+              result.status === 'applied' &&
+              checksOut &&
+              (await this.productivity
+                .read()
+                .then((value) => value.updateSubmodulesOnCheckout)
+                .catch(() => false))
+            ) {
+              // The checkout has already succeeded. Preserve it if a safe child update refuses or fails.
+              try {
+                let topology = await readSubmoduleContext(this.runner, {
+                  repositoryId: request.id,
+                  cwd: summary.worktreePath,
+                });
+                const targets = topology.submodules.filter((item) => !item.nested).map((item) => item.id);
+                for (const submoduleId of targets) {
+                  const updated = await applySubmoduleAction(this.runner, {
+                    repositoryId: request.id,
+                    cwd: summary.worktreePath,
+                    snapshot: topology.snapshot,
+                    action: { kind: 'update', submoduleId, recursive: true },
+                    signal,
+                    onCommand,
+                    onProgress: progress?.setProgress,
+                    onOutput: progress?.appendOutput,
+                  });
+                  if (updated.status !== 'applied') {
+                    result = {
+                      ...result,
+                      message: `${result.message} Submodule update stopped: ${updated.message}`,
+                    };
+                    break;
+                  }
+                  topology = updated.context;
+                }
+              } catch (error) {
+                result = {
+                  ...result,
+                  message: `${result.message} Submodule update did not finish. Inspect Submodules and Activity before continuing.`,
+                };
+                if (error instanceof GitCancelledError) throw error;
+              }
+            }
             return result;
           },
           signal,
@@ -1748,6 +1874,21 @@ export class RepositoryService {
     return { enabled: this.automaticFetchEnabled };
   }
 
+  getProductivityPreferences() {
+    return this.productivity.read();
+  }
+  async setProductivityPreferences(request: ProductivityPreferences) {
+    await this.productivity.update((value) => {
+      if (value.revision !== request.revision)
+        throw new ExpectedBackendError(
+          'STALE_SNAPSHOT',
+          'Preferences changed in another window. Reopen Preferences and try again.',
+        );
+      Object.assign(value, request, { revision: value.revision + 1 });
+    });
+    return this.productivity.read();
+  }
+
   async setAutomaticFetch(enabled: boolean): Promise<{ enabled: boolean }> {
     await this.remoteFetchPreferences.setGloballyEnabled(enabled);
     this.automaticFetchEnabled = enabled;
@@ -1852,9 +1993,32 @@ export class RepositoryService {
     work: (handle: OperationHandle) => Promise<OperationOutcome>,
   ): RepositoryOperation {
     try {
-      return this.operations.start(descriptor, (handle) =>
-        this.operationScope.run(handle.signal, () => work(handle)),
-      );
+      return this.operations.start(descriptor, async (handle) => {
+        const verbose = await this.productivity
+          .read()
+          .then((value) => value.verboseGitOutput)
+          .catch(() => false);
+        const commands = descriptor.command ? [descriptor.command] : [];
+        const outcome = await this.operationScope.run(handle.signal, () =>
+          work(
+            verbose
+              ? {
+                  ...handle,
+                  setCommand: (command) => {
+                    if (commands.length < 100) commands.push(command.slice(0, 4096));
+                    handle.setCommand?.(command);
+                  },
+                }
+              : handle,
+          ),
+        );
+        return verbose
+          ? {
+              ...outcome,
+              output: `${commands.map((command) => `$ ${command}`).join('\n')}\n${outcome.output}`,
+            }
+          : outcome;
+      });
     } catch (error) {
       if (error instanceof OperationBusyError)
         throw new ExpectedBackendError(
@@ -2122,6 +2286,11 @@ export class RepositoryService {
     source: RepositoryOperationSource = 'user',
   ): Promise<RepositoryOperation> {
     let summary = this.operationRepository(ownerId, request.id);
+    if (source === 'background' && request.request.kind === 'fetch') {
+      const preferences = await this.productivity.read();
+      request = { ...request, request: { ...request.request, tags: preferences.fetchAllTags } };
+      summary = this.operationRepository(ownerId, request.id);
+    }
     if (request.request.kind === 'pull' && !request.request.expectedHead) {
       summary = { ...summary, head: await this.discoverHead(summary.path) };
     }
@@ -3503,7 +3672,7 @@ export class RepositoryService {
     await this.ensureSessions(ownerId);
     await Promise.all([this.store.list(), this.managerStore.configuration()]);
     const tabs: WorkspaceRecovery['tabs'] = [];
-    for (const tab of await this.tabStore.listTabs()) {
+    for (const tab of await this.tabStoreFor(ownerId).listTabs()) {
       if (!this.sessions.get(ownerId)?.has(tab.id) || (await recentPathStatus(tab.path)) !== 'available')
         tabs.push({
           ...tab,
@@ -3525,13 +3694,13 @@ export class RepositoryService {
   async recoverTab(ownerId: number, request: RecoverRepositoryTab): Promise<RepositorySummary | null> {
     await this.ensureSessions(ownerId);
     const generation = this.ownerGenerations.get(ownerId);
-    const savedTab = (await this.tabStore.listTabs()).find((tab) => tab.id === request.id);
+    const savedTab = (await this.tabStoreFor(ownerId).listTabs()).find((tab) => tab.id === request.id);
     const previous = savedTab ?? (await this.store.list()).find((entry) => entry.id === request.id);
     if (!previous) throw new ExpectedBackendError('INVALID_REQUEST', 'That saved tab is no longer listed.');
     if (!request.path) {
       this.sessions.get(ownerId)?.delete(request.id);
       this.releaseWatch(ownerId, request.id);
-      await this.tabStore.forget(request.id);
+      await this.tabStoreFor(ownerId).forget(request.id);
       return null;
     }
     await this.requireGit();
@@ -3543,22 +3712,23 @@ export class RepositoryService {
     if (generation !== this.ownerGenerations.get(ownerId))
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     if (summary.id !== previous.id) {
-      if (savedTab) await this.tabStore.replace(previous.id, { id: summary.id, path: summary.path });
-      else await this.tabStore.addTab({ id: summary.id, path: summary.path });
+      if (savedTab)
+        await this.tabStoreFor(ownerId).replace(previous.id, { id: summary.id, path: summary.path });
+      else await this.tabStoreFor(ownerId).addTab({ id: summary.id, path: summary.path });
       this.sessions.get(ownerId)?.delete(previous.id);
       this.releaseWatch(ownerId, previous.id);
       await this.store.remove(previous.id);
       await this.managerStore.relocate(previous.path, summary.path);
     } else if (!savedTab) {
-      await this.tabStore.addTab({ id: summary.id, path: summary.path });
+      await this.tabStoreFor(ownerId).addTab({ id: summary.id, path: summary.path });
     }
     await this.remember(summary);
-    await this.tabStore.setActiveRepositoryId(summary.id);
+    await this.tabStoreFor(ownerId).setActiveRepositoryId(summary.id);
     if (generation !== this.ownerGenerations.get(ownerId))
       throw new ExpectedBackendError('REPOSITORY_NOT_OPEN', 'The repository window was closed.');
     this.addSession(ownerId, summary);
     const sessions = this.sessions.get(ownerId)!;
-    const order = await this.tabStore.listTabs();
+    const order = await this.tabStoreFor(ownerId).listTabs();
     if (this.sessions.get(ownerId) === sessions)
       this.sessions.set(
         ownerId,
@@ -3742,6 +3912,8 @@ export class RepositoryService {
   }
 
   disposeWindow(ownerId: number): void {
+    if (this.workspaceOwners.has(ownerId)) this.closedWorkspaceOwners.add(ownerId);
+    this.workspaceOwners.delete(ownerId);
     this.cancelInvestigationReads(ownerId);
     this.cancelManagerScan(ownerId);
     this.managerScans.delete(ownerId);
@@ -4342,7 +4514,7 @@ export class RepositoryService {
   }
 
   private async restoreSessions(ownerId: number, generation: number): Promise<void> {
-    const records = await this.tabStore.listTabs();
+    const records = await this.tabStoreFor(ownerId).listTabs();
     const restored = new Map<string, RepositorySummary>();
     for (const record of records) {
       if (restored.size >= this.maxOpenTabs) break;

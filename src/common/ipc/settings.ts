@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+export const productivityPreferencesSchema = z.strictObject({
+  version: z.literal(1),
+  revision: z.number().int().nonnegative(),
+  fetchAllTags: z.boolean(),
+  verboseGitOutput: z.boolean(),
+  updateSubmodulesOnCheckout: z.boolean().default(false),
+});
+export type ProductivityPreferences = z.infer<typeof productivityPreferencesSchema>;
+
 const text = z.string().max(4096);
 const identity = z
   .string()
@@ -29,6 +38,25 @@ export const issueRuleSchema = z
   })
   .strict();
 const field = z.object({ value: text.nullable(), origin: text.nullable(), scope: text.nullable() }).strict();
+export const gitOptionKeys = ['user.signingkey', 'commit.gpgsign', 'tag.gpgsign', 'commit.template'] as const;
+const gitOptionKeySchema = z.enum(gitOptionKeys);
+const gitOptionSchema = z
+  .strictObject({
+    key: gitOptionKeySchema,
+    value: z
+      .string()
+      .max(4096)
+      .regex(/^[^\p{Cc}]*$/u)
+      .nullable(),
+  })
+  .refine(
+    (entry) =>
+      !entry.key.endsWith('gpgsign') ||
+      entry.value === null ||
+      entry.value === 'true' ||
+      entry.value === 'false',
+    'Choose inherit, enabled or disabled for signing.',
+  );
 export const gitSettingsSchema = z
   .object({
     id: z.string().nullable(),
@@ -39,6 +67,10 @@ export const gitSettingsSchema = z
     effectiveName: field,
     effectiveEmail: field,
     issueRule: issueRuleSchema.nullable(),
+    options: z
+      .array(z.strictObject({ key: gitOptionKeySchema, value: text.nullable(), effective: field }))
+      .max(4)
+      .optional(),
   })
   .strict();
 export const saveGitSettingsSchema = settingsTargetSchema
@@ -50,6 +82,11 @@ export const saveGitSettingsSchema = settingsTargetSchema
       'Enter an email address.',
     ),
     issueRule: issueRuleSchema.nullable(),
+    options: z
+      .array(gitOptionSchema)
+      .max(4)
+      .refine((entries) => new Set(entries.map((entry) => entry.key)).size === entries.length)
+      .optional(),
   })
   .strict();
 export const openIssueSchema = z

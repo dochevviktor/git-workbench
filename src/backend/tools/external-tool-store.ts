@@ -83,6 +83,12 @@ export class ExternalToolStore {
       if (!request.id && tools.length >= 32)
         throw new ExpectedBackendError('INVALID_REQUEST', 'At most 32 external tools can be saved.');
       const saved = { ...definition, id: request.id ?? randomUUID(), revision: randomUUID() };
+      if (saved.isDefault)
+        tools = tools.map((tool) =>
+          tool.kind === saved.kind && tool.isDefault
+            ? { ...tool, isDefault: false, revision: randomUUID() }
+            : tool,
+        );
       return request.id ? tools.map((tool) => (tool.id === request.id ? saved : tool)) : [...tools, saved];
     });
   }

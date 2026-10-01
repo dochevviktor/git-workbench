@@ -584,9 +584,14 @@ export function DiffViewer({
     [value],
   );
   const inline = useMemo(() => (document ? inlineRanges(document) : new Map()), [document]);
+  const [syntaxEnabled] = usePersistentState(
+    'diff.syntax',
+    true,
+    (value): value is boolean => typeof value === 'boolean',
+  );
   const syntax = useMemo(
-    () => (document ? highlightDiff(document, value?.target.path ?? '') : new Map()),
-    [document, value?.target.path],
+    () => (document && syntaxEnabled ? highlightDiff(document, value?.target.path ?? '') : new Map()),
+    [document, value?.target.path, syntaxEnabled],
   );
   const longestLine = useMemo(
     () =>

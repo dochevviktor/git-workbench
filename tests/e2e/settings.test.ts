@@ -64,9 +64,14 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
     await preferences().getByRole('button', { name: 'Save Git instance', exact: true }).click();
     await expect(preferences().getByRole('status')).toContainText('Restart');
     await preferences().getByLabel('User name', { exact: true }).fill('Global Changed');
+    await preferences().getByText('Signing and commit template defaults', { exact: true }).click();
+    await preferences().getByLabel('Signing key', { exact: true }).fill('A'.repeat(40));
+    await preferences().getByLabel('Sign commits').selectOption('false');
     await preferences().getByRole('button', { name: 'Save', exact: true }).click();
     await expect(preferences()).not.toBeVisible();
     expect(await run('config', '--global', 'user.name')).toBe('Global Changed');
+    expect(await run('config', '--global', 'user.signingkey')).toBe('A'.repeat(40));
+    expect(await run('config', '--global', '--bool', 'commit.gpgsign')).toBe('false');
     await page.evaluate(async (path) => {
       const result = await window.desktop!.repository.open({ path });
       if (result.ok) await window.desktop!.repository.setTrust({ id: result.value.id, trusted: true });

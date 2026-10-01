@@ -1,5 +1,29 @@
 # Architecture and implementation decisions
 
+P12 (2026-10-01): [productivity/workspace handoff](reviews/p12-productivity-workspaces.md) defines
+one main-window owner per named workspace. New fixed workspace list/edit/open capabilities extend strict
+contracts, preload and authorized main handlers together; inspectors are denied. Metadata edits and
+window opening serialize, IDs resolve only to profile-owned files, and closed-owner tombstones prevent
+late tab writes from falling back into the original workspace. Separate tab/window files and five
+explicitly scoped renderer layout keys preserve the original workspace's migration and legacy values.
+Common-directory Git queues, shared native watchers with owner release, trust and inspector lifetimes
+remain intact. CLI opening targets the current main window; normal startup restores the last active workspace.
+
+Named productivity preferences persist fetch-tag defaults, verbose command display and opt-in child
+updates. Checkout updates reuse P09's guarded submodule service and report partial child failure without
+misreporting the completed parent checkout. Verbose commands pass through Activity's bounded redaction.
+Git settings add four fixed signing/template keys to the existing snapshot/lock-compatible atomic config
+transaction; omitted optional fields preserve older clients. No generic configuration, filesystem or
+process API is introduced. Executable choice still applies on next startup.
+
+Renderer preferences add date/topological history requests, syntax/labels/avatars/composer controls and
+a reserved-namespace shortcut map shared by labels and handlers. Main interprets only the validated
+history-order enum. Preferences embeds the existing tool/command editors, and definition changes notify
+all trusted windows with exact subscription cleanup. Tool defaults retain revision checks; background
+custom commands retain Activity, time/output bounds and owner cancellation. Commit and Push opens a
+review only after the successful committed object still matches the attached branch. Lean base choices
+persist independently of Git state. Sandbox, isolation, CSP and sender/frame/document checks are unchanged.
+
 P11 review correction (2026-09-30): optional hosting preference failures return bounded warnings with
 otherwise successful account/activity/inbox results. They cannot conceal accounts or change the reported
 outcome of a completed credential write/removal; unreadable choices disable automatic polling and the

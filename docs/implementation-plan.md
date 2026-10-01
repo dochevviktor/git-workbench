@@ -1,5 +1,16 @@
 # Git Workbench implementation plan
 
+P12 completion (2026-10-01): the [productivity/workspace handoff](reviews/p12-productivity-workspaces.md)
+closes the requested Linux phase scope. Named workspaces own separate windows, tabs, colors and saved
+layouts. Preferences completes supported General/Commit/Git controls, scoped signing/template defaults,
+embedded tool/command editors and shortcut customization. Background command output/cancellation,
+default historical-file tool shortcuts, reviewed Commit and Push, safe checkout submodule updates and
+persisted Lean base choices are verified. The catalogue comparison and explicit retention matrix retain
+unknown Fork variants and native-platform gates. `npm run check` passes 670 tests with six existing skips;
+build passes; the full headless suite passes 80 routine scenarios with three existing opt-in skips.
+All 13 affected desktop scenarios pass after the final target/layout corrections, and the last General
+page sizing adjustment passes all three settings/workspace scenarios. No automatic test retries were used.
+
 P11 review follow-up (2026-09-30): the [hosting correction](reviews/p11-hosting.md#review-correction--2026-09-30)
 records the previously omitted F16 failure and its controlled startup reproduction. Corrections cover
 credential management with damaged preferences, required Bitbucket scopes, retained notification retry
@@ -226,7 +237,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P09   | Worktrees, submodules, Git-flow                                      | Complete for Linux phase scope (2026-09-29); safe topology, nested lifecycle, compact pointer history and durable Git-flow finish verified; full suite green after stability follow-up                                                   | P02/P05, common-repo queue            |
 | P10   | Binary/image diffs, LFS, signing                                     | Complete for Linux phase scope (2026-09-29); bounded rich formats/SVG, zoom, cached LFS images, authenticated transfers, tracking/ownership, GPG defaults and protected-agent workflows verified; see P10 handoff                        | P04, safe assets; P05 transfers       |
 | P11   | Hosting providers, issues/PRs, notifications                         | Complete for researched Linux matrix; review corrections verified (2026-09-30): credential/preferences isolation, Bitbucket scopes/cursors, polling deadlines and F16 readiness; all 78 routine Electron scenarios pass; see P11 handoff | P05 auth; browser handoff independent |
-| P12   | Command palette, custom commands, external tools, workspace polish   | Partial; Preferences provider account forms corrected (2026-09-24), alongside F31–F34/F38; full preference inventory, workspaces and native platform coverage remain                                                                     | P02/P03 plus relevant domain services |
+| P12   | Command palette, custom commands, external tools, workspace polish   | Complete for Linux phase scope (2026-10-01); workspace windows/layouts, expanded Preferences, command/tool defaults, keyboard and retention verified; see P12 handoff; native/platform parity gates remain P14                           | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Partial; bounded F35 statistics and F37 OpenAI API workflows verified (2026-09-22); external-agent/platform variants remain                                                                                                              | P03 history; P12 tools for AI         |
 | P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                                  | Every claimed workflow                |
 
@@ -1394,6 +1405,23 @@ Acceptance:
 Coverage: F02–F03 workspace extensions beyond completed P02, F31–F34, F38. C01 brings shell work forward;
 C05 covers productivity.
 Catalogue anchors: P0-004–013, P1-032, P2-008/P2-009/P2-012–015.
+
+Completion checkpoint — **2026-10-01**: all five requirements and the supported Linux settings
+deliverables are implemented and verified under the explicit policies in the
+[P12 handoff](reviews/p12-productivity-workspaces.md). Its retention table maps C01 state separately
+across tab switches, workspace windows, normal restart, resize/zoom and workarea recovery. New workspace
+capabilities preserve sender/owner validation and per-window session cleanup; shared Git mutation
+queues remain authoritative. Git settings use fixed keys and the existing atomic config transaction.
+The first full run exposed toolbar overflow at 880 pixels; the original geometry assertion now passes.
+Repeated window cycles also verified/corrected last-workspace restoration. Ctrl+D targets the active
+Changes, File Tree or focused summary file, with independently checked historical bytes.
+
+Verification: 670 routine tests pass (six existing skips), production build passes, and the complete
+headless suite passes 80 routine scenarios (three existing opt-in skips). Thirteen affected desktop
+scenarios and the final three settings/workspace scenarios pass after the finishing corrections.
+Physical native display/frame transitions, real GUI daemon/platform variants, Updates and exact
+unobserved Fork semantics remain P14 or explicit deviations; they are not represented as implemented
+parity. Earlier checkpoints below remain historical and are superseded within this Linux phase scope.
 
 F38 checkpoint (2026-09-22): Branch and Repository menus expose reviewed Start/Sync/Finish,
 also discoverable through Quick Launch. Named validated IPC, upstream-aware snapshots and

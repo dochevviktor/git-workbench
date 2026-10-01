@@ -111,6 +111,7 @@ export function CommitFileSummary({
             <li
               key={change.path}
               data-testid="commit-file"
+              data-commit-path={change.path}
               onContextMenu={(event) => onContextMenu(change.path, event)}
             >
               <div className="details-file">

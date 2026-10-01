@@ -15,6 +15,7 @@ const path = text(4096)
   );
 export const externalToolKindSchema = z.enum(['editor', 'diff', 'merge', 'terminal']);
 export const externalToolDefinitionSchema = z.strictObject({
+  isDefault: z.boolean().optional(),
   kind: externalToolKindSchema,
   name: text(100).trim().min(1),
   executable: text(4096).min(1),

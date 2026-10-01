@@ -110,8 +110,11 @@ export class CustomCommandStore {
     });
   }
   async export(selection: CustomSelection): Promise<string> {
-    const { name, target, action, fields } = this.match(await this.list(), selection);
-    const definition = { name, target, action, fields };
+    const { name, target, action, fields, waitForExit, showOutput } = this.match(
+      await this.list(),
+      selection,
+    );
+    const definition = { name, target, action, fields, waitForExit, showOutput };
     return JSON.stringify(
       { format: 'git-workbench-custom-commands', version: 1, commands: [definition] },
       null,

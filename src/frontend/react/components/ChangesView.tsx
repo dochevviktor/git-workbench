@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { repositorySessionMap } from '../lib/repository-session';
+import { detectPlatform, matchesShortcut } from '../lib/platform';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type {
   RepositoryCommitChange,
@@ -368,6 +369,7 @@ interface ChangesViewProps {
   readonly refreshSignal: number;
   /** Lets a completed commit refresh the history, tabs, and repository summary. */
   readonly onCommitted: () => void;
+  readonly onPush?: ((commitId: string) => void) | undefined;
   /** Opens the F15 stash dialog for the selected file paths. */
   readonly onStashPaths?: (paths: readonly string[]) => void;
   /** Saves the selected file paths as a bounded patch. */
@@ -389,6 +391,7 @@ export function ChangesView({
   repository,
   refreshSignal,
   onCommitted,
+  onPush,
   operationBusy = false,
   onStashPaths,
   onSavePatch,
@@ -876,6 +879,19 @@ export function ChangesView({
       data-testid="working-changes"
       onKeyDown={(event) => {
         if (!(event.target instanceof HTMLElement) || event.target.closest('input, textarea, dialog')) return;
+        if (
+          matchesShortcut(event.nativeEvent, 'Mod+D', detectPlatform()) &&
+          selected?.kind === 'working' &&
+          selected.change.area !== 'ignored'
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          externalTools.openDefault(
+            repository.id,
+            { kind: 'working', path: selected.path, area: selected.change.area, line: 1 },
+            'diff',
+          );
+        }
         if (event.code === 'Space' && selected) {
           event.preventDefault();
           setPopup(true);
@@ -1096,6 +1112,7 @@ export function ChangesView({
           onAmendChange={setAmend}
           busy={actionBusy || operationBusy}
           onCommitted={onCommitted}
+          onPush={onPush}
         />
       </div>
       {discard && (
