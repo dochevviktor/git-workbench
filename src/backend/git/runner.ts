@@ -167,6 +167,9 @@ function controlledEnvironment(
     delete environment[key];
   }
   environment.GIT_TERMINAL_PROMPT = '0';
+  // Background status must not rewrite the index and trigger another watcher refresh.
+  // Required locks for explicit mutations (add, commit, checkout, ...) remain enabled.
+  environment.GIT_OPTIONAL_LOCKS = '0';
   // Every file capability names literal repository paths, never user-supplied pathspecs.
   delete environment.GIT_GLOB_PATHSPECS;
   delete environment.GIT_NOGLOB_PATHSPECS;

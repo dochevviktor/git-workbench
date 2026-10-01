@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { statisticsFixture, populateLargeStatisticsFixture } from '../statistics-fixture';
+import {
+  statisticsFixture,
+  statisticsUnusualPath,
+  populateLargeStatisticsFixture,
+} from '../statistics-fixture';
 import { StatisticsService, parseStatisticsLog } from '../../src/backend/repositories/statistics-service';
 import { statisticsRequestSchema } from '../../src/common/ipc/statistics';
 import { GitCancelledError } from '../../src/backend/git/runner';
@@ -86,7 +90,7 @@ describe('F35 independently defined statistics', () => {
     ]);
     expect(data.files.map((file) => [file.path, file.commits.length])).toEqual([
       ['README.md', 2],
-      ['docs/café\nnotes.txt', 1],
+      [statisticsUnusualPath, 1],
     ]);
     const filtered = await service.read(
       f.git,

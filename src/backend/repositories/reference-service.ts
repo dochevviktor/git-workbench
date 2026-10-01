@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { normalize } from 'node:path';
 import type {
   RepositoryBranch,
   RepositoryHead,
@@ -940,16 +941,18 @@ async function readWorktreeBranches(
   const assignments = new Map<string, string>();
   let result: GitCommandResult;
   try {
-    result = await runner.run(['worktree', 'list', '--porcelain'], readOptions(cwd));
+    result = await runner.run(['worktree', 'list', '--porcelain', '-z'], readOptions(cwd));
   } catch (error) {
     // An old Git or an unreadable worktree list leaves the checkouts unknown rather than empty.
     if (error instanceof GitCommandError) return assignments;
     throw error;
   }
   let worktreePath: string | undefined;
-  for (const line of result.stdout.split('\n')) {
-    if (line.startsWith('worktree ')) worktreePath = line.slice('worktree '.length);
-    else if (line.startsWith('branch ') && worktreePath) {
+  for (const line of result.stdout.split('\0')) {
+    if (line.startsWith('worktree ')) {
+      const path = line.slice('worktree '.length);
+      worktreePath = process.platform === 'win32' ? normalize(path) : path;
+    } else if (line.startsWith('branch ') && worktreePath) {
       assignments.set(line.slice('branch '.length), worktreePath);
     } else if (line.trim().length === 0) worktreePath = undefined;
   }

@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+Windows verification extension (2026-10-01): the [Windows portability audit](reviews/windows-portability-audit.md)
+records this host's application, E2E and NSIS installation checks. Background index-refresh loops and
+inconsistent worktree path identities are corrected; test configuration and common fixtures are portable.
+Windows and P14 remain **partial**, with remaining test failures and unsupported workflows recorded
+separately from successful native smoke/packaging checks. Historical Linux verification below is unchanged.
+
 P14 audit (2026-10-01): the [release audit](reviews/p14-release-audit.md) records all F01–F38 scopes,
 reference/test links and remaining unknowns. Corrections cover IME-triggered commits, modal shortcuts,
 accessibility contrast/tab semantics, renderer-crash recovery, the post-commit Amend refresh race,

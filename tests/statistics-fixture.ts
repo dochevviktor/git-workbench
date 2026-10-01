@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { GitRunner } from '../src/backend/git/runner';
 import type { GitRunOptions } from '../src/backend/git/runner';
 
+export const statisticsUnusualPath =
+  process.platform === 'win32' ? 'docs/café notes.txt' : 'docs/café\nnotes.txt';
+
 export async function statisticsFixture() {
   const root = await mkdtemp(join(tmpdir(), 'workbench-statistics-'));
   const cwd = join(root, 'repo');
@@ -28,7 +31,7 @@ export async function statisticsFixture() {
   };
   const populate = async () => {
     await mkdir(join(cwd, 'docs'));
-    await writeFile(join(cwd, 'docs', 'café\nnotes.txt'), 'one\n');
+    await writeFile(join(cwd, statisticsUnusualPath), 'one\n');
     await writeFile(join(cwd, 'README.md'), 'one\n');
     await commit('Initial files', '2025-01-31T23:30:00-02:00');
     await writeFile(join(cwd, 'README.md'), 'two\n');

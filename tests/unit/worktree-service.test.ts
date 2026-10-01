@@ -66,10 +66,11 @@ describe('worktree service', () => {
   it('invalidates force-removal reviews when a dirty file changes without changing the path count', async () => {
     const f = await fixtureRepository();
     const path = join(f.root, 'reviewed');
-    await apply(f, { kind: 'create', path, sourceFullName: 'refs/heads/feature' });
+    const created = await apply(f, { kind: 'create', path, sourceFullName: 'refs/heads/feature' });
     await writeFile(join(path, 'local.txt'), 'old\n');
     const before = await context(f);
     const worktreeId = before.worktrees.find((item) => item.path === path)!.id;
+    expect(created.worktreeId).toBe(worktreeId);
     await writeFile(join(path, 'local.txt'), 'new\n');
     await expect(apply(f, { kind: 'remove', worktreeId, force: true }, before.snapshot)).rejects.toThrow(
       'changed after it was read',

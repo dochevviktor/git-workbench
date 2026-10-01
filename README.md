@@ -1,5 +1,13 @@
 # Git Workbench
 
+Windows verification (2026-10-01): the [Windows audit](docs/reviews/windows-portability-audit.md)
+records native application tests, remaining suite failures and the local unsigned NSIS installer.
+Windows support remains partial; a successful package does not imply all Linux workflows are portable.
+In PowerShell use `npm.cmd` when execution policy blocks `npm.ps1`. `npm.cmd run package` builds
+`release/Git Workbench Setup 0.1.0.exe`; `npm.cmd run test:package -- "C:\path\Git Workbench.exe"`
+tests an installed executable. Git 2.43+ must be installed separately and available on PATH.
+Ozone headless testing is Linux-specific: Electron tests use native windows on Windows.
+
 P14's [audit and feature ledger](docs/reviews/p14-release-audit.md) records verified Linux behavior,
 remaining parity limits, performance measurements and release gates. The audit fixes composing-input
 commits, post-commit Amend refresh, modal keyboard ownership, contrast/tab accessibility, renderer

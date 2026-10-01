@@ -804,7 +804,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await waitForDesktop(page);
     await expect(page.getByRole('tab', { name: /sample, Uncommitted changes/u })).toBeVisible();
     await expect(page.getByRole('tab', { name: /second, Clean working tree/u })).toBeVisible();
-    await writeFile(join(secondRepository, 'dirty\nfile.txt'), 'uncommitted\n', 'utf8');
+    // Windows prohibits control characters in filenames; retain spaces and Unicode there.
+    const dirtyName = process.platform === 'win32' ? 'dirty café file.txt' : 'dirty\nfile.txt';
+    await writeFile(join(secondRepository, dirtyName), 'uncommitted\n', 'utf8');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible({
       timeout: 10_000,
     });

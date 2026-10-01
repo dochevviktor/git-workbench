@@ -1,5 +1,9 @@
 # P14 audit and Linux release candidate — 2026-10-01
 
+Windows follow-up: [the separate portability audit](windows-portability-audit.md) records native Windows
+results and NSIS checks from 2026-10-01. It supersedes the statement that Windows has no local verification,
+without extending the Linux results below to Windows or marking P14 complete.
+
 P14 is **partial**. The local audit, corrections, reproducible scale checks and unsigned packaging are
 implemented. This is a Linux preview verification record, not a declaration of complete Fork parity or
 a completed GNOME/KDE/native display and assistive-technology matrix. The remaining gates below are

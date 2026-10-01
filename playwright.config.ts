@@ -1,4 +1,7 @@
 import { defineConfig } from '@playwright/test';
+import { isolateTestGitConfiguration } from './tests/test-environment';
+
+isolateTestGitConfiguration();
 
 export default defineConfig({
   testDir: './tests/e2e',

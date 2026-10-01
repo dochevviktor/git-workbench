@@ -1,5 +1,14 @@
 # Architecture and implementation decisions
 
+Windows audit (2026-10-01): [verification and limits](reviews/windows-portability-audit.md).
+Git processes disable optional locks so background status reads cannot rewrite the index and create
+a watcher refresh loop; mandatory mutation locks remain enabled. Worktree registration paths are
+normalized at the backend Git-output boundary on Windows, including branch occupancy queries.
+Branch occupancy uses NUL-delimited worktree output so quoted/unusual paths remain literal.
+IPC, preload, repository trust, CSP, sandbox and process-execution boundaries are unchanged.
+Tests isolate Git configuration from developer settings; the native Windows scenario explicitly
+opts into CRLF conversion. Packaging uses an ICO generated from the existing independent PNG.
+
 P14 (2026-10-01): the [release audit](reviews/p14-release-audit.md) retains the process/IPC boundaries
 and stable application/profile identity. Input-method events and AltGr do not invoke command shortcuts;
 native dialogs own menu input. Tabs expose Delete without nested focusable controls. Contrast adjustments

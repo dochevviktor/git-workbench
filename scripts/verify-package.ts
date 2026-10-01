@@ -4,8 +4,13 @@ import { resolve } from 'node:path';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
 const configuration = JSON.parse(await readFile('electron-builder.json', 'utf8')) as { productName: string };
+if (!['win32', 'linux'].includes(process.platform))
+  throw new Error('Package smoke verification currently supports Windows and Linux.');
 const executable =
-  process.argv[2] ?? resolve('release', `${configuration.productName}-${metadata.version}.AppImage`);
+  process.argv[2] ??
+  (process.platform === 'win32'
+    ? resolve('release', 'win-unpacked', `${configuration.productName}.exe`)
+    : resolve('release', `${configuration.productName}-${metadata.version}.AppImage`));
 const child = spawn(
   process.execPath,
   [
@@ -13,6 +18,7 @@ const child = spawn(
     'test',
     'tests/e2e/desktop.test.ts',
     'tests/e2e/p14-package.test.ts',
+    'tests/e2e/windows-native.test.ts',
     '--output=release/p14/package-verified',
   ],
   {

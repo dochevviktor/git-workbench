@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstat, realpath, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, normalize, relative, resolve, sep } from 'node:path';
 import type {
   RepositoryWorktree,
   RepositoryWorktreeAction,
@@ -498,7 +498,8 @@ async function readRawWorktrees(runner: WorktreeRunner, cwd: string): Promise<Ra
     if (key === 'worktree') {
       finish();
       current = {
-        path: value,
+        // Git for Windows emits forward slashes; native actions and session paths use backslashes.
+        path: process.platform === 'win32' ? normalize(value) : value,
         head: null,
         branchFullName: null,
         bare: false,

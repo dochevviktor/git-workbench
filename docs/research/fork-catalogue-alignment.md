@@ -1,5 +1,13 @@
 # Fork catalogue alignment — 2026-09-20
 
+Windows portability follow-up — **2026-10-01**: see the [Windows audit](../reviews/windows-portability-audit.md).
+The earlier P2-013 sizing and P2-015 restart anchors retain their original confidence and unknowns.
+Native window controls, programmatic bounds, CRLF commits and profile restart now have independent
+Windows 11 implementation evidence; no new Fork behavior or visual equivalence is inferred. The linked
+private catalogue is absent here, so this pass changes no layout/styles or private references.
+F22 native path normalization and the watcher correction are backend portability fixes. Windows feature
+coverage remains partial, including explicit F32/F37 exclusions and the remaining failing tests.
+
 P14 audit — **2026-10-01**: the [audit ledger and deviations](../reviews/p14-release-audit.md) connect
 F01–F38 to catalogue/public evidence and independent tests. Original P2-012:F1 light/dark Local Changes
 and P2-017:F1 graph screenshots were compared before/after contrast corrections. P0-012 focus trials,
