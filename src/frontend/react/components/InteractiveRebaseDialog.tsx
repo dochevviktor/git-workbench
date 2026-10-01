@@ -7,6 +7,7 @@ import type {
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import type { Platform } from '../lib/platform';
+import { isTextInputEvent } from '../lib/platform';
 import { formatListDate } from '../lib/format';
 import { BranchIcon } from './Icons';
 import { DialogShell } from './DialogShell';
@@ -431,6 +432,7 @@ export function InteractiveRebaseDialog({
                       });
                     }}
                     onKeyDown={(event) => {
+                      if (isTextInputEvent(event.nativeEvent)) return;
                       if (event.target !== event.currentTarget || locked) return;
                       if (event.ctrlKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
                         event.preventDefault();
@@ -498,6 +500,7 @@ export function InteractiveRebaseDialog({
                       role="group"
                       aria-label="Edit commit message"
                       onKeyDown={(event) => {
+                        if (isTextInputEvent(event.nativeEvent)) return;
                         if (event.key === 'Escape') {
                           event.preventDefault();
                           event.stopPropagation();
@@ -515,6 +518,7 @@ export function InteractiveRebaseDialog({
                         maxLength={16_384}
                         onChange={(event) => setEditor({ ...editor, subject: event.target.value })}
                         onKeyDown={(event) => {
+                          if (isTextInputEvent(event.nativeEvent)) return;
                           if (event.key === 'Enter') {
                             event.preventDefault();
                             event.currentTarget.parentElement

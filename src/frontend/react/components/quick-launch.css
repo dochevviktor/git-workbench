@@ -52,11 +52,14 @@
   text-overflow: ellipsis;
 }
 .quick-launch-option small {
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 .quick-launch-option[aria-selected='true'] {
   background: var(--row-selected);
   color: var(--row-selected-text);
+}
+.quick-launch-option[aria-selected='true'] small {
+  color: inherit;
 }
 .quick-launch-option[aria-disabled='true'] {
   opacity: 0.55;

@@ -4,6 +4,8 @@ import { app, BrowserWindow, nativeTheme, screen } from 'electron';
 import type { BrowserWindowConstructorOptions } from 'electron';
 import { isTrustedDocument } from './security';
 import { restoreWindowBounds, WindowStateStore } from './window-state-store';
+import { installRendererRecovery } from './renderer-recovery';
+import { windowIcon } from './window-icon';
 
 /**
  * The renderer draws the title bar, menu bar, window controls, and context menus. macOS keeps its
@@ -40,6 +42,7 @@ export function createMainWindow(
   const hasUsableDisplay = workAreas.some((area) => area.width >= 64 && area.height >= 64);
   const window = new BrowserWindow({
     title: 'Git Workbench',
+    icon: windowIcon(),
     ...(hasUsableDisplay
       ? restored.bounds
       : { width: restored.bounds.width, height: restored.bounds.height }),
@@ -83,6 +86,7 @@ export function createMainWindow(
   });
 
   attachWindow(window, rendererUrl);
+  installRendererRecovery(window);
   // A hidden window on Wayland can miss `ready-to-show`: with the development server the page rendered, but
   // the event arrived only after the window was shown. Show the window once the page has loaded at the latest.
   const showWindow = () => {

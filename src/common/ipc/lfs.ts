@@ -45,6 +45,7 @@ export const lfsContextSchema = z.strictObject({
   repositoryId: id,
   snapshot,
   available: z.boolean(),
+  supportsRefetch: z.boolean().default(false),
   version: z.string().max(256).nullable(),
   head: z
     .string()

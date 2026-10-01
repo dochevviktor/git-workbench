@@ -50,6 +50,10 @@ test('P10 LFS management, historical download, tracking and lock ownership throu
     await page.getByRole('menuitem', { name: 'Manage Git LFS…', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Git LFS', exact: true });
     await expect(dialog.getByRole('combobox', { name: 'LFS remote' })).toHaveValue('origin');
+    const context = await f.service.getLfsContext(1, f.repository.id);
+    const refetch = dialog.getByRole('checkbox', { name: 'Download again, replacing cached LFS objects' });
+    if (context.supportsRefetch) await expect(refetch).toBeEnabled();
+    else await expect(refetch).toBeDisabled();
     await dialog.getByRole('tab', { name: 'Tracking', exact: true }).click();
     await expect(dialog).toContainText('*.bin');
     await dialog.getByRole('textbox', { name: 'LFS tracking pattern' }).fill('*.psd');

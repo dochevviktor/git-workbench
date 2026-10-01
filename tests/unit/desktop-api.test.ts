@@ -127,7 +127,10 @@ describe('preload capability API', () => {
         patterns: [],
       },
     });
-    expect(await api.repository.getLfsContext({ id })).toMatchObject({ ok: true });
+    expect(await api.repository.getLfsContext({ id })).toMatchObject({
+      ok: true,
+      value: { supportsRefetch: false },
+    });
     expect(invoke).toHaveBeenLastCalledWith('repository:get-lfs-context', { id });
     invoke.mockClear();
     for (const action of [

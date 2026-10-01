@@ -92,6 +92,43 @@ describe('GitHub account credential transport', () => {
       await expect(readFile(broker.env.GW_CREDENTIAL_SOCKET)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('stops reusing a rejected credential within one operation without deleting its account', async () => {
+    const source: GitCredentialSource = { available: async () => true, get: vi.fn(async () => credential) };
+    const runner = new GitRunner();
+    const input = 'protocol=https\nhost=github.com\npath=org/private.git\n\n';
+    const broker = await createCredentialBroker({ source, executable: process.execPath, helperPath });
+    try {
+      const call = (action: string, stdin = input) =>
+        runner.run([...broker.args, 'credential', action], { cwd: tmpdir(), env: broker.env, stdin });
+      expect((await call('fill')).stdout).toContain(`password=${token}`);
+      await call(
+        'reject',
+        `protocol=https\nhost=github.com\npath=org/private.git\nusername=${credential.username}\npassword=${token}\n\n`,
+      );
+      await expect(call('fill')).rejects.toBeInstanceOf(GitCommandError);
+      expect(source.get).toHaveBeenCalledTimes(1);
+      expect(
+        (await call('fill', 'protocol=https\nhost=github.com\npath=org/other.git\n\n')).stdout,
+      ).toContain(`password=${token}`);
+    } finally {
+      await broker.close();
+    }
+    const next = await createCredentialBroker({ source, executable: process.execPath, helperPath });
+    try {
+      expect(
+        (
+          await runner.run([...next.args, 'credential', 'fill'], {
+            cwd: tmpdir(),
+            env: next.env,
+            stdin: input,
+          })
+        ).stdout,
+      ).toContain(`password=${token}`);
+    } finally {
+      await next.close();
+    }
+  });
+
   it.each([
     ['github', 'github.com', 'org'],
     ['gitlab-server', 'git.example', 'lab/org'],

@@ -5,8 +5,33 @@
   "directories": { "output": "release" },
   "files": ["out/**/*", "package.json", "LICENSE"],
   "asar": true,
+  "publish": null,
+  "extraResources": [{ "from": "resources/icon.png", "to": "icon.png" }],
   "npmRebuild": false,
-  "linux": { "target": ["AppImage"], "category": "Development", "syncDesktopName": true },
+  "linux": {
+    "target": ["AppImage"],
+    "category": "Development",
+    "icon": "resources/icon.png",
+    "syncDesktopName": true,
+    "desktop": { "entry": { "Keywords": "Git;Version Control;Development;", "StartupNotify": "true" } }
+  },
+  "deb": {
+    "depends": [
+      "git (>= 1:2.43.0)",
+      "libgtk-3-0",
+      "libnotify4",
+      "libnss3",
+      "libxss1",
+      "libxtst6",
+      "xdg-utils",
+      "libatspi2.0-0",
+      "libuuid1",
+      "libsecret-1-0",
+      "libasound2t64 | libasound2",
+      "libgbm1",
+      "libxkbcommon0"
+    ]
+  },
   "win": { "target": ["nsis"] },
   "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" }
 }

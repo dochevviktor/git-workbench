@@ -1,5 +1,21 @@
 # Fork catalogue alignment — 2026-09-20
 
+P14 audit — **2026-10-01**: the [audit ledger and deviations](../reviews/p14-release-audit.md) connect
+F01–F38 to catalogue/public evidence and independent tests. Original P2-012:F1 light/dark Local Changes
+and P2-017:F1 graph screenshots were compared before/after contrast corrections. P0-012 focus trials,
+P2-013 sizing, P2-014's unknown 125% DPI and P2-015 restart limits remain. Windows 2.22.0.0 capture
+confidence stays high only for sampled states. Linux adaptations improve contrast, modal/input-method
+ownership, tab Delete and renderer recovery; they do not reproduce trapped focus or claim native DPI
+equivalence. Private images and capture status are unchanged. P2-011 F1–F4 still anchors LFS cards/Save As;
+installed-tool refetch probing and operation-scoped credential rejection are independent corrections
+backed by real 3.4.1/3.8.0 tests and public sources. The 226-image public index was restored. Native
+desktop/AT/keyring/live-service and release-identity/budget gates keep P14 partial.
+
+The P0-031 cancel/submit subcases (F1 each, 2026-09-19, high confidence for sampled Amend behavior)
+remain the composer reference. P14 also fixes an independently reproduced watcher/completion race that
+left Amend disabled after a successful commit. A held Git process verifies restoration without extra
+commits or index/worktree changes; this adds Linux timing evidence, not a new Fork observation.
+
 P13 alignment — **2026-10-01**: [implementation and verification record](../reviews/p13-statistics-ai.md).
 `P2-010:F1` (2026-09-19, Windows 2.22.0.0, 96 DPI, high confidence for the sampled state) now maps to
 compact range/options controls, nested neutral treemap groups with independent file icons, selected

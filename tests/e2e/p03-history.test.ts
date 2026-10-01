@@ -443,6 +443,7 @@ test('P03 Electron cold/warm paint, navigation and memory budgets at 100k commit
       processGrowthMiB: memory.reduce((sum, entry) => sum + entry.workingSetMiB, 0) - baselineMemory / 1024,
     };
     console.info(JSON.stringify(report));
+    await writeFile(info.outputPath('p03-browser-performance.json'), JSON.stringify(report, null, 2));
     await info.attach('p03-browser-performance', {
       body: JSON.stringify(report, null, 2),
       contentType: 'application/json',

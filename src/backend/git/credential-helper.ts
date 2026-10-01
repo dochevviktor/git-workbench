@@ -2,8 +2,9 @@ import { connect } from 'node:net';
 
 /** Standalone Node entry point, compiled alongside main. Git alone reads this stdout. */
 async function main() {
-  // Never approve/store a token in another credential manager, or erase the application's account.
-  if (process.argv[2] !== 'get') return;
+  // Rejection is scoped to this operation. Never erase the application's saved account.
+  const action = process.argv[2];
+  if (action !== 'get' && action !== 'erase') return;
   const address = process.env.GW_CREDENTIAL_SOCKET;
   const nonce = process.env.GW_CREDENTIAL_NONCE;
   if (!address || !nonce) return;
@@ -36,12 +37,18 @@ async function main() {
     let response = '';
     socket.setTimeout(15000, () => socket.destroy());
     socket.on('error', () => socket.destroy());
-    socket.on('connect', () => socket.write(`${JSON.stringify({ nonce, context })}\n`));
+    socket.on('connect', () =>
+      socket.write(`${JSON.stringify({ nonce, context, action: action === 'erase' ? 'reject' : 'get' })}\n`),
+    );
     socket.on('data', (chunk: Buffer) => {
       response += chunk.toString('utf8');
       if (response.length > 8192) socket.destroy();
     });
     socket.on('close', () => {
+      if (action === 'erase') {
+        resolve();
+        return;
+      }
       try {
         const credential: unknown = JSON.parse(response);
         if (

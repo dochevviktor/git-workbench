@@ -2,6 +2,8 @@ import { app, BrowserWindow, nativeTheme, screen } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isTrustedDocument } from './security';
+import { installRendererRecovery } from './renderer-recovery';
+import { windowIcon } from './window-icon';
 
 /** Only this fixed application document may host commit inspection; no renderer-selected URL or path. */
 export async function createCommitDetailsWindow(
@@ -14,6 +16,7 @@ export async function createCommitDetailsWindow(
   const window = new BrowserWindow({
     parent,
     title: 'Commit Details — Git Workbench',
+    icon: windowIcon(),
     width: 1000,
     height: 600,
     minWidth: 640,
@@ -31,6 +34,7 @@ export async function createCommitDetailsWindow(
     },
   });
   window.setMenu(null);
+  installRendererRecovery(window);
   const closeWithParent = () => {
     if (!window.isDestroyed()) window.close();
   };

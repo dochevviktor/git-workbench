@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { filterLaunchItems } from '../lib/quick-launch';
 import type { LaunchChoices, LaunchItem } from '../lib/quick-launch';
-import { formatShortcut } from '../lib/platform';
+import { formatShortcut, isTextInputEvent } from '../lib/platform';
 import type { Platform } from '../lib/platform';
 import './quick-launch.css';
 
@@ -119,7 +119,7 @@ export function QuickLaunch({
             setSelected(0);
           }}
           onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
+            if (isTextInputEvent(event.nativeEvent)) return;
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
               event.preventDefault();
               setSelected(

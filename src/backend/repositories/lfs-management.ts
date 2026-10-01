@@ -66,6 +66,9 @@ export async function readLfsContext(
   if (names.length > 100)
     throw new ExpectedBackendError('UNAVAILABLE', 'LFS management supports up to 100 remotes.');
   const defaultRemote = await defaultLfsRemote(runner, cwd, names);
+  // Distribution builds can backport individual options. Probe local help instead of guessing from a version.
+  const supportsRefetch =
+    tool.available && /^\s*--refetch\b/mu.test(await optionalGit(runner, cwd, ['lfs', 'fetch', '-h']));
   const endpointOutput = tool.available
     ? (await runner.run(['lfs', 'env'], { cwd, ...readBounds })).stdout
     : '';
@@ -107,13 +110,26 @@ export async function readLfsContext(
   return lfsContextSchema.parse({
     repositoryId,
     available: tool.available,
+    supportsRefetch,
     version: tool.version,
     head: head || null,
     remotes,
     patterns,
     defaultRemote,
     snapshot: createHash('sha256')
-      .update(JSON.stringify([head, config, attributes, lfsconfig, rawPatterns, remotes, configIndex]))
+      .update(
+        JSON.stringify([
+          head,
+          config,
+          attributes,
+          lfsconfig,
+          rawPatterns,
+          remotes,
+          configIndex,
+          tool.version,
+          supportsRefetch,
+        ]),
+      )
       .digest('hex'),
   });
 }
@@ -334,6 +350,11 @@ export async function applyLfsOperation(
   if (!context.available)
     throw new ExpectedBackendError('UNAVAILABLE', 'Install Git LFS to use this action.');
   const action = request.action;
+  if (action.kind === 'fetch' && action.refetch && !context.supportsRefetch)
+    throw new ExpectedBackendError(
+      'UNAVAILABLE',
+      'This Git LFS installation does not support downloading cached objects again. Update Git LFS to use this option.',
+    );
   if ('remote' in action && !context.remotes.some((remote) => remote.name === action.remote))
     throw new ExpectedBackendError('INVALID_REQUEST', 'Choose a configured remote.');
   try {

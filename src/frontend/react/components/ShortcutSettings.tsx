@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePersistentState } from '../hooks/use-persistent-state';
 import { customizableShortcuts, validShortcutOverrides } from '../lib/shortcut-preferences';
 import type { ShortcutOverrides } from '../lib/shortcut-preferences';
+import { isTextInputEvent } from '../lib/platform';
 
 const empty: ShortcutOverrides = {};
 export function ShortcutSettings() {
@@ -22,6 +23,7 @@ export function ShortcutSettings() {
               aria-label={`${name} shortcut`}
               value={bindings[original] ?? original}
               onKeyDown={(event) => {
+                if (isTextInputEvent(event.nativeEvent)) return;
                 if (event.key === 'Tab' || event.key === 'Escape') return;
                 event.preventDefault();
                 event.stopPropagation();

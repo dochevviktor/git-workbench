@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
+import { dependencyNotices } from './scripts/dependency-notices';
 
 // Electron picks X11 unless XDG_SESSION_TYPE is `wayland`, and it decides before the main process runs.
 // The frameless window needs the window manager to move, resize, minimize, and maximize it, which X11
@@ -26,6 +27,7 @@ export default defineConfig(({ command }) => {
 
   return {
     main: {
+      plugins: [dependencyNotices()],
       build: {
         externalizeDeps: false,
         rollupOptions: {
@@ -39,6 +41,7 @@ export default defineConfig(({ command }) => {
       },
     },
     preload: {
+      plugins: [dependencyNotices()],
       build: {
         // Sandboxed preloads cannot require application dependencies at runtime.
         externalizeDeps: false,
@@ -52,6 +55,7 @@ export default defineConfig(({ command }) => {
       root: resolve('src/frontend/react'),
       base: './',
       plugins: [
+        dependencyNotices(),
         react(),
         {
           name: 'renderer-content-security-policy',

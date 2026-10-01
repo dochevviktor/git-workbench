@@ -101,10 +101,20 @@ describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
     expect(await f.act({ kind: 'fetch', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
     const cached = join(f.cwd, '.git/lfs/objects', f.oid.slice(0, 2), f.oid.slice(2, 4), f.oid);
     await writeFile(cached, Buffer.alloc(f.payload.length, 1));
-    expect(await f.act({ kind: 'fetch', remote: 'origin', refetch: true })).toMatchObject({
-      status: 'succeeded',
-    });
-    expect(await readFile(cached)).toEqual(f.payload);
+    const canRefetch = (await f.service.getLfsContext(1, f.repository.id)).supportsRefetch;
+    const requestsBeforeRefetch = f.requests.length;
+    const refetched = await f.act({ kind: 'fetch', remote: 'origin', refetch: true });
+    if (canRefetch) {
+      expect(refetched).toMatchObject({ status: 'succeeded' });
+      expect(await readFile(cached)).toEqual(f.payload);
+    } else {
+      expect(refetched).toMatchObject({ status: 'failed' });
+      expect(refetched.message).toContain('does not support');
+      expect(f.requests).toHaveLength(requestsBeforeRefetch);
+      expect(await readFile(cached)).toEqual(Buffer.alloc(f.payload.length, 1));
+      // Restore only the disposable fixture cache before testing the unrelated push/lock workflow.
+      await writeFile(cached, f.payload);
+    }
     f.objects.clear();
     expect(await f.act({ kind: 'push', remote: 'origin' })).toMatchObject({ status: 'succeeded' });
     expect(f.objects.get(f.oid)).toEqual(f.payload);
@@ -144,6 +154,7 @@ describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
       status: 'failed',
       failureReason: 'authentication',
     });
+    expect(f.credentialsUsed()).toBeLessThanOrEqual(2);
     const denied = await f.act({ kind: 'fetch', remote: 'origin' });
     expect(denied.status).toBe('failed');
     expect(JSON.stringify(denied)).not.toContain(f.token);

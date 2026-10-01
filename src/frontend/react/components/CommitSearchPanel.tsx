@@ -4,6 +4,7 @@ import { commitSearchQueryLimit, useCommitSearch } from '../hooks/use-commit-sea
 import type { CommitSearchField } from '../hooks/use-commit-search';
 import type { HistoryRevealRequest } from '../hooks/use-repository-history';
 import { avatarColor, formatShortDate, initials } from '../lib/format';
+import { isTextInputEvent } from '../lib/platform';
 import { ChevronDownIcon, CloseIcon, SearchIcon } from './Icons';
 import { MenuButton } from './menu/MenuButton';
 import { menuSeparator } from './menu/menu-model';
@@ -162,6 +163,7 @@ export function CommitSearchPanel({
           spellCheck={false}
           onChange={(event) => search.setText(event.target.value)}
           onKeyDown={(event) => {
+            if (isTextInputEvent(event.nativeEvent)) return;
             if (event.key === 'Enter') {
               event.preventDefault();
               search.submit();

@@ -1,5 +1,11 @@
 # Git Workbench
 
+P14's [audit and feature ledger](docs/reviews/p14-release-audit.md) records verified Linux behavior,
+remaining parity limits, performance measurements and release gates. The audit fixes composing-input
+commits, post-commit Amend refresh, modal keyboard ownership, contrast/tab accessibility, renderer
+recovery and old-LFS credential retries. The independently branded 0.1.0 preview has local unsigned AppImage and Debian test artifacts.
+Native desktop/assistive-technology/keyring and live-provider validation is still incomplete.
+
 P01 completes the Git execution foundation and aligns Activity with the captured Fork layout.
 Git 2.43.0 or newer is required. Existing repositories open for history browsing; choose **Trust
 Repository…** to enable working changes, configured Git programs and network operations. The choice
@@ -26,7 +32,7 @@ date filtering and nested file/folder tiles with Commits/Authors details. Calcul
 larger computation budgets and the UTC/raw-author metric policy. Reads are cached, cancellable and
 bounded; see the [metric specification](docs/reviews/f35-statistics.md) and P13 handoff.
 
-A Linux-first Git desktop client in early development. **Git Workbench is a working name.**
+A Linux-first Git desktop client in preview, independently named **Git Workbench**.
 The long-term target is Fork's captured Windows workflows and publicly documented feature families,
 implemented independently with Electron, shared TypeScript contracts, and React. The Windows 2.22.0.0
 black-box catalogue now guides the Linux UI; documented platform-specific extensions remain separate.
@@ -111,7 +117,10 @@ Historical Save As retrieves missing payloads and verifies their size/SHA-256 ou
 the working pointer stays unchanged. Selecting a row never downloads an object. Transfers use installed
 Git LFS and the existing account credentials or native Git helpers, with progress/cancellation in Activity.
 Only your own verified locks can be unlocked. Review tracking changes in Local Changes before committing.
-Git LFS 3.8.0 is the tested optional version; it is not bundled or installed automatically.
+Git LFS 3.4.1 and 3.8.0 are tested optional versions; neither is bundled or installed automatically.
+Downloading cached objects again is enabled only when the installed tool supports `fetch --refetch`
+(introduced in 3.7). Rejected account credentials stop retrying within that operation; updating the
+account and starting a new operation remains possible.
 Git-flow uses ordinary Git and repository-local configuration; specialized remote publishing, topic
 rebase and automatic stash/reapply remain outside P09. Lean Branching remains
 a separate F38 family: the Branch dropdown and Repository → Lean Branching offer
@@ -337,17 +346,27 @@ npm run test:e2e      # build, then exercise the real Electron application
 npm run package:dir   # create an unpacked application in release/
 npm run research:references  # download the Fork screenshots listed in docs/research/fork-references.json
 npm run package       # build installers for the host OS; never publishes
+npm run test:package  # verify the built AppImage's sandbox, assets and desktop workflows
+npm run package:deb -- --test-metadata  # marked test-only deb for disposable installation checks
 ```
 
-On Linux, packaging targets AppImage. Windows targets NSIS; macOS targets DMG.
+On Linux, default packaging targets AppImage; the separate Debian command requires explicit metadata.
+Windows targets NSIS and macOS targets DMG, but neither is part of this preview's verified release scope.
 
 Linux network integration tests use Git, OpenSSL and OpenSSH (`sshd`, `ssh-agent`, `ssh-add`,
 `ssh-keygen`). They create temporary keys and loopback servers, without touching installed services,
 user SSH configuration or real hosting repositories.
-Run platform builds on their respective operating systems. Signing, update distribution, product
-icons, and final application identifiers are deferred to the release milestone.
-Debian packaging is also deferred until a real maintainer email is selected; the initial package command
-does not invent release contact information.
+Run platform builds on their respective operating systems. The original icon, existing application IDs,
+bundled third-party notices and SHA-256 manifest are included. Signing and publishing remain separate.
+For a real Debian artifact, set `GIT_WORKBENCH_MAINTAINER='Public Name <public@example.org>'` and run
+`npm run package:deb`, followed by `npm run release:manifest`. Test metadata is intentionally marked
+TEST-ONLY and must not be presented as release contact information. Building debs on Fedora may require
+the build-only `libxcrypt-compat` library for FPM.
+
+AppImages need FUSE 2, or the tested `APPIMAGE_EXTRACT_AND_RUN=1` fallback. Keep the Electron sandbox
+enabled; disabling it is not an installation workaround. This preview uses manual updates and rollback;
+see the [release policy](docs/reviews/p14-release-audit.md#local-release-policy-and-installation). No hosted
+update feed, automatic updater, signing identity or publishing credential is configured.
 
 On Linux and Windows the window is frameless: the application draws its own title bar, menu bar
 (Alt+letter opens a menu), and window controls, and it handles shortcuts itself instead of installing

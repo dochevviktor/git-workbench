@@ -49,6 +49,7 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
   const address = process.platform === 'win32' ? `\\\\.\\pipe\\gw-${nonce}` : join(directory, 'socket');
   const sockets = new Set<Socket>();
   const secrets = new Set<string>();
+  const rejected = new Set<string>();
   let closed = false;
   let failure: unknown;
   const server = createServer((socket) => {
@@ -75,7 +76,11 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
       void (async () => {
         try {
           const request = z
-            .strictObject({ nonce: z.literal(nonce), context: credentialContextSchema })
+            .strictObject({
+              nonce: z.literal(nonce),
+              context: credentialContextSchema,
+              action: z.enum(['get', 'reject']).default('get'),
+            })
             .parse(JSON.parse(input));
           const destination = new URL(`https://${request.context.host}/${request.context.path}`);
           if (
@@ -90,8 +95,23 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
             socket.end('null\n');
             return;
           }
+          const scope = `${destination.origin}${destination.pathname}`;
+          if (request.action === 'reject') {
+            if (rejected.size < 1024) rejected.add(scope);
+            socket.end('null\n');
+            return;
+          }
+          // Older Git LFS repeats fill after erase. Do not keep returning the same refused credential.
+          if (rejected.size >= 1024 || rejected.has(scope)) {
+            socket.end('null\n');
+            return;
+          }
           const credential = await bridge.source.get(request.context);
           if (closed || socket.destroyed) return;
+          if (rejected.size >= 1024 || rejected.has(scope)) {
+            socket.end('null\n');
+            return;
+          }
           if (credential) {
             secrets.add(credential.password);
             secrets.add(Buffer.from(`${credential.username}:${credential.password}`).toString('base64'));
@@ -158,6 +178,7 @@ export async function createCredentialBroker(bridge: GitCredentialBridge) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(directory, { recursive: true, force: true });
       secrets.clear();
+      rejected.clear();
     },
   };
 }

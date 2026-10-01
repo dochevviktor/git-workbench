@@ -76,9 +76,13 @@ export function useCommitContext(repositoryId: string | undefined, changeToken: 
     // The token is part of the dependency list so staging and external changes reload the context.
   }, [changeToken, load]);
 
+  // A commit can complete after watchers have already advanced changeToken. Its completion callback
+  // must not invoke the old load closure and replace loadedKey with a key that can never match again.
+  const currentLoad = useRef(load);
+  currentLoad.current = load;
   const refresh = useCallback(() => {
-    void load();
-  }, [load]);
+    if (mounted.current) void currentLoad.current();
+  }, []);
   useEffect(() => {
     return window.desktop?.settings.onChanged(refresh);
   }, [refresh]);

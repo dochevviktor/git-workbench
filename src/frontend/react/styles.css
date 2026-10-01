@@ -11,11 +11,12 @@
   --window: light-dark(#ffffff, #1f2023);
   --text: light-dark(#1d1d1f, #e4e4e6);
   --text-muted: light-dark(#6f6f73, #9b9da3);
-  --text-dim: light-dark(#a6a6aa, #686a70);
+  --text-dim: light-dark(#6f6f73, #9b9da3);
   --border: light-dark(#e2e2e4, #323338);
   --border-strong: light-dark(#cdcdd1, #45474d);
   --accent: light-dark(#1868db, #4a8ef0);
   --accent-text: #ffffff;
+  --primary-button: light-dark(#1868db, #286ac7);
   --link: light-dark(#0f5fcf, #6aa5ff);
   --success: light-dark(#237a3b, #72cf83);
   --danger: light-dark(#c42b25, #f06a62);
@@ -565,7 +566,7 @@ p {
   opacity: 1;
 }
 
-.workspace-tab-close:hover:not(:disabled) {
+.workspace-tab-close:hover:not([data-disabled='true']) {
   background: var(--border-strong);
   color: var(--text);
 }
@@ -751,13 +752,13 @@ p {
 }
 
 .button.primary:not(:disabled, [aria-disabled='true']) {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--primary-button);
+  background: var(--primary-button);
   color: var(--accent-text);
 }
 
 .button.primary:hover:not(:disabled, [aria-disabled='true']) {
-  background: color-mix(in srgb, var(--accent) 88%, #000000);
+  background: color-mix(in srgb, var(--primary-button) 88%, #000000);
 }
 
 .icon-button {
@@ -1519,28 +1520,28 @@ p {
 }
 
 .avatar-0 {
-  --avatar: #4caf6a;
+  --avatar: #287d42;
 }
 .avatar-1 {
-  --avatar: #e0703a;
+  --avatar: #b04c22;
 }
 .avatar-2 {
-  --avatar: #3d8fd6;
+  --avatar: #286fa9;
 }
 .avatar-3 {
-  --avatar: #c255b9;
+  --avatar: #a03c98;
 }
 .avatar-4 {
-  --avatar: #d9a21b;
+  --avatar: #856109;
 }
 .avatar-5 {
-  --avatar: #2aa198;
+  --avatar: #177a72;
 }
 .avatar-6 {
-  --avatar: #e2566f;
+  --avatar: #b73750;
 }
 .avatar-7 {
-  --avatar: #7a6ad8;
+  --avatar: #6956c5;
 }
 
 /* Commit details ----------------------------------------------------------------------------- */
@@ -5405,5 +5406,28 @@ svg.spinning {
   }
   .hosting-notification-preference {
     margin-left: 0;
+  }
+}
+
+/* System high-contrast palettes replace ordinary backgrounds, including otherwise invisible selections. */
+@media (forced-colors: active) {
+  :root {
+    --row-selected: Highlight;
+    --row-selected-inactive: Highlight;
+    --row-selected-text: HighlightText;
+  }
+
+  .commit-row.selected,
+  .workspace-tab.active,
+  .tree-item[aria-selected='true'],
+  .quick-launch-option[aria-selected='true'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .commit-row.selected .commit-cell,
+  .commit-row.selected .ref-chip {
+    color: HighlightText;
   }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { WindowCommand, WindowState } from '../../../common/ipc/contracts';
 import type { Platform } from '../lib/platform';
+import { isTextInputEvent } from '../lib/platform';
 import { CloseGlyph, MaximizeGlyph, MinimizeGlyph, RestoreGlyph } from './Icons';
 import { MenuPopup } from './menu/MenuPopup';
 import type { MenuAnchor, MenuCommand, MenuEntry } from './menu/menu-model';
@@ -91,6 +92,7 @@ function MenuBar({ menus, platform }: { menus: readonly TitleBarMenu[]; platform
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isTextInputEvent(event) || document.querySelector('dialog[open]')) return;
       if (event.key === 'Alt') setShowMnemonics(true);
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       const menu = menusRef.current.find((candidate) => event.key.toLocaleLowerCase() === candidate.mnemonic);

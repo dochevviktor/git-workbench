@@ -101,6 +101,7 @@ export function RepositoryTabs({
               className={selected ? 'workspace-tab active' : 'workspace-tab'}
               aria-selected={selected}
               aria-label={tabLabel(tab)}
+              aria-keyshortcuts={closable(tab) && !closeDisabled ? 'Delete' : undefined}
               tabIndex={selected ? 0 : -1}
               title={tab.repository?.path ?? tab.title}
               data-kind={tab.kind}
@@ -162,18 +163,18 @@ export function RepositoryTabs({
                 )}
               <span className="workspace-tab-title">{tab.title}</span>
               {closable(tab) && (
-                <button
-                  type="button"
+                <span
                   className="workspace-tab-close"
-                  aria-label={`Close ${tab.title}`}
-                  title={`Close ${tab.title}`}
-                  tabIndex={-1}
-                  disabled={closeDisabled}
+                  aria-hidden="true"
+                  title={`Close ${tab.title} (Delete)`}
+                  data-disabled={closeDisabled}
                   onMouseDown={(event) => event.stopPropagation()}
-                  onClick={() => onClose(tab)}
+                  onClick={() => {
+                    if (!closeDisabled) onClose(tab);
+                  }}
                 >
                   <CloseIcon size={12} />
-                </button>
+                </span>
               )}
             </div>
           );

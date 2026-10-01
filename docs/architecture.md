@@ -1,5 +1,26 @@
 # Architecture and implementation decisions
 
+P14 (2026-10-01): the [release audit](reviews/p14-release-audit.md) retains the process/IPC boundaries
+and stable application/profile identity. Input-method events and AltGr do not invoke command shortcuts;
+native dialogs own menu input. Tabs expose Delete without nested focusable controls. Contrast adjustments
+retain the catalogue layout. Native renderer recovery offers Reload/Close; reloading restores saved
+presentation and queries existing operations without retrying a mutation. Native Git state remains authoritative.
+
+Commit-context refresh uses a stable callback that reads the current loader. If a watcher advances HEAD/
+index before a commit job completes, its older completion closure cannot reinstate an obsolete loaded
+key and strand the composer in loading state. Generation checks and backend snapshot validation remain.
+
+LFS contexts add runtime-validated `supportsRefetch`, derived from installed help; existing explicit
+preload/main routing carries it and execution rechecks it in the queue. The private Git helper now
+handles erase as an origin/path rejection in the current broker. Lookups fail closed before/after async
+account resolution; the bounded rejection set expires with the operation. It never erases a saved account
+or exposes secrets in renderer/shared data. Store remains ignored. Real 3.4.1/3.8.0 regressions cover the loop.
+
+Packaging includes an original icon and generated licenses/manifests from the actual bundled modules.
+Electron/Chromium notices remain intact. Debian contact is supplied explicitly; fixture metadata creates
+a TEST-ONLY artifact. Updates are manual and no profile schema changes. Native desktop/keyring/AT and
+live-provider gates remain explicit; measurements do not justify adding workers or another cache.
+
 P13 (2026-10-01): the [statistics/AI handoff](reviews/p13-statistics-ai.md) extends the existing fixed
 AI contracts, explicit preload and authorized main handlers with provider selection, public saved
 choices, custom instructions and an amend target. Settings use a versioned atomic profile file;

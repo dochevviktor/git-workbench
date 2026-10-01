@@ -31,10 +31,15 @@
     "test:e2e": "npm run build && playwright test",
     "research:references": "node scripts/fork-references.ts",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
-    "package": "npm run build && electron-builder --config electron-builder.json --publish never",
+    "package": "npm run build && electron-builder --config electron-builder.json --publish never && node scripts/release-manifest.ts",
+    "package:deb": "npm run build && node scripts/package-deb.ts",
+    "release:manifest": "node scripts/release-manifest.ts",
+    "test:p14": "npm run test:e2e -- tests/e2e/p14-accessibility.test.ts",
+    "test:package": "node scripts/verify-package.ts",
     "package:dir": "npm run build && electron-builder --config electron-builder.json --dir --publish never"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",

@@ -118,6 +118,10 @@
   min-width: 0;
   width: 100%;
 }
+.settings-page select {
+  background: var(--input-bg);
+  color: var(--text);
+}
 .settings-page .settings-check {
   display: flex;
 }

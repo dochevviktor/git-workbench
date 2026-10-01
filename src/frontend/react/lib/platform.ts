@@ -73,6 +73,7 @@ export function ariaShortcut(shortcut: string, platform: Platform): string {
 }
 
 export function matchesShortcut(event: KeyboardEvent, shortcut: string, platform: Platform): boolean {
+  if (isTextInputEvent(event)) return false;
   shortcut = resolveShortcut(shortcut);
   const { parts, key } = shortcutParts(shortcut);
   if (!key) return false;
@@ -86,4 +87,13 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string, platform
   const punctuation = key === 'Plus' || /^[^A-Za-z0-9]$/u.test(key);
   if (!punctuation && event.shiftKey !== parts.has('Shift')) return false;
   return event.key.toLowerCase() === (key === 'Plus' ? '+' : key).toLowerCase();
+}
+
+/** IME confirmation and AltGr belong to text entry, even when they resemble command shortcuts. */
+export function isTextInputEvent(event: {
+  readonly isComposing?: boolean;
+  readonly keyCode?: number;
+  getModifierState?(key: string): boolean;
+}): boolean {
+  return event.isComposing === true || event.keyCode === 229 || event.getModifierState?.('AltGraph') === true;
 }

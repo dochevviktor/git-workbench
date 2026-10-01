@@ -1,4 +1,4 @@
-name: Validate foundation
+name: Validate Git Workbench
 
 on:
   push:
@@ -25,4 +25,10 @@ jobs:
       - run: npm run build
       - name: Check Linux packaging
         if: runner.os == 'Linux'
-        run: npx electron-builder --config electron-builder.json --dir --publish never
+        run: npm run package
+      - name: Check Linux desktop workflows
+        if: runner.os == 'Linux'
+        run: npx playwright test
+      - name: Check extracted AppImage sandbox and workflows
+        if: runner.os == 'Linux'
+        run: npm run test:package

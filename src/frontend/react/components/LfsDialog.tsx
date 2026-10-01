@@ -178,7 +178,9 @@ export function LfsDialog({
                     type="button"
                     className="button"
                     disabled={!enabled || !remote || !context.head}
-                    onClick={() => void run({ kind: 'fetch', remote, refetch })}
+                    onClick={() =>
+                      void run({ kind: 'fetch', remote, refetch: context.supportsRefetch && refetch })
+                    }
                   >
                     Download objects
                   </button>
@@ -194,12 +196,20 @@ export function LfsDialog({
                 <label>
                   <input
                     type="checkbox"
-                    checked={refetch}
-                    disabled={busy}
+                    checked={context.supportsRefetch && refetch}
+                    disabled={busy || !context.supportsRefetch}
+                    title={
+                      context.supportsRefetch ? undefined : 'Update Git LFS to download cached objects again.'
+                    }
                     onChange={(event) => setRefetch(event.target.checked)}
                   />{' '}
                   Download again, replacing cached LFS objects
                 </label>
+                {!context.supportsRefetch && (
+                  <p className="muted">
+                    This Git LFS installation does not support downloading cached objects again.
+                  </p>
+                )}
               </section>
             )}
             {tab === 'Tracking' && (

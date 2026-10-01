@@ -165,6 +165,16 @@ describe('keyboard shortcuts', () => {
     expect(matchesShortcut(keyEvent('F5', { altKey: true }), 'F5', 'linux')).toBe(false);
   });
 
+  it('leaves IME confirmation and AltGr text entry to the input method', () => {
+    const event = keyEvent('k', { ctrlKey: true, altKey: true });
+    expect(matchesShortcut({ ...event, isComposing: true }, 'Mod+Alt+K', 'linux')).toBe(false);
+    expect(matchesShortcut({ ...event, keyCode: 229 }, 'Mod+Alt+K', 'linux')).toBe(false);
+    expect(
+      matchesShortcut({ ...event, getModifierState: (key) => key === 'AltGraph' }, 'Mod+Alt+K', 'linux'),
+    ).toBe(false);
+    expect(matchesShortcut(event, 'Mod+Alt+K', 'linux')).toBe(true);
+  });
+
   it('ignores the Shift state that punctuation keys need', () => {
     expect(matchesShortcut(keyEvent('+', { ctrlKey: true, shiftKey: true }), 'Mod+Plus', 'linux')).toBe(true);
     expect(matchesShortcut(keyEvent('=', { ctrlKey: true }), 'Mod+=', 'linux')).toBe(true);

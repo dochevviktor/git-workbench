@@ -1,5 +1,19 @@
 # Git Workbench implementation plan
 
+P14 audit (2026-10-01): the [release audit](reviews/p14-release-audit.md) records all F01–F38 scopes,
+reference/test links and remaining unknowns. Corrections cover IME-triggered commits, modal shortcuts,
+accessibility contrast/tab semantics, renderer-crash recovery, the post-commit Amend refresh race,
+unsupported LFS refetch and repeated rejected credentials. The 100k/1k graph, 60k-line diff, monorepo/watcher/worktree and statistics benchmarks
+pass. Independent icons, bundled-dependency notices, local unsigned AppImage/deb preparation and sandboxed
+package checks are implemented. **P14 remains partial** for the native desktop/AT/IME/keyring, live-service
+and release-identity/budget agreement gates in the handoff. A container is not a clean-host desktop
+matrix; the deb has marked installation-test metadata until a public contact is supplied.
+
+Final P14 local verification: clean `npm ci`, `npm run check` (700 tests with Git LFS 3.8.0; three
+scale skips), build, all 86 routine headless desktop scenarios (four explicit skips), separate scale
+benchmarks and final AppImage/installed-deb smoke/security checks pass. The handoff retains the earlier
+failures, controlled reproductions, correction evidence and unverified acceptance criteria.
+
 P12 completion (2026-10-01): the [productivity/workspace handoff](reviews/p12-productivity-workspaces.md)
 closes the requested Linux phase scope. Named workspaces own separate windows, tabs, colors and saved
 layouts. Preferences completes supported General/Commit/Git controls, scoped signing/template defaults,
@@ -239,7 +253,7 @@ outside this slice; F38 Lean Branching remains separate.
 | P11   | Hosting providers, issues/PRs, notifications                         | Complete for researched Linux matrix; review corrections verified (2026-09-30): credential/preferences isolation, Bitbucket scopes/cursors, polling deadlines and F16 readiness; all 78 routine Electron scenarios pass; see P11 handoff | P05 auth; browser handoff independent |
 | P12   | Command palette, custom commands, external tools, workspace polish   | Complete for Linux phase scope (2026-10-01); workspace windows/layouts, expanded Preferences, command/tool defaults, keyboard and retention verified; see P12 handoff; native/platform parity gates remain P14                           | P02/P03 plus relevant domain services |
 | P13   | Statistics and explicitly enabled AI integrations                    | Complete for independently specified Linux phase scope (2026-10-01): nested statistics, CLI/local AI adapters, saved public choices, prompts and amend verified; live-provider/native/P14 gates remain; see P13 handoff                  | P03 history; P12 tools for AI         |
-| P14   | Parity audit, performance, accessibility, Linux release hardening    | Planned                                                                                                                                                                                                                                  | Every claimed workflow                |
+| P14   | Parity audit, performance, accessibility, Linux release hardening    | Partial (2026-10-01): local audit/corrections, scale/accessibility and unsigned package checks verified; native desktop/AT/keyring/live-service and release identity/budget gates remain; see P14 handoff                                | Every claimed workflow                |
 
 The phases retain stable IDs and ownership. The correction sequence below supersedes the previous
 strict P00→P14 execution chain: shell/workspace foundations from P12 and large-diff handling from P10
@@ -1697,8 +1711,6 @@ and screenshot coordinates are provenance, not implementation constants.
 
 ## Suggested next request
 
-> Implement F21 in P08 from docs/implementation-plan.md. Read the F20 handoff and catalogue P1-030/P1-031
-> before changing history inspection. Add one bounded file-history/blame workflow while preserving the
-> verified F17 conflict, F18 interactive-rebase, F19 history-operation, and F20 reflog state machines.
-> Leave selected-code/directory variants and public-only feature families distinct unless independently
-> verified.
+> Continue P14 from docs/reviews/p14-release-audit.md. Close one of its explicit native desktop,
+> accessibility, keyring or live-provider verification gates on an appropriate test host. Preserve the
+> feature ledger's unknowns and independent policies. Publishing and signing remain separate actions.

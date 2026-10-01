@@ -10,6 +10,7 @@ import type {
 } from '../../../common/ipc/contracts';
 import { unwrapResult } from '../../../common/ipc/result';
 import { waitForOperation } from '../lib/operations';
+import { isTextInputEvent } from '../lib/platform';
 import { useCommitContext } from '../hooks/use-commit-context';
 import { isNumberBetween, usePersistentState } from '../hooks/use-persistent-state';
 import { ChevronDownIcon, RecentMessagesIcon } from './Icons';
@@ -423,6 +424,7 @@ export function CommitComposer({
   );
 
   const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (isTextInputEvent(event.nativeEvent)) return;
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || blockedReason) return;
     event.preventDefault();
     if (event.shiftKey && (!onPush || value?.head.state !== 'branch' || value?.pendingOperation)) return;

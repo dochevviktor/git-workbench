@@ -469,16 +469,14 @@ test('production build loads its isolated preload and renderer', async () => {
     ).toBeVisible({
       timeout: 10_000,
     });
-    // The background status refresh can move rows between the click and its effect, so retry the
-    // selection instead of assuming one click always lands on the intended row.
-    await expect(async () => {
-      await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
-      await page
-        .getByTestId('diff-change-region')
-        .first()
-        .hover({ position: { x: 120, y: 4 } });
-      await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible({ timeout: 5_000 });
-    }).toPass({ timeout: 20_000 });
+    // A hunk button can belong to the preceding snapshot. Measure only after the exact new bytes arrive.
+    await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+    await expect(page.getByTestId('diff-content')).toContainText(`long-${'x'.repeat(2_000)}`);
+    await page
+      .getByTestId('diff-change-region')
+      .first()
+      .hover({ position: { x: 120, y: 4 } });
+    await expect(page.getByTestId('diff-hunk-stage').first()).toBeVisible();
     const diffLayout = await page.evaluate(() => {
       const body = document.querySelector<HTMLElement>('[data-testid="diff-content"]');
       const header = body?.querySelector<HTMLElement>('.diff-hunk-highlight');
@@ -510,7 +508,7 @@ test('production build loads its isolated preload and renderer', async () => {
     });
     expect(stickyAction.actionLeft).toBeGreaterThanOrEqual(stickyAction.bodyLeft - 1);
     expect(stickyAction.actionRight).toBeLessThanOrEqual(stickyAction.bodyRight + 1);
-    await page.screenshot({ path: 'test-results/f10-changes.png' });
+    await page.screenshot({ path: test.info().outputPath('f10-changes.png') });
 
     // F11: the composer commits the staged set, amends it, and surfaces a failing hook.
     const composer = page.getByTestId('commit-composer');
@@ -604,7 +602,7 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('menuitem', { name: 'Blocked by the hook', exact: true }).click();
     await expect(composer.getByTestId('commit-subject')).toHaveValue('Blocked by the hook');
     await composer.getByTestId('commit-subject').fill('');
-    await page.screenshot({ path: 'test-results/f11-commit.png' });
+    await page.screenshot({ path: test.info().outputPath('f11-commit.png') });
 
     // F12: branches and tags are created, checked out, and deleted through the validated capability.
     await page.getByRole('button', { name: 'All Commits' }).click();
@@ -642,7 +640,7 @@ test('production build loads its isolated preload and renderer', async () => {
       "Branch 'e2e-branch' already exists",
     );
     await expect(referenceDialog.getByTestId('reference-dialog-submit')).toBeDisabled();
-    await page.screenshot({ path: 'test-results/f12-new-branch-dialog.png' });
+    await page.screenshot({ path: test.info().outputPath('f12-new-branch-dialog.png') });
     await referenceDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(referenceDialog).toHaveCount(0);
     expect(await branchNames()).not.toContain('e2e-branch-duplicate');
@@ -675,7 +673,7 @@ test('production build loads its isolated preload and renderer', async () => {
       }
       await expect(tagItem).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 20_000 });
-    await page.screenshot({ path: 'test-results/f12-branches.png' });
+    await page.screenshot({ path: test.info().outputPath('f12-branches.png') });
 
     // The sidebar checks the previous branch out again; the branch already on HEAD cannot be checked out.
     await referenceTree.getByRole('treeitem', { name: 'e2e-branch', exact: true }).click({ button: 'right' });
@@ -794,7 +792,7 @@ test('production build loads its isolated preload and renderer', async () => {
       .poll(() => gitText(fixtureGit, fixtureRepository, ['log', '-1', '--format=%s']), { timeout: 20_000 })
       .toBe('Commit made on the remote');
     await expect(page.getByTestId('reference-status')).toContainText(/Pull/u);
-    await page.screenshot({ path: 'test-results/f13-network.png' });
+    await page.screenshot({ path: test.info().outputPath('f13-network.png') });
     await page.keyboard.press('Escape');
 
     const secondInitialized = await page.evaluate(async (path) => {
@@ -825,7 +823,10 @@ test('production build loads its isolated preload and renderer', async () => {
     await page.getByRole('tab', { name: /second/u }).click({ button: 'right' });
     await expect(page.getByRole('menu', { name: 'second tab' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'Close second' }).click();
+    await page
+      .getByRole('tab', { name: /second/u })
+      .locator('.workspace-tab-close')
+      .click();
     await expect(page.getByRole('tab', { name: /second/u })).toHaveCount(0);
     await page.keyboard.press('Control+Shift+T');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible();
@@ -856,7 +857,7 @@ test('production build loads its isolated preload and renderer', async () => {
         return window.desktop.repository.close({ id });
       }, initialized.value.id),
     ).resolves.toMatchObject({ ok: true });
-    await page.screenshot({ path: 'test-results/workspace.png' });
+    await page.screenshot({ path: test.info().outputPath('workspace.png') });
     expect(pageErrors).toEqual([]);
   } finally {
     try {

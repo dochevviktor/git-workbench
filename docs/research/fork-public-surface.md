@@ -203,6 +203,32 @@ ordinary Git state checks. This audit consumes that evidence without installing/
 inspecting its proprietary source/binaries. Code, branding, icons and implementation remain independent;
 reference screenshots are private/local research material, never application assets.
 
+## P14 audit — 2026-10-01
+
+The [F01–F38 audit ledger](../reviews/p14-release-audit.md#feature-ledger) is the current bounded
+verified/partial/unsupported record. It connects every claimed Linux feature to case/finding or public
+evidence and independent checks; earlier phase statements retain their dated scope. P14 remains partial
+for native desktop/AT/IME/keyring, live services, maintainer contact and budget agreement.
+
+Revisited P0-012 focus subcases, P2-012:F1, P2-013, P2-014:F1, P2-015 restart and P2-017:F1 with original
+cases, screenshots and linked Git manifests (Windows 2.22.0.0, 2026-09-19–20). Confidence is high for
+sampled states, not universal focus or native fractional DPI, which remain unknown. Contrast, IME/AltGr
+safeguards, renderer recovery and scale budgets are independent Linux adaptations. Private assets and
+capture scripts are unchanged. The public index was restored with 226 images.
+
+The [Git LFS changelog](https://github.com/git-lfs/git-lfs/blob/main/CHANGELOG.md), checked 2026-10-01,
+documents refetch in 3.7.0. Actual 3.4.1 help lacks it; main now probes that capability. The
+[Git helper protocol](https://git-scm.com/docs/gitcredentials), checked 2026-10-01, supports get/store/erase;
+operation-local refusal after erase resolves a reproduced 3.4.1 authentication loop while preserving
+saved accounts. These are high-confidence tool semantics, not additional Fork observations. P2-011
+initialization/download F1–F4 remains the bounded card/Save As reference. Other source dates, platform
+differences, test limits and artifact policy are in the P14 handoff.
+
+P0-031 cancel/submit F1 findings retain the captured Amend behavior (2026-09-19, Windows 2.22.0.0,
+high confidence within the cases). A controlled post-commit watcher race adds independent Linux evidence:
+completion must refresh the current context key. It now restores Amend availability without another
+commit or index/worktree mutation. It does not promote uncaptured Fork scheduling behavior.
+
 ## Current reference and evidence precedence
 
 P06 implementation checkpoint (2026-09-24): the [merge/recovery handoff](../reviews/p06-merge-recovery.md)
@@ -1220,6 +1246,11 @@ complete search scope list; the eye toggle’s meaning; whether colored tab dots
 indicators; current dark and light palettes; and all Linux behavior.
 
 ## Feature coverage
+
+Current cross-feature audit: [P14 ledger, 2026-10-01](../reviews/p14-release-audit.md#feature-ledger).
+It supplements the scopes below with explicit unsupported/native/live-provider gates. F04/F09/F35 have
+P14 scale evidence; F24 has old/new-tool and credential-rejection regressions; F34 has contrast/input/crash
+verification and a manual preview-update policy. Unknown Fork states and P14's remaining gates stay open.
 
 Phase IDs refer to [the implementation plan](../implementation-plan.md).
 The [2026-09-19 remediation](../reviews/f01-f13-review.md#remediation-verified--2026-09-19) verifies F12

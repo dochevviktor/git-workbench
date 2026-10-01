@@ -2,6 +2,8 @@ import { app, BrowserWindow, nativeTheme, screen } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isTrustedDocument } from './security';
+import { installRendererRecovery } from './renderer-recovery';
+import { windowIcon } from './window-icon';
 
 export type FileHistoryWindowKind = 'file-history' | 'blame';
 
@@ -18,6 +20,7 @@ export async function createFileHistoryWindow(
   const window = new BrowserWindow({
     parent,
     title,
+    icon: windowIcon(),
     width: 1020,
     height: 720,
     minWidth: 720,
@@ -35,6 +38,7 @@ export async function createFileHistoryWindow(
     },
   });
   window.setMenu(null);
+  installRendererRecovery(window);
   const closeWithParent = () => {
     if (!window.isDestroyed()) window.close();
   };
