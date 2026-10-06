@@ -24,4 +24,10 @@ if (mode === 'child') {
   process.stderr.write('x'.repeat(100_000));
 } else if (mode === 'arguments') {
   process.stdout.write(JSON.stringify(process.argv.slice(3)));
+} else if (mode === 'environment') {
+  process.stdout.write(
+    JSON.stringify(
+      Object.fromEntries(process.argv.slice(3).map((name) => [name, process.env[name] ?? null])),
+    ),
+  );
 }

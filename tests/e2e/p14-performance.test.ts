@@ -39,7 +39,7 @@ test('P14 browser startup, six concurrent worktree tabs and huge diff budgets', 
       join(f.repo, 'huge.txt'),
       Array.from({ length: 60_000 }, (_, index) => `changed line ${index}\n`).join(''),
     );
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     await expect(page.getByTestId('working-change').filter({ hasText: 'huge.txt' })).toBeVisible();
     await page.getByTestId('working-change').filter({ hasText: 'huge.txt' }).click();
     const load = page.getByRole('button', { name: 'Load Diff', exact: true });

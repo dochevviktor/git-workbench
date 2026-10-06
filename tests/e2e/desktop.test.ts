@@ -14,13 +14,13 @@ async function commitFile(git: GitRunner, repository: string, file: string, mess
 }
 
 /**
- * The Electron test runs on Ozone's headless platform by default: it needs no display server and never
- * opens a window on the desktop running it. Set `ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` to
+ * On Linux the Electron test runs on Ozone's headless platform by default and needs no display server.
+ * Windows and macOS use native windows. Set `ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` to
  * watch it on a real display, and `ELECTRON_TEST_DISABLE_GPU=1` there when that display is software
  * rendered.
  */
 const ozonePlatform = process.env.ELECTRON_TEST_OZONE_PLATFORM || 'headless';
-const headless = ozonePlatform === 'headless';
+const headless = process.platform === 'linux' && ozonePlatform === 'headless';
 
 function launchEnvironment(): Record<string, string> {
   // Without a display in the environment, no fallback can put a window on a real screen.
@@ -75,7 +75,7 @@ test('production build loads its isolated preload and renderer', async () => {
       args: [
         ...(executablePath ? [] : ['.']),
         `--user-data-dir=${profile}`,
-        `--ozone-platform=${ozonePlatform}`,
+        ...(process.platform === 'linux' ? [`--ozone-platform=${ozonePlatform}`] : []),
         ...(headless || process.env.ELECTRON_TEST_DISABLE_GPU === '1' ? ['--disable-gpu'] : []),
       ],
       env: launchEnvironment(),
@@ -863,7 +863,7 @@ test('production build loads its isolated preload and renderer', async () => {
       .locator('.workspace-tab-close')
       .click();
     await expect(page.getByRole('tab', { name: /second/u })).toHaveCount(0);
-    await page.keyboard.press('Control+Shift+T');
+    await page.keyboard.press('ControlOrMeta+Shift+T');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible();
 
     const manager = await page.evaluate(async (path) => {

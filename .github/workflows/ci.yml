@@ -21,6 +21,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run test:capabilities
       - run: npm run check
       - run: npm run build
       - name: Check Linux packaging
@@ -29,6 +30,9 @@ jobs:
       - name: Check Linux desktop workflows
         if: runner.os == 'Linux'
         run: npx playwright test
+      - name: Check native desktop smoke
+        if: runner.os != 'Linux'
+        run: npx playwright test tests/e2e/desktop.test.ts tests/e2e/window-lifecycle.test.ts tests/e2e/windows-native.test.ts
       - name: Check extracted AppImage sandbox and workflows
         if: runner.os == 'Linux'
         run: npm run test:package

@@ -1,5 +1,12 @@
 # Fork: captured and public feature surface
 
+Portability implementation review — **2026-10-06**: the
+[cross-platform review](../reviews/cross-platform-portability.md) records F01/F03/F13/F17/F31/F34
+corrections and primary Node, Git, Electron and W3C sources, accessed on that date. Confidence is high
+for exercised Windows fixtures and synthetic contracts; native macOS remains unverified. These are
+Git Workbench observations and independent policies, with no new Fork finding or visual-parity claim.
+The linked private catalogue remains absent and untouched; existing case-level unknowns remain.
+
 Windows implementation correction — **2026-10-01**: the
 [compatibility follow-up](../reviews/windows-compatibility.md) supersedes the initial F32/F33/F37
 Windows exclusions below. Native process execution, Git diff/search/path and staging-refresh corrections and OS-aware

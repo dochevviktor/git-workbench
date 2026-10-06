@@ -101,7 +101,7 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
       await clipboard.writeText(content);
     }, f.bytes.toString('utf8'));
     await page.locator('.app').click({ position: { x: 550, y: 12 } });
-    await page.keyboard.press('Control+v');
+    await page.keyboard.press('ControlOrMeta+v');
     await expect(dialog.getByRole('status')).toContainText('without conflicts');
     await expect(dialog.getByLabel('Patch location')).toHaveValue('Clipboard');
     await dialog.getByRole('button', { name: 'Apply', exact: true }).click();

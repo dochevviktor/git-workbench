@@ -179,7 +179,7 @@ test('P03 hash search, recent queries, inline changes, retained collapse selecti
     await page.getByRole('menuitem', { name: 'Collapse All', exact: true }).click();
     await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-id', secondParent);
     await expect(page.locator('.history-full-hash')).toHaveText(secondParent);
-    await page.keyboard.press('Control+0');
+    await page.keyboard.press('ControlOrMeta+0');
     await expect(page.locator('.history-full-hash')).toHaveText(head);
     await page.getByRole('menubar').getByRole('menuitem', { name: 'View', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Appearance', exact: true }).click();

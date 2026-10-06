@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+Portability review (2026-10-06): [corrections and verification](reviews/cross-platform-portability.md).
+Main normalizes Windows environment names before Git policy filtering and drains the shared native
+process-tree terminator. Conflict source selection honors `core.symlinks` without changing index modes.
+Early macOS file-open events reuse the repository-opening queue and restore an absent workspace owner.
+Command+Option symbol/dead-key matching shares a bounded physical-key fallback with shortcut capture.
+IPC, sender/frame checks, credentials, context isolation and sandbox boundaries are unchanged.
+
 Windows implementation follow-up (2026-10-01): [verification and limits](reviews/windows-compatibility.md).
 Main-owned process adapters launch native Windows executables or explicit Node entry points without
 an implicit shell, preserve the Windows system/profile environment, and drain native process-tree

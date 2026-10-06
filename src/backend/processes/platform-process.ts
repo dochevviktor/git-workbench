@@ -109,6 +109,13 @@ export function selectedEnvironment(names: readonly string[]): NodeJS.ProcessEnv
 
 /** Cancel the active process tree and wait for native termination before releasing its files. */
 export async function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): Promise<void> {
+  const killChild = () => {
+    try {
+      child.kill(signal);
+    } catch {
+      /* Already exited or never started. */
+    }
+  };
   if (process.platform === 'win32' && child.pid && process.env.SystemRoot) {
     await new Promise<void>((done) => {
       const killer = spawn(
@@ -117,17 +124,20 @@ export async function terminateProcessTree(child: ChildProcess, signal: NodeJS.S
         { shell: false, windowsHide: true, stdio: 'ignore' },
       );
       killer.once('error', () => {
-        child.kill();
+        killChild();
         done();
       });
-      killer.once('close', () => done());
+      killer.once('close', (code) => {
+        if (code !== 0) killChild();
+        done();
+      });
     });
     return;
   }
   try {
     if (child.pid && process.platform !== 'win32') process.kill(-child.pid, signal);
-    else child.kill(signal);
+    else killChild();
   } catch {
-    /* Already exited. */
+    killChild();
   }
 }

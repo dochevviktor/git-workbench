@@ -1,5 +1,10 @@
 # Git Workbench implementation plan
 
+Cross-platform review (2026-10-06): [portability corrections and verification](reviews/cross-platform-portability.md)
+extends the Windows follow-ups with environment filtering, symlink conflicts, Git termination, explicit
+paths, macOS file-open/shortcut handling and native CI coverage. P14 remains partial; native macOS
+execution and the broader release gates are not inferred from Windows or synthetic tests.
+
 Windows implementation follow-up (2026-10-01): [OS-aware verification and supported workflows](reviews/windows-compatibility.md)
 supersedes the initial Windows exclusions below. F32/F33/F37 now have Windows process adapters;
 untracked diffs/images, literal search and historical Save As have native path fixes. Shared tests
@@ -248,6 +253,13 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Portability review verified 2026-10-06: **704 unit/integration tests pass (10 explicit skips)**,
+production build passes, and **nine targeted native Windows Electron scenarios pass** with the
+sandbox enabled and no retries. Environment filtering, conflict symlinks, process lifetime, explicit
+paths and macOS event/shortcut handling are recorded in the
+[cross-platform review](reviews/cross-platform-portability.md). Synthetic macOS coverage and added CI
+jobs do not establish native macOS execution or package verification. P14 remains partial.
 
 Windows extension verified 2026-10-01: **697 unit/integration tests pass (10 explicit skips)** and
 the complete native desktop suite passes **88 scenarios (four explicit skips)**. OS/capability selection,

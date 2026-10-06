@@ -1,5 +1,12 @@
 # Fork catalogue alignment — 2026-09-20
 
+Portability implementation review — **2026-10-06**: the
+[cross-platform correction record](../reviews/cross-platform-portability.md) maps F01/F03/F13/F17/F31/F34
+to Windows regressions, synthetic macOS event/shortcut coverage and primary runtime documentation
+(accessed 2026-10-06). High confidence applies to exercised implementation cases; native macOS remains
+unverified. No new Fork observation, layout comparison or case completion is inferred. The linked
+private catalogue remains absent and unchanged; all existing finding IDs and unknowns are retained.
+
 Windows implementation correction — **2026-10-01**: the
 [compatibility follow-up](../reviews/windows-compatibility.md) supersedes F32/F33/F37's Windows
 exclusions and the initial failing-suite status below. F07/F08/F09/F21/F23/F27 also receive native path,

@@ -280,6 +280,17 @@ async function resolveChoice(
   const original = details?.isFile() ? await readFile(target) : undefined;
   const originalLink = details?.isSymbolicLink() ? await readlink(target, { encoding: 'buffer' }) : undefined;
   let bytes: Buffer | undefined;
+  let nativeSymlink = stage?.mode === '120000';
+  if (nativeSymlink) {
+    try {
+      nativeSymlink =
+        (await runner.run(['config', '--type=bool', '--get', 'core.symlinks'], options)).stdout.trim() !==
+        'false';
+    } catch (error) {
+      // An unset value uses Git's default (true); other failures must precede worktree writes.
+      if (!(error instanceof GitCommandError && error.exitCode === 1)) throw error;
+    }
+  }
   if (stage?.objectId && stage.mode) {
     if (!['100644', '100755', '120000'].includes(stage.mode))
       throw new ConflictRequestError('This index mode cannot be selected as a file.');
@@ -304,7 +315,7 @@ async function resolveChoice(
       if (details) await unlink(target);
       await runner.run(['update-index', '--force-remove', '--', file.path], options);
     } else {
-      if (stage.mode === '120000') {
+      if (nativeSymlink) {
         if (details) await unlink(target);
         await symlink(bytes!, target);
       } else await replaceWorkingFile(target, bytes!, stage.mode === '100755' ? 0o755 : 0o644);

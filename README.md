@@ -1,5 +1,10 @@
 # Git Workbench
 
+Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
+covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
+native Windows/macOS smoke scenarios. macOS execution, packaging and native-device checks still need
+verification on a Mac; Linux and Windows evidence does not establish those results.
+
 Windows implementation (2026-10-01): the [compatibility follow-up](docs/reviews/windows-compatibility.md)
 records native custom commands, external tools, AI adapters and Git/diff/path corrections, plus test
 selection by OS and installed capabilities. `npm run test:capabilities` explains this host's selection.

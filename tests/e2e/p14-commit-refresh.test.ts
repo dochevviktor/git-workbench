@@ -8,7 +8,7 @@ test('staging controls retain a pressed action across an unchanged background re
   try {
     await writeFile(join(f.repo, 'value.ts'), 'export const value = 3;\n');
     await f.open();
-    await f.page.keyboard.press('Control+1');
+    await f.page.keyboard.press('ControlOrMeta+1');
     const unstaged = f.page.getByTestId('working-changes-unstaged').getByTestId('working-change');
     const staged = f.page.getByTestId('working-changes-staged').getByTestId('working-change');
     await expect(unstaged).toHaveCount(1);
@@ -44,7 +44,7 @@ test('P14 commit completion refreshes the current context after an earlier watch
     await writeFile(join(f.repo, 'value.ts'), 'export const value = 3;\n');
     await f.run('add', 'value.ts');
     await f.open();
-    await f.page.keyboard.press('Control+1');
+    await f.page.keyboard.press('ControlOrMeta+1');
     const subject = f.page.getByTestId('commit-subject');
     const submit = f.page.getByTestId('commit-submit');
     const amend = f.page.getByTestId('commit-amend');

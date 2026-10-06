@@ -1,10 +1,12 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
 /** Fixture repositories must not inherit the developer's line endings, signing or credential helpers. */
 export function isolateTestGitConfiguration(): void {
+  // macOS /var is an alias of /private/var. Fixture paths must agree with Git's canonical paths.
+  if (process.platform !== 'win32') process.env.TMPDIR = realpathSync(tmpdir());
   if (process.platform === 'win32') {
     // Use Git's bundled GPG/OpenSSL for local fixtures without modifying the user's PATH.
     const git = execFileSync('where.exe', ['git.exe'], { encoding: 'utf8', windowsHide: true })

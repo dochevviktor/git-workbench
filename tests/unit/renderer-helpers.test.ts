@@ -175,6 +175,17 @@ describe('keyboard shortcuts', () => {
     expect(matchesShortcut(event, 'Mod+Alt+K', 'linux')).toBe(true);
   });
 
+  it('recognizes macOS Command+Option keys when Option produces a symbol or dead key', () => {
+    const event = { ...keyEvent('˚', { metaKey: true, altKey: true }), code: 'KeyK' };
+    expect(matchesShortcut(event, 'Mod+Alt+K', 'darwin')).toBe(true);
+    expect(matchesShortcut({ ...event, key: 'Dead' }, 'Mod+Alt+K', 'darwin')).toBe(true);
+    expect(matchesShortcut({ ...event, key: 'º', code: 'Digit0' }, 'Mod+Alt+0', 'darwin')).toBe(true);
+    expect(matchesShortcut({ ...event, key: 'a', code: 'KeyQ' }, 'Mod+Alt+A', 'darwin')).toBe(true);
+    expect(matchesShortcut({ ...event, isComposing: true }, 'Mod+Alt+K', 'darwin')).toBe(false);
+    expect(matchesShortcut({ ...event, getModifierState: () => true }, 'Mod+Alt+K', 'darwin')).toBe(false);
+    expect(matchesShortcut({ ...event, metaKey: false, ctrlKey: true }, 'Mod+Alt+K', 'win32')).toBe(false);
+  });
+
   it('ignores the Shift state that punctuation keys need', () => {
     expect(matchesShortcut(keyEvent('+', { ctrlKey: true, shiftKey: true }), 'Mod+Plus', 'linux')).toBe(true);
     expect(matchesShortcut(keyEvent('=', { ctrlKey: true }), 'Mod+=', 'linux')).toBe(true);

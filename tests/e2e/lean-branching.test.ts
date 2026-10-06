@@ -55,7 +55,7 @@ test('F38 reviews, cancels, starts, syncs and finishes with independently checke
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(await run('rev-parse', 'HEAD')).toBe(initial);
     expect(await run('branch', '--format=%(refname:short)')).toBe('main');
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     await page
       .getByRole('dialog', { name: 'Preferences', exact: true })
       .getByLabel('Appearance')
@@ -113,7 +113,7 @@ test('F38 reviews, cancels, starts, syncs and finishes with independently checke
     await writeFile(join(cwd, 'README.md'), 'dirty main');
     await page.reload();
     await page.setViewportSize({ width: 1280, height: 820 });
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     await page
       .getByRole('dialog', { name: 'Preferences', exact: true })
       .getByLabel('Appearance')

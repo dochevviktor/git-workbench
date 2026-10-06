@@ -86,7 +86,19 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string, platform
   // Shift produces a different character for punctuation keys such as `=` and `+`.
   const punctuation = key === 'Plus' || /^[^A-Za-z0-9]$/u.test(key);
   if (!punctuation && event.shiftKey !== parts.has('Shift')) return false;
-  return event.key.toLowerCase() === (key === 'Plus' ? '+' : key).toLowerCase();
+  return shortcutEventKey(event, platform).toLowerCase() === (key === 'Plus' ? '+' : key).toLowerCase();
+}
+
+/** Option can turn a letter/digit into a symbol or dead key on macOS; Command shortcuts still name the key. */
+export function shortcutEventKey(
+  event: Pick<KeyboardEvent, 'key' | 'code' | 'altKey' | 'metaKey'>,
+  platform: Platform,
+): string {
+  if (platform === 'darwin' && event.metaKey && event.altKey && !/^[a-z0-9]$/iu.test(event.key)) {
+    const physical = /^(?:Key([A-Z])|Digit([0-9]))$/u.exec(event.code);
+    if (physical) return physical[1] ?? physical[2]!;
+  }
+  return event.key;
 }
 
 /** IME confirmation and AltGr belong to text entry, even when they resemble command shortcuts. */

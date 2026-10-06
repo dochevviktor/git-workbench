@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { access, realpath, stat } from 'node:fs/promises';
-import { delimiter, isAbsolute, join, resolve, sep } from 'node:path';
+import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { programInvocation } from '../processes/platform-process';
 
 async function isExecutable(candidate: string): Promise<boolean> {
@@ -16,7 +16,11 @@ async function isExecutable(candidate: string): Promise<boolean> {
 
 /** Resolve a configured Git executable without asking a shell to interpret it. */
 export async function resolveGitExecutable(requested = process.env.GIT_EXECUTABLE || 'git') {
-  if (isAbsolute(requested) || requested.includes(sep)) {
+  if (
+    isAbsolute(requested) ||
+    requested.includes('/') ||
+    (process.platform === 'win32' && requested.includes('\\'))
+  ) {
     const candidate = isAbsolute(requested) ? requested : resolve(requested);
     return (await isExecutable(candidate)) ? realpath(candidate) : null;
   }

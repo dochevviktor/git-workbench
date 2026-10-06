@@ -207,7 +207,7 @@ test('hover hunk controls, resizable/hideable/popped-out details and split toolb
     await child.getByRole('button', { name: first.slice(0, 7), exact: true }).click();
     await expect(child.locator('.history-full-hash')).toHaveText(first);
     await page.bringToFront();
-    await page.keyboard.press('Control+w');
+    await page.keyboard.press('ControlOrMeta+w');
     await expect(page.getByRole('heading', { name: 'Repository Manager' })).toBeVisible();
     expect(
       await child.evaluate(

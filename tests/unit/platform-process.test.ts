@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import { runCustomCommand } from '../../src/backend/commands/custom-command-service';
 import { programInvocation, selectedEnvironment } from '../../src/backend/processes/platform-process';
 import { runAgent } from '../../src/backend/ai/agent-provider';
+import { GitRunner } from '../../src/backend/git/runner';
 import { processState, testPlatform } from '../platform';
 
 const roots: string[] = [];
@@ -12,7 +13,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-it.each(['command', 'agent'] as const)(
+it.each(['command', 'agent', 'git'] as const)(
   'cancels the %s process tree before releasing the request',
   async (kind) => {
     const root = await mkdtemp(join(tmpdir(), 'workbench-process-tree-'));
@@ -33,9 +34,13 @@ it.each(['command', 'agent'] as const)(
             { signal: controller.signal, appendOutput: () => undefined, setProgress: () => undefined },
             async () => undefined,
           )
-        : runAgent(process.execPath, args, root, selectedEnvironment(['PATH']), '', controller.signal).catch(
-            (error: Error) => error,
-          );
+        : (kind === 'git'
+            ? new GitRunner({ executable: process.execPath }).run(args, {
+                cwd: root,
+                signal: controller.signal,
+              })
+            : runAgent(process.execPath, args, root, selectedEnvironment(['PATH']), '', controller.signal)
+          ).catch((error: Error) => error);
     let pid = 0;
     try {
       await expect.poll(() => readFile(marker, 'utf8').catch(() => '')).not.toBe('');
@@ -47,7 +52,8 @@ it.each(['command', 'agent'] as const)(
     if (kind === 'command')
       expect(finished).toMatchObject({ status: 'failed', message: expect.stringContaining('Cancelled') });
     else expect(finished).toMatchObject({ message: expect.stringContaining('cancelled') });
-    await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
+    if (testPlatform.windows) expect(await processState(pid)).toBe('gone');
+    else await expect.poll(() => processState(pid)).toMatch(/^(?:Z|gone)$/u);
   },
 );
 
