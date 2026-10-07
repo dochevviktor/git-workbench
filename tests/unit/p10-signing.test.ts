@@ -14,15 +14,22 @@ import {
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose();
-});
-describe.skipIf(!testPlatform.gpg)('P10 signing completion', () => {
+}, 15000);
+describe.skipIf(!testPlatform.gpg)('P10 signing completion', { timeout: 60000 }, () => {
   it.skipIf(!testPlatform.posix)(
     'uses the native GPG agent with a protected key and keeps pinentry cancellation outside application output',
-    async () => {
-      const f = await signingFixture({ protected: true });
-      cleanup.push(f.cleanup);
+    async ({ signal }) => {
+      const f = await signingFixture({
+        protected: true,
+        signal,
+        onCleanup: (dispose) => cleanup.push(dispose),
+      });
       const killAgent = () =>
-        promisify(execFile)('gpgconf', ['--homedir', f.gnupg, '--kill', 'gpg-agent'], { env: f.env });
+        promisify(execFile)('gpgconf', ['--homedir', f.gnupg, '--kill', 'gpg-agent'], {
+          env: f.env,
+          timeout: 5000,
+          killSignal: 'SIGKILL',
+        });
       await writeFile(join(f.cwd, 'file'), 'protected content\n');
       await f.run('add', '.');
       const perform = async (signal?: AbortSignal) => {
@@ -80,9 +87,10 @@ describe.skipIf(!testPlatform.gpg)('P10 signing completion', () => {
       expect(await f.run('write-tree')).toBe(tree);
     },
   );
-  it('saves commit/tag defaults atomically with inheritance, lock failures and actual signed Git-default output', async () => {
-    const f = await signingFixture();
-    cleanup.push(f.cleanup);
+  it('saves commit/tag defaults atomically with inheritance, lock failures and actual signed Git-default output', async ({
+    signal,
+  }) => {
+    const f = await signingFixture({ signal, onCleanup: (dispose) => cleanup.push(dispose) });
     await f.run('config', 'other.preserve', 'unchanged');
     let settings = await readSigningSettings(f.git, f.cwd, f.repositoryId);
     settings = await setSigningKey(f.git, f.cwd, {

@@ -15,6 +15,7 @@ async function fixture() {
   const service = new RepositoryService({ storagePath: join(f.root, 'recent.json'), runner: f.git });
   cleanups.push(async () => {
     service.dispose();
+    await service.settled();
     await f.cleanup();
   });
   const { id } = await service.open(1, f.cwd);

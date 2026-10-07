@@ -1,5 +1,10 @@
 # Git Workbench implementation plan
 
+CI correction (2026-10-07): [fixes and local verification](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+address credential-file symlinks, canonical temporary paths, LFS attribute mapping and fixture cleanup,
+and add sandbox setup plus failure archives to CI. Local check/build/package and focused desktop/package
+verification pass; hosted Windows/macOS and the privileged Linux CI route still need a rerun. P14 stays partial.
+
 Cross-platform review (2026-10-06): [portability corrections and verification](reviews/cross-platform-portability.md)
 extends the Windows follow-ups with environment filtering, symlink conflicts, Git termination, explicit
 paths, macOS file-open/shortcut handling and native CI coverage. P14 remains partial; native macOS
@@ -253,6 +258,13 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+CI correction verified locally 2026-10-07: **716 unit/integration tests pass (five explicit skips)**,
+production build and AppImage packaging pass, **six focused headless desktop scenarios** pass, and
+**seven packaged scenarios** pass with one Windows-only skip. The
+[CI follow-up](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) records the
+observed failures, changes, artifacts and native/hosted limits. This does not establish a green remote
+OS matrix or promote P14's remaining release gates.
 
 Portability review verified 2026-10-06: **704 unit/integration tests pass (10 explicit skips)**,
 production build passes, and **nine targeted native Windows Electron scenarios pass** with the

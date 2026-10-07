@@ -408,6 +408,15 @@ for checking an unpacked binary. Renderer sandboxing stays enabled. Test runs us
 The install hook runs Electron's `install-electron` command to ensure its binary is present.
 No extra browser download is needed for these Electron tests.
 
+CI preserves an archive named `validation-<OS>-<attempt>` on each Actions job, including failures.
+It contains step logs, capability/tool versions, Vitest JSON/JUnit, desktop JSON/HTML reports,
+available traces, and a failure summary. Development and packaged desktop results are kept separate.
+Independent build/desktop checks can run after a unit failure; the job still fails. Linux CI configures
+the SUID helper in development Electron and the extracted AppImage while keeping sandboxing enabled.
+Privileged setup is restricted to GitHub's Linux runner; local headless tests use the existing host policy.
+The [CI follow-up](docs/reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+records the diagnosed failures and verification limits.
+
 ### Local waypipe session
 
 This development host forwards its display through the user service `wayland-bridge.service`.

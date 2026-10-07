@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { signingFixture } from '../signing-fixture';
 import { testPlatform, gpgHome } from '../platform';
 import {
@@ -17,13 +17,15 @@ import {
 } from '../../src/common/ipc/contracts';
 
 const cleanups: (() => Promise<void>)[] = [];
+let testSignal: AbortSignal;
+beforeEach(({ signal }) => {
+  testSignal = signal;
+});
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
-});
+}, 15000);
 async function fixture() {
-  const f = await signingFixture();
-  cleanups.push(f.cleanup);
-  return f;
+  return signingFixture({ signal: testSignal, onCleanup: (cleanup) => cleanups.push(cleanup) });
 }
 async function input(f: Awaited<ReturnType<typeof fixture>>) {
   return {
@@ -34,7 +36,7 @@ async function input(f: Awaited<ReturnType<typeof fixture>>) {
   };
 }
 
-describe('F28 GPG signing', () => {
+describe('F28 GPG signing', { timeout: 60000 }, () => {
   it.skipIf(!testPlatform.gpg)(
     'signs and amends commits, verifies exact tag objects, detects tampering and missing keys',
     async () => {

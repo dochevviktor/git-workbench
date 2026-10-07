@@ -1,5 +1,11 @@
 # Fork catalogue alignment — 2026-09-20
 
+CI portability correction — **2026-10-07**: see the
+[failure follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) for F13/F24/F37
+implementation changes and primary platform contracts. Local regression confidence is high; native
+Windows/macOS and hosted sandbox outcomes require CI verification. No visual changes or new Fork
+observations are claimed, and all original case-level unknowns and private evidence remain unchanged.
+
 Portability implementation review — **2026-10-06**: the
 [cross-platform correction record](../reviews/cross-platform-portability.md) maps F01/F03/F13/F17/F31/F34
 to Windows regressions, synthetic macOS event/shortcut coverage and primary runtime documentation

@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+CI portability correction — **2026-10-07**: the
+[follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) records F13/F24/F37
+credential-file and LFS path fixes, observed GitHub runner failures, and dated primary Node/Chromium
+references. Confidence is high for exercised local regressions; hosted reruns remain necessary.
+These are independent implementation corrections; existing Fork case/finding IDs and unknowns are unchanged.
+
 Portability implementation review — **2026-10-06**: the
 [cross-platform review](../reviews/cross-platform-portability.md) records F01/F03/F13/F17/F31/F34
 corrections and primary Node, Git, Electron and W3C sources, accessed on that date. Confidence is high

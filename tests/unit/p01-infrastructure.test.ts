@@ -76,21 +76,23 @@ describe('P01 execution boundary', () => {
   });
 
   it('preserves unusual argv as data and never logs URL or header credentials', async () => {
-    const cwd = await directory();
+    const cwd = join(await directory(), 'private');
+    await mkdir(cwd);
     const logs: unknown[] = [];
     const runner = new GitRunner({ executable: process.execPath, logger: (entry) => logs.push(entry) });
+    const secrets = ['fixture_url_password_7f13', 'fixture_query_token_7f13', 'fixture_header_token_7f13'];
     const args = [
       '-dash',
       'space café\nline',
       '$(touch injected)',
       '`touch injected`',
-      'https://user:private@host/a?token=secret',
-      'Authorization: Bearer sensitive',
+      `https://user:${secrets[0]}@host/a?token=${secrets[1]}`,
+      `Authorization: Bearer ${secrets[2]}`,
     ];
     expect(JSON.parse((await runner.run([script, 'arguments', ...args], { cwd })).stdout)).toEqual(args);
     await expect(access(join(cwd, 'injected'))).rejects.toThrow();
     const text = JSON.stringify(logs);
-    for (const secret of ['private', 'secret', 'sensitive']) expect(text).not.toContain(secret);
+    for (const secret of secrets) expect(text).not.toContain(secret);
     expect(sanitizeGitOutput('\u001b[31mPassword=private\u001b[0m')).toBe('Password=<redacted>');
   });
 
@@ -313,6 +315,7 @@ describe('P01 repository trust', () => {
 describe('P01 durable activity', () => {
   it.each(['linked worktree', 'submodule'] as const)(
     'serializes a %s with its parent, cancels queued jobs and leaves other repositories independent',
+    { timeout: testPlatform.windows ? 60000 : 5000 },
     async (topology) => {
       const f = await fixture();
       const other = await fixture();

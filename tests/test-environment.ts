@@ -5,8 +5,12 @@ import { delimiter, dirname, join } from 'node:path';
 
 /** Fixture repositories must not inherit the developer's line endings, signing or credential helpers. */
 export function isolateTestGitConfiguration(): void {
-  // macOS /var is an alias of /private/var. Fixture paths must agree with Git's canonical paths.
-  if (process.platform !== 'win32') process.env.TMPDIR = realpathSync(tmpdir());
+  // Git expands Windows 8.3 names and macOS /var aliases. Use that identity in fixtures too.
+  const temporary = realpathSync.native(tmpdir());
+  if (process.platform === 'win32') {
+    process.env.TEMP = temporary;
+    process.env.TMP = temporary;
+  } else process.env.TMPDIR = temporary;
   if (process.platform === 'win32') {
     // Use Git's bundled GPG/OpenSSL for local fixtures without modifying the user's PATH.
     const git = execFileSync('where.exe', ['git.exe'], { encoding: 'utf8', windowsHide: true })

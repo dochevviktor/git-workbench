@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
 import { z } from 'zod';
 import type {
   AiPreview,
@@ -24,6 +22,7 @@ import type { AiProvider } from './openai-provider';
 import { AgentProvider, validateAiExecutable } from './agent-provider';
 import { OllamaProvider } from './ollama-provider';
 import { WorkspaceFile } from '../repositories/workspace-file';
+import { readCredentialFile } from '../credentials/credential-file';
 
 const materialLimit = 128 * 1024;
 type Pending = { owner: number; id?: string; controller: AbortController };
@@ -369,22 +368,9 @@ export class AiService {
 
 async function readAiKey(path: string): Promise<string> {
   try {
-    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
-    try {
-      const stat = await file.stat();
-      if (!stat.isFile() || stat.size > 4096) throw new Error('Invalid key file');
-      const bytes = Buffer.alloc(4097);
-      try {
-        const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
-        const key = bytes.subarray(0, bytesRead).toString('utf8').trim();
-        if (bytesRead > 4096 || !/^[A-Za-z0-9_-]{10,4096}$/u.test(key)) throw new Error('Invalid key');
-        return key;
-      } finally {
-        bytes.fill(0);
-      }
-    } finally {
-      await file.close();
-    }
+    const key = await readCredentialFile(path);
+    if (!/^[A-Za-z0-9_-]{10,4096}$/u.test(key)) throw new Error('Invalid key');
+    return key;
   } catch {
     throw new ExpectedBackendError(
       'UNAVAILABLE',

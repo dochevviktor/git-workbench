@@ -14,25 +14,63 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CI_REPORT_DIR: test-results/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run test:capabilities
-      - run: npm run check
-      - run: npm run build
+      - name: Install dependencies
+        id: install
+        run: npm run ci:step -- install
+      - name: Report test capabilities
+        id: capabilities
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run ci:step -- capabilities
+      - name: Check types, style and unit tests
+        id: check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run ci:step -- check
+      - name: Build application
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run ci:step -- build
       - name: Check Linux packaging
-        if: runner.os == 'Linux'
-        run: npm run package
+        id: package
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
+        run: npm run ci:step -- package
+      - name: Configure Linux sandbox helper
+        id: sandbox
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
+        run: npm run ci:step -- sandbox
       - name: Check Linux desktop workflows
-        if: runner.os == 'Linux'
-        run: npx playwright test
+        id: desktop
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.sandbox.outcome == 'success' }}
+        run: npm run ci:step -- desktop
       - name: Check native desktop smoke
-        if: runner.os != 'Linux'
-        run: npx playwright test tests/e2e/desktop.test.ts tests/e2e/window-lifecycle.test.ts tests/e2e/windows-native.test.ts
+        id: native-smoke
+        if: ${{ !cancelled() && runner.os != 'Linux' && steps.build.outcome == 'success' }}
+        run: npm run ci:step -- native-smoke
       - name: Check extracted AppImage sandbox and workflows
-        if: runner.os == 'Linux'
-        run: npm run test:package
+        id: package-smoke
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.package.outcome == 'success' && steps.sandbox.outcome == 'success' }}
+        run: npm run ci:step -- package-smoke
+      - name: Summarize validation results
+        if: always()
+        env:
+          CI_STEP_OUTCOMES: ${{ toJSON(steps) }}
+        run: node scripts/ci-report.ts
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.os }}-${{ github.run_attempt }}
+          path: |
+            test-results/ci/
+            test-results/desktop/
+            release/p14/package-verified/
+          retention-days: 14
+          if-no-files-found: warn

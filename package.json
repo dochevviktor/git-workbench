@@ -28,6 +28,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:capabilities": "node scripts/test-platform.ts",
+    "ci:step": "node scripts/ci-step.ts",
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
     "research:references": "node scripts/fork-references.ts",

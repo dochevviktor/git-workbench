@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hasGitLfs, lfsFixture } from '../helpers/lfs-fixture';
 import { testPlatform } from '../platform';
 import { saveLfsPayload } from '../../src/backend/repositories/lfs-service';
@@ -8,6 +8,7 @@ import type { LfsAction } from '../../src/common/ipc/lfs';
 import type { RepositoryOperation } from '../../src/common/ipc/contracts';
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const dispose of cleanup.splice(0)) await dispose();
 });
 async function fixture() {
@@ -32,6 +33,21 @@ async function fixture() {
   return { ...f, wait, act };
 }
 describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
+  it.skipIf(!testPlatform.symlinks)(
+    'maps info attributes through an aliased temporary directory',
+    async () => {
+      const f = await fixture();
+      const temporary = join(f.root, 'temporary');
+      const alias = join(f.root, 'temporary-alias');
+      await mkdir(temporary);
+      await symlink(temporary, alias, 'junction');
+      for (const name of ['TMPDIR', 'TEMP', 'TMP']) vi.stubEnv(name, alias);
+      await writeFile(join(f.cwd, '.git/info/attributes'), '*.raw filter=lfs diff=lfs merge=lfs -text\n');
+      const context = await f.service.getLfsContext(1, f.repository.id);
+      expect(context.patterns.map((entry) => entry.pattern)).toContain('*.raw');
+      expect(context.patterns.some((entry) => entry.pattern.includes('workbench-lfs-inspect-'))).toBe(false);
+    },
+  );
   it('retrieves one missing historical payload, verifies it and preserves pointers, refs, hooks and index', async () => {
     const f = await fixture();
     const before = await f.git('status', '--porcelain=v2');
@@ -148,53 +164,57 @@ describe.skipIf(!hasGitLfs())('P10 real authenticated Git LFS', () => {
       expect(await f.git('rev-parse', 'HEAD')).toBe(f.head);
       expect(await readFile(join(f.cwd, 'sample.bin'), 'utf8')).toBe(f.pointer);
     },
-    testPlatform.windows ? 60000 : 20000,
+    testPlatform.windows ? 120000 : 20000,
   );
-  it('handles authentication, missing and corrupt objects and cancellation without a partial destination', async () => {
-    const f = await fixture();
-    f.setRejectAuth(true);
-    const configBeforeRead = await f.git('config', '--local', '--list');
-    const firstRead = await f.service.getLfsContext(1, f.repository.id);
-    const configAfterRead = await f.git('config', '--local', '--list');
-    expect(configAfterRead).toBe(configBeforeRead);
-    expect(await f.service.getLfsContext(1, f.repository.id)).toEqual(firstRead);
-    const rejectedLocks = await f.act({ kind: 'locks', remote: 'origin' });
-    expect(rejectedLocks, JSON.stringify(rejectedLocks)).toMatchObject({
-      status: 'failed',
-      failureReason: 'authentication',
-    });
-    expect(f.credentialsUsed()).toBeLessThanOrEqual(2);
-    const denied = await f.act({ kind: 'fetch', remote: 'origin' });
-    expect(denied.status).toBe('failed');
-    expect(JSON.stringify(denied)).not.toContain(f.token);
-    f.setRejectAuth(false);
-    f.objects.clear();
-    expect(await f.act({ kind: 'fetch', remote: 'origin' })).toMatchObject({ status: 'failed' });
-    f.objects.set(f.oid, f.payload);
-    f.setCorrupt(true);
-    const destination = join(f.root, 'save.bin');
-    const save = () =>
-      f.service.startLfsPayloadSave(
-        1,
-        { id: f.repository.id, commitId: f.head, path: 'sample.bin' },
-        destination,
-      );
-    expect(await f.wait(save())).toMatchObject({ status: 'failed' });
-    await expect(readFile(destination)).rejects.toThrow();
-    f.setCorrupt(false);
-    f.setSlow(true);
-    const requests = f.requests.length;
-    const accepted = save();
-    await expect
-      .poll(() => f.requests.slice(requests).some((request) => request.startsWith('GET /objects/')), {
-        timeout: 10_000,
-      })
-      .toBe(true);
-    f.service.cancelOperation(1, accepted.id);
-    expect(await f.wait(accepted)).toMatchObject({ status: 'cancelled' });
-    await expect(readFile(destination)).rejects.toThrow();
-    expect(await readFile(join(f.cwd, 'sample.bin'), 'utf8')).toBe(f.pointer);
-  });
+  it(
+    'handles authentication, missing and corrupt objects and cancellation without a partial destination',
+    { timeout: testPlatform.windows ? 90000 : 10000 },
+    async () => {
+      const f = await fixture();
+      f.setRejectAuth(true);
+      const configBeforeRead = await f.git('config', '--local', '--list');
+      const firstRead = await f.service.getLfsContext(1, f.repository.id);
+      const configAfterRead = await f.git('config', '--local', '--list');
+      expect(configAfterRead).toBe(configBeforeRead);
+      expect(await f.service.getLfsContext(1, f.repository.id)).toEqual(firstRead);
+      const rejectedLocks = await f.act({ kind: 'locks', remote: 'origin' });
+      expect(rejectedLocks, JSON.stringify(rejectedLocks)).toMatchObject({
+        status: 'failed',
+        failureReason: 'authentication',
+      });
+      expect(f.credentialsUsed()).toBeLessThanOrEqual(2);
+      const denied = await f.act({ kind: 'fetch', remote: 'origin' });
+      expect(denied.status).toBe('failed');
+      expect(JSON.stringify(denied)).not.toContain(f.token);
+      f.setRejectAuth(false);
+      f.objects.clear();
+      expect(await f.act({ kind: 'fetch', remote: 'origin' })).toMatchObject({ status: 'failed' });
+      f.objects.set(f.oid, f.payload);
+      f.setCorrupt(true);
+      const destination = join(f.root, 'save.bin');
+      const save = () =>
+        f.service.startLfsPayloadSave(
+          1,
+          { id: f.repository.id, commitId: f.head, path: 'sample.bin' },
+          destination,
+        );
+      expect(await f.wait(save())).toMatchObject({ status: 'failed' });
+      await expect(readFile(destination)).rejects.toThrow();
+      f.setCorrupt(false);
+      f.setSlow(true);
+      const requests = f.requests.length;
+      const accepted = save();
+      await expect
+        .poll(() => f.requests.slice(requests).some((request) => request.startsWith('GET /objects/')), {
+          timeout: 10_000,
+        })
+        .toBe(true);
+      f.service.cancelOperation(1, accepted.id);
+      expect(await f.wait(accepted)).toMatchObject({ status: 'cancelled' });
+      await expect(readFile(destination)).rejects.toThrow();
+      expect(await readFile(join(f.cwd, 'sample.bin'), 'utf8')).toBe(f.pointer);
+    },
+  );
   it('honors custom storage and refuses attributes symlinks and externally retargeted remotes', async () => {
     const f = await fixture();
     const storage = join(f.root, 'cache');

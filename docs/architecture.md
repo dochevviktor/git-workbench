@@ -1,5 +1,11 @@
 # Architecture and implementation decisions
 
+CI portability correction (2026-10-07): the [follow-up](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+shares a bounded main-owned credential-file reader with regular-entry and file-identity checks on all
+platforms. Git LFS inspection canonicalizes temporary metadata paths. No IPC capability, credential DTO,
+renderer privilege or sandbox exception is introduced. Fixture cleanup and CI report/sandbox setup are
+kept outside application startup; the hosted-platform verification limits remain explicit.
+
 Portability review (2026-10-06): [corrections and verification](reviews/cross-platform-portability.md).
 Main normalizes Windows environment names before Git policy filtering and drains the shared native
 process-tree terminator. Conflict source selection honors `core.symlinks` without changing index modes.
