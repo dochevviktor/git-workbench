@@ -39,6 +39,7 @@ try {
       'node_modules/playwright/cli.js',
       'test',
       'tests/e2e/desktop.test.ts',
+      'tests/e2e/history-menu-readiness.test.ts',
       'tests/e2e/diff-action-refresh.test.ts',
       'tests/e2e/reference-readiness.test.ts',
       'tests/e2e/sandbox.test.ts',

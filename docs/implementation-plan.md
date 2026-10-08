@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+Fifth CI correction (2026-10-08): [history-menu readiness](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+records green Windows/macOS jobs and Linux packaging at `6d9c4a4`, with one remaining F19 desktop
+failure. Commit menus now refresh their captured loading state through the existing scoped menu
+handle, retaining their target and respecting dismissal/replacement. Controlled mouse/keyboard
+regressions join native/package smoke. A new hosted run is still required; P14 remains partial.
+
 Fourth CI correction (2026-10-08): [hunk-refresh and harness evidence](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 records the green Windows job at `eb0702b` and the distinct remaining macOS/Linux failures. Hunk actions
 retain the displayed snapshot during refresh; controlled gates keep real Git checks while removing
@@ -276,6 +282,14 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Fifth CI follow-up, 2026-10-08: the original F19/F20 scenarios and four controlled menu cases pass
+three consecutive one-core runs (**18 passes**, no retries). Local check passes **718 tests with five
+explicit skips**; production build and AppImage creation pass. The full desktop suite passes **99
+scenarios (five skips)**, and the AppImage passes **19 scenarios (one Windows-only skip)**, without retries. See the
+[fifth CI record](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08) for complete
+desktop/package results and latest hosted limits. The green native jobs at `6d9c4a4` do not establish
+the new revision's hosted status or complete P14's wider release gates.
 
 Fourth CI follow-up, 2026-10-08: local check passes **718 unit/integration tests with five skips**,
 and production build/AppImage creation pass. Eleven focused scenarios pass on one CPU core; the six

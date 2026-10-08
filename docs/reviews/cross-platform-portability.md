@@ -5,6 +5,53 @@ Its host was Windows 11, build 26200, x64; the later CI follow-up used Linux. Te
 no mutating Git command targets the working project or another user repository.
 The original Linux verification and P14's remaining release gates remain separate.
 
+## Fifth CI failure follow-up — 2026-10-08
+
+The [Actions run for `6d9c4a4`](https://github.com/dochevviktor/git-workbench/actions/runs/37789339043)
+passed Windows and macOS. Windows passed 713 unit/integration tests and ten native scenarios (ten unit
+skips); macOS passed 717 tests and nine native scenarios (six unit skips and one Windows-only desktop
+skip). Linux passed 718 tests, build, packaging and all 15 applicable AppImage scenarios. Its desktop
+suite had 94 passes, one failure and five skips. Metadata and archives were inspected through read-only
+GitHub API access with the existing token; no credential configuration or remote write was made.
+
+The sole failure was F19's history-menu Reset after Revert. The trace shows the item remained disabled
+for 30 seconds with the explicit title “The branches and tags of this repository are still loading.”
+HistoryView captured the menu's initial availability but did not retain the context-menu host's update
+handle. A menu opened before reference refresh completed therefore stayed disabled after the toolbar
+and backend were ready. The earlier branch-menu correction did not cover this separate consumer.
+
+Controlled reference-response gates reproduced the same disabled Reset item with both mouse and
+keyboard opening. Both cases failed before the correction; dismissal and replacement controls already
+passed. HistoryView now retains the existing scoped update handle while its commands are loading,
+updates the still-open commit menu when readiness arrives, and preserves its original immutable commit
+target. Repository/filter changes invalidate the pending update; closing/replacing the menu clears it.
+Graph-only menus retain their behavior. No IPC, backend Git semantics, snapshot checks, sandbox,
+layout/styles, or command executor changes are involved.
+
+Four regressions cover pointer/keyboard opening, dismissed menus and replacement by another menu.
+The positive cases perform a real reset to the reviewed commit and verify clean Git state; they also
+check the terminal operation. They run in native smoke and packaged verification. The originally
+failing `history-operations.test.ts` remains unchanged. No timeout increase or automatic retry was added.
+
+Final local verification on Linux, Node 24.13.0, Git 2.55.0 and Git LFS 3.8.0:
+
+- `npm run check`: types, lint, formatting and **718 unit/integration tests passed**, with five explicit
+  skips (49.93 seconds for tests).
+- `npm run build`, AppImage creation from that output and manifest generation passed. The existing
+  TEST-ONLY Debian artifact was not rebuilt; existing dependency/chunk-size advisories remain.
+- Full desktop suite: **99 passed, five explicit skips**, no retries (5.5 minutes), including the
+  unchanged `tests/e2e/history-operations.test.ts:28` scenario.
+- AppImage verification: **19 passed, one Windows-only skip**, no retries (1.2 minutes), including
+  all four menu cases and existing sandbox checks.
+- The original F19/F20 scenarios and four menu cases passed three consecutive one-core runs:
+  **18 passed**, no retries (48.1 seconds).
+
+Logs and JSON/JUnit/HTML reports are in `test-results/ci-fifth-fix`, controlled baseline/repeated runs
+in `test-results/ci-fifth-*`, and packaged evidence in `release/p14/package-verified`. The fix remains
+local and uncommitted; no remote branch was pushed or workflow rerun. Hosted confirmation still needs
+the new revision. P14's wider gates and Fork case-level unknowns are not promoted by the previous
+green native jobs.
+
 ## Fourth CI failure follow-up — 2026-10-08
 
 The [next Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37772577061)

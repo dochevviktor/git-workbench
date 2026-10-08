@@ -96,6 +96,13 @@ Evidence is retained in `release/p14/commit-refresh-before` and the correspondin
 
 ## Feature ledger
 
+Further maintenance (fifth CI follow-up, 2026-10-08): [history-menu readiness](cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+adds F19/P08 mouse/keyboard and menu-lifetime regressions, preserving the reviewed commit and backend
+guards. The original history-operation scenarios remain unchanged and pass repeated one-core runs.
+The full local desktop suite passes 99 scenarios and the AppImage passes 19, with explicit skips and no retries.
+Hosted Windows/macOS and Linux package results at `6d9c4a4` remain separate from the latest correction;
+the broader feature and release gates below are unchanged.
+
 Further maintenance (fourth CI follow-up, 2026-10-08): [the hunk/harness record](cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 adds F10 click-retention and changed-content refusal checks to native/package smoke. F16/F26/F36 and
 P14 fixtures gate specific requests or one real hook while routine reads use native Git. The Linux

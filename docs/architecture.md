@@ -1,5 +1,11 @@
 # Architecture and implementation decisions
 
+Fifth CI follow-up (2026-10-08): [history-menu readiness](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+uses the context-menu host's existing request-scoped update handle for mouse- and keyboard-opened
+commit menus awaiting reference readiness. Updates retain the original commit; dismissal, replacement
+and repository/filter changes invalidate pending work. Backend snapshots, IPC and security boundaries
+are unchanged. The original F19/F20 scenarios remain intact alongside controlled regression coverage.
+
 Fourth CI follow-up (2026-10-08): the [hunk-refresh correction](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 retains actions for an immutable displayed diff during a same-target refresh. Existing backend snapshot
 validation rejects intervening file/index changes; missing targets and active actions remain blocked.

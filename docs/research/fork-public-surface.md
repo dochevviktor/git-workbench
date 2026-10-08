@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+Fifth CI follow-up — **2026-10-08**: [history-menu evidence](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+records the green Windows/macOS jobs and sole remaining Linux F19 failure at `6d9c4a4`. Controlled
+mouse/keyboard regressions establish a captured loading-state defect in this implementation. The
+correction preserves commit identity and menu ownership; confidence is high for local behavior.
+Existing Fork observations, visual comparisons and case-level unknowns remain unchanged.
+
 Fourth CI follow-up — **2026-10-08**: [hunk and harness evidence](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 records independent F10/P04/P14 click-retention and stale-file refusal regressions, plus bounded test
 gates for F16/F26/F36. Git's post-merge contract is linked with its access date. Confidence is high for

@@ -1,5 +1,10 @@
 # Fork catalogue alignment — 2026-09-20
 
+Fifth CI follow-up — **2026-10-08**: [the history-menu correction](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+adds independent F19/P08 reference-readiness and dismissal/replacement evidence. The original commit
+target and backend guards remain authoritative. This adds no Fork finding, layout/style change,
+private asset or visual-parity claim; the latest local correction still needs hosted confirmation.
+
 Fourth CI follow-up — **2026-10-08**: [the hunk-refresh and harness record](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 adds controlled implementation evidence for preserving a hunk action through an unchanged refresh
 and refusing changed file contents. These are independent F10/P04/P14 corrections; no layout/style,
