@@ -1,5 +1,6 @@
 import { openTrustedFixture } from './trusted-fixture';
 import { launchOptions } from './launch-options';
+import { chooseCommand } from './choose-command';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,8 +44,7 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     const manager = page.getByRole('dialog', { name: 'Custom Commands', exact: true });
     const openManager = async () => {
-      await page.getByRole('menuitem', { name: 'File', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Custom Commands…', exact: true }).click();
+      await chooseCommand(page, 'Custom Commands…');
       await expect(manager).toBeVisible();
     };
     await openManager(); // No repository is needed to author commands.
@@ -54,13 +54,15 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
       .getByLabel('Script', { exact: true })
       .fill('git status --short --branch\ngit rev-parse --short HEAD');
     await manager.getByLabel('Enable this command').check();
-    await expect(manager).toHaveCSS('width', '1040px');
+    await expect(manager).toBeInViewport({ ratio: 1 });
+    expect((await manager.boundingBox())!.width).toBeLessThanOrEqual(1040);
     await page.screenshot({ path: 'test-results/f32-editor-light.png' });
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.screenshot({ path: 'test-results/f32-editor-dark.png' });
     await page.setViewportSize({ width: 780, height: 650 });
     expect(await manager.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     await page.screenshot({ path: 'test-results/f32-editor-narrow.png' });
+    await expect(manager).toBeInViewport({ ratio: 1 });
     await page.setViewportSize({ width: 1280, height: 820 });
     await page.emulateMedia({ colorScheme: 'light' });
     await manager.getByRole('button', { name: 'Save', exact: true }).click();
@@ -72,8 +74,7 @@ test('F32 editor, reviewed execution, input forms, sharing, failure, cancellatio
       'true',
     );
     const openCommand = async (name: string) => {
-      await page.getByRole('menuitem', { name: 'Repository', exact: true }).click();
-      await page.getByRole('menuitem', { name, exact: true }).click();
+      await chooseCommand(page, name);
     };
     await openCommand('Read-only Status');
     const output = page.getByRole('dialog', { name: 'Read-only Status', exact: true });

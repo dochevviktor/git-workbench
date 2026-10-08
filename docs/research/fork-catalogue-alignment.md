@@ -1,5 +1,11 @@
 # Fork catalogue alignment — 2026-09-20
 
+Release validation correction — **2026-10-08**: [watcher and package-test evidence](../reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
+concerns independent F02/F03 resource lifetime and F32/F33/F37 test portability. The responsive editor
+already fits smaller desktops; only its test assertion changes. Catalogue observations, screenshots,
+private assets and case-level unknowns remain untouched. Local checks do not establish the next
+hosted matrix or publication outcome.
+
 Fifth CI follow-up — **2026-10-08**: [the history-menu correction](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
 adds independent F19/P08 reference-readiness and dismissal/replacement evidence. The original commit
 target and backend guards remain authoritative. This adds no Fork finding, layout/style change,

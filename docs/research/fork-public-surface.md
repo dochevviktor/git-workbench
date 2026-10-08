@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+Release validation correction — **2026-10-08**: [the first installer-run follow-up](../reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
+records hosted failures and independent F02/F03 watcher-lifetime corrections plus portable F32/F33/F37
+test entry points. Node directory/watcher contracts are linked with this access date. Controlled local
+resource checks provide high confidence; native Windows/macOS reruns remain outstanding. No Fork
+case/finding, layout/style, private asset or visual-parity claim changes.
+
 Fifth CI follow-up — **2026-10-08**: [history-menu evidence](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
 records the green Windows/macOS jobs and sole remaining Linux F19 failure at `6d9c4a4`. Controlled
 mouse/keyboard regressions establish a captured loading-state defect in this implementation. The

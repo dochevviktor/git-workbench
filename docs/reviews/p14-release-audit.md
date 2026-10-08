@@ -101,6 +101,12 @@ Evidence is retained in `release/p14/commit-refresh-before` and the correspondin
 
 ## Feature ledger
 
+Release validation follow-up (2026-10-08): [the first hosted-run correction](ci-releases.md#first-hosted-run-correction--2026-10-08)
+adds F02/F03 watcher shutdown guarantees and portable F32/F33/F37 package test entry points. The local
+742-test check, full 99-scenario desktop suite and all 19 applicable AppImage scenarios pass. The native installers built successfully on
+the hosted runners; the new validation corrections and actual publication need a fresh CI run.
+Feature-family, native-device, signing and live-service gates below remain separate.
+
 Distribution maintenance (2026-10-08): [CI release verification](ci-releases.md) adds native installer
 artifacts, version/commit-bound release publication, complete checksums and a generated Arch recipe.
 Linux package smoke preserves the existing sandbox/isolation assertions; the Arch build validates

@@ -214,36 +214,44 @@ describe('git-flow service', () => {
     },
   );
 
-  it('retains production and the prefixed tag when a later release merge is stopped', async () => {
-    const f = await fixtureRepository();
-    await initializeFixture(f, 'v');
-    await apply(f, { kind: 'start', type: 'release', name: '2.0', snapshot: (await context(f)).snapshot });
-    await commit(f, 'README.md', 'release\n', 'release edit');
-    await f.git.run(['checkout', '--quiet', 'develop'], { cwd: f.cwd });
-    await commit(f, 'README.md', 'develop\n', 'develop edit');
-    await f.git.run(['checkout', '--quiet', 'release/2.0'], { cwd: f.cwd });
-    const failed = await apply(f, {
-      kind: 'finish',
-      type: 'release',
-      name: '2.0',
-      noFastForward: true,
-      mergeIntoDevelop: true,
-      keepBranch: false,
-      tagMessage: 'Version two',
-      snapshot: (await context(f)).snapshot,
-    });
-    expect(failed).toMatchObject({ status: 'blocked', reason: 'conflict', tag: 'refs/tags/v2.0' });
-    const production = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout.trim();
-    expect((await f.git.run(['rev-parse', 'v2.0^{commit}'], { cwd: f.cwd })).stdout.trim()).toBe(production);
-    await f.git.run(['merge', '--abort'], { cwd: f.cwd });
-    expect(await apply(f, { kind: 'stop', snapshot: (await context(f)).snapshot })).toMatchObject({
-      status: 'applied',
-      context: { pendingFinish: null },
-    });
-    expect((await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout.trim()).toBe(production);
-    expect(await hasRef(f, 'refs/heads/release/2.0')).toBe(true);
-    expect(await hasRef(f, 'refs/tags/v2.0')).toBe(true);
-  });
+  it(
+    'retains production and the prefixed tag when a later release merge is stopped',
+    // The comparable conflict/resume case took 35s on hosted Windows; keep this multi-step flow's
+    // budget consistent with those adjacent native integration cases.
+    { timeout: testPlatform.windows ? 90000 : 5000 },
+    async () => {
+      const f = await fixtureRepository();
+      await initializeFixture(f, 'v');
+      await apply(f, { kind: 'start', type: 'release', name: '2.0', snapshot: (await context(f)).snapshot });
+      await commit(f, 'README.md', 'release\n', 'release edit');
+      await f.git.run(['checkout', '--quiet', 'develop'], { cwd: f.cwd });
+      await commit(f, 'README.md', 'develop\n', 'develop edit');
+      await f.git.run(['checkout', '--quiet', 'release/2.0'], { cwd: f.cwd });
+      const failed = await apply(f, {
+        kind: 'finish',
+        type: 'release',
+        name: '2.0',
+        noFastForward: true,
+        mergeIntoDevelop: true,
+        keepBranch: false,
+        tagMessage: 'Version two',
+        snapshot: (await context(f)).snapshot,
+      });
+      expect(failed).toMatchObject({ status: 'blocked', reason: 'conflict', tag: 'refs/tags/v2.0' });
+      const production = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout.trim();
+      expect((await f.git.run(['rev-parse', 'v2.0^{commit}'], { cwd: f.cwd })).stdout.trim()).toBe(
+        production,
+      );
+      await f.git.run(['merge', '--abort'], { cwd: f.cwd });
+      expect(await apply(f, { kind: 'stop', snapshot: (await context(f)).snapshot })).toMatchObject({
+        status: 'applied',
+        context: { pendingFinish: null },
+      });
+      expect((await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout.trim()).toBe(production);
+      expect(await hasRef(f, 'refs/heads/release/2.0')).toBe(true);
+      expect(await hasRef(f, 'refs/tags/v2.0')).toBe(true);
+    },
+  );
 
   it('recognizes a completed merge interrupted before journaling its result and does not duplicate it', async () => {
     const f = await fixtureRepository();

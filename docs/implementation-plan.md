@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+CI release-validation correction (2026-10-08): [first hosted-run failures and fixes](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
+records successful native installer generation at `efedbb4` and validation failures that blocked
+uploads/publication. Corrections drain directory-watcher resources, use cross-platform test commands,
+respect responsive editor width, reconcile intentional window shutdown and align one Windows Git-flow
+integration deadline. Release policy and P14's wider gates remain unchanged; native reruns are required.
+
 CI distribution follow-up (2026-10-08): [versioned installers and Arch packaging](reviews/ci-releases.md)
 extends the green three-OS CI with native installer artifacts and version-gated GitHub Releases.
 Local Linux packaging, sandbox smoke, Arch recipe construction and release-policy tests are verified;
@@ -287,6 +293,15 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+CI release-validation correction, 2026-10-08: local check passes **742 unit/integration tests with five
+explicit skips**, including the new service/window/tab watcher-shutdown regressions. Build and AppImage
+creation pass; the full desktop suite passes **99 scenarios (five skips)** and the final AppImage
+passes **19 scenarios (one Windows-only skip)** without retries. All three close routes also pass
+three consecutive runs. The
+[release follow-up](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08) records packaged checks,
+the successful hosted installer builds and the remaining Windows/macOS/publication verification.
+P14 remains partial.
 
 CI distribution, 2026-10-08: `npm run check` passes **733 tests with 11 explicit skips**, including
 type/lint/format checks. Linux production build/AppImage creation and **19 packaged scenarios

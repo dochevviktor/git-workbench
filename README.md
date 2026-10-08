@@ -4,7 +4,9 @@ Release packaging (2026-10-08): CI now builds Windows x64 NSIS installers, Linux
 universal macOS DMGs, then assembles checksums and a tested Arch `git-workbench-bin` recipe. Successful
 default-branch pushes publish new `package.json` versions as `v<version>` GitHub Releases. See
 [release workflow and verification](docs/reviews/ci-releases.md) for downloads, retries, signing limits
-and AUR submission. The new hosted packaging/publication path still needs its first run.
+and AUR submission. The first hosted run built all three installers; its validation failures and
+[corrections](docs/reviews/ci-releases.md#first-hosted-run-correction--2026-10-08) are recorded separately.
+The corrected native tests and first successful assembly/publication still need a hosted run.
 
 Latest CI follow-up (2026-10-08): [history-menu readiness correction](docs/reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08).
 Windows and macOS validation, plus Linux's package checks, are green at `6d9c4a4`. Linux's last desktop

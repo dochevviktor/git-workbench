@@ -328,6 +328,7 @@ export class RepositoryService {
   >();
   private readonly watches = new Map<string, { watcher: DirectoryWatcher; owners: Set<number> }>();
   private readonly sourceWatches = new Map<string, DirectoryWatcher>();
+  private readonly watcherShutdowns = new Set<Promise<void>>();
   private readonly managerOwners = new Set<number>();
   private readonly managerRescanPending = new Set<number>();
   private readonly managerScans = new Map<
@@ -3524,9 +3525,20 @@ export class RepositoryService {
     if (!entry) return;
     entry.owners.delete(ownerId);
     if (!entry.owners.size) {
-      entry.watcher.dispose();
+      this.disposeWatcher(entry.watcher);
       this.watches.delete(id);
     }
+  }
+
+  private disposeWatcher(watcher: DirectoryWatcher | undefined): void {
+    if (!watcher) return;
+    watcher.dispose();
+    const stopped = watcher.settled();
+    this.watcherShutdowns.add(stopped);
+    void stopped.then(
+      () => this.watcherShutdowns.delete(stopped),
+      () => this.watcherShutdowns.delete(stopped),
+    );
   }
 
   private invalidateManager(): void {
@@ -3833,7 +3845,7 @@ export class RepositoryService {
 
   async removeSourceDirectory(id: string): Promise<void> {
     const removed = await this.managerStore.remove(id);
-    this.sourceWatches.get(id)?.dispose();
+    this.disposeWatcher(this.sourceWatches.get(id));
     this.sourceWatches.delete(id);
     this.invalidateManager();
     if (!removed) {
@@ -3923,7 +3935,7 @@ export class RepositoryService {
     this.managerRescanPending.delete(ownerId);
     for (const id of this.watches.keys()) this.releaseWatch(ownerId, id);
     if (!this.managerOwners.size) {
-      for (const watcher of this.sourceWatches.values()) watcher.dispose();
+      for (const watcher of this.sourceWatches.values()) this.disposeWatcher(watcher);
       this.sourceWatches.clear();
     }
     this.ai.cancel(ownerId);
@@ -3952,9 +3964,9 @@ export class RepositoryService {
     for (const controller of this.investigationReads.values()) controller.abort();
     this.investigationReads.clear();
     this.pushPreviews.release();
-    for (const entry of this.watches.values()) entry.watcher.dispose();
+    for (const entry of this.watches.values()) this.disposeWatcher(entry.watcher);
     this.watches.clear();
-    for (const watcher of this.sourceWatches.values()) watcher.dispose();
+    for (const watcher of this.sourceWatches.values()) this.disposeWatcher(watcher);
     this.sourceWatches.clear();
     for (const job of this.managerScans.values()) job.controller.abort();
     this.managerScans.clear();
@@ -3983,6 +3995,7 @@ export class RepositoryService {
 
   async settled(): Promise<void> {
     await Promise.all([this.operations.settled(), this.runner.settled(), this.ai.settled()]);
+    while (this.watcherShutdowns.size) await Promise.allSettled([...this.watcherShutdowns]);
   }
 
   private async withRepositoryMutation<T>(

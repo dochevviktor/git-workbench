@@ -5,6 +5,7 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import { statisticsFixture } from '../statistics-fixture';
 import { openTrustedFixture } from './trusted-fixture';
 import { launchOptions } from './launch-options';
+import { chooseCommand } from './choose-command';
 
 test('P13 saved prompts, local generation, root amend and installed agent adapters stay explicit and read-only', async () => {
   const f = await statisticsFixture();
@@ -56,10 +57,7 @@ test('P13 saved prompts, local generation, root amend and installed agent adapte
     let launched = await launch();
     app = launched.instance;
     let page = launched.page;
-    const menu = async (item: string) => {
-      await page.getByRole('menubar').getByRole('menuitem', { name: 'File', exact: true }).click();
-      await page.getByRole('menuitem', { name: item, exact: true }).click();
-    };
+    const menu = (item: string) => chooseCommand(page, item);
     await menu('AI Integration…');
     let settings = page.getByRole('dialog', { name: 'AI Integration', exact: true });
     await settings.getByLabel('AI provider').selectOption('ollama');

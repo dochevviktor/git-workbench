@@ -5,6 +5,64 @@ Arch/AUR recipe. The version comes from `package.json`; `package-lock.json` must
 independent distribution policy, informed by the version gates in the local `offworktime` workflows.
 It does not change any Fork feature or claim new feature-family parity. P14 remains partial.
 
+## First hosted-run correction — 2026-10-08
+
+The [first installer run](https://github.com/dochevviktor/git-workbench/actions/runs/37824923781)
+at `efedbb4` successfully built the Windows NSIS installer, universal macOS DMG and Linux AppImage.
+Validation failures prevented installer uploads and skipped assembly/publication. The preceding
+[default-branch validation](https://github.com/dochevviktor/git-workbench/actions/runs/37818583515)
+was green. The latest run's reports establish these separate failures:
+
+- macOS's new package suite reached three scenarios that had only exercised the renderer's File
+  menu, which is absent on macOS: custom commands, external tools and AI integration. They now use
+  Quick Launch's actual menu callbacks, including repository custom commands and terminal launch.
+  The complete workflows and backend/Git assertions remain enabled.
+- Windows's custom-command editor measured 976px on the runner's narrower desktop. Its 1040px
+  assertion ignored the existing responsive width limit. The test now checks complete viewport
+  containment, the maximum width and the existing narrow-window overflow condition; no CSS changed.
+- The Windows missing-tab fixture attempted to rename a directory after `dispose()`/`settled()`,
+  while an asynchronous watcher directory walk could still own a native handle. A controlled test
+  reproduced premature settlement on Linux with a real open directory. Watchers now expose a drain
+  for walks and close notifications; repository shutdown also joins retired repository/source watchers.
+  Service, window and tab cleanup tests verify closure before renaming, without rename retries.
+- One Windows Git-flow conflict/stop sequence exhausted its 30-second test deadline. A neighboring
+  conflict/resume sequence took 35 seconds in the same run. That multi-step test now uses the same
+  90-second Windows integration budget as the adjacent cases; per-Git deadlines, cancellation and
+  production/tag preservation assertions remain intact.
+- Linux's titlebar-close scenario lost Playwright's click reply when the requested application
+  shutdown completed. It now accepts only that closed-target error, while still requiring a recorded
+  main-window close call, both windows' close events, clean process/stdio completion and no error boxes
+  or uncaught exceptions. Other click errors and crashes still fail.
+
+The release/upload/publication policy is unchanged. Test execution still uses disposable repositories,
+headless Linux and the Electron sandbox. The watcher change stays in the backend; no renderer, IPC,
+credential or Git mutation capability is added. Confidence is high for the controlled directory-handle
+regression; hosted Windows confirmation remains necessary. The source contracts are
+[Node directory closure](https://nodejs.org/download/release/v24.13.0/docs/api/fs.html#dirclose) and
+[watcher closure](https://nodejs.org/download/release/v24.13.0/docs/api/fs.html#event-close_1), checked
+2026-10-08. No Fork layout, visual-parity or private-catalogue changes are claimed.
+
+Final local verification on Linux, Node 24.13.0, Git 2.55.0 and Git LFS 3.8.0:
+
+- `npm run check`: types, lint, formatting and **742 unit/integration tests passed**, with five explicit
+  skips (50.19 seconds for tests), including all 21 release-policy tests and three watcher-drain cases.
+- `npm run build`, final AppImage creation and local manifest generation passed. Existing dependency
+  annotation/chunk-size advisories remain. Historical local installers and the TEST-ONLY Debian file
+  were not rebuilt or published.
+- Complete desktop suite: **99 passed, five explicit skips**, no retries (5.4 minutes).
+- Final AppImage verification: **19 passed, one Windows-only skip**, no retries (1.2 minutes), including
+  the three portable command workflows, package assets and sandbox checks.
+- Targeted watcher/session/Git-flow/release tests: **43 passed**. The premature watcher settlement
+  failed deterministically before the correction; the final service/window/tab cases verify closed
+  handles and successful rename. All three window-close routes passed three consecutive runs
+  (**nine passes**, 8.7 seconds).
+
+Step logs, JSON/JUnit/HTML reports and the combined summary are in `test-results/ci-release-fix`;
+packaged evidence is in `release/p14/package-verified`. The new changes remain local and uncommitted;
+no branch, tag, release or AUR submission was published. Hosted Windows/macOS execution of the fixes,
+release assembly and first successful publication still require a new run. P14's wider native/signing
+and live-service gates remain separate.
+
 ## Outputs and triggers
 
 | Target   | Release asset                                                                 | Architecture            |
@@ -106,6 +164,7 @@ Local verification on the Linux development host:
   Fixture installers are synthetic bytes in temporary directories, not claimed native builds.
 - `actionlint` 1.7.7 passes for the updated workflow.
 
-Native Windows/macOS installer builds, the hosted workflow and actual GitHub publication require the
-first hosted run. Local macOS/Windows installer execution is not claimed from this Linux host. No
+Native Windows/macOS installer generation passed in the first hosted run described above. Complete
+hosted validation, release assembly and actual GitHub publication still require a successful run.
+Local macOS/Windows installer execution is not claimed from this Linux host. No
 release/tag or AUR submission was published during this work, and no signing credentials were used.

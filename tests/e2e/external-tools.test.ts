@@ -1,5 +1,6 @@
 import { openTrustedFixture } from './trusted-fixture';
 import { launchOptions } from './launch-options';
+import { chooseCommand } from './choose-command';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,8 +45,7 @@ test('F33 settings, historical diff, terminal, merge review, removal and restart
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     const settings = () => page.getByRole('dialog', { name: 'External Tools', exact: true });
     const openSettings = async () => {
-      await page.getByRole('menuitem', { name: 'File', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'External Tools…', exact: true }).click();
+      await chooseCommand(page, 'External Tools…');
       await expect(settings()).toBeVisible();
     };
     await openSettings();
@@ -106,8 +106,7 @@ test('F33 settings, historical diff, terminal, merge review, removal and restart
     expect(await readFile(join(cwd, 'value.txt'), 'utf8')).toBe('latest\n');
     expect(await run('show-ref')).toBe(before);
     expect(await run('write-tree')).toBe(index);
-    await page.getByRole('menuitem', { name: 'Repository', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Open in Repository Terminal…', exact: true }).click();
+    await chooseCommand(page, 'Open in Repository Terminal…');
     const terminal = page.getByRole('dialog', { name: 'Repository Terminal', exact: true });
     await terminal.getByRole('button', { name: 'Launch Tool' }).click();
     await expect(terminal.getByRole('status')).toHaveText('Command completed.');

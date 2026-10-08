@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+Release validation correction (2026-10-08): [first hosted-run follow-up](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
+extends backend shutdown draining to directory-watcher walks and close notifications, including
+watchers retired when tabs, windows or sources close. `dispose()` still stops new work immediately;
+`settled()` now waits until those resources are released. Tests use the existing cross-platform command
+palette and responsive bounds. Release policy, main/renderer/preload APIs, sandbox and credentials
+remain unchanged; native rerun limits are retained.
+
 CI distribution (2026-10-08): [versioned installers](reviews/ci-releases.md) adds native packaging,
 an Arch recipe generated from the actual AppImage, and default-branch GitHub Releases. Release tooling
 is TypeScript and runs outside the application. Version/lockfile, source-commit and artifact checks

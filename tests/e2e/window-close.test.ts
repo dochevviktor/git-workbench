@@ -72,13 +72,34 @@ for (const route of ['titlebar', 'native', 'quit'] as const) {
       );
       expect(diagnostics.join('')).not.toMatch(/WINDOW_CLOSE_(?:DIALOG|EXCEPTION)/u);
 
+      const mainClosed = page.waitForEvent('close');
       const childClosed = second.waitForEvent('close');
       const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
-        application!.process().once('exit', (code, signal) => resolve({ code, signal }));
+        application!.process().once('close', (code, signal) => resolve({ code, signal }));
       });
       if (route === 'titlebar') {
+        await application.evaluate(({ BrowserWindow }, id) => {
+          const window = BrowserWindow.fromId(id)!;
+          const close = window.close.bind(window);
+          window.close = () => {
+            process.stderr.write('WINDOW_CLOSE_REQUESTED\n');
+            close();
+          };
+        }, mainId);
         await page.bringToFront();
-        await page.getByTestId('titlebar').getByRole('button', { name: 'Close', exact: true }).click();
+        await page
+          .getByTestId('titlebar')
+          .getByRole('button', { name: 'Close', exact: true })
+          .click()
+          .catch((error: unknown) => {
+            // Electron can finish the requested shutdown before Playwright receives click's reply.
+            // The request marker, inspector closure and clean process exit below remain mandatory.
+            if (
+              !(error instanceof Error) ||
+              !error.message.includes('Target page, context or browser has been closed')
+            )
+              throw error;
+          });
       } else {
         await application.evaluate(
           ({ app, BrowserWindow }, { route, mainId }) => {
@@ -90,8 +111,9 @@ for (const route of ['titlebar', 'native', 'quit'] as const) {
           { route, mainId },
         );
       }
-      await childClosed;
+      await Promise.all([mainClosed, childClosed]);
       expect(await exited).toEqual({ code: 0, signal: null });
+      if (route === 'titlebar') expect(diagnostics.join('')).toContain('WINDOW_CLOSE_REQUESTED');
       application = undefined;
       expect(diagnostics.join('')).not.toMatch(/WINDOW_CLOSE_(?:DIALOG|EXCEPTION)/u);
     } finally {
