@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+Fourth CI correction (2026-10-08): [hunk-refresh and harness evidence](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+records the green Windows job at `eb0702b` and the distinct remaining macOS/Linux failures. Hunk actions
+retain the displayed snapshot during refresh; controlled gates keep real Git checks while removing
+per-command Node startup overhead. Native smoke and package checks include the new click/stale-file
+regressions. The latest correction still needs a hosted rerun; P14 remains partial.
+
 Third CI correction (2026-10-08): [hosted results and reference-readiness fixes](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 records a green macOS job and passing Linux package/sandbox checks at `facdfb2`. The remaining desktop
 failures lead to matching-HEAD reference actions, fresh Create Branch reviews, visible stale refusals
@@ -270,6 +276,15 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Fourth CI follow-up, 2026-10-08: local check passes **718 unit/integration tests with five skips**,
+and production build/AppImage creation pass. Eleven focused scenarios pass on one CPU core; the six
+Bisect/hunk/commit cases pass three consecutive one-core runs (**18 passes**, no retries). The
+full desktop suite passes **95 scenarios (five skips)**, and AppImage verification passes **15 scenarios
+(one Windows-only skip)**, without retries. The
+[fourth CI record](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08) records
+the full desktop/package results and hosted limits. Windows' green `eb0702b` job does not certify
+the new corrections or complete P14's broader gates.
 
 Third CI follow-up, 2026-10-08: the hosted `facdfb2` macOS job passes 717 unit/integration tests and
 three native smoke scenarios, and Linux passes its eight applicable packaged scenarios. The new

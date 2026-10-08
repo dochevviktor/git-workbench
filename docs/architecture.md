@@ -1,5 +1,11 @@
 # Architecture and implementation decisions
 
+Fourth CI follow-up (2026-10-08): the [hunk-refresh correction](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+retains actions for an immutable displayed diff during a same-target refresh. Existing backend snapshot
+validation rejects intervening file/index changes; missing targets and active actions remain blocked.
+Test-only IPC gates replace per-Git-process wrappers, and a single real post-merge hook holds F16's
+mutation boundary. No production IPC, preload, privilege, sandbox or Git-semantic changes are made.
+
 Third CI follow-up (2026-10-08): the [reference-readiness correction](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 uses matching tab/context HEAD for reference-action availability and the existing scoped context-menu
 update handle while that read catches up. New Branch captures a fresh backend context for its review;

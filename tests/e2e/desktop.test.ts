@@ -897,6 +897,19 @@ test('production build loads its isolated preload and renderer', async () => {
     ).resolves.toMatchObject({ ok: true });
     await page.screenshot({ path: test.info().outputPath('workspace.png') });
     expect(pageErrors).toEqual([]);
+  } catch (error) {
+    const page = application?.windows()[0];
+    if (page) {
+      await page
+        .locator('body')
+        .ariaSnapshot({ timeout: 3000 })
+        .then((body) => test.info().attach('desktop-failure-state', { body, contentType: 'text/plain' }))
+        .catch(() => undefined);
+      await page
+        .screenshot({ path: test.info().outputPath('desktop-failure.png'), timeout: 3000 })
+        .catch(() => undefined);
+    }
+    throw error;
   } finally {
     try {
       await application?.close();

@@ -96,6 +96,13 @@ Evidence is retained in `release/p14/commit-refresh-before` and the correspondin
 
 ## Feature ledger
 
+Further maintenance (fourth CI follow-up, 2026-10-08): [the hunk/harness record](cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+adds F10 click-retention and changed-content refusal checks to native/package smoke. F16/F26/F36 and
+P14 fixtures gate specific requests or one real hook while routine reads use native Git. The Linux
+check, focused/repeated one-core regressions, 95 desktop scenarios and 15 AppImage scenarios pass;
+latest hosted results and limits are kept separate.
+Feature-family, native-device and live-service release gates remain unchanged.
+
 Further maintenance (2026-10-08): [the third CI follow-up](cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 adds four controlled F12/F16/F31 reference-readiness/refusal regressions to native and packaged smoke.
 All ten focused Linux scenarios pass with one CPU core; the full local desktop suite passes 93

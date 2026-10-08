@@ -5,6 +5,66 @@ Its host was Windows 11, build 26200, x64; the later CI follow-up used Linux. Te
 no mutating Git command targets the working project or another user repository.
 The original Linux verification and P14's remaining release gates remain separate.
 
+## Fourth CI failure follow-up — 2026-10-08
+
+The [next Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37772577061)
+tested `eb0702b`. GitHub job metadata and all three report archives were read with the existing token;
+no credential was persisted elsewhere and no remote write or rerun was requested.
+
+- Windows was green: 713 unit/integration tests and all eight native scenarios passed (ten unit skips).
+- macOS passed 717 unit/integration tests and six native scenarios (six unit skips and one Windows-only
+  desktop skip). Its single failure was the aggregate smoke's hunk Unstage action. All four newly added
+  reference-readiness scenarios passed; this was a different failure from the previous branch review.
+- Linux passed 718 unit/integration tests, build and packaging. Desktop had 90 passes, three failures
+  and five skips; AppImage verification had 12 passes, one failure and one skip. Bisect retained its old
+  displayed HEAD after a fixture checkout. The other desktop failures, and the package failure, timed
+  out during initial history loading in fixtures that wrapped every Git invocation with Node.
+
+The hunk regression deliberately holds a validated diff response between mouse-down and mouse-up.
+Before the correction the existing displayed action became disabled solely because a refresh began.
+Stage/Unstage now remain available for the displayed patch and its existing snapshot while the same
+target refreshes. Missing/different targets, non-normal whitespace and active mutations remain guarded.
+A second regression changes the actual file during the held refresh and verifies backend refusal,
+unchanged index and preserved new contents. Both new regressions failed before the fix and now pass.
+This is a controlled reproduction of the click-loss mechanism consistent with the macOS symptom;
+the original artifact did not contain renderer state proving its exact intermediate event order.
+Desktop smoke now captures an accessibility snapshot and screenshot on failure to preserve that evidence.
+
+The test harness no longer substitutes a Node wrapper for every Git call in these scenarios. A shared
+main-process IPC gate holds only the requested read/acknowledgement, then calls or returns the original
+validated handler. Git work, snapshots, operation results and sender/frame authorization remain real.
+Bisect also waits for terminal operations before the fixture performs external checkouts. The commit
+regression delays its acknowledgement until real Git and watcher/context refresh have completed, then
+verifies draft clearing and Amend; it no longer delays every incidental status/history read.
+
+F16 uses one generated TypeScript-authored `post-merge` hook to keep the real merge process running
+after the merge commit exists. Its running/terminal operation checks and Git ancestry assertions remain.
+The hook behavior follows [Git's post-merge contract](https://git-scm.com/docs/githooks#_post_merge),
+checked **2026-10-08** (high confidence). Patch-copy and staging refresh checks also use the IPC gate.
+No new timeout increase, retry, skipped failure, renderer capability or sandbox exception is introduced.
+The new hunk regressions run in native smoke and package verification on every supported test OS.
+
+Final local verification on Linux, Node 24.13.0, Git 2.55.0 and Git LFS 3.8.0:
+
+- `npm run check`: type checks, lint, formatting and **718 unit/integration tests passed**, with five
+  explicit skips (49.33 seconds for tests).
+- `npm run build`, AppImage creation from that output and manifest generation passed. The existing
+  TEST-ONLY Debian artifact was not rebuilt; existing dependency/chunk-size advisories remain.
+- Complete desktop suite: **95 passed, five explicit skips**, no retries (5.1 minutes).
+- AppImage verification: **15 passed, one Windows-only skip**, no retries (1.0 minute), including
+  the original desktop scenario, new hunk regressions and kernel sandbox checks.
+- Eleven focused scenarios passed with one CPU core (40.1 seconds). F16 variants took roughly three
+  seconds each, versus roughly 20–22 seconds with the previous wrappers on the same one-core host.
+- The final Bisect/hunk/commit regressions passed three consecutive one-core runs: **18 passed**,
+  no retries (1.1 minutes). The new terminal-operation waits were included in these repeated runs.
+
+Logs and JSON/JUnit/HTML reports are in `test-results/ci-fourth-fix`; controlled baseline failures and
+repeated runs are in `test-results/ci-fourth-*`, and package evidence is in `release/p14/package-verified`.
+The changes remain local and uncommitted; no remote branch was pushed or workflow rerun. The green
+Windows result applies to `eb0702b`; this correction still needs its own hosted run, especially on
+macOS. P14 remains partial for its native-device/live-service/release gates. Existing Fork case-level
+unknowns are unchanged; no layout or visual-parity work is claimed.
+
 ## Third CI failure follow-up — 2026-10-08
 
 The [2026-10-08 Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37745728545)

@@ -1,5 +1,11 @@
 # Fork catalogue alignment — 2026-09-20
 
+Fourth CI follow-up — **2026-10-08**: [the hunk-refresh and harness record](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+adds controlled implementation evidence for preserving a hunk action through an unchanged refresh
+and refusing changed file contents. These are independent F10/P04/P14 corrections; no layout/style,
+private asset or catalogue finding changes. Hosted Windows results at `eb0702b` remain separate from
+the latest local corrections and their outstanding native rerun.
+
 Third CI follow-up — **2026-10-08**: [the correction record](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 records F12/F16/F31 reference readiness and native sandbox-test scope. Confidence is high for the
 controlled implementation regressions; hosted macOS and Linux package results are recorded separately

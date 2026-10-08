@@ -1,9 +1,9 @@
 # Git Workbench
 
-Latest CI follow-up (2026-10-08): [remaining failures and corrections](docs/reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08).
-macOS validation is green, and Linux's hosted AppImage/sandbox checks pass. The remaining Linux/Windows
-desktop failures prompted reference-menu and branch-review synchronization fixes and a correction to
-the native Windows sandbox test. Those latest changes still require a hosted rerun.
+Latest CI follow-up (2026-10-08): [hunk refresh and test-harness corrections](docs/reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08).
+Windows validation is green at `eb0702b`. The remaining macOS/Linux failures prompted a fix for hunk
+clicks interrupted by diff refresh and replacement of expensive per-command Git wrappers in the tests.
+Those latest changes still require a hosted rerun; the record separates observed CI results from local checks.
 
 Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
 covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
@@ -419,7 +419,7 @@ available traces, and a failure summary. Development and packaged desktop result
 Independent build/desktop checks can run after a unit failure; the job still fails. Linux CI configures
 the SUID helper in development Electron and the extracted AppImage while keeping sandboxing enabled.
 Privileged setup is restricted to GitHub's Linux runner; local headless tests use the existing host policy.
-The [latest CI follow-up](docs/reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+The [latest CI follow-up](docs/reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
 records the diagnosed failures and verification limits.
 
 ### Local waypipe session

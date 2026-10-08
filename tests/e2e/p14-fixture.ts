@@ -1,17 +1,16 @@
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { _electron as electron, expect } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import { GitRunner } from '../../src/backend/git/runner';
 import { openTrustedFixture } from './trusted-fixture';
 import { launchOptions } from './launch-options';
 
-export async function auditFixture(gatedGit = false) {
+export async function auditFixture() {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-p14-'));
   const repo = join(root, 'Café audit');
   const profile = join(root, 'profile');
-  const gate = join(root, 'git-gate');
   const git = new GitRunner();
   const run = async (...args: string[]) => (await git.run(args, { cwd: repo })).stdout.trim();
   let app: ElectronApplication | undefined;
@@ -37,14 +36,6 @@ export async function auditFixture(gatedGit = false) {
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
-    if (gatedGit) {
-      const wrapper = join(root, 'gated-git.ts');
-      await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
-      await chmod(wrapper, 0o700);
-      env.GIT_EXECUTABLE = wrapper;
-      env.GIT_WORKBENCH_REAL_GIT = (await git.version()).executable;
-      env.GIT_WORKBENCH_TEST_GIT_GATE = gate;
-    }
     const started = performance.now();
     app = await electron.launch(launchOptions(profile, env));
     const page = await app.firstWindow();
@@ -57,7 +48,7 @@ export async function auditFixture(gatedGit = false) {
       await expect(page.locator('.history-full-hash')).toHaveText(head);
       return result.value;
     };
-    return { root, repo, profile, gate, git, run, app, page, head, startupMs, open, close };
+    return { root, repo, profile, git, run, app, page, head, startupMs, open, close };
   } catch (error) {
     await close();
     throw error;

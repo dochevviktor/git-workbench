@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+Fourth CI follow-up — **2026-10-08**: [hunk and harness evidence](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+records independent F10/P04/P14 click-retention and stale-file refusal regressions, plus bounded test
+gates for F16/F26/F36. Git's post-merge contract is linked with its access date. Confidence is high for
+controlled local behavior; the latest macOS/Linux CI corrections still need a hosted run. Existing
+Fork findings, screenshots and case-level unknowns are unchanged.
+
 Third CI follow-up — **2026-10-08**: [hosted results and controlled reference races](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 add independent F12/F16/F31 readiness evidence and correct the sandbox test's platform scope. The
 record links primary Electron/Chromium startup sources checked on this date. macOS unit/build/smoke

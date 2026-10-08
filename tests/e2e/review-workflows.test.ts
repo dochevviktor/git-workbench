@@ -1,5 +1,5 @@
 import { openTrustedFixture } from './trusted-fixture';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
@@ -315,16 +315,16 @@ for (const startup of ['ready', 'loading', 'dismissed', 'replaced'] as const)
       await run('checkout', '--quiet', 'main');
 
       const gate = join(root, 'merge-gate');
-      const wrapper = join(root, 'gated-git.ts');
-      await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
-      await chmod(wrapper, 0o700);
+      await writeFile(
+        join(cwd, '.git/hooks/post-merge'),
+        stripTypeScriptTypes(await readFile(resolve('tests/fixtures/git-hook-gate.ts'), 'utf8')),
+        { mode: 0o700 },
+      );
       application = await electron.launch({
         chromiumSandbox: true,
         args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
         env: {
           ...environment(),
-          GIT_EXECUTABLE: wrapper,
-          GIT_WORKBENCH_REAL_GIT: (await git.version()).executable,
           GIT_WORKBENCH_TEST_GIT_GATE: gate,
         },
       });
@@ -382,13 +382,13 @@ for (const startup of ['ready', 'loading', 'dismissed', 'replaced'] as const)
       await featureMenu.getByRole('menuitem', { name: "Merge 'feature' into 'main'…", exact: true }).click();
       const dialog = page.getByTestId('reference-dialog');
       await expect(dialog.getByRole('heading', { name: 'Merge Branch', exact: true })).toBeVisible();
-      await writeFile(gate, JSON.stringify({ command: 'merge', phase: 'after' }));
+      await writeFile(gate, 'hold');
       await dialog.getByTestId('reference-dialog-submit').click();
       await expect(dialog).toHaveCount(0);
       await expect
         .poll(async () => (await run('rev-list', '-1', '--parents', 'HEAD')).split(' ').length)
         .toBe(3);
-      await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('merge:after');
+      await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('hook:waiting');
       const operation = (kind: 'merge' | 'rebase') =>
         page.evaluate(async (kind) => {
           const result = await window.desktop!.repository.listOperations();
@@ -407,7 +407,6 @@ for (const startup of ['ready', 'loading', 'dismissed', 'replaced'] as const)
       await expect(page.locator('.toolbar-repository-branch')).toHaveText('rebase-topic');
       const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
       // A menu opened while the reference read trails HEAD must update without reopening.
-      // The Node wrapper around every Git read makes this refresh slower on hosted runners.
       await page.keyboard.press('Escape');
       await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
       await expect(
