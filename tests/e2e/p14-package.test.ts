@@ -2,10 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
+import { launchOptions } from './launch-options';
 
 test('P14 installed package preserves sandbox, attribution, icon and private renderer boundaries', async () => {
   const executablePath = process.env.ELECTRON_TEST_EXECUTABLE;
-  test.skip(!executablePath || process.platform === 'darwin', 'Requires a built Windows or Linux package.');
+  test.skip(!executablePath, 'Requires a built package.');
   const profile = await mkdtemp(join(tmpdir(), 'workbench-p14-package-'));
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -13,12 +14,7 @@ test('P14 installed package preserves sandbox, attribution, icon and private ren
     ),
   ) as Record<string, string>;
   env.ELECTRON_RENDERER_URL = '';
-  const app = await electron.launch({
-    executablePath: executablePath!,
-    chromiumSandbox: true,
-    args: [`--user-data-dir=${profile}`, '--ozone-platform=headless', '--disable-gpu'],
-    env,
-  });
+  const app = await electron.launch(launchOptions(profile, env));
   try {
     const page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
@@ -35,8 +31,8 @@ test('P14 installed package preserves sandbox, attribution, icon and private ren
           fs.readFileSync(path.join(root, 'out/renderer/bundled-dependencies.json'), 'utf8'),
         ),
         iconBytes: fs.statSync(path.join(process.resourcesPath, 'icon.png')).size,
-        electronLicense: fs.existsSync(path.join(path.dirname(process.execPath), 'LICENSE.electron.txt')),
-        chromiumLicense: fs.existsSync(path.join(path.dirname(process.execPath), 'LICENSES.chromium.html')),
+        electronLicense: fs.existsSync(path.join(process.resourcesPath, 'LICENSE.electron.txt')),
+        chromiumLicense: fs.existsSync(path.join(process.resourcesPath, 'LICENSES.chromium.html')),
       };
     });
     expect(packageState).toMatchObject({

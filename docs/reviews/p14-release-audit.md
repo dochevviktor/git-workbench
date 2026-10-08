@@ -1,5 +1,10 @@
 # P14 audit and Linux release candidate — 2026-10-01
 
+CI distribution update (2026-10-08): [versioned installers and Arch packaging](ci-releases.md)
+supersedes the original local-only publishing policy below. New CI creates version-gated GitHub
+Releases with Windows/Linux/macOS installers and an Arch recipe. Local Linux/Arch checks pass;
+the new hosted packaging/publication path and trusted signing remain unverified. P14 stays partial.
+
 Windows implementation update: [OS-aware tests and Windows workflows](windows-compatibility.md)
 supersedes the initial Windows feature exclusions. P14 retains the release gates below.
 
@@ -95,6 +100,13 @@ the original failed deterministically and the correction restores Amend with unc
 Evidence is retained in `release/p14/commit-refresh-before` and the corresponding verified run.
 
 ## Feature ledger
+
+Distribution maintenance (2026-10-08): [CI release verification](ci-releases.md) adds native installer
+artifacts, version/commit-bound release publication, complete checksums and a generated Arch recipe.
+Linux package smoke preserves the existing sandbox/isolation assertions; the Arch build validates
+dependencies, metadata, content and sandbox permissions. No F-item status changes: this is delivery
+infrastructure, and the new Windows/macOS package jobs, actual release publication, AUR submission,
+trusted signing and the remaining native-device/live-provider matrix still require verification.
 
 Further maintenance (fifth CI follow-up, 2026-10-08): [history-menu readiness](cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
 adds F19/P08 mouse/keyboard and menu-lifetime regressions, preserving the reviewed commit and backend

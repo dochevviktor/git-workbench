@@ -1,8 +1,14 @@
-name: Validate Git Workbench
+name: Validate and release Git Workbench
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -17,6 +23,10 @@ jobs:
     timeout-minutes: 60
     env:
       CI_REPORT_DIR: test-results/ci
+      # There are no signing credentials in validation, including fork PRs. macOS uses only
+      # the configured ad-hoc identity to repair signatures after universal-bundle merging.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_FOR_PULL_REQUEST: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,9 +48,9 @@ jobs:
         id: build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run ci:step -- build
-      - name: Check Linux packaging
+      - name: Build native installer
         id: package
-        if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: npm run ci:step -- package
       - name: Configure Linux sandbox helper
         id: sandbox
@@ -54,10 +64,22 @@ jobs:
         id: native-smoke
         if: ${{ !cancelled() && runner.os != 'Linux' && steps.build.outcome == 'success' }}
         run: npm run ci:step -- native-smoke
-      - name: Check extracted AppImage sandbox and workflows
+      - name: Check packaged application sandbox and workflows
         id: package-smoke
-        if: ${{ !cancelled() && runner.os == 'Linux' && steps.package.outcome == 'success' && steps.sandbox.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && (runner.os != 'Linux' || steps.sandbox.outcome == 'success') }}
         run: npm run ci:step -- package-smoke
+      - name: Upload verified installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.AppImage
+            release/*.exe
+            release/*.dmg
+          compression-level: 0
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: error
       - name: Summarize validation results
         if: always()
         env:
@@ -74,3 +96,70 @@ jobs:
             release/p14/package-verified/
           retention-days: 14
           if-no-files-found: warn
+
+  release-assets:
+    name: Assemble installers and verify Arch recipe
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: release
+          merge-multiple: true
+      - name: Generate AUR files and complete release checksums
+        id: prepare
+        run: node scripts/prepare-release.ts
+      - name: Build the Arch package in an isolated container
+        run: node scripts/verify-aur.ts
+      - name: Upload complete release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.prepare.outputs.tag }}
+          path: |
+            release/*.AppImage
+            release/*.exe
+            release/*.dmg
+            release/PKGBUILD
+            release/git-workbench-bin.SRCINFO
+            release/git-workbench-bin-*.tar.gz
+            release/SHA256SUMS
+            release/artifact-manifest.json
+          compression-level: 0
+          overwrite: true
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    name: Publish new package.json version
+    needs: release-assets
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: git-workbench-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.release-assets.outputs.tag }}
+          path: release
+      - name: Publish complete draft and immutable version tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-release.ts

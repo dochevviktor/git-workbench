@@ -7,13 +7,25 @@ import { prepareCiSandbox } from './ci-sandbox.ts';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
 const configuration = JSON.parse(await readFile('electron-builder.json', 'utf8')) as { productName: string };
-if (!['win32', 'linux'].includes(process.platform))
-  throw new Error('Package smoke verification currently supports Windows and Linux.');
+if (!['win32', 'linux', 'darwin'].includes(process.platform))
+  throw new Error('Package smoke verification supports Windows, Linux and macOS.');
 let executable =
   process.argv[2] ??
   (process.platform === 'win32'
     ? resolve('release', 'win-unpacked', `${configuration.productName}.exe`)
-    : resolve('release', `${configuration.productName}-${metadata.version}.AppImage`));
+    : process.platform === 'darwin'
+      ? resolve(
+          'release',
+          'mac-universal',
+          `${configuration.productName}.app`,
+          'Contents',
+          'MacOS',
+          configuration.productName,
+        )
+      : resolve(
+          'release',
+          `git-workbench-${metadata.version}-linux-${process.arch === 'x64' ? 'x86_64' : process.arch}.AppImage`,
+        ));
 let extracted: string | undefined;
 try {
   // The extracted helper also needs root ownership on runners without user namespaces.

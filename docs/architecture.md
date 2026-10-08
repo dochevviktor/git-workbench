@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+CI distribution (2026-10-08): [versioned installers](reviews/ci-releases.md) adds native packaging,
+an Arch recipe generated from the actual AppImage, and default-branch GitHub Releases. Release tooling
+is TypeScript and runs outside the application. Version/lockfile, source-commit and artifact checks
+gate draft publication; renderer/main/preload APIs, sandbox enforcement, credentials and profile
+identity are unchanged. macOS packages both architectures and uses an ad-hoc signature, without
+Developer ID signing/notarization. Hosted packaging and P14's remaining native gates stay explicit.
+
 Fifth CI follow-up (2026-10-08): [history-menu readiness](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
 uses the context-menu host's existing request-scoped update handle for mouse- and keyboard-opened
 commit menus awaiting reference readiness. Updates retain the original commit; dismissal, replacement
@@ -562,6 +569,13 @@ project uses Vite 7 rather than upgrading independently to Vite 8. The React plu
 5.x line. TypeScript is on 6.0 because the selected typescript-eslint version declares support below
 6.1. Electron is on 44.x, React on 19.x, and the supported development runtime is Node 24 LTS.
 The exact reproducible versions live in `package-lock.json`; recheck peers before future upgrades.
+
+Installer names include version, platform and architecture. CI builds NSIS x64, AppImage x64 and a
+universal DMG; package smoke uses the packaged executable with the same platform-specific launch
+options as development smoke. Electron/Chromium licenses are also copied to the platform's resources
+directory, giving the package-boundary test a consistent attribution location. The generated Arch
+recipe installs the exact bundled runtime with a root-owned SUID helper and no sandbox-disabling
+arguments. Release assembly uses an explicit artifact list, not a wildcard over prior local builds.
 
 Three type checks protect distinct environments: shared code has no Node/browser globals; renderer
 code has browser types; backend/tooling has Node and Electron types. ESLint additionally blocks Node,

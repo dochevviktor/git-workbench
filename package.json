@@ -36,6 +36,10 @@
     "package": "npm run build && electron-builder --config electron-builder.json --publish never && node scripts/release-manifest.ts",
     "package:deb": "npm run build && node scripts/package-deb.ts",
     "release:manifest": "node scripts/release-manifest.ts",
+    "release:prepare": "node scripts/prepare-release.ts",
+    "release:publish": "node scripts/publish-release.ts",
+    "package:aur": "node scripts/package-aur.ts",
+    "test:aur": "node scripts/verify-aur.ts",
     "test:p14": "npm run test:e2e -- tests/e2e/p14-accessibility.test.ts",
     "test:package": "node scripts/verify-package.ts",
     "package:dir": "npm run build && electron-builder --config electron-builder.json --dir --publish never"

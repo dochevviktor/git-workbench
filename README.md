@@ -1,5 +1,11 @@
 # Git Workbench
 
+Release packaging (2026-10-08): CI now builds Windows x64 NSIS installers, Linux x64 AppImages and
+universal macOS DMGs, then assembles checksums and a tested Arch `git-workbench-bin` recipe. Successful
+default-branch pushes publish new `package.json` versions as `v<version>` GitHub Releases. See
+[release workflow and verification](docs/reviews/ci-releases.md) for downloads, retries, signing limits
+and AUR submission. The new hosted packaging/publication path still needs its first run.
+
 Latest CI follow-up (2026-10-08): [history-menu readiness correction](docs/reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08).
 Windows and macOS validation, plus Linux's package checks, are green at `6d9c4a4`. Linux's last desktop
 failure was a Reset menu item stuck in its initial loading state. The correction updates that open
@@ -15,7 +21,7 @@ records native custom commands, external tools, AI adapters and Git/diff/path co
 selection by OS and installed capabilities. `npm run test:capabilities` explains this host's selection.
 Linux-specific cases are skipped automatically; supported Windows workflows remain tested.
 In PowerShell use `npm.cmd` when execution policy blocks `npm.ps1`. `npm.cmd run package` builds
-`release/Git Workbench Setup 0.1.0.exe`; `npm.cmd run test:package -- "C:\path\Git Workbench.exe"`
+`release/git-workbench-0.1.0-win-x64.exe`; `npm.cmd run test:package -- "C:\path\Git Workbench.exe"`
 tests an installed executable. Git 2.43+ must be installed separately and available on PATH.
 Ozone headless testing is Linux-specific: Electron tests use native windows on Windows.
 Windows Bash commands require Git for Windows' Bash. Select native executables or Node CLI entry points
@@ -368,18 +374,21 @@ npm run test:e2e      # build, then exercise the real Electron application
 npm run package:dir   # create an unpacked application in release/
 npm run research:references  # download the Fork screenshots listed in docs/research/fork-references.json
 npm run package       # build installers for the host OS; never publishes
-npm run test:package  # verify the built AppImage's sandbox, assets and desktop workflows
+npm run test:package  # verify the packaged application's sandbox, assets and desktop workflows
+npm run package:aur   # after the Linux x64 build: generate PKGBUILD, .SRCINFO and AUR archive
+npm run test:aur      # Linux + Docker: build/check the recipe in a disposable Arch container
 npm run package:deb -- --test-metadata  # marked test-only deb for disposable installation checks
 ```
 
 On Linux, default packaging targets AppImage; the separate Debian command requires explicit metadata.
-Windows targets NSIS and macOS targets DMG, but neither is part of this preview's verified release scope.
+Windows targets NSIS and macOS targets a universal DMG for Intel and Apple Silicon. The new CI checks
+the packaged app on each platform; hosted Windows/macOS results for this change remain unverified.
 
 Linux network integration tests use Git, OpenSSL and OpenSSH (`sshd`, `ssh-agent`, `ssh-add`,
 `ssh-keygen`). They create temporary keys and loopback servers, without touching installed services,
 user SSH configuration or real hosting repositories.
 Run platform builds on their respective operating systems. The original icon, existing application IDs,
-bundled third-party notices and SHA-256 manifest are included. Signing and publishing remain separate.
+bundled third-party notices and SHA-256 manifest are included. Local builds never publish.
 For a real Debian artifact, set `GIT_WORKBENCH_MAINTAINER='Public Name <public@example.org>'` and run
 `npm run package:deb`, followed by `npm run release:manifest`. Test metadata is intentionally marked
 TEST-ONLY and must not be presented as release contact information. Building debs on Fedora may require
@@ -388,7 +397,23 @@ the build-only `libxcrypt-compat` library for FPM.
 AppImages need FUSE 2, or the tested `APPIMAGE_EXTRACT_AND_RUN=1` fallback. Keep the Electron sandbox
 enabled; disabling it is not an installation workaround. This preview uses manual updates and rollback;
 see the [release policy](docs/reviews/p14-release-audit.md#local-release-policy-and-installation). No hosted
-update feed, automatic updater, signing identity or publishing credential is configured.
+update feed or automatic updater is configured. Windows installers are unsigned; macOS bundles use
+an ad-hoc signature without Developer ID signing or notarization. CI publishes with its job-scoped
+GitHub token after all validation and packaging checks pass.
+
+GitHub Releases are the download destination for executables (not the GitHub Packages registry).
+Each successful validation retains `installers-<OS>` artifacts for 14 days, including PR runs.
+The assembled `release-v<version>` artifact and GitHub Release contain the installers, `PKGBUILD`,
+`git-workbench-bin.SRCINFO`, the AUR source archive, `SHA256SUMS` and a source/lockfile manifest.
+To release another version, use `npm version patch --no-git-tag-version` (or `minor`/`major`) and commit
+both package files. Once the default-branch checks pass, CI creates the tag and release. Reusing an
+already published version runs validation without changing its release. Manual workflow dispatch on
+the default branch can retry a failed run; see the [retry policy](docs/reviews/ci-releases.md).
+
+On Arch, download and extract `git-workbench-bin-<version>.tar.gz`, review `PKGBUILD`, then run
+`makepkg -si` inside its directory. It installs the bundled application under `/opt/git-workbench`,
+with a desktop entry and `git-workbench` command. The archive is ready for a separate AUR submission;
+`yay -S git-workbench-bin` works only after a maintainer publishes it to AUR. CI does not push to AUR.
 
 On Linux and Windows the window is frameless: the application draws its own title bar, menu bar
 (Alt+letter opens a menu), and window controls, and it handles shortcuts itself instead of installing
@@ -505,5 +530,5 @@ global IPC objects, endpoint round robin, and demonstration Redux state have bee
 implementations confined to the backend and preload.
 
 The starter's Yarn 1 lockfile was replaced by `package-lock.json`; use `npm ci` for reproducible installs.
-`start:dev` and `build:prod` remain as aliases. Publishing scripts were removed because no release
-destination or signing identity exists. The original MIT license is preserved.
+`start:dev` and `build:prod` remain as aliases. The old publishing scripts were removed; the current
+GitHub Release workflow is documented above. The original MIT license is preserved.

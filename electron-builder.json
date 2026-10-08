@@ -2,11 +2,16 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "dev.gitworkbench.desktop",
   "productName": "Git Workbench",
+  "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
   "directories": { "output": "release" },
   "files": ["out/**/*", "package.json", "LICENSE"],
   "asar": true,
   "publish": null,
-  "extraResources": [{ "from": "resources/icon.png", "to": "icon.png" }],
+  "extraResources": [
+    { "from": "resources/icon.png", "to": "icon.png" },
+    { "from": "node_modules/electron/dist/LICENSE", "to": "LICENSE.electron.txt" },
+    { "from": "node_modules/electron/dist/LICENSES.chromium.html", "to": "LICENSES.chromium.html" }
+  ],
   "npmRebuild": false,
   "appImage": { "executableArgs": [] },
   "linux": {
@@ -34,5 +39,11 @@
     ]
   },
   "win": { "target": ["nsis"], "icon": "resources/icon.ico" },
-  "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" }
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["universal"] }],
+    "identity": "-",
+    "hardenedRuntime": false,
+    "icon": "resources/icon.png",
+    "category": "public.app-category.developer-tools"
+  }
 }
