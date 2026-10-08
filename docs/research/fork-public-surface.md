@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+Third CI follow-up — **2026-10-08**: [hosted results and controlled reference races](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+add independent F12/F16/F31 readiness evidence and correct the sandbox test's platform scope. The
+record links primary Electron/Chromium startup sources checked on this date. macOS unit/build/smoke
+and Linux's hosted AppImage sandbox now have passing evidence; current corrections need a rerun.
+No Fork behavior, visual comparison or case/finding completion is inferred.
+
 CI follow-up — **2026-10-08**: the [second correction record](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 maps F13/F24/F28/F29/F31 and P14 to observed runner failures and independent implementation fixes.
 Primary Apple, GnuPG, Electron and builder sources are linked there with this access date. Confidence

@@ -562,7 +562,14 @@ function Workbench({
     [requestReveal, setView],
   );
 
-  const referencesReady = referenceContext !== undefined && referenceContext.repositoryId === active?.id;
+  // The tab/history can observe a commit or checkout before the heavier reference read finishes.
+  // Keep its previous data for display, but do not offer actions from that older HEAD.
+  const referencesReady =
+    referenceContext !== undefined &&
+    referenceContext.repositoryId === active?.id &&
+    referenceContext.head.commit === active.head.commit &&
+    referenceContext.head.name === active.head.name &&
+    referenceContext.head.state === active.head.state;
   const worktreesReady = worktreeContext !== undefined && worktreeContext.repositoryId === active?.id;
   const referenceLoading = 'The branches and tags of this repository are still loading.';
   const worktreeLoading = 'The worktrees of this repository are still loading.';
@@ -588,7 +595,11 @@ function Workbench({
       setReferenceStatus(undefined);
       // Reference menus can outlive a watcher refresh. Review choices and their stale guard
       // must come from the same complete read, not an old menu and a newer live context.
-      if (request.kind === 'delete-references' || request.kind === 'set-upstream') {
+      if (
+        request.kind === 'delete-references' ||
+        request.kind === 'set-upstream' ||
+        request.kind === 'new-branch'
+      ) {
         const owner = activeRepositoryId.current;
         if (!owner) return;
         void window.desktop?.repository.getReferenceContext({ id: owner }).then((result) => {
@@ -608,13 +619,26 @@ function Workbench({
           }
           setReviewedReferenceContext(context);
           setDialogSnapshot(context.snapshot);
-          setReferenceDialog(branch ? { kind: 'set-upstream', branch } : request);
+          if (request.kind === 'new-branch') {
+            // Even the tab can still show the old HEAD immediately after a commit. Resolve a
+            // named start point for this review; an explicitly selected commit stays pinned.
+            const point = request.target.startPoint;
+            const selected =
+              point.kind === 'reference'
+                ? [...context.branches, ...context.tags].find((item) => item.fullName === point.fullName)
+                : undefined;
+            setReferenceDialog({
+              ...request,
+              target: selected ? { ...request.target, detail: shortHash(selected.target) } : request.target,
+            });
+            loadLocalChangesPreview();
+          } else setReferenceDialog(branch ? { kind: 'set-upstream', branch } : request);
         });
         return;
       }
       setReviewedReferenceContext(referenceContext);
       setDialogSnapshot(snapshot);
-      if (request.kind.startsWith('checkout') || request.kind === 'new-branch') loadLocalChangesPreview();
+      if (request.kind.startsWith('checkout')) loadLocalChangesPreview();
       setReferenceDialog(request);
     },
     [loadLocalChangesPreview, referenceContext, reportError],
@@ -797,7 +821,9 @@ function Workbench({
         })
         .catch((reason: unknown) => {
           if (activeRepositoryId.current !== owner) return;
-          reportError(reason instanceof Error ? reason.message : 'That branch or tag action failed.');
+          const message = reason instanceof Error ? reason.message : 'That branch or tag action failed.';
+          setReferenceFailure({ message, canForce: false });
+          reportError(message);
           reloadReferences();
         });
     },
@@ -2492,9 +2518,10 @@ function Workbench({
   };
 
   const referenceMenuItems = (reference: RepositoryHistoryReference) => {
-    const current = referenceContext?.branches.find((candidate) => candidate.isHead);
-    const branch = referenceContext?.branches.find((candidate) => candidate.fullName === reference.fullName);
-    const tag = referenceContext?.tags.find((candidate) => candidate.fullName === reference.fullName);
+    const context = referencesReady ? referenceContext : undefined;
+    const current = context?.branches.find((candidate) => candidate.isHead);
+    const branch = context?.branches.find((candidate) => candidate.fullName === reference.fullName);
+    const tag = context?.tags.find((candidate) => candidate.fullName === reference.fullName);
     const stash = stashes.value.find((candidate) => candidate.commitId === reference.target);
     const target = referenceTarget(reference);
     const worktreeReason = branch?.worktreePath
@@ -2521,8 +2548,8 @@ function Workbench({
           {
             id: 'checkout',
             label: `Checkout '${reference.name}'`,
-            disabled: reference.isHead || branchReason !== undefined || referenceBusy,
-            disabledReason: reference.isHead ? 'This branch is already checked out.' : branchReason,
+            disabled: branch?.isHead || branchReason !== undefined || referenceBusy,
+            disabledReason: branch?.isHead ? 'This branch is already checked out.' : branchReason,
             run: () => {
               if (branch) checkoutBranch(branch);
             },
@@ -2610,7 +2637,8 @@ function Workbench({
           },
           menuSeparator,
           current &&
-            !reference.isHead && {
+            branch &&
+            !branch.isHead && {
               id: 'merge',
               label: `Merge '${reference.name}' into '${current.name}'…`,
               disabled: !branch || referenceBusy,
@@ -2620,7 +2648,8 @@ function Workbench({
               },
             },
           current &&
-            !reference.isHead && {
+            branch &&
+            !branch.isHead && {
               id: 'rebase',
               label: `Rebase '${current.name}' on '${reference.name}'…`,
               disabled: !branch || referenceBusy,
@@ -2934,10 +2963,7 @@ function Workbench({
     ? 'Open a repository first.'
     : active.bare
       ? 'A bare repository has no working tree.'
-      : !referencesReady ||
-          referenceContext?.head.commit !== active.head.commit ||
-          referenceContext?.head.name !== active.head.name ||
-          referenceContext?.head.state !== active.head.state
+      : !referencesReady
         ? referenceLoading
         : referenceBusy
           ? 'Another repository operation is running.'

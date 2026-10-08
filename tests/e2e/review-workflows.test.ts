@@ -406,17 +406,16 @@ for (const startup of ['ready', 'loading', 'dismissed', 'replaced'] as const)
       await page.keyboard.press('F5');
       await expect(page.locator('.toolbar-repository-branch')).toHaveText('rebase-topic');
       const rebaseMenu = page.getByRole('menu', { name: 'rebase-target', exact: true });
-      // The target row already existed before checkout; wait for the source/action to refresh too.
-      await expect(async () => {
-        await page.keyboard.press('Escape');
-        await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
-        await expect(
-          rebaseMenu.getByRole('menuitem', {
-            name: "Rebase 'rebase-topic' on 'rebase-target'…",
-            exact: true,
-          }),
-        ).toBeEnabled({ timeout: 500 });
-      }).toPass({ timeout: 10000 });
+      // A menu opened while the reference read trails HEAD must update without reopening.
+      // The Node wrapper around every Git read makes this refresh slower on hosted runners.
+      await page.keyboard.press('Escape');
+      await page.getByRole('treeitem', { name: 'rebase-target', exact: true }).click({ button: 'right' });
+      await expect(
+        rebaseMenu.getByRole('menuitem', {
+          name: "Rebase 'rebase-topic' on 'rebase-target'…",
+          exact: true,
+        }),
+      ).toBeEnabled({ timeout: 15000 });
       await rebaseMenu
         .getByRole('menuitem', { name: "Rebase 'rebase-topic' on 'rebase-target'…", exact: true })
         .click();

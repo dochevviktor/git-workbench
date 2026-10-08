@@ -96,6 +96,13 @@ Evidence is retained in `release/p14/commit-refresh-before` and the correspondin
 
 ## Feature ledger
 
+Further maintenance (2026-10-08): [the third CI follow-up](cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+adds four controlled F12/F16/F31 reference-readiness/refusal regressions to native and packaged smoke.
+All ten focused Linux scenarios pass with one CPU core; the full local desktop suite passes 93
+scenarios and the AppImage passes 13, with explicit skips and no retries. The observed `facdfb2` macOS job and Linux
+package job are green; the latest corrections need another hosted run. Native-device, live-service,
+macOS packaging and the broader release gates below remain separate.
+
 Maintenance verification (2026-10-08): the [second CI follow-up](cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 adds long Unix socket/GPG-home regressions for F13/F24/F28/F29, post-rebase chooser readiness for F31,
 and explicit startup sandbox enforcement for packaged and development Electron. The Linux check and

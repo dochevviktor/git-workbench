@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+Third CI correction (2026-10-08): [hosted results and reference-readiness fixes](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+records a green macOS job and passing Linux package/sandbox checks at `facdfb2`. The remaining desktop
+failures lead to matching-HEAD reference actions, fresh Create Branch reviews, visible stale refusals
+and a Linux-only AppImage flag regression alongside native sandbox checks on every OS. Four controlled
+reference regressions are included in native smoke and package verification. P14 stays partial.
+
 CI correction (2026-10-08): [remaining runner failures and fixes](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 addresses Unix socket limits, GPG fixture homes, AppImage sandbox enforcement, native smoke menus,
 gated-test deadlines and Quick Launch readiness. Local check (718 tests), build, full routine desktop
@@ -264,6 +270,15 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Third CI follow-up, 2026-10-08: the hosted `facdfb2` macOS job passes 717 unit/integration tests and
+three native smoke scenarios, and Linux passes its eight applicable packaged scenarios. The new
+reference corrections pass four controlled regressions plus all four F16 variants and both Linux
+sandbox launch modes with one CPU core. Local `npm run check` passes **718 tests with five explicit
+skips**; production build and AppImage creation pass. The complete desktop suite passes **93 scenarios
+(five explicit skips)**, and the AppImage passes **13 scenarios (one Windows-only skip)**, with no retries. See the
+[third CI record](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08) for final
+desktop/package results and the latest hosted rerun limits. Feature-family and P14 gates remain partial.
 
 CI follow-up verified locally 2026-10-08: **718 unit/integration tests pass (five explicit skips)**,
 production build and AppImage creation pass, and **all 88 routine headless desktop scenarios pass**

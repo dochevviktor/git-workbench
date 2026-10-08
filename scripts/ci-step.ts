@@ -15,6 +15,7 @@ const commands: Record<string, string[]> = {
     'node_modules/playwright/cli.js',
     'test',
     'tests/e2e/desktop.test.ts',
+    'tests/e2e/reference-readiness.test.ts',
     'tests/e2e/sandbox.test.ts',
     'tests/e2e/window-lifecycle.test.ts',
     'tests/e2e/windows-native.test.ts',

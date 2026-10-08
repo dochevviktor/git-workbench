@@ -1,5 +1,11 @@
 # Fork catalogue alignment — 2026-09-20
 
+Third CI follow-up — **2026-10-08**: [the correction record](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+records F12/F16/F31 reference readiness and native sandbox-test scope. Confidence is high for the
+controlled implementation regressions; hosted macOS and Linux package results are recorded separately
+from the latest unverified native corrections. No layout, styles, private assets, catalogue IDs or
+case-level unknowns change.
+
 CI follow-up — **2026-10-08**: [runner evidence and corrections](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 cover credential/GPG socket paths, sandbox startup and test synchronization. These are independent
 F13/F24/F28/F29/F31/P14 implementation changes, with high confidence for exercised Linux regressions

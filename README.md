@@ -1,15 +1,14 @@
 # Git Workbench
 
-CI follow-up (2026-10-08): [diagnosis and corrections](docs/reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
-addresses the remaining hosted failures: Unix socket path limits, GPG fixture homes, native smoke menus
-and timing, gated Git scenarios, Quick Launch refresh readiness and AppImage sandbox enforcement.
-The observed run built successfully on all three OSs; native Windows/macOS verification of these
-corrections requires a new CI run.
+Latest CI follow-up (2026-10-08): [remaining failures and corrections](docs/reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08).
+macOS validation is green, and Linux's hosted AppImage/sandbox checks pass. The remaining Linux/Windows
+desktop failures prompted reference-menu and branch-review synchronization fixes and a correction to
+the native Windows sandbox test. Those latest changes still require a hosted rerun.
 
 Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
 covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
-native Windows/macOS smoke scenarios. macOS execution, packaging and native-device checks still need
-verification on a Mac; Linux and Windows evidence does not establish those results.
+native Windows/macOS smoke scenarios. macOS unit/build/smoke verification now has the hosted evidence
+linked above; macOS packaging and native-device checks remain outstanding.
 
 Windows implementation (2026-10-01): the [compatibility follow-up](docs/reviews/windows-compatibility.md)
 records native custom commands, external tools, AI adapters and Git/diff/path corrections, plus test
@@ -420,7 +419,7 @@ available traces, and a failure summary. Development and packaged desktop result
 Independent build/desktop checks can run after a unit failure; the job still fails. Linux CI configures
 the SUID helper in development Electron and the extracted AppImage while keeping sandboxing enabled.
 Privileged setup is restricted to GitHub's Linux runner; local headless tests use the existing host policy.
-The [latest CI follow-up](docs/reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+The [latest CI follow-up](docs/reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
 records the diagnosed failures and verification limits.
 
 ### Local waypipe session

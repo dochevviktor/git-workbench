@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+Third CI follow-up (2026-10-08): the [reference-readiness correction](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+uses matching tab/context HEAD for reference-action availability and the existing scoped context-menu
+update handle while that read catches up. New Branch captures a fresh backend context for its review;
+explicit commit targets and post-review stale checks remain. Refusals are shown in the modal as well
+as the existing error surface. Sandbox policy is unchanged; native tests use native startup, with
+AppRun's injected-flag scenario restricted to Linux. No IPC or privilege boundary changes.
+
 CI follow-up (2026-10-08): the [correction record](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 bounds credential-broker Unix socket paths by UTF-8 bytes, retaining private per-operation directories,
 nonces and origin/path checks. Main enforces Electron's full sandbox before readiness, including when

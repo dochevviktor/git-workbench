@@ -5,6 +5,80 @@ Its host was Windows 11, build 26200, x64; the later CI follow-up used Linux. Te
 no mutating Git command targets the working project or another user repository.
 The original Linux verification and P14's remaining release gates remain separate.
 
+## Third CI failure follow-up — 2026-10-08
+
+The [2026-10-08 Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37745728545)
+tested `facdfb2`. Its job metadata and all three validation archives were read through GitHub's API.
+The token remained in memory; no Git credential configuration or remote write was made.
+
+- **macOS passed**: 717 unit/integration tests, six explicit skips; build and three native desktop
+  scenarios passed, with the Windows-only scenario skipped. The previous socket/GPG fixes now have
+  hosted macOS evidence. This does not establish macOS packaging or native-device coverage.
+- **Linux**: 718 unit/integration tests, build, packaging and all eight applicable package scenarios
+  passed, including the hosted SUID-helper/AppRun sandbox route. The desktop suite had 86 passes,
+  two failures and five explicit skips. Both failures were F16 rebase-menu readiness after checkout.
+- **Windows**: 713 unit/integration tests and build passed, with ten explicit skips. Native lifecycle
+  and Windows controls passed. Aggregate desktop smoke retained its Create Branch dialog after
+  submission; the injected `--no-sandbox` scenario exited before creating its first window.
+
+Four controlled Electron regressions exercise the reference races independently of runner speed.
+Holding validated reference responses reproduced an enabled Create Branch action against an older
+HEAD and a context menu that did not acquire the new branch's Rebase action when the read finished.
+Holding both tab and reference responses also reproduced an old commit ID in the branch review.
+A reference change after opening the dialog was rejected by the backend, but its error was only
+reported behind the modal. All four regressions failed before their corresponding corrections.
+The Windows artifact lacks the dialog's backend error; the stale-review diagnosis is supported
+by these controlled reproductions alongside its assertion/step trace.
+
+Reference actions now require context HEAD and the active tab's HEAD to agree. Menus opened during
+that transition use the existing scoped update handle when matching data arrives, including fresh
+current-branch flags; closed or replaced menus retain their existing invalidation behavior. Create
+Branch obtains a fresh context before displaying its review and updates named-reference commit
+details from that read; explicitly selected commits remain pinned. Changes after review still fail
+the original backend snapshot check, with the refusal visible in the dialog. IPC and Git semantics
+are unchanged. The four regressions run in both native CI smoke and package verification.
+
+The F16 workflow now dismisses Activity once and opens the branch menu once, then waits up to 15
+seconds for its updated action. It no longer repeatedly closes/reopens the menu with a 500ms probe.
+This retains the real merge/rebase, operation-completion and independent Git assertions.
+
+Sandbox checks now exercise normal native launch on every OS and the AppImage disabling-flag
+override on Linux. The previous test incorrectly applied AppRun's Linux scenario to Windows:
+Chromium skips its alternate desktop setup when it starts with `--no-sandbox`, before application
+JavaScript can call `enableSandbox`. Enabling sandboxing from JavaScript cannot redo that native setup.
+The app's sandbox enforcement remains enabled; Windows still asserts the renderer's sandbox metric,
+and Linux still verifies the kernel sandbox and the actual packaged launcher.
+
+Implementation references checked **2026-10-08**, with high confidence for the documented startup order:
+
+- [Electron 44.4.1 Windows entry point](https://github.com/electron/electron/blob/v44.4.1/shell/app/electron_main_win.cc)
+  initializes native sandbox information before entering the application.
+- [Chromium's Windows sandbox initialization](https://github.com/chromium/chromium/blob/main/sandbox/policy/sandbox.cc)
+  conditionally creates the alternate desktop before threads/windows exist.
+
+Final local verification on Linux (Node 24.13.0, Git 2.55.0, Git LFS 3.8.0):
+
+- `npm run check`: type checks, lint, formatting and **718 unit/integration tests passed**, with five
+  explicit skips (47.71 seconds for tests).
+- `npm run build`: passed. AppImage creation from that output and manifest generation also passed;
+  the existing TEST-ONLY Debian artifact was not rebuilt.
+- All **93 routine desktop scenarios passed**, with five explicit skips and no retries (5.8 minutes).
+- All **13 applicable AppImage scenarios passed**, with the Windows-only scenario skipped and no
+  retries (1.0 minute), including all four reference regressions and both sandbox launch modes.
+- All **ten focused scenarios passed with one CPU core** (1.6 minutes): four reference races, all four
+  F16 startup variants, and both Linux sandbox launch modes. The deterministic failures and passing
+  rerun are retained under `test-results/ci-third-*`.
+
+Step logs and JSON/JUnit/HTML reports are in `test-results/ci-third-fix`; packaged evidence is in
+`release/p14/package-verified`. The renderer's kernel sandbox checks still pass. Existing dependency
+annotation and renderer-size build advisories remain.
+
+These corrections are local and uncommitted. No branch was pushed or remote workflow rerun. The new
+native Windows test path and reference corrections require a fresh hosted run; the green macOS and
+Linux package results above apply specifically to `facdfb2`. P14 remains partial for its broader
+native-device, live-service and release gates. No Fork observation, visual-parity claim or case-level
+unknown changes.
+
 ## Second CI failure follow-up — 2026-10-08
 
 The [2026-10-07 Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37686272121)
