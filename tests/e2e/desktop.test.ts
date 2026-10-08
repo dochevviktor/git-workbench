@@ -57,6 +57,8 @@ async function chooseMenu(
 }
 
 test('production build loads its isolated preload and renderer', async () => {
+  // This aggregate workflow was still progressing through remote setup at 90s on hosted Windows.
+  test.setTimeout(process.platform === 'win32' ? 180_000 : 90_000);
   const profile = await mkdtemp(join(tmpdir(), 'git-workbench-test-'));
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-repository-'));
   const secondRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-tab-'));
@@ -752,8 +754,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await fixtureGit.run(['init', '--quiet', '--bare', `--initial-branch=${mainBranch}`, remotePath], {
       cwd: remoteRoot,
     });
-    await page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Remotes…', exact: true }).click();
+    // The sidebar menu is available on macOS too, where the renderer has no menubar.
+    await referenceTree.getByRole('treeitem', { name: 'Remotes', exact: true }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Manage Remotes…', exact: true }).click();
     const networkDialog = page.getByTestId('reference-dialog');
     await expect(networkDialog).toBeVisible();
     await networkDialog.getByTestId('remote-name').fill('origin');

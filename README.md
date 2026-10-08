@@ -1,5 +1,11 @@
 # Git Workbench
 
+CI follow-up (2026-10-08): [diagnosis and corrections](docs/reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+addresses the remaining hosted failures: Unix socket path limits, GPG fixture homes, native smoke menus
+and timing, gated Git scenarios, Quick Launch refresh readiness and AppImage sandbox enforcement.
+The observed run built successfully on all three OSs; native Windows/macOS verification of these
+corrections requires a new CI run.
+
 Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
 covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
 native Windows/macOS smoke scenarios. macOS execution, packaging and native-device checks still need
@@ -414,7 +420,7 @@ available traces, and a failure summary. Development and packaged desktop result
 Independent build/desktop checks can run after a unit failure; the job still fails. Linux CI configures
 the SUID helper in development Electron and the extracted AppImage while keeping sandboxing enabled.
 Privileged setup is restricted to GitHub's Linux runner; local headless tests use the existing host policy.
-The [CI follow-up](docs/reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+The [latest CI follow-up](docs/reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
 records the diagnosed failures and verification limits.
 
 ### Local waypipe session

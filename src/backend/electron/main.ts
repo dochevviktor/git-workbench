@@ -13,6 +13,9 @@ import { HostingPreferencesStore } from '../hosting/preferences-store';
 import { GitInstanceStore } from '../git/instance-store';
 import { GitRunner } from '../git/runner';
 
+// AppImage launchers can inject --no-sandbox when their user-namespace probe fails.
+// Enforce the application's sandbox policy before ready, including the SUID-helper route.
+app.enableSandbox();
 app.setName('Git Workbench');
 const launchPaths = repositoryPathsFromArguments(process.argv, process.cwd(), process.defaultApp === true);
 

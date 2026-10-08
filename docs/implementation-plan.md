@@ -1,5 +1,11 @@
 # Git Workbench implementation plan
 
+CI correction (2026-10-08): [remaining runner failures and fixes](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+addresses Unix socket limits, GPG fixture homes, AppImage sandbox enforcement, native smoke menus,
+gated-test deadlines and Quick Launch readiness. Local check (718 tests), build, full routine desktop
+suite (88 scenarios), AppImage creation and eight package scenarios pass. Hosted Windows/macOS reruns and P14's broader gates
+remain outstanding; no phase status is promoted.
+
 CI correction (2026-10-07): [fixes and local verification](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
 address credential-file symlinks, canonical temporary paths, LFS attribute mapping and fixture cleanup,
 and add sandbox setup plus failure archives to CI. Local check/build/package and focused desktop/package
@@ -258,6 +264,15 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+CI follow-up verified locally 2026-10-08: **718 unit/integration tests pass (five explicit skips)**,
+production build and AppImage creation pass, and **all 88 routine headless desktop scenarios pass**
+with five explicit skips and no retries. All five gated failures were reproduced with one CPU core,
+then passed under the same constraint; Quick Launch and forced sandbox checks passed three times
+with two cores. Real GPG/LFS suites also pass with a long temporary parent. **Eight packaged scenarios
+pass with one Windows-only skip**, including launcher and forced-flag sandbox checks. The
+[second CI record](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+retains the observed three-OS failures and hosted verification limits. P14 remains partial.
 
 CI correction verified locally 2026-10-07: **716 unit/integration tests pass (five explicit skips)**,
 production build and AppImage packaging pass, **six focused headless desktop scenarios** pass, and

@@ -1,10 +1,13 @@
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { _electron as electron, expect as baseExpect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { GitRunner } from '../../src/backend/git/runner';
 import { openTrustedFixture } from './trusted-fixture';
+
+// The gate wrapper starts Node for each Git read; a refresh takes over 5s on a constrained runner.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'workbench-bisect-refresh-'));

@@ -2934,7 +2934,10 @@ function Workbench({
     ? 'Open a repository first.'
     : active.bare
       ? 'A bare repository has no working tree.'
-      : !referencesReady
+      : !referencesReady ||
+          referenceContext?.head.commit !== active.head.commit ||
+          referenceContext?.head.name !== active.head.name ||
+          referenceContext?.head.state !== active.head.state
         ? referenceLoading
         : referenceBusy
           ? 'Another repository operation is running.'

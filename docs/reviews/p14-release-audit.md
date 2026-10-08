@@ -96,6 +96,12 @@ Evidence is retained in `release/p14/commit-refresh-before` and the correspondin
 
 ## Feature ledger
 
+Maintenance verification (2026-10-08): the [second CI follow-up](cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+adds long Unix socket/GPG-home regressions for F13/F24/F28/F29, post-rebase chooser readiness for F31,
+and explicit startup sandbox enforcement for packaged and development Electron. The Linux check and
+full desktop suite pass, as do all eight applicable packaged scenarios. These independent implementation corrections preserve the feature-family
+statuses and native/live-service release gates below; Windows/macOS reruns remain outstanding.
+
 “Verified” means the stated independently specified Linux scope passes its linked implementation tests.
 “Partial” means the broader family retains an explicit gap. No row claims every Fork variant. Original
 case/finding details and screenshot/Git links resolve through the catalogue crosswalk above and the

@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+CI follow-up — **2026-10-08**: the [second correction record](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+maps F13/F24/F28/F29/F31 and P14 to observed runner failures and independent implementation fixes.
+Primary Apple, GnuPG, Electron and builder sources are linked there with this access date. Confidence
+is high for Linux regressions; native macOS/Windows corrections need a hosted rerun. No new Fork
+behavior, layout comparison, capture completion or case/finding resolution is inferred.
+
 CI portability correction — **2026-10-07**: the
 [follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) records F13/F24/F37
 credential-file and LFS path fixes, observed GitHub runner failures, and dated primary Node/Chromium

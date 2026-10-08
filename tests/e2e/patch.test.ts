@@ -1,8 +1,11 @@
 import { openTrustedFixture } from './trusted-fixture';
 import { chmod, copyFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { _electron as electron, expect as baseExpect, test } from '@playwright/test';
 import { patchFixture } from '../patch-fixture';
+
+// Real patch preflight plus the Node Git wrapper can exceed 5s on hosted runners.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input and export', async () => {
   const f = await patchFixture();

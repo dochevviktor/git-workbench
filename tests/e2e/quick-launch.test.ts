@@ -97,15 +97,23 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
         return result.ok ? result.value.find((op) => op.kind === 'rebase')?.status : 'error';
       })
       .toBe('succeeded');
-    expect((await git.run(['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim()).not.toBe(before);
+    const rebased = (await git.run(['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim();
+    expect(rebased).not.toBe(before);
     expect(
       (await git.run(['merge-base', '--is-ancestor', 'v1.0', 'HEAD'], { cwd: repository })).exitCode,
     ).toBe(0);
     expect((await git.run(['show', 'HEAD:main.txt'], { cwd: repository })).stdout).toBe('main work\n');
     expect((await git.run(['show', 'HEAD:sidebar.txt'], { cwd: repository })).stdout).toBe('sidebar\n');
 
+    // Operation completion precedes the renderer's reference refresh. Wait for the displayed HEAD
+    // and the chooser's availability before capturing a parameter-selection snapshot.
+    await expect(page.locator('.commit-row.head')).toHaveAttribute('data-commit-id', rebased);
     await page.keyboard.press('ControlOrMeta+p');
     await search().fill('checkout branch');
+    await expect(launch.getByRole('option', { name: 'Checkout Branch…', exact: true })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     await search().press('Enter');
     await search().press('Backspace');
     await expect(search()).toHaveAttribute('aria-label', 'Search commands and repositories');

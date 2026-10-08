@@ -18,7 +18,7 @@ const matches =
   (!configuration.argument || args.includes(configuration.argument));
 async function waitAtGate() {
   await writeFile(`${gate}.waiting`, `${configuration!.command}:${configuration!.phase}`);
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 60_000;
   while (
     await access(gate).then(
       () => true,

@@ -9,7 +9,7 @@ const executable = process.env.GIT_WORKBENCH_REAL_GIT;
 const gate = process.env.GIT_WORKBENCH_BISECT_GATE;
 if (!executable || !gate) throw new Error('The fixture needs real Git and a read gate.');
 if (args.includes('for-each-ref') && args.includes('refs/bisect/')) {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 60_000;
   while (
     await access(gate).then(
       () => true,

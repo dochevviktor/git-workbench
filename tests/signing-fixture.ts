@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { GitRunner } from '../src/backend/git/runner';
@@ -15,7 +15,14 @@ export async function signingFixture(
     onCleanup?: (cleanup: () => Promise<void>) => void;
   } = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), 'workbench-signing-'));
+  // All agent sockets must fit Darwin's 104-byte sockaddr_un, including the longest suffix.
+  const temporary = await realpath(tmpdir());
+  const socketTemplate = join(temporary, 'workbench-signing-XXXXXX', 'gnupg', 'S.gpg-agent.browser');
+  const parent =
+    process.platform !== 'win32' && Buffer.byteLength(socketTemplate) >= 104
+      ? await realpath('/tmp')
+      : temporary;
+  const root = await mkdtemp(join(parent, 'workbench-signing-'));
   const cwd = join(root, 'repo');
   const gnupg = join(root, 'gnupg');
   const env = {

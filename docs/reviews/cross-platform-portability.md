@@ -5,6 +5,93 @@ Its host was Windows 11, build 26200, x64; the later CI follow-up used Linux. Te
 no mutating Git command targets the working project or another user repository.
 The original Linux verification and P14's remaining release gates remain separate.
 
+## Second CI failure follow-up — 2026-10-08
+
+The [2026-10-07 Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37686272121)
+tested `8ebb21b`. Its API results and the three `validation-*-1` artifacts were inspected using the
+user-supplied credential in memory. No credential was copied to Git configuration, reports or source.
+All three application builds passed; the job failures were validation failures:
+
+| Runner      | Unit/integration results              | Desktop/package failures                                                                                                                                    |
+| ----------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux x64   | 716 passed, five skipped              | Six of 92 desktop cases failed; three of eight package cases failed.                                                                                        |
+| Windows x64 | 713 passed, eight skipped             | Aggregate desktop smoke exceeded 90 seconds; native-controls and lifecycle cases passed.                                                                    |
+| macOS arm64 | 708 passed, seven failed, six skipped | Six GPG fixtures could not connect to their agent; the aliased-temp LFS case failed. Desktop smoke looked for an absent renderer menubar; lifecycle passed. |
+
+Corrections are scoped to these failures:
+
+- **Credential socket length (F13/F24/F29).** The LFS fixture's nested temporary directory exceeds
+  Darwin's 104-byte Unix socket address limit. The broker now chooses a short private directory when
+  the complete UTF-8 socket path would exceed that limit; Windows keeps its named pipe. A long,
+  multibyte-path regression reproduced `listen EINVAL` on Linux before the fix, then authenticated
+  real Git and checked mode 0700 plus socket-directory cleanup after it. Nonces, origin/path checks,
+  token lifetime and redaction remain enforced.
+- **GPG fixture socket length (F28).** macOS's long default temporary path also overflows GPG's
+  agent socket names. Signing fixtures account for the longest agent suffix and use a canonical short
+  temporary parent when needed. A real signed-commit/verification regression runs with an overlong
+  inherited temporary path. Existing protected-key, cancellation and agent-cleanup tests stay enabled.
+- **AppImage sandbox (P14).** The installed builder's launcher injects `--no-sandbox` when its user
+  namespace probe fails, even with a correctly installed SUID helper. Main now calls
+  `app.enableSandbox()` before readiness; Electron removes that switch and enables its full sandbox.
+  AppImage desktop arguments also explicitly omit the builder's legacy default disabling flag.
+  A new desktop/package regression supplies the flag and checks its removal, the enable switch,
+  renderer isolation, Linux kernel sandbox state and Windows sandbox metrics. The packaged check
+  still launches AppRun. No test bypasses the launcher or relaxes the sandbox assertion.
+- **Native smoke.** Windows' trace reached remote creation before its 90-second aggregate deadline.
+  That one workflow receives 180 seconds on Windows; assertion deadlines are unchanged. Remote
+  management now opens through the existing sidebar menu on every OS, including macOS.
+- **Gated Linux scenarios.** All five Bisect/staging/commit/patch failures were reproduced locally
+  with one CPU core. Each fixture starts Node for every Git subprocess; its valid refresh/preflight
+  exceeded the five-second assertion deadline. Those three test files use 15-second assertions and
+  bounded 60-second gates, retaining all mouse-down/refresh, stale-snapshot and Git-state assertions.
+  Failed commit tests release their gate before cleanup.
+- **Quick Launch (F31).** The exact detached-input failure reproduced with two CPU cores: the test
+  selected a command after rebase completed but before reference refresh reached the renderer.
+  Parameter commands now wait until their reference HEAD agrees with the current repository session.
+  The test waits for the displayed rebased HEAD and command availability before selection; external
+  checkout must still dismiss a stale chooser.
+
+Final local verification on Linux, Node 24.13.0, Git 2.55.0, GnuPG 2.4.9 and Git LFS 3.8.0:
+
+- `npm run check`: types, lint, formatting and **718 unit/integration tests pass**, with five explicit
+  skips (48.85 seconds for tests).
+- `npm run build`: passed. The resulting output was packaged with the committed builder config;
+  AppImage creation and manifest generation passed. The existing TEST-ONLY Debian artifact was not rebuilt.
+- Complete headless desktop suite: **88 passed, five explicit skips**, no retries (5.7 minutes).
+- `npm run test:package`: **eight passed, one Windows-only skip**, no retries (52.7 seconds).
+  The real AppImage launcher and the forced disabling-flag regression both retain the sandbox;
+  packaged renderer checks confirm `NoNewPrivs: 1` and `Seccomp: 2`.
+- Controlled load: all five formerly failing gated cases pass with one CPU core (2.9 minutes).
+  Quick Launch plus the sandbox regression pass three consecutive runs with two cores (15.1 seconds).
+- Long temporary parent: **13 GPG/LFS integration tests pass** (7.37 seconds), supplementing the
+  permanent multibyte-path broker and signed-commit regressions. This simulates the path condition
+  on Linux; it is not native macOS execution.
+
+Logs and structured reports are in `test-results/ci-fix`, desktop output in `test-results/desktop`,
+and packaged evidence in `release/p14/package-verified`. Git LFS was downloaded from its official
+3.8.0 release, checked against the API-provided SHA-256 and added only to verification processes' PATH.
+Existing dependency-annotation and renderer-size build advisories remain.
+
+The changes are local and uncommitted; no remote branch was pushed or workflow rerun against unchanged
+code. A green hosted matrix still needs a new revision on GitHub. Native Windows/macOS corrections
+and the privileged hosted Linux SUID-helper route require that rerun. P14 remains partial for its
+existing native-device, live-service and release gates. No Fork layout, visual asset, capture status
+or case-level unknown is changed.
+
+Primary implementation references checked **2026-10-08** (high confidence for documented contracts):
+
+- [Apple's Unix-domain socket structure](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/un.h)
+  defines a 104-byte `sun_path`.
+- [GnuPG's socket-path discussion](https://lists.gnupg.org/pipermail/gnupg-devel/2019-June/034367.html)
+  explains the address-length constraint for temporary agent homes.
+- [Electron enableSandbox](https://www.electronjs.org/docs/latest/api/app#appenablesandbox) requires
+  the call before readiness. The
+  [44.4.1 implementation](https://github.com/electron/electron/blob/v44.4.1/shell/browser/api/electron_api_app.cc)
+  removes `--no-sandbox` before enabling the sandbox.
+- [electron-builder AppImage documentation](https://www.electron.build/docs/appimage/) describes
+  legacy desktop arguments and the launcher's namespace probe. The exact installed 26.15.3 source
+  was inspected; no dependency upgrade is part of this correction.
+
 ## CI failure follow-up — 2026-10-07
 
 The [2026-10-06 Actions run](https://github.com/dochevviktor/git-workbench/actions/runs/37511356832)

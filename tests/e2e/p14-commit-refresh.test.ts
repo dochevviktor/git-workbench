@@ -1,7 +1,10 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect as baseExpect, test } from '@playwright/test';
 import { auditFixture } from './p14-fixture';
+
+// These fixtures wrap every Git process, including the reads made while a write is held.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 test('staging controls retain a pressed action across an unchanged background refresh', async () => {
   const f = await auditFixture(true);
@@ -65,6 +68,7 @@ test('P14 commit completion refreshes the current context after an earlier watch
     expect(await f.run('rev-list', '--count', 'HEAD')).toBe('3');
     expect(await f.run('status', '--porcelain')).toBe('');
   } finally {
+    await rm(f.gate, { force: true });
     await f.close();
   }
 });

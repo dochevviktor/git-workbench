@@ -39,6 +39,7 @@ try {
       'node_modules/playwright/cli.js',
       'test',
       'tests/e2e/desktop.test.ts',
+      'tests/e2e/sandbox.test.ts',
       'tests/e2e/p14-package.test.ts',
       'tests/e2e/p14-commit-refresh.test.ts',
       'tests/e2e/windows-native.test.ts',

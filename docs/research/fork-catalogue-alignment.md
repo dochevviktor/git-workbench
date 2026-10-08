@@ -1,5 +1,11 @@
 # Fork catalogue alignment — 2026-09-20
 
+CI follow-up — **2026-10-08**: [runner evidence and corrections](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+cover credential/GPG socket paths, sandbox startup and test synchronization. These are independent
+F13/F24/F28/F29/F31/P14 implementation changes, with high confidence for exercised Linux regressions
+and native Windows/macOS reruns outstanding. No layout/styles or private assets change; all original
+case/finding IDs, visual comparisons and unknowns retain their existing scope.
+
 CI portability correction — **2026-10-07**: see the
 [failure follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) for F13/F24/F37
 implementation changes and primary platform contracts. Local regression confidence is high; native

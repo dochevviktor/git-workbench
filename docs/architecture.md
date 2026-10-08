@@ -1,5 +1,12 @@
 # Architecture and implementation decisions
 
+CI follow-up (2026-10-08): the [correction record](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+bounds credential-broker Unix socket paths by UTF-8 bytes, retaining private per-operation directories,
+nonces and origin/path checks. Main enforces Electron's full sandbox before readiness, including when
+AppRun supplies a disabling switch; package tests continue through AppRun and verify kernel state.
+Quick Launch parameter commands require reference HEAD and current session HEAD to agree. IPC,
+preload, sender/frame checks, credential DTOs and CSP are unchanged; native rerun limits remain explicit.
+
 CI portability correction (2026-10-07): the [follow-up](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
 shares a bounded main-owned credential-file reader with regular-entry and file-identity checks on all
 platforms. Git LFS inspection canonicalizes temporary metadata paths. No IPC capability, credential DTO,
