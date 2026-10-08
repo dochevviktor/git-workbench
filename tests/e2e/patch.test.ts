@@ -1,12 +1,17 @@
 import { openTrustedFixture } from './trusted-fixture';
-import { chmod, copyFile, readFile, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { _electron as electron, expect as baseExpect, test } from '@playwright/test';
 import { patchFixture } from '../patch-fixture';
+import { installIpcGate } from './ipc-gate';
+
+// Preflight performs bounded real Git reads before the reviewed patch can be applied.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input and export', async () => {
   const f = await patchFixture();
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  let gate: Awaited<ReturnType<typeof installIpcGate>> | undefined;
   try {
     const env = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -14,19 +19,13 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
       ),
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
-    const gate = join(f.root, 'diff-gate');
-    const wrapper = join(f.root, 'gated-git.ts');
-    await copyFile(resolve('tests/fixtures/gated-git.ts'), wrapper);
-    await chmod(wrapper, 0o700);
-    env.GIT_EXECUTABLE = wrapper;
-    env.GIT_WORKBENCH_REAL_GIT = (await f.git.version()).executable;
-    env.GIT_WORKBENCH_TEST_GIT_GATE = gate;
     app = await electron.launch({
       chromiumSandbox: true,
       args: ['.', `--user-data-dir=${join(f.root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
       env,
     });
     const page = await app.firstWindow();
+    gate = await installIpcGate(app, [{ channel: 'repository:get-diff', phase: 'after' }]);
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     const opened = await page.evaluate(openTrustedFixture, f.cwd);
     if (!opened.ok) throw new Error(opened.error.message);
@@ -78,10 +77,10 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
     if (!displayed.ok) throw new Error(displayed.error.message);
     // Hold a same-target refresh while the user copies the visible patch. This deterministically
     // reproduces the old disabled-menu race without relying on a fast or slow machine.
-    await writeFile(gate, JSON.stringify({ command: 'diff', argument: 'change.txt', phase: 'before' }));
+    await gate.pause();
     try {
       await page.keyboard.press('F5');
-      await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('diff:before');
+      await gate.wait();
       await expect(content).toHaveAttribute('aria-busy', 'true');
       await content.click({ button: 'right' });
       const copy = page.getByRole('menuitem', { name: 'Copy as Patch', exact: true });
@@ -91,7 +90,7 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
         .poll(() => app!.evaluate(({ clipboard }) => clipboard.readText()))
         .toBe(displayed.value.content);
     } finally {
-      await rm(gate, { force: true });
+      await gate.release();
     }
     await expect(content).toHaveAttribute('aria-busy', 'false');
     await page.getByRole('button', { name: 'All Commits', exact: true }).click();
@@ -101,7 +100,7 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
       await clipboard.writeText(content);
     }, f.bytes.toString('utf8'));
     await page.locator('.app').click({ position: { x: 550, y: 12 } });
-    await page.keyboard.press('Control+v');
+    await page.keyboard.press('ControlOrMeta+v');
     await expect(dialog.getByRole('status')).toContainText('without conflicts');
     await expect(dialog.getByLabel('Patch location')).toHaveValue('Clipboard');
     await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
@@ -147,6 +146,7 @@ test('F36 file and clipboard patch preview, Cancel, staged apply, invalid input 
     expect(await readFile(destination, 'utf8')).toBe(copied);
     await writeFile(f.path, copied);
   } finally {
+    await gate?.dispose();
     await app?.close();
     await f.cleanup();
   }

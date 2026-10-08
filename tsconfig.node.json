@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"] },
+  "compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM"], "allowImportingTsExtensions": true },
   "include": [
     "*.ts",
     "scripts/**/*.ts",

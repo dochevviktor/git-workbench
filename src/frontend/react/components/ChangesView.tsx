@@ -981,7 +981,7 @@ export function ChangesView({
           actionDisabled={
             actionBusy ||
             operationBusy ||
-            loading ||
+            (loading && !value) ||
             stageEntries.length === 0 ||
             (selection.activeKey !== undefined && selectedIn(stageEntries).length === 0)
           }
@@ -1027,7 +1027,7 @@ export function ChangesView({
           actionDisabled={
             actionBusy ||
             operationBusy ||
-            loading ||
+            (loading && !value) ||
             unstageEntries.length === 0 ||
             (selection.activeKey !== undefined && selectedIn(unstageEntries).length === 0)
           }

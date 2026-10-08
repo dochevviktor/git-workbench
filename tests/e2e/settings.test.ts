@@ -41,7 +41,7 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
     app = await launch();
     let page = await app.firstWindow();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     const preferences = () => page.getByRole('dialog', { name: 'Preferences', exact: true });
     await expect(preferences()).toBeVisible();
     await preferences().getByLabel('Diff font size').selectOption('16');
@@ -144,7 +144,7 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
     const denied = await inspector.evaluate(() => window.desktop!.settings.getGit({ id: null }));
     expect(denied).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
     await page.bringToFront();
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     await preferences().getByLabel('Appearance').selectOption('dark');
     await expect(inspector.locator('html')).toHaveAttribute('data-theme', 'dark');
     await preferences().getByLabel('Appearance').selectOption('light');
@@ -168,7 +168,7 @@ test('F34 global and repository settings: scope, cancel, stale state, presentati
     app = await launch();
     page = await app.firstWindow();
     await expect(gear()).toBeVisible();
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     await expect(preferences().getByLabel('Diff font size')).toHaveValue('16');
     await preferences().getByRole('button', { name: 'Git', exact: true }).click();
     await expect(preferences().getByLabel('User name', { exact: true })).toHaveValue('Global Changed');

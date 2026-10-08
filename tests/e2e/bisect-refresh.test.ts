@@ -1,10 +1,14 @@
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { _electron as electron, expect, test } from '@playwright/test';
+import { join } from 'node:path';
+import { _electron as electron, expect as baseExpect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { GitRunner } from '../../src/backend/git/runner';
 import { openTrustedFixture } from './trusted-fixture';
+import { installIpcGate } from './ipc-gate';
+
+// Allow hosted-runner latency around the deliberately held read/action requests.
+const expect = baseExpect.configure({ timeout: 15000 });
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'workbench-bisect-refresh-'));
@@ -24,10 +28,6 @@ async function fixture() {
     commits.push(await run('rev-parse', 'HEAD'));
   }
   const originalRefs = await run('show-ref');
-  const wrapper = join(root, 'bisect-git.ts');
-  await copyFile(resolve('tests/fixtures/bisect-git.ts'), wrapper);
-  await chmod(wrapper, 0o700);
-  const gate = join(root, 'read-gate');
   const app = await electron.launch({
     chromiumSandbox: true,
     args: ['.', `--user-data-dir=${join(root, 'profile')}`, '--ozone-platform=headless', '--disable-gpu'],
@@ -36,24 +36,37 @@ async function fixture() {
         Object.entries(process.env).filter(([key]) => !['DISPLAY', 'WAYLAND_DISPLAY'].includes(key)),
       ),
       ELECTRON_RENDERER_URL: '',
-      GIT_EXECUTABLE: wrapper,
-      GIT_WORKBENCH_REAL_GIT: (await git.version()).executable,
-      GIT_WORKBENCH_BISECT_GATE: gate,
     },
   });
   const page = await app.firstWindow();
+  const gate = await installIpcGate(app, [
+    { channel: 'repository:get-bisect', phase: 'after' },
+    { channel: 'repository:start-bisect-operation', phase: 'before' },
+  ]);
   const pause = async () => {
-    await rm(`${gate}.waiting`, { force: true });
-    await writeFile(gate, 'hold');
+    await gate.pause();
     await page.keyboard.press('F5');
-    await expect.poll(() => readFile(`${gate}.waiting`, 'utf8').catch(() => '')).toBe('bisect read waiting');
+    await gate.wait();
   };
-  const release = () => rm(gate, { force: true });
+  const release = gate.release;
+  const waitForAction = (action: string) =>
+    expect
+      .poll(() =>
+        page.evaluate(async (action) => {
+          const result = await window.desktop!.repository.listOperations();
+          if (!result.ok) throw new Error(result.error.message);
+          return result.value.find(
+            (operation) => operation.kind === 'bisect' && operation.title === `Bisect: ${action}`,
+          )?.status;
+        }, action),
+      )
+      .toBe('succeeded');
   const close = async () => {
+    await gate.dispose();
     await app.close();
     await rm(root, { recursive: true, force: true });
   };
-  return { page, commits, run, originalRefs, pause, release, close, cwd };
+  return { page, commits, run, originalRefs, pause, release, waitForAction, close, cwd };
 }
 
 async function holdPointer(page: Page, control: Locator) {
@@ -71,7 +84,7 @@ test('Bisect actions survive a refresh between mouse-down and click', async () =
     const opened = await f.page.evaluate(openTrustedFixture, f.cwd);
     if (!opened.ok) throw new Error(opened.error.message);
     await f.page.reload();
-    const duringRefresh = async (control: Locator) => {
+    const duringRefresh = async (control: Locator, action: string) => {
       const menuItem = (await control.getAttribute('role')) === 'menuitem';
       await holdPointer(f.page, control);
       await f.pause();
@@ -80,22 +93,25 @@ test('Bisect actions survive a refresh between mouse-down and click', async () =
       await f.page.mouse.up();
       if (!menuItem) await expect(control).toBeDisabled();
       await f.release();
+      // A watcher can expose changed Git state before the action's final read completes.
+      // External fixture checkouts must wait for the actual terminal operation.
+      await f.waitForAction(action);
     };
     await f.page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();
-    await duringRefresh(f.page.getByRole('menuitem', { name: 'Bisect', exact: true }));
+    await duringRefresh(f.page.getByRole('menuitem', { name: 'Bisect', exact: true }), 'start');
     const banner = f.page.getByRole('region', { name: 'Bisect', exact: true });
     await expect(banner).toBeVisible();
-    await duringRefresh(banner.getByRole('button', { name: 'Bad', exact: true }));
+    await duringRefresh(banner.getByRole('button', { name: 'Bad', exact: true }), 'bad');
     await expect(banner.locator('.bisect-range')).toContainText(f.commits[8]!.slice(0, 7));
     await f.run('checkout', '--detach', f.commits[0]!);
     await f.page.keyboard.press('F5');
     await expect(banner.locator('.bisect-summary')).toContainText(f.commits[0]!.slice(0, 7));
-    await duringRefresh(banner.getByRole('button', { name: 'Good', exact: true }));
+    await duringRefresh(banner.getByRole('button', { name: 'Good', exact: true }), 'good');
     await expect.poll(() => f.run('rev-parse', 'HEAD')).toBe(f.commits[4]);
     await expect(banner.locator('.bisect-summary')).toContainText(f.commits[4]!.slice(0, 7));
-    await duringRefresh(banner.getByRole('button', { name: 'Skip', exact: true }));
+    await duringRefresh(banner.getByRole('button', { name: 'Skip', exact: true }), 'skip');
     await expect.poll(() => f.run('bisect', 'log')).toContain(`git bisect skip ${f.commits[4]}`);
-    await duringRefresh(banner.getByRole('button', { name: 'Abort', exact: true }));
+    await duringRefresh(banner.getByRole('button', { name: 'Abort', exact: true }), 'reset');
     await expect(banner).toHaveCount(0);
     expect(await f.run('symbolic-ref', '--short', 'HEAD')).toBe('main');
     expect(await f.run('show-ref')).toBe(f.originalRefs);
@@ -127,8 +143,10 @@ test('Bisect rejects a changed checkout during refresh without classifying the n
     const start = f.page.getByRole('menuitem', { name: 'Bisect', exact: true });
     await expect(start).toBeEnabled();
     await start.click();
+    await f.waitForAction('start');
     const banner = f.page.getByRole('region', { name: 'Bisect', exact: true });
     await banner.getByRole('button', { name: 'Bad', exact: true }).click();
+    await f.waitForAction('bad');
     await expect(banner.locator('.bisect-range')).toContainText(f.commits[8]!.slice(0, 7));
     await f.run('checkout', '--detach', f.commits[0]!);
     await f.page.keyboard.press('F5');
@@ -154,6 +172,7 @@ test('Bisect rejects a changed checkout during refresh without classifying the n
       ),
     ).toMatchObject([{ status: 'failed' }]);
     await banner.getByRole('button', { name: 'Abort', exact: true }).click();
+    await f.waitForAction('reset');
     await expect(banner).toHaveCount(0);
     expect(await f.run('show-ref')).toBe(f.originalRefs);
     expect(await f.run('status', '--porcelain')).toBe('');

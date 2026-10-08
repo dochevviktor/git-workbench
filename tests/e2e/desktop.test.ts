@@ -14,13 +14,13 @@ async function commitFile(git: GitRunner, repository: string, file: string, mess
 }
 
 /**
- * The Electron test runs on Ozone's headless platform by default: it needs no display server and never
- * opens a window on the desktop running it. Set `ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` to
+ * On Linux the Electron test runs on Ozone's headless platform by default and needs no display server.
+ * Windows and macOS use native windows. Set `ELECTRON_TEST_OZONE_PLATFORM` to `x11` or `wayland` to
  * watch it on a real display, and `ELECTRON_TEST_DISABLE_GPU=1` there when that display is software
  * rendered.
  */
 const ozonePlatform = process.env.ELECTRON_TEST_OZONE_PLATFORM || 'headless';
-const headless = ozonePlatform === 'headless';
+const headless = process.platform === 'linux' && ozonePlatform === 'headless';
 
 function launchEnvironment(): Record<string, string> {
   // Without a display in the environment, no fallback can put a window on a real screen.
@@ -57,6 +57,8 @@ async function chooseMenu(
 }
 
 test('production build loads its isolated preload and renderer', async () => {
+  // This aggregate workflow was still progressing through remote setup at 90s on hosted Windows.
+  test.setTimeout(process.platform === 'win32' ? 180_000 : 90_000);
   const profile = await mkdtemp(join(tmpdir(), 'git-workbench-test-'));
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-repository-'));
   const secondRoot = await mkdtemp(join(tmpdir(), 'git-workbench-e2e-tab-'));
@@ -75,7 +77,7 @@ test('production build loads its isolated preload and renderer', async () => {
       args: [
         ...(executablePath ? [] : ['.']),
         `--user-data-dir=${profile}`,
-        `--ozone-platform=${ozonePlatform}`,
+        ...(process.platform === 'linux' ? [`--ozone-platform=${ozonePlatform}`] : []),
         ...(headless || process.env.ELECTRON_TEST_DISABLE_GPU === '1' ? ['--disable-gpu'] : []),
       ],
       env: launchEnvironment(),
@@ -426,7 +428,19 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(
       unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }),
     ).toBeVisible({ timeout: 10_000 });
+    // The watcher can first expose the untracked fixture, before add/commit/modify has settled.
+    // Select the final modified entry and wait for its own diff, not a previous two-line patch.
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'line-selection.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'line-selection.txt' }).click();
+    await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+      'line-selection.txt',
+    );
+    await expect(page.getByTestId('diff-content').locator('.diff-cell.add')).toContainText('selected');
     await expect(page.locator('.diff-body.unified').getByTestId('diff-line-select')).toHaveCount(2);
     await page.locator('.diff-body.unified .diff-cell.add input').check();
     await expect(page.getByTestId('diff-selection-stage')).toBeVisible();
@@ -444,7 +458,16 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' })).toBeVisible({
       timeout: 10_000,
     });
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'discard.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'discard.txt' }).click();
+    await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+      'discard.txt',
+    );
     await expect(page.getByTestId('diff-hunk-discard')).toHaveCount(2);
     await page
       .getByTestId('diff-change-region')
@@ -470,6 +493,12 @@ test('production build loads its isolated preload and renderer', async () => {
       timeout: 10_000,
     });
     // A hunk button can belong to the preceding snapshot. Measure only after the exact new bytes arrive.
+    await expect(
+      unstagedFiles
+        .getByTestId('working-change')
+        .filter({ hasText: 'long-line.txt' })
+        .locator('.status-badge[title="Modified"]'),
+    ).toBeVisible();
     await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
     await expect(page.getByTestId('diff-content')).toContainText(`long-${'x'.repeat(2_000)}`);
     await page
@@ -515,6 +544,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await expect(composer.getByTestId('commit-submit')).toHaveText('Commit');
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'history.txt' }).click();
+      await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+        'history.txt',
+      );
       await page
         .getByTestId('diff-change-region')
         .first()
@@ -569,6 +601,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await chmod(hookPath, 0o755);
     await expect(async () => {
       await unstagedFiles.getByTestId('working-change').filter({ hasText: 'long-line.txt' }).click();
+      await expect(page.getByTestId('working-change-preview').locator('.preview-path')).toHaveText(
+        'long-line.txt',
+      );
       await page
         .getByTestId('diff-change-region')
         .first()
@@ -719,8 +754,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await fixtureGit.run(['init', '--quiet', '--bare', `--initial-branch=${mainBranch}`, remotePath], {
       cwd: remoteRoot,
     });
-    await page.getByRole('menubar').getByRole('menuitem', { name: 'Repository', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Remotes…', exact: true }).click();
+    // The sidebar menu is available on macOS too, where the renderer has no menubar.
+    await referenceTree.getByRole('treeitem', { name: 'Remotes', exact: true }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Manage Remotes…', exact: true }).click();
     const networkDialog = page.getByTestId('reference-dialog');
     await expect(networkDialog).toBeVisible();
     await networkDialog.getByTestId('remote-name').fill('origin');
@@ -804,7 +840,9 @@ test('production build loads its isolated preload and renderer', async () => {
     await waitForDesktop(page);
     await expect(page.getByRole('tab', { name: /sample, Uncommitted changes/u })).toBeVisible();
     await expect(page.getByRole('tab', { name: /second, Clean working tree/u })).toBeVisible();
-    await writeFile(join(secondRepository, 'dirty\nfile.txt'), 'uncommitted\n', 'utf8');
+    // Windows prohibits control characters in filenames; retain spaces and Unicode there.
+    const dirtyName = process.platform === 'win32' ? 'dirty café file.txt' : 'dirty\nfile.txt';
+    await writeFile(join(secondRepository, dirtyName), 'uncommitted\n', 'utf8');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible({
       timeout: 10_000,
     });
@@ -828,7 +866,7 @@ test('production build loads its isolated preload and renderer', async () => {
       .locator('.workspace-tab-close')
       .click();
     await expect(page.getByRole('tab', { name: /second/u })).toHaveCount(0);
-    await page.keyboard.press('Control+Shift+T');
+    await page.keyboard.press('ControlOrMeta+Shift+T');
     await expect(page.getByRole('tab', { name: /second, Uncommitted changes/u })).toBeVisible();
 
     const manager = await page.evaluate(async (path) => {
@@ -859,6 +897,19 @@ test('production build loads its isolated preload and renderer', async () => {
     ).resolves.toMatchObject({ ok: true });
     await page.screenshot({ path: test.info().outputPath('workspace.png') });
     expect(pageErrors).toEqual([]);
+  } catch (error) {
+    const page = application?.windows()[0];
+    if (page) {
+      await page
+        .locator('body')
+        .ariaSnapshot({ timeout: 3000 })
+        .then((body) => test.info().attach('desktop-failure-state', { body, contentType: 'text/plain' }))
+        .catch(() => undefined);
+      await page
+        .screenshot({ path: test.info().outputPath('desktop-failure.png'), timeout: 3000 })
+        .catch(() => undefined);
+    }
+    throw error;
   } finally {
     try {
       await application?.close();

@@ -1,5 +1,59 @@
 # Fork: captured and public feature surface
 
+Fifth CI follow-up — **2026-10-08**: [history-menu evidence](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+records the green Windows/macOS jobs and sole remaining Linux F19 failure at `6d9c4a4`. Controlled
+mouse/keyboard regressions establish a captured loading-state defect in this implementation. The
+correction preserves commit identity and menu ownership; confidence is high for local behavior.
+Existing Fork observations, visual comparisons and case-level unknowns remain unchanged.
+
+Fourth CI follow-up — **2026-10-08**: [hunk and harness evidence](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+records independent F10/P04/P14 click-retention and stale-file refusal regressions, plus bounded test
+gates for F16/F26/F36. Git's post-merge contract is linked with its access date. Confidence is high for
+controlled local behavior; the latest macOS/Linux CI corrections still need a hosted run. Existing
+Fork findings, screenshots and case-level unknowns are unchanged.
+
+Third CI follow-up — **2026-10-08**: [hosted results and controlled reference races](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+add independent F12/F16/F31 readiness evidence and correct the sandbox test's platform scope. The
+record links primary Electron/Chromium startup sources checked on this date. macOS unit/build/smoke
+and Linux's hosted AppImage sandbox now have passing evidence; current corrections need a rerun.
+No Fork behavior, visual comparison or case/finding completion is inferred.
+
+CI follow-up — **2026-10-08**: the [second correction record](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+maps F13/F24/F28/F29/F31 and P14 to observed runner failures and independent implementation fixes.
+Primary Apple, GnuPG, Electron and builder sources are linked there with this access date. Confidence
+is high for Linux regressions; native macOS/Windows corrections need a hosted rerun. No new Fork
+behavior, layout comparison, capture completion or case/finding resolution is inferred.
+
+CI portability correction — **2026-10-07**: the
+[follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) records F13/F24/F37
+credential-file and LFS path fixes, observed GitHub runner failures, and dated primary Node/Chromium
+references. Confidence is high for exercised local regressions; hosted reruns remain necessary.
+These are independent implementation corrections; existing Fork case/finding IDs and unknowns are unchanged.
+
+Portability implementation review — **2026-10-06**: the
+[cross-platform review](../reviews/cross-platform-portability.md) records F01/F03/F13/F17/F31/F34
+corrections and primary Node, Git, Electron and W3C sources, accessed on that date. Confidence is high
+for exercised Windows fixtures and synthetic contracts; native macOS remains unverified. These are
+Git Workbench observations and independent policies, with no new Fork finding or visual-parity claim.
+The linked private catalogue remains absent and untouched; existing case-level unknowns remain.
+
+Windows implementation correction — **2026-10-01**: the
+[compatibility follow-up](../reviews/windows-compatibility.md) supersedes the initial F32/F33/F37
+Windows exclusions below. Native process execution, Git diff/search/path and staging-refresh corrections and OS-aware
+test selection are independently verified Git Workbench behavior (high confidence for exercised
+fixtures). Existing catalogue finding IDs and unknowns are unchanged. No new Fork observation or
+visual parity is claimed; the private linked catalogue remains absent and untouched. Runtime and
+vendor documentation URLs, access dates and remaining live-platform limits are in the follow-up.
+
+Windows implementation verification — **2026-10-01**: the [Windows audit](../reviews/windows-portability-audit.md)
+records independent evidence for F01/F08–F11/F22/F34 and packaging. Native controls, a CRLF commit,
+restart and synthetic OS encryption were exercised on Windows 11; these are high-confidence observations
+of Git Workbench, **not new Fork observations**. Later broad/installed runs retained a native staging
+failure; the focused pass alone did not establish general Windows reliability. At that checkpoint,
+custom commands (F32) and agent adapters (F37) refused Windows; the correction above supersedes this.
+The private bundle's linked catalogue is absent on this host;
+no screenshot parity comparison or new capture claim is made, and no private asset was changed.
+
 P13 reference/implementation audit — **2026-10-01**: the
 [statistics/AI handoff](../reviews/p13-statistics-ai.md) completes the independently specified Linux
 F35/F37 workflow. `P2-010:F1` (Windows 2.22.0.0, 2026-09-19; high-confidence sampled UI) guides compact

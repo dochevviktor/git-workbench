@@ -6,7 +6,8 @@ import { GitRunner } from '../src/backend/git/runner';
 /** P01 shared fixture family: unusual paths, a merge, bare remote and a linked worktree. */
 export async function operationFixture() {
   const root = await mkdtemp(join(tmpdir(), 'git-workbench-p01-'));
-  const cwd = join(root, '-space café\nrepository');
+  const cwd = join(root, process.platform === 'win32' ? '-space café repository' : '-space café\nrepository');
+  const unusualFile = process.platform === 'win32' ? '-file café.txt' : '-file café\n.txt';
   await mkdir(cwd);
   const git = new GitRunner();
   const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
@@ -14,8 +15,8 @@ export async function operationFixture() {
   await run('config', 'user.name', 'Operation Fixture');
   await run('config', 'user.email', 'operations@example.test');
   await run('config', 'commit.gpgsign', 'false');
-  await writeFile(join(cwd, '-file café\n.txt'), 'base\n');
-  await run('add', '--', '-file café\n.txt');
+  await writeFile(join(cwd, unusualFile), 'base\n');
+  await run('add', '--', unusualFile);
   await run('commit', '--quiet', '-m', 'base');
   await run('checkout', '--quiet', '-b', 'topic');
   await writeFile(join(cwd, 'topic.txt'), 'topic\n');

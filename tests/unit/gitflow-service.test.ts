@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { testPlatform } from '../platform';
 import { GitRunner, GitCancelledError } from '../../src/backend/git/runner';
 import {
   applyGitFlowAction,
@@ -11,6 +12,29 @@ import {
 
 const temporaryDirectories: string[] = [];
 const repositoryId = `repo-${'f'.repeat(64)}`;
+let testSignal: AbortSignal;
+const pending = new Set<Promise<unknown>>();
+beforeEach(({ signal }) => {
+  testSignal = signal;
+});
+
+function fixtureRunner(): GitRunner {
+  const git = new GitRunner();
+  const run = git.run.bind(git);
+  git.run = (args, options) => {
+    const task = run(args, {
+      ...options,
+      signal: options.signal ? AbortSignal.any([testSignal, options.signal]) : testSignal,
+    });
+    pending.add(task);
+    void task.then(
+      () => pending.delete(task),
+      () => pending.delete(task),
+    );
+    return task;
+  };
+  return git;
+}
 
 interface Fixture {
   readonly root: string;
@@ -23,7 +47,7 @@ async function fixtureRepository(): Promise<Fixture> {
   temporaryDirectories.push(root);
   const cwd = join(root, 'repository');
   await mkdir(cwd);
-  const git = new GitRunner();
+  const git = fixtureRunner();
   await git.run(['init', '--quiet', '--initial-branch=main'], { cwd });
   await git.run(['config', 'user.name', 'Git-flow Author'], { cwd });
   await git.run(['config', 'user.email', 'gitflow@example.test'], { cwd });
@@ -68,118 +92,127 @@ async function hasRef(fixture: Fixture, fullName: string): Promise<boolean> {
 }
 
 afterEach(async () => {
+  await Promise.allSettled([...pending]);
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
 describe('git-flow service', () => {
-  it('finishes a topic from its linked worktree and honors fast-forward, retention and production-only options', async () => {
-    const f = await fixtureRepository();
-    await initializeFixture(f, 'v');
-    const production = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout;
-    const linked = join(f.root, 'topic-worktree');
-    await f.git.run(['worktree', 'add', '--quiet', '-b', 'feature/linked', linked, 'develop'], {
-      cwd: f.cwd,
-    });
-    const input = {
-      repositoryId,
-      cwd: linked,
-      worktreePath: linked,
-      gitDir: (await f.git.run(['rev-parse', '--absolute-git-dir'], { cwd: linked })).stdout.trim(),
-    };
-    const state = () => readGitFlowContext(f.git, input);
-    await commit({ ...f, cwd: linked }, 'linked.txt', 'feature\n', 'linked feature');
-    const source = (await f.git.run(['rev-parse', 'HEAD'], { cwd: linked })).stdout;
-    expect(
+  it(
+    'finishes a topic from its linked worktree and honors fast-forward, retention and production-only options',
+    { timeout: testPlatform.windows ? 90000 : 5000 },
+    async () => {
+      const f = await fixtureRepository();
+      await initializeFixture(f, 'v');
+      const production = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout;
+      const linked = join(f.root, 'topic-worktree');
+      await f.git.run(['worktree', 'add', '--quiet', '-b', 'feature/linked', linked, 'develop'], {
+        cwd: f.cwd,
+      });
+      const input = {
+        repositoryId,
+        cwd: linked,
+        worktreePath: linked,
+        gitDir: (await f.git.run(['rev-parse', '--absolute-git-dir'], { cwd: linked })).stdout.trim(),
+      };
+      const state = () => readGitFlowContext(f.git, input);
+      await commit({ ...f, cwd: linked }, 'linked.txt', 'feature\n', 'linked feature');
+      const source = (await f.git.run(['rev-parse', 'HEAD'], { cwd: linked })).stdout;
+      expect(
+        await applyGitFlowAction(f.git, {
+          ...input,
+          action: {
+            kind: 'finish',
+            type: 'feature',
+            name: 'linked',
+            snapshot: (await state()).snapshot,
+            noFastForward: false,
+            keepBranch: true,
+            mergeIntoDevelop: true,
+            tagMessage: '',
+          },
+        }),
+      ).toMatchObject({ status: 'applied' });
+      expect((await f.git.run(['rev-parse', 'main'], { cwd: linked })).stdout).toBe(production);
+      expect((await f.git.run(['rev-parse', 'develop'], { cwd: linked })).stdout).toBe(source);
+      expect(await hasRef(f, 'refs/heads/feature/linked')).toBe(true);
       await applyGitFlowAction(f.git, {
         ...input,
-        action: {
-          kind: 'finish',
-          type: 'feature',
-          name: 'linked',
-          snapshot: (await state()).snapshot,
-          noFastForward: false,
-          keepBranch: true,
-          mergeIntoDevelop: true,
-          tagMessage: '',
-        },
-      }),
-    ).toMatchObject({ status: 'applied' });
-    expect((await f.git.run(['rev-parse', 'main'], { cwd: linked })).stdout).toBe(production);
-    expect((await f.git.run(['rev-parse', 'develop'], { cwd: linked })).stdout).toBe(source);
-    expect(await hasRef(f, 'refs/heads/feature/linked')).toBe(true);
-    await applyGitFlowAction(f.git, {
-      ...input,
-      action: { kind: 'start', type: 'release', name: '4.0', snapshot: (await state()).snapshot },
-    });
-    await commit({ ...f, cwd: linked }, 'VERSION', '4.0\n', 'release');
-    expect((await state()).capabilities.canFinish).toBe(false);
-    await f.git.run(['checkout', '--quiet', '-b', 'parking'], { cwd: f.cwd });
-    expect(
-      await applyGitFlowAction(f.git, {
-        ...input,
-        action: {
-          kind: 'finish',
-          type: 'release',
-          name: '4.0',
-          snapshot: (await state()).snapshot,
-          noFastForward: false,
-          keepBranch: false,
-          mergeIntoDevelop: false,
-          tagMessage: 'Version four',
-        },
-      }),
-    ).toMatchObject({ status: 'applied', tag: 'refs/tags/v4.0', context: { head: { name: 'main' } } });
-    expect((await f.git.run(['rev-parse', 'develop'], { cwd: f.cwd })).stdout).toBe(source);
-    expect((await f.git.run(['cat-file', '-t', 'v4.0'], { cwd: f.cwd })).stdout.trim()).toBe('tag');
-    expect(await hasRef(f, 'refs/heads/release/4.0')).toBe(false);
-  });
-  it('resumes a feature conflict after restarting without merging it into production', async () => {
-    const f = await fixtureRepository();
-    await initializeFixture(f);
-    const main = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout;
-    await apply(f, {
-      kind: 'start',
-      type: 'feature',
-      name: 'conflict',
-      snapshot: (await context(f)).snapshot,
-    });
-    await commit(f, 'README.md', 'feature\n', 'feature edit');
-    await f.git.run(['checkout', '--quiet', 'develop'], { cwd: f.cwd });
-    await commit(f, 'README.md', 'develop\n', 'develop edit');
-    await f.git.run(['checkout', '--quiet', 'feature/conflict'], { cwd: f.cwd });
-    const failed = await apply(f, {
-      kind: 'finish',
-      type: 'feature',
-      name: 'conflict',
-      noFastForward: true,
-      mergeIntoDevelop: true,
-      keepBranch: false,
-      tagMessage: '',
-      snapshot: (await context(f)).snapshot,
-    });
-    expect(failed).toMatchObject({
-      status: 'blocked',
-      reason: 'conflict',
-      context: { pendingFinish: { name: 'conflict' }, pendingOperation: 'merge' },
-    });
-    const restored = { ...f, git: new GitRunner() };
-    expect((await context(restored)).pendingFinish?.step).toContain('develop');
-    await writeFile(join(f.cwd, 'README.md'), 'resolved\n');
-    await f.git.run(['add', 'README.md'], { cwd: f.cwd });
-    const finished = await apply(restored, {
-      kind: 'continue',
-      snapshot: (await context(restored)).snapshot,
-    });
-    expect(finished).toMatchObject({
-      status: 'applied',
-      context: { pendingFinish: null, pendingOperation: null, head: { name: 'develop' } },
-    });
-    expect((await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout).toBe(main);
-    expect(await hasRef(f, 'refs/heads/feature/conflict')).toBe(false);
-    expect(await readFile(join(f.cwd, 'README.md'), 'utf8')).toBe('resolved\n');
-  });
+        action: { kind: 'start', type: 'release', name: '4.0', snapshot: (await state()).snapshot },
+      });
+      await commit({ ...f, cwd: linked }, 'VERSION', '4.0\n', 'release');
+      expect((await state()).capabilities.canFinish).toBe(false);
+      await f.git.run(['checkout', '--quiet', '-b', 'parking'], { cwd: f.cwd });
+      expect(
+        await applyGitFlowAction(f.git, {
+          ...input,
+          action: {
+            kind: 'finish',
+            type: 'release',
+            name: '4.0',
+            snapshot: (await state()).snapshot,
+            noFastForward: false,
+            keepBranch: false,
+            mergeIntoDevelop: false,
+            tagMessage: 'Version four',
+          },
+        }),
+      ).toMatchObject({ status: 'applied', tag: 'refs/tags/v4.0', context: { head: { name: 'main' } } });
+      expect((await f.git.run(['rev-parse', 'develop'], { cwd: f.cwd })).stdout).toBe(source);
+      expect((await f.git.run(['cat-file', '-t', 'v4.0'], { cwd: f.cwd })).stdout.trim()).toBe('tag');
+      expect(await hasRef(f, 'refs/heads/release/4.0')).toBe(false);
+    },
+  );
+  it(
+    'resumes a feature conflict after restarting without merging it into production',
+    { timeout: testPlatform.windows ? 90000 : 5000 },
+    async () => {
+      const f = await fixtureRepository();
+      await initializeFixture(f);
+      const main = (await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout;
+      await apply(f, {
+        kind: 'start',
+        type: 'feature',
+        name: 'conflict',
+        snapshot: (await context(f)).snapshot,
+      });
+      await commit(f, 'README.md', 'feature\n', 'feature edit');
+      await f.git.run(['checkout', '--quiet', 'develop'], { cwd: f.cwd });
+      await commit(f, 'README.md', 'develop\n', 'develop edit');
+      await f.git.run(['checkout', '--quiet', 'feature/conflict'], { cwd: f.cwd });
+      const failed = await apply(f, {
+        kind: 'finish',
+        type: 'feature',
+        name: 'conflict',
+        noFastForward: true,
+        mergeIntoDevelop: true,
+        keepBranch: false,
+        tagMessage: '',
+        snapshot: (await context(f)).snapshot,
+      });
+      expect(failed).toMatchObject({
+        status: 'blocked',
+        reason: 'conflict',
+        context: { pendingFinish: { name: 'conflict' }, pendingOperation: 'merge' },
+      });
+      const restored = { ...f, git: fixtureRunner() };
+      expect((await context(restored)).pendingFinish?.step).toContain('develop');
+      await writeFile(join(f.cwd, 'README.md'), 'resolved\n');
+      await f.git.run(['add', 'README.md'], { cwd: f.cwd });
+      const finished = await apply(restored, {
+        kind: 'continue',
+        snapshot: (await context(restored)).snapshot,
+      });
+      expect(finished).toMatchObject({
+        status: 'applied',
+        context: { pendingFinish: null, pendingOperation: null, head: { name: 'develop' } },
+      });
+      expect((await f.git.run(['rev-parse', 'main'], { cwd: f.cwd })).stdout).toBe(main);
+      expect(await hasRef(f, 'refs/heads/feature/conflict')).toBe(false);
+      expect(await readFile(join(f.cwd, 'README.md'), 'utf8')).toBe('resolved\n');
+    },
+  );
 
   it('retains production and the prefixed tag when a later release merge is stopped', async () => {
     const f = await fixtureRepository();

@@ -1,5 +1,5 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GitRunner } from '../../src/backend/git/runner';
@@ -246,7 +246,9 @@ describe('commit service', () => {
     await chmod(join(fixture.gitDir, 'hooks', 'pre-commit'), 0o644);
 
     // A non-executable hook is not run by Git, so it must not be offered as skippable either.
-    expect((await context(fixture)).hooks).toEqual(['commit-msg']);
+    expect((await context(fixture)).hooks).toEqual(
+      process.platform === 'win32' ? ['pre-commit', 'commit-msg'] : ['commit-msg'],
+    );
   });
 
   it('keeps a message a commit-msg hook rewrote', async () => {
@@ -281,8 +283,8 @@ describe('commit service', () => {
     await fixture.git.run(['config', '--unset', 'user.email'], { cwd: fixture.root });
     // Ignore this machine's own Git identity so the test describes the repository, not the host.
     const previous = { global: process.env.GIT_CONFIG_GLOBAL, system: process.env.GIT_CONFIG_SYSTEM };
-    process.env.GIT_CONFIG_GLOBAL = devNull;
-    process.env.GIT_CONFIG_SYSTEM = devNull;
+    process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+    process.env.GIT_CONFIG_SYSTEM = '/dev/null';
     try {
       const afterUnset = await context(fixture);
       expect(['implicit', 'missing']).toContain(afterUnset.identity.source);

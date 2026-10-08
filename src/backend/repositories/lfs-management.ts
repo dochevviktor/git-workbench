@@ -137,8 +137,11 @@ export async function readLfsContext(
 /** `lfs track --json` writes a local format-version even when listing. Give that inspection its own
  * Git metadata, preserving the real working directory, configured attributes and info attributes. */
 async function readPatterns(runner: LfsRunner, cwd: string) {
-  const directory = await mkdtemp(join(tmpdir(), 'workbench-lfs-inspect-'));
+  const temporary = await mkdtemp(join(tmpdir(), 'workbench-lfs-inspect-'));
   try {
+    // Git LFS computes relative patterns from canonical paths, including Windows 8.3 expansion.
+    const directory = await realpath(temporary);
+    const worktree = await realpath(cwd);
     await mkdir(join(directory, 'objects'));
     await mkdir(join(directory, 'refs'));
     await mkdir(join(directory, 'info'));
@@ -158,7 +161,7 @@ async function readPatterns(runner: LfsRunner, cwd: string) {
     const result = await runner.run(
       [
         `--git-dir=${directory}`,
-        `--work-tree=${cwd}`,
+        `--work-tree=${worktree}`,
         ...(attributes ? ['-c', `core.attributesFile=${resolve(cwd, attributes)}`] : []),
         'lfs',
         'track',
@@ -166,7 +169,7 @@ async function readPatterns(runner: LfsRunner, cwd: string) {
       ],
       { cwd, ...readBounds, env: { GIT_LFS_TRACK_NO_INSTALL_HOOKS: '1' } },
     );
-    const infoPrefix = `${relative(cwd, join(directory, 'info')).split(sep).join('/')}/`;
+    const infoPrefix = `${relative(worktree, join(directory, 'info')).split(sep).join('/')}/`;
     return patternListSchema
       .parse(JSON.parse(result.stdout))
       .patterns.map((entry) =>
@@ -175,7 +178,7 @@ async function readPatterns(runner: LfsRunner, cwd: string) {
           : entry,
       );
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    await rm(temporary, { recursive: true, force: true });
   }
 }
 

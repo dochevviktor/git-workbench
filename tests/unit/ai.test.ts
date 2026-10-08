@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { writeFile, readFile, readdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -306,8 +307,10 @@ describe('F37 explicit AI requests', () => {
   it('rejects invalid key files, cancels a late native chooser and never persists credentials', async () => {
     const f = await fixture();
     const link = join(f.root, 'key-link');
-    await symlink(f.keyPath, link);
-    await expect(f.service.configure(1, 'model', async () => link)).rejects.toThrow('regular text file');
+    if (testPlatform.symlinks) {
+      await symlink(f.keyPath, link);
+      await expect(f.service.configure(1, 'model', async () => link)).rejects.toThrow('regular text file');
+    }
     let choose!: (path: string) => void;
     const pending = f.service.configure(
       1,

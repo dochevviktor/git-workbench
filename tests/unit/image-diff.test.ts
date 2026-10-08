@@ -1,3 +1,4 @@
+import { fixtureName, testPlatform } from '../platform';
 import { mkdir, mkdtemp, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,7 +91,7 @@ describe('F27 image diff', () => {
 
   it('handles untracked, ignored, unusual paths, and a changed rename', async () => {
     const { root, run, diff } = await fixture();
-    const path = '-snow ☃\n.png';
+    const path = fixtureName('-snow ☃\n.png');
     const png = pngFixture();
     await writeFile(join(root, path), png);
     expect((await diff(working('untracked', path))).images).toEqual({
@@ -144,15 +145,17 @@ describe('F27 image diff', () => {
     const outside = await mkdtemp(join(tmpdir(), 'git-workbench-image-outside-'));
     roots.push(outside);
     await writeFile(join(outside, 'image.png'), pngFixture());
-    await symlink(join(outside, 'image.png'), join(root, 'image.png'));
     const patch = `diff --git a/image.png b/image.png\nindex ${'0'.repeat(40)}..${'0'.repeat(40)}\n`;
     const input = { repositoryId, cwd: root, target: working('untracked'), whitespace: 'normal' as const };
-    expect((await readDiffImages(git, input, patch)).after.state).toBe('unavailable');
-    await symlink(outside, join(root, 'linked'));
-    expect(
-      (await readDiffImages(git, { ...input, target: working('untracked', 'linked/image.png') }, patch)).after
-        .state,
-    ).toBe('unavailable');
+    if (testPlatform.symlinks) {
+      await symlink(join(outside, 'image.png'), join(root, 'image.png'));
+      expect((await readDiffImages(git, input, patch)).after.state).toBe('unavailable');
+      await symlink(outside, join(root, 'linked'), 'junction');
+      expect(
+        (await readDiffImages(git, { ...input, target: working('untracked', 'linked/image.png') }, patch))
+          .after.state,
+      ).toBe('unavailable');
+    }
     expect((await readDiffImages(git, input, patch + patch)).before.state).toBe('unavailable');
     await mkdir(join(root, 'directory'));
     expect(

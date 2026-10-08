@@ -1,5 +1,27 @@
 # Git Workbench
 
+Latest CI follow-up (2026-10-08): [history-menu readiness correction](docs/reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08).
+Windows and macOS validation, plus Linux's package checks, are green at `6d9c4a4`. Linux's last desktop
+failure was a Reset menu item stuck in its initial loading state. The correction updates that open
+menu when references become ready, preserving the reviewed commit. It still needs a hosted rerun.
+
+Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
+covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
+native Windows/macOS smoke scenarios. macOS unit/build/smoke verification now has the hosted evidence
+linked above; macOS packaging and native-device checks remain outstanding.
+
+Windows implementation (2026-10-01): the [compatibility follow-up](docs/reviews/windows-compatibility.md)
+records native custom commands, external tools, AI adapters and Git/diff/path corrections, plus test
+selection by OS and installed capabilities. `npm run test:capabilities` explains this host's selection.
+Linux-specific cases are skipped automatically; supported Windows workflows remain tested.
+In PowerShell use `npm.cmd` when execution policy blocks `npm.ps1`. `npm.cmd run package` builds
+`release/Git Workbench Setup 0.1.0.exe`; `npm.cmd run test:package -- "C:\path\Git Workbench.exe"`
+tests an installed executable. Git 2.43+ must be installed separately and available on PATH.
+Ozone headless testing is Linux-specific: Electron tests use native windows on Windows.
+Windows Bash commands require Git for Windows' Bash. Select native executables or Node CLI entry points
+for external tools/AI; Node entry points require an installed Node runtime. Configure external viewers
+to wait until closed. Batch and PowerShell launchers require an explicit interpreter for custom tools.
+
 P14's [audit and feature ledger](docs/reviews/p14-release-audit.md) records verified Linux behavior,
 remaining parity limits, performance measurements and release gates. The audit fixes composing-input
 commits, post-commit Amend refresh, modal keyboard ownership, contrast/tab accessibility, renderer
@@ -390,6 +412,15 @@ for checking an unpacked binary. Renderer sandboxing stays enabled. Test runs us
 
 The install hook runs Electron's `install-electron` command to ensure its binary is present.
 No extra browser download is needed for these Electron tests.
+
+CI preserves an archive named `validation-<OS>-<attempt>` on each Actions job, including failures.
+It contains step logs, capability/tool versions, Vitest JSON/JUnit, desktop JSON/HTML reports,
+available traces, and a failure summary. Development and packaged desktop results are kept separate.
+Independent build/desktop checks can run after a unit failure; the job still fails. Linux CI configures
+the SUID helper in development Electron and the extracted AppImage while keeping sandboxing enabled.
+Privileged setup is restricted to GitHub's Linux runner; local headless tests use the existing host policy.
+The [latest CI follow-up](docs/reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+records the diagnosed failures and verification limits.
 
 ### Local waypipe session
 

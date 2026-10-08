@@ -324,7 +324,12 @@ function historyArguments(
   if (filter.kind === 'commit-search' && filter.field === 'path') {
     // Default Git wildcards span slash separators. Escape user wildcard characters before adding
     // our own contains match, including both current and historical names of changed paths.
-    argumentsList.push(`:(icase)*${filter.query.replace(/[?*[\]\\]/gu, '\\$&')}*`);
+    // Backslash escapes are normalized as path separators by Git for Windows. Bracket classes
+    // keep literal wildcard characters intact on both native Windows and POSIX Git.
+    const literal = filter.query.replace(/[?*[\]\\]/gu, (character) =>
+      character === '\\' ? '\\\\' : `[${character}]`,
+    );
+    argumentsList.push(`:(icase)*${literal}*`);
   }
   return argumentsList;
 }

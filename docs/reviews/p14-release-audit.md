@@ -1,5 +1,19 @@
 # P14 audit and Linux release candidate — 2026-10-01
 
+Windows implementation update: [OS-aware tests and Windows workflows](windows-compatibility.md)
+supersedes the initial Windows feature exclusions. P14 retains the release gates below.
+
+Windows coverage extension (2026-10-01): F07/F08/F21/F23/F27 native path/diff corrections and
+F32/F33/F37 process adapters pass the Windows fixtures. Final verification passes 697 unit/integration
+tests and all 88 routine desktop scenarios, with 10 and four explicit skips respectively. Live vendor
+tools, accounts and the remaining native-platform matrices in the feature ledger stay unverified.
+The unsigned Windows NSIS installer also passes installation, all eight installed-app scenarios and
+uninstall cleanup; its checksum and evidence are recorded in the follow-up.
+
+Windows follow-up: [the separate portability audit](windows-portability-audit.md) records native Windows
+results and NSIS checks from 2026-10-01. It supersedes the statement that Windows has no local verification,
+without extending the Linux results below to Windows or marking P14 complete.
+
 P14 is **partial**. The local audit, corrections, reproducible scale checks and unsigned packaging are
 implemented. This is a Linux preview verification record, not a declaration of complete Fork parity or
 a completed GNOME/KDE/native display and assistive-technology matrix. The remaining gates below are
@@ -81,6 +95,33 @@ the original failed deterministically and the correction restores Amend with unc
 Evidence is retained in `release/p14/commit-refresh-before` and the corresponding verified run.
 
 ## Feature ledger
+
+Further maintenance (fifth CI follow-up, 2026-10-08): [history-menu readiness](cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+adds F19/P08 mouse/keyboard and menu-lifetime regressions, preserving the reviewed commit and backend
+guards. The original history-operation scenarios remain unchanged and pass repeated one-core runs.
+The full local desktop suite passes 99 scenarios and the AppImage passes 19, with explicit skips and no retries.
+Hosted Windows/macOS and Linux package results at `6d9c4a4` remain separate from the latest correction;
+the broader feature and release gates below are unchanged.
+
+Further maintenance (fourth CI follow-up, 2026-10-08): [the hunk/harness record](cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+adds F10 click-retention and changed-content refusal checks to native/package smoke. F16/F26/F36 and
+P14 fixtures gate specific requests or one real hook while routine reads use native Git. The Linux
+check, focused/repeated one-core regressions, 95 desktop scenarios and 15 AppImage scenarios pass;
+latest hosted results and limits are kept separate.
+Feature-family, native-device and live-service release gates remain unchanged.
+
+Further maintenance (2026-10-08): [the third CI follow-up](cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+adds four controlled F12/F16/F31 reference-readiness/refusal regressions to native and packaged smoke.
+All ten focused Linux scenarios pass with one CPU core; the full local desktop suite passes 93
+scenarios and the AppImage passes 13, with explicit skips and no retries. The observed `facdfb2` macOS job and Linux
+package job are green; the latest corrections need another hosted run. Native-device, live-service,
+macOS packaging and the broader release gates below remain separate.
+
+Maintenance verification (2026-10-08): the [second CI follow-up](cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+adds long Unix socket/GPG-home regressions for F13/F24/F28/F29, post-rebase chooser readiness for F31,
+and explicit startup sandbox enforcement for packaged and development Electron. The Linux check and
+full desktop suite pass, as do all eight applicable packaged scenarios. These independent implementation corrections preserve the feature-family
+statuses and native/live-service release gates below; Windows/macOS reruns remain outstanding.
 
 “Verified” means the stated independently specified Linux scope passes its linked implementation tests.
 “Partial” means the broader family retains an explicit gap. No row claims every Fork variant. Original
@@ -199,7 +240,8 @@ saved drafts; unsaved input at the instant of a process/system crash is not prom
 sequencer and Recovery artifacts remain authoritative for interrupted writes.
 
 No release was published, no signing identity was used and no automatic updater/feed is configured.
-Windows/macOS are outside this release verification despite their retained build target definitions.
+The original release verification below covers Linux. The linked Windows follow-up adds native Windows
+and NSIS evidence; macOS remains unverified.
 
 ## Verification and remaining gates
 

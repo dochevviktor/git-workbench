@@ -1,5 +1,60 @@
 # Architecture and implementation decisions
 
+Fifth CI follow-up (2026-10-08): [history-menu readiness](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+uses the context-menu host's existing request-scoped update handle for mouse- and keyboard-opened
+commit menus awaiting reference readiness. Updates retain the original commit; dismissal, replacement
+and repository/filter changes invalidate pending work. Backend snapshots, IPC and security boundaries
+are unchanged. The original F19/F20 scenarios remain intact alongside controlled regression coverage.
+
+Fourth CI follow-up (2026-10-08): the [hunk-refresh correction](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+retains actions for an immutable displayed diff during a same-target refresh. Existing backend snapshot
+validation rejects intervening file/index changes; missing targets and active actions remain blocked.
+Test-only IPC gates replace per-Git-process wrappers, and a single real post-merge hook holds F16's
+mutation boundary. No production IPC, preload, privilege, sandbox or Git-semantic changes are made.
+
+Third CI follow-up (2026-10-08): the [reference-readiness correction](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+uses matching tab/context HEAD for reference-action availability and the existing scoped context-menu
+update handle while that read catches up. New Branch captures a fresh backend context for its review;
+explicit commit targets and post-review stale checks remain. Refusals are shown in the modal as well
+as the existing error surface. Sandbox policy is unchanged; native tests use native startup, with
+AppRun's injected-flag scenario restricted to Linux. No IPC or privilege boundary changes.
+
+CI follow-up (2026-10-08): the [correction record](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+bounds credential-broker Unix socket paths by UTF-8 bytes, retaining private per-operation directories,
+nonces and origin/path checks. Main enforces Electron's full sandbox before readiness, including when
+AppRun supplies a disabling switch; package tests continue through AppRun and verify kernel state.
+Quick Launch parameter commands require reference HEAD and current session HEAD to agree. IPC,
+preload, sender/frame checks, credential DTOs and CSP are unchanged; native rerun limits remain explicit.
+
+CI portability correction (2026-10-07): the [follow-up](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+shares a bounded main-owned credential-file reader with regular-entry and file-identity checks on all
+platforms. Git LFS inspection canonicalizes temporary metadata paths. No IPC capability, credential DTO,
+renderer privilege or sandbox exception is introduced. Fixture cleanup and CI report/sandbox setup are
+kept outside application startup; the hosted-platform verification limits remain explicit.
+
+Portability review (2026-10-06): [corrections and verification](reviews/cross-platform-portability.md).
+Main normalizes Windows environment names before Git policy filtering and drains the shared native
+process-tree terminator. Conflict source selection honors `core.symlinks` without changing index modes.
+Early macOS file-open events reuse the repository-opening queue and restore an absent workspace owner.
+Command+Option symbol/dead-key matching shares a bounded physical-key fallback with shortcut capture.
+IPC, sender/frame checks, credentials, context isolation and sandbox boundaries are unchanged.
+
+Windows implementation follow-up (2026-10-01): [verification and limits](reviews/windows-compatibility.md).
+Main-owned process adapters launch native Windows executables or explicit Node entry points without
+an implicit shell, preserve the Windows system/profile environment, and drain native process-tree
+termination for commands and AI. Git for Windows supplies optional Bash. POSIX process groups remain.
+Git diff uses Git's `/dev/null` convention; filesystem containment uses native separators; literal
+path search avoids Windows backslash normalization. The renderer and IPC security boundaries are unchanged.
+
+Windows audit (2026-10-01): [verification and limits](reviews/windows-portability-audit.md).
+Git processes disable optional locks so background status reads cannot rewrite the index and create
+a watcher refresh loop; mandatory mutation locks remain enabled. Worktree registration paths are
+normalized at the backend Git-output boundary on Windows, including branch occupancy queries.
+Branch occupancy uses NUL-delimited worktree output so quoted/unusual paths remain literal.
+IPC, preload, repository trust, CSP, sandbox and process-execution boundaries are unchanged.
+Tests isolate Git configuration from developer settings; the native Windows scenario explicitly
+opts into CRLF conversion. Packaging uses an ICO generated from the existing independent PNG.
+
 P14 (2026-10-01): the [release audit](reviews/p14-release-audit.md) retains the process/IPC boundaries
 and stable application/profile identity. Input-method events and AltGr do not invoke command shortcuts;
 native dialogs own menu input. Tabs expose Delete without nested focusable controls. Contrast adjustments

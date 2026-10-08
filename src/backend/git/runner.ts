@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ChildProcessWithoutNullStreams, SpawnOptions } from 'node:child_process';
 import { resolveGitExecutable } from './executable';
@@ -9,6 +9,8 @@ import type { GitAuthenticationPolicy } from './authentication-policy';
 import { createCredentialBroker, credentialProgress } from './credential-broker';
 import type { GitCredentialBridge } from './credential-broker';
 import { ExpectedBackendError } from '../errors';
+import { programInvocation, terminateProcessTree } from '../processes/platform-process';
+import { gitEnvironment } from './environment';
 
 const defaultOutputLimit = 2 * 1024 * 1024;
 const defaultTimeout = 30_000;
@@ -141,7 +143,8 @@ function controlledEnvironment(
   overrides?: NodeJS.ProcessEnv,
   authentication: GitAuthenticationPolicy = 'silent',
 ): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+  const selectedOverrides = gitEnvironment(overrides);
+  const environment = gitEnvironment(process.env, selectedOverrides);
   for (const key of Object.keys(environment)) {
     if (/^(?:GIT_TRACE|GCM_TRACE|GIT_CONFIG_(?:KEY|VALUE)_)/u.test(key)) delete environment[key];
   }
@@ -167,6 +170,9 @@ function controlledEnvironment(
     delete environment[key];
   }
   environment.GIT_TERMINAL_PROMPT = '0';
+  // Background status must not rewrite the index and trigger another watcher refresh.
+  // Required locks for explicit mutations (add, commit, checkout, ...) remain enabled.
+  environment.GIT_OPTIONAL_LOCKS = '0';
   // Every file capability names literal repository paths, never user-supplied pathspecs.
   delete environment.GIT_GLOB_PATHSPECS;
   delete environment.GIT_NOGLOB_PATHSPECS;
@@ -174,44 +180,9 @@ function controlledEnvironment(
   delete environment.GIT_LITERAL_PATHSPECS;
   environment.GIT_PAGER = 'cat';
   environment.GIT_EDITOR = ':';
-  if (!overrides?.GIT_SEQUENCE_EDITOR) delete environment.GIT_SEQUENCE_EDITOR;
+  if (!selectedOverrides.GIT_SEQUENCE_EDITOR) delete environment.GIT_SEQUENCE_EDITOR;
   environment.LC_ALL = 'C';
   return applyAuthenticationPolicy(environment, authentication);
-}
-
-/**
- * Stops the child and, on POSIX, everything it started. `git fetch` runs a transport helper and may
- * run ssh; killing only the direct child would leave those connected. Windows has no equivalent
- * signal; taskkill /T /F terminates its tree without involving a shell.
- */
-function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
-  if (process.platform === 'win32' && child.pid) {
-    const systemRoot = process.env.SystemRoot;
-    if (systemRoot) {
-      const killer = spawn(
-        join(systemRoot, 'System32', 'taskkill.exe'),
-        ['/PID', String(child.pid), '/T', '/F'],
-        { shell: false, windowsHide: true, stdio: 'ignore' },
-      );
-      killer.once('error', () => {
-        child.kill();
-      });
-      return;
-    }
-  }
-  try {
-    if (process.platform !== 'win32' && typeof child.pid === 'number') {
-      process.kill(-child.pid, signal);
-      return;
-    }
-  } catch {
-    // The group may already be gone, or the child never became a group leader. Fall through.
-  }
-  try {
-    child.kill(signal);
-  } catch {
-    // The process may have exited between the event and kill(). The close event settles it.
-  }
 }
 
 export interface GitRunnerOptions {
@@ -316,11 +287,13 @@ export class GitRunner {
     );
     const commandArgs = literal ? ['--literal-pathspecs', ...args] : [...args];
     this.logger?.({ command: displayCommand(executable, commandArgs), cwd: redactArgument(options.cwd) });
+    const invocation = await programInvocation(executable, commandArgs);
+    if (options.signal?.aborted) throw new GitCancelledError();
 
     return new Promise<GitCommandResult>((resolve, reject) => {
       let child: ChildProcessWithoutNullStreams;
       try {
-        child = spawn(executable, commandArgs, {
+        child = spawn(invocation.executable, invocation.args, {
           cwd: options.cwd,
           env: {
             ...controlledEnvironment(options.env, options.authentication),
@@ -329,7 +302,7 @@ export class GitRunner {
           shell: false,
           windowsHide: true,
           // A POSIX child leads its own process group, so cancelling a fetch also stops the transport
-          // helper and ssh it started. Windows has no process groups here; see terminateProcess.
+          // helper and ssh it started. Windows uses the shared native process-tree terminator.
           detached: process.platform !== 'win32',
           stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         } satisfies SpawnOptions) as ChildProcessWithoutNullStreams;
@@ -345,6 +318,10 @@ export class GitRunner {
       let stdoutBytes = 0;
       let stderrBytes = 0;
       let termination: Error | undefined;
+      let terminated = Promise.resolve();
+      const kill = (signal: NodeJS.Signals) => {
+        terminated = Promise.all([terminated, terminateProcessTree(child, signal)]).then(() => undefined);
+      };
       let closed = false;
       let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
       const decoder = new StringDecoder('utf8');
@@ -353,10 +330,10 @@ export class GitRunner {
       const terminate = (reason: Error) => {
         if (termination) return;
         termination = reason;
-        terminateProcess(child, 'SIGTERM');
+        kill('SIGTERM');
         forceKillTimer = setTimeout(() => {
           // `killed` only says a signal was sent; it does not mean the process group exited.
-          if (!closed) terminateProcess(child, 'SIGKILL');
+          if (!closed) kill('SIGKILL');
         }, 1_000);
       };
 
@@ -397,7 +374,7 @@ export class GitRunner {
         closed = true;
         // The parent can close its pipes and exit before a descendant that ignores SIGTERM.
         // Finish cancellation only after sending the final signal to the original process group.
-        if (termination && process.platform !== 'win32') terminateProcess(child, 'SIGKILL');
+        if (termination && process.platform !== 'win32') kill('SIGKILL');
         if (timeoutTimer) clearTimeout(timeoutTimer);
         if (forceKillTimer) clearTimeout(forceKillTimer);
         options.signal?.removeEventListener('abort', onAbort);
@@ -405,13 +382,15 @@ export class GitRunner {
           stdout: Buffer.concat(stdout, stdoutBytes).toString(options.stdoutEncoding ?? 'utf8'),
           stderr: Buffer.concat(stderr, stderrBytes).toString('utf8'),
         };
-        if (termination) {
-          reject(termination);
-        } else if (exitCode === 0) {
-          resolve({ ...output, exitCode, signal });
-        } else {
-          reject(new GitCommandError(args, exitCode, signal, output.stdout, output.stderr));
-        }
+        void terminated.then(() => {
+          if (termination) {
+            reject(termination);
+          } else if (exitCode === 0) {
+            resolve({ ...output, exitCode, signal });
+          } else {
+            reject(new GitCommandError(args, exitCode, signal, output.stdout, output.stderr));
+          }
+        });
       });
     });
   }

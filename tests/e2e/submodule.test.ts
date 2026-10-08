@@ -85,7 +85,7 @@ test('F23 reads submodule state, shows revision cards, opens the child tab, and 
     await page.getByRole('tab', { name: /^parent,/u }).click();
 
     await git.run(['submodule', 'deinit', '--force', '--', 'modules/demo'], { cwd: parent });
-    await rm(join(parent, 'modules/demo'), { recursive: true, force: true });
+    await rm(join(parent, 'modules/demo'), { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     const missing = await page.evaluate(
       async (id) => window.desktop!.repository.getSubmodules({ id }),
       parentId,

@@ -8,20 +8,22 @@ import { aiProviderNames, aiResultSchema } from '../../common/ipc/ai';
 import type { AiProviderId } from '../../common/ipc/ai';
 import { ExpectedBackendError } from '../errors';
 import { redactUrlCredentials } from '../git/runner';
+import { programInvocation, selectedEnvironment, terminateProcessTree } from '../processes/platform-process';
 
 type Agent = Extract<AiProviderId, 'claude' | 'codex' | 'cursor'>;
 
 export async function validateAiExecutable(path: string): Promise<string> {
   try {
-    if (process.platform === 'win32' || !isAbsolute(path)) throw new Error('Unsupported');
+    if (!isAbsolute(path)) throw new Error('Unsupported');
     const canonical = await realpath(path);
     if (!(await stat(canonical)).isFile()) throw new Error('Not a file');
     await access(canonical, constants.X_OK);
+    await programInvocation(canonical, []);
     return canonical;
   } catch {
     throw new ExpectedBackendError(
       'UNAVAILABLE',
-      'Select an installed, executable agent program. CLI adapters currently support Linux and macOS.',
+      'Select an installed executable agent program. On Windows, select its native .exe or Node CLI, not a .cmd or PowerShell launcher.',
     );
   }
 }
@@ -40,8 +42,7 @@ export class AgentProvider {
     await validateAiExecutable(executable);
     const directory = await mkdtemp(join(tmpdir(), 'git-workbench-ai-'));
     try {
-      const env: NodeJS.ProcessEnv = {};
-      for (const name of [
+      const env = selectedEnvironment([
         'PATH',
         'HOME',
         'USER',
@@ -52,8 +53,7 @@ export class AgentProvider {
         'XDG_DATA_HOME',
         'XDG_RUNTIME_DIR',
         'DBUS_SESSION_BUS_ADDRESS',
-      ])
-        if (process.env[name]) env[name] = process.env[name];
+      ]);
       env.NO_COLOR = '1';
       env.CI = '1';
       let args: string[];
@@ -230,8 +230,8 @@ export class AgentProvider {
   }
 }
 
-/** No logs or raw diagnostics. A child and its descendants cannot outlive this request. */
-export function runAgent(
+/** Private, bounded IO; cancellation drains the active process tree before settling the request. */
+export async function runAgent(
   executable: string,
   args: string[],
   cwd: string,
@@ -240,26 +240,24 @@ export function runAgent(
   signal: AbortSignal,
 ): Promise<string> {
   if (signal.aborted) return Promise.reject(new ExpectedBackendError('UNAVAILABLE', 'AI request cancelled.'));
+  const invocation = await programInvocation(executable, args);
+  if (signal.aborted) throw new ExpectedBackendError('UNAVAILABLE', 'AI request cancelled.');
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
+    const child = spawn(invocation.executable, invocation.args, {
       cwd,
       env,
       shell: false,
-      detached: true,
+      detached: process.platform !== 'win32',
+      windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const chunks: Buffer[] = [];
     let bytes = 0;
     let failure = '';
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let termination = Promise.resolve();
     const kill = (kind: NodeJS.Signals) => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, kind);
-        } catch {
-          /* already gone */
-        }
-      }
+      termination = Promise.all([termination, terminateProcessTree(child, kind)]).then(() => undefined);
     };
     const stop = (reason: string) => {
       if (failure) return;
@@ -283,16 +281,18 @@ export function runAgent(
       clearTimeout(timer);
       clearTimeout(killTimer);
       signal.removeEventListener('abort', cancel);
-      kill('SIGKILL');
-      if (failure || code !== 0)
-        reject(
-          new ExpectedBackendError(
-            'UNAVAILABLE',
-            failure ||
-              'The AI agent failed. Check its version, model and login in your terminal, then retry.',
-          ),
-        );
-      else resolve(Buffer.concat(chunks).toString('utf8'));
+      if (process.platform !== 'win32') kill('SIGKILL');
+      void termination.then(() => {
+        if (failure || code !== 0)
+          reject(
+            new ExpectedBackendError(
+              'UNAVAILABLE',
+              failure ||
+                'The AI agent failed. Check its version, model and login in your terminal, then retry.',
+            ),
+          );
+        else resolve(Buffer.concat(chunks).toString('utf8'));
+      });
     });
     if (signal.aborted) cancel();
     else child.stdin.end(input);

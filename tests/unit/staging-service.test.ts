@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import {
   chmod,
   lstat,
@@ -538,7 +539,7 @@ describe('working-change staging service', () => {
     await writeFile(join(root, 'mode.txt'), 'mode\n', 'utf8');
     await writeFile(join(root, 'link-target.txt'), 'target\n', 'utf8');
     await writeFile(join(root, 'link-target-two.txt'), 'target two\n', 'utf8');
-    await symlink('link-target.txt', join(root, 'link.txt'));
+    if (testPlatform.symlinks) await symlink('link-target.txt', join(root, 'link.txt'));
     await writeFile(join(root, 'binary.bin'), Buffer.from([0, 1, 2, 3]), 'binary');
     await git.run(['add', '--', '.'], { cwd: root });
     await git.run([...author, 'commit', '--quiet', '-m', 'file action base'], { cwd: root });
@@ -546,8 +547,10 @@ describe('working-change staging service', () => {
     await rename(join(root, 'old name.txt'), join(root, 'new name.txt'));
     await unlink(join(root, 'delete.txt'));
     if (process.platform !== 'win32') await chmod(join(root, 'mode.txt'), 0o755);
-    await unlink(join(root, 'link.txt'));
-    await symlink('link-target-two.txt', join(root, 'link.txt'));
+    if (testPlatform.symlinks) {
+      await unlink(join(root, 'link.txt'));
+      await symlink('link-target-two.txt', join(root, 'link.txt'));
+    }
     await writeFile(join(root, 'binary.bin'), Buffer.from([0, 1, 2, 9]), 'binary');
 
     const repositoryIdForFixture = `repo-${'d'.repeat(64)}`;
@@ -563,7 +566,13 @@ describe('working-change staging service', () => {
       previousPath: change.previousPath,
     }));
     expect(targets.map((target) => target.path)).toEqual(
-      expect.arrayContaining(['new name.txt', 'delete.txt', 'mode.txt', 'link.txt', 'binary.bin']),
+      expect.arrayContaining([
+        'new name.txt',
+        'delete.txt',
+        'binary.bin',
+        ...(testPlatform.posix ? ['mode.txt'] : []),
+        ...(testPlatform.symlinks ? ['link.txt'] : []),
+      ]),
     );
     for (const target of targets) {
       const current = await readRepositoryDiff(git, {
@@ -612,7 +621,7 @@ describe('working-change staging service', () => {
       (await git.run(['rev-parse', 'HEAD^{tree}'], { cwd: root })).stdout,
     );
     expect(await readFile(join(root, 'new name.txt'), 'utf8')).toBe('rename me\n');
-    expect(await readlink(join(root, 'link.txt'))).toBe('link-target-two.txt');
+    if (testPlatform.symlinks) expect(await readlink(join(root, 'link.txt'))).toBe('link-target-two.txt');
     expect(await readFile(join(root, 'binary.bin'))).toEqual(Buffer.from([0, 1, 2, 9]));
     await expect(lstat(join(root, 'delete.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
     if (process.platform !== 'win32') expect((await lstat(join(root, 'mode.txt'))).mode & 0o111).toBe(0o111);

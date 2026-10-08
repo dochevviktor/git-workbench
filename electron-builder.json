@@ -8,6 +8,7 @@
   "publish": null,
   "extraResources": [{ "from": "resources/icon.png", "to": "icon.png" }],
   "npmRebuild": false,
+  "appImage": { "executableArgs": [] },
   "linux": {
     "target": ["AppImage"],
     "category": "Development",
@@ -32,6 +33,6 @@
       "libxkbcommon0"
     ]
   },
-  "win": { "target": ["nsis"] },
+  "win": { "target": ["nsis"], "icon": "resources/icon.ico" },
   "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" }
 }

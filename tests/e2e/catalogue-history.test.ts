@@ -140,9 +140,9 @@ test('catalogue history navigation, search scopes, highlights and session state 
     await expect(page.getByTestId('commit-search-result')).toHaveCount(1);
     await page.getByRole('button', { name: 'Clear commit search', exact: true }).click();
     await expect(page.locator('.commit-row.search-match')).toHaveCount(0);
-    await page.keyboard.press('Control+Shift+D');
+    await page.keyboard.press('ControlOrMeta+Shift+D');
     await expect(page.locator('.details-panel')).toBeHidden();
-    await page.keyboard.press('Control+Shift+D');
+    await page.keyboard.press('ControlOrMeta+Shift+D');
     await expect(page.locator('.details-panel')).toBeVisible();
     await page.getByRole('menubar').getByRole('menuitem', { name: 'View', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Appearance', exact: true }).click();

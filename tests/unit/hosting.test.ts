@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -420,7 +421,7 @@ describe('hosting lifecycle and credential boundaries', () => {
     const f = await fixture();
     await f.connect(true);
     expect(await readFile(f.path, 'utf8')).not.toContain(token);
-    expect((await stat(f.path)).mode & 0o777).toBe(0o600);
+    if (testPlatform.posix) expect((await stat(f.path)).mode & 0o777).toBe(0o600);
     const restarted = new HostingService(f.store, f.provider);
     expect((await restarted.list()).accounts[0]?.storage).toBe('keyring');
     await restarted.listRepositories(2, { accountId: 'github-42', page: 2 });
@@ -526,8 +527,10 @@ describe('hosting lifecycle and credential boundaries', () => {
     expect(await readFile(f.path, 'utf8')).toBe('broken');
     await expect(readTokenFile(f.root)).rejects.toThrow('regular');
     const link = join(f.root, 'link');
-    await symlink(f.tokenPath, link);
-    await expect(readTokenFile(link)).rejects.toThrow('regular');
+    if (testPlatform.symlinks) {
+      await symlink(f.tokenPath, link);
+      await expect(readTokenFile(link)).rejects.toThrow('regular');
+    }
     await writeFile(f.tokenPath, 'secret\nsecond line');
     await expect(readTokenFile(f.tokenPath)).rejects.toThrow('regular');
     await writeFile(f.tokenPath, 'x'.repeat(4097));

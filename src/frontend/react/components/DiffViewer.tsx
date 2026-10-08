@@ -661,13 +661,16 @@ export function DiffViewer({
   }, [document, mode, query, split]);
   const matchCount = searchRows.total;
 
-  const actionsDisabledReason = loading
-    ? 'Wait for this diff to finish loading.'
-    : whitespace !== 'normal'
-      ? 'Set whitespace comparison to Show all whitespace before selecting a hunk or line.'
-      : value?.snapshot === null || value?.snapshot === undefined
-        ? 'This diff cannot be changed.'
-        : undefined;
+  // A same-target refresh retains the displayed patch and its snapshot. Keep a pressed action
+  // alive; the backend still rejects any changed file/index before applying that snapshot.
+  const actionsDisabledReason =
+    loading && !value
+      ? 'Wait for this diff to finish loading.'
+      : whitespace !== 'normal'
+        ? 'Set whitespace comparison to Show all whitespace before selecting a hunk or line.'
+        : value?.snapshot === null || value?.snapshot === undefined
+          ? 'This diff cannot be changed.'
+          : undefined;
 
   useEffect(() => {
     setSelectedLines(undefined);

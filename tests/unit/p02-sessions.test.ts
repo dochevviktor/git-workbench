@@ -66,6 +66,7 @@ it('persists logical folders, aliases and defaults without changing repository p
   });
   expect((await service.listOpen(1))[0]!.name).toBe('Workbench');
   service.dispose();
+  await service.settled();
   const restored = new RepositoryService({ storagePath: join(root, 'settings', 'recent.json') });
   services.push(restored);
   expect((await restored.listOpen(2))[0]!.name).toBe('Workbench');
@@ -107,6 +108,7 @@ it('retains missing tabs through restart and relocates or forgets the exact save
   const { root, service, repository, summary } = await fixture();
   const moved = join(root, 'moved');
   service.dispose();
+  await service.settled();
   await rename(repository, moved);
   const restored = new RepositoryService({ storagePath: join(root, 'settings', 'recent.json') });
   services.push(restored);
@@ -117,6 +119,7 @@ it('retains missing tabs through restart and relocates or forgets the exact save
   expect((await restored.getWorkspaceRecovery(2)).tabs).toEqual([]);
   expect((await restored.listRecent(2)).map((entry) => entry.path)).toEqual([moved]);
   restored.dispose();
+  await restored.settled();
   await rename(moved, repository);
   const last = new RepositoryService({ storagePath: join(root, 'settings', 'recent.json') });
   services.push(last);
@@ -155,6 +158,7 @@ it('replaces a missing saved tab at capacity without losing its position or disp
     groupId: null,
   });
   first.dispose();
+  await first.settled();
   const moved = join(root, 'moved');
   await rename(path, moved);
   const second = new RepositoryService(options);

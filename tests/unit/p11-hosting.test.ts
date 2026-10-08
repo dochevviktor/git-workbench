@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -348,7 +349,7 @@ describe('P11 notification and credential lifetime', () => {
     expect(await new HostingPreferencesStore(join(f.root, 'preferences.json')).enabled(f.account.id)).toBe(
       true,
     );
-    expect((await stat(join(f.root, 'preferences.json'))).mode & 0o777).toBe(0o600);
+    if (testPlatform.posix) expect((await stat(join(f.root, 'preferences.json'))).mode & 0o777).toBe(0o600);
     expect(await readFile(join(f.root, 'preferences.json'), 'utf8')).not.toContain(token);
   });
   it.each(['disable', 'sign-out', 'close', 'replacement'] as const)(

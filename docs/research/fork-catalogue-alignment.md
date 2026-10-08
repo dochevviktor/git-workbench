@@ -1,5 +1,56 @@
 # Fork catalogue alignment — 2026-09-20
 
+Fifth CI follow-up — **2026-10-08**: [the history-menu correction](../reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+adds independent F19/P08 reference-readiness and dismissal/replacement evidence. The original commit
+target and backend guards remain authoritative. This adds no Fork finding, layout/style change,
+private asset or visual-parity claim; the latest local correction still needs hosted confirmation.
+
+Fourth CI follow-up — **2026-10-08**: [the hunk-refresh and harness record](../reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+adds controlled implementation evidence for preserving a hunk action through an unchanged refresh
+and refusing changed file contents. These are independent F10/P04/P14 corrections; no layout/style,
+private asset or catalogue finding changes. Hosted Windows results at `eb0702b` remain separate from
+the latest local corrections and their outstanding native rerun.
+
+Third CI follow-up — **2026-10-08**: [the correction record](../reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+records F12/F16/F31 reference readiness and native sandbox-test scope. Confidence is high for the
+controlled implementation regressions; hosted macOS and Linux package results are recorded separately
+from the latest unverified native corrections. No layout, styles, private assets, catalogue IDs or
+case-level unknowns change.
+
+CI follow-up — **2026-10-08**: [runner evidence and corrections](../reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+cover credential/GPG socket paths, sandbox startup and test synchronization. These are independent
+F13/F24/F28/F29/F31/P14 implementation changes, with high confidence for exercised Linux regressions
+and native Windows/macOS reruns outstanding. No layout/styles or private assets change; all original
+case/finding IDs, visual comparisons and unknowns retain their existing scope.
+
+CI portability correction — **2026-10-07**: see the
+[failure follow-up](../reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) for F13/F24/F37
+implementation changes and primary platform contracts. Local regression confidence is high; native
+Windows/macOS and hosted sandbox outcomes require CI verification. No visual changes or new Fork
+observations are claimed, and all original case-level unknowns and private evidence remain unchanged.
+
+Portability implementation review — **2026-10-06**: the
+[cross-platform correction record](../reviews/cross-platform-portability.md) maps F01/F03/F13/F17/F31/F34
+to Windows regressions, synthetic macOS event/shortcut coverage and primary runtime documentation
+(accessed 2026-10-06). High confidence applies to exercised implementation cases; native macOS remains
+unverified. No new Fork observation, layout comparison or case completion is inferred. The linked
+private catalogue remains absent and unchanged; all existing finding IDs and unknowns are retained.
+
+Windows implementation correction — **2026-10-01**: the
+[compatibility follow-up](../reviews/windows-compatibility.md) supersedes F32/F33/F37's Windows
+exclusions and the initial failing-suite status below. F07/F08/F09/F21/F23/F27 also receive native path,
+diff, background-refresh or test-harness corrections. Evidence concerns this implementation, with high confidence for
+the exercised fixtures; P2-013/P2-015 and other original case/finding unknowns remain unchanged.
+No private capture or asset was altered, and no layout/screenshot equivalence is inferred.
+
+Windows portability follow-up — **2026-10-01**: see the [Windows audit](../reviews/windows-portability-audit.md).
+The earlier P2-013 sizing and P2-015 restart anchors retain their original confidence and unknowns.
+Native window controls, programmatic bounds, CRLF commits and profile restart now have independent
+Windows 11 implementation evidence; no new Fork behavior or visual equivalence is inferred. The linked
+private catalogue is absent here, so this pass changes no layout/styles or private references.
+F22 native path normalization and the watcher correction are backend portability fixes. That initial
+checkpoint retained F32/F37 exclusions and failing tests, superseded by the implementation correction above.
+
 P14 audit — **2026-10-01**: the [audit ledger and deviations](../reviews/p14-release-audit.md) connect
 F01–F38 to catalogue/public evidence and independent tests. Original P2-012:F1 light/dark Local Changes
 and P2-017:F1 graph screenshots were compared before/after contrast corrections. P0-012 focus trials,

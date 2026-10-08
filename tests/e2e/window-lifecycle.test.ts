@@ -10,7 +10,10 @@ const ozone = process.env.ELECTRON_TEST_OZONE_PLATFORM || 'headless';
 function launchEnvironment() {
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !(ozone === 'headless' && ['DISPLAY', 'WAYLAND_DISPLAY'].includes(key)))
+    if (
+      value !== undefined &&
+      !(process.platform === 'linux' && ozone === 'headless' && ['DISPLAY', 'WAYLAND_DISPLAY'].includes(key))
+    )
       environment[key] = value;
   }
   environment.ELECTRON_RENDERER_URL = '';
@@ -31,8 +34,11 @@ test('opens CLI and second-instance repositories without reload and restores win
   const args = [
     ...(executablePath ? [] : ['.']),
     `--user-data-dir=${profile}`,
-    `--ozone-platform=${ozone}`,
-    ...(ozone === 'headless' || process.env.ELECTRON_TEST_DISABLE_GPU === '1' ? ['--disable-gpu'] : []),
+    ...(process.platform === 'linux' ? [`--ozone-platform=${ozone}`] : []),
+    ...((process.platform === 'linux' && ozone === 'headless') ||
+    process.env.ELECTRON_TEST_DISABLE_GPU === '1'
+      ? ['--disable-gpu']
+      : []),
   ];
   let application: ElectronApplication | undefined;
   try {
@@ -51,14 +57,24 @@ test('opens CLI and second-instance repositories without reload and restores win
     await page.evaluate(() => {
       Object.assign(window, { launchTestMarker: 'retained' });
     });
+    await application.evaluate(({ app }) => {
+      app.on('second-instance', (_event, argv, cwd, data) => {
+        Object.assign(globalThis, { launchForwarding: { argv, cwd, data } });
+      });
+    });
 
     const secondArgs = [...args];
     if (!executablePath) secondArgs[0] = process.cwd();
-    const child = spawn(application.process().spawnfile, [...secondArgs, '--', './-second'], {
-      cwd: root,
-      env: launchEnvironment(),
-      stdio: 'ignore',
-    });
+    const child = spawn(
+      await application.evaluate(() => process.execPath),
+      [...secondArgs, '--', './-second'],
+      {
+        cwd: root,
+        env: launchEnvironment(),
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
@@ -76,10 +92,39 @@ test('opens CLI and second-instance repositories without reload and restores win
     });
     await expect(
       page.getByRole('tab', { name: /-second, Working-tree status unavailable/u }),
+      JSON.stringify(
+        await application.evaluate(
+          () => (globalThis as unknown as { launchForwarding: unknown }).launchForwarding,
+        ),
+      ),
     ).toHaveAttribute('aria-selected', 'true');
     expect(
       await page.evaluate(() => (window as unknown as { launchTestMarker: string }).launchTestMarker),
     ).toBe('retained');
+    // Exercise the OS event route independently of macOS delivering an actual Finder/Dock event.
+    expect(
+      await application.evaluate(({ app }, path) => {
+        let prevented = false;
+        app.emit(
+          'open-file',
+          {
+            preventDefault: () => {
+              prevented = true;
+            },
+          },
+          path,
+        );
+        return prevented;
+      }, first),
+    ).toBe(true);
+    await expect(page.getByRole('tab', { name: /first, Working-tree status unavailable/u })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      await page.evaluate(() => (window as unknown as { launchTestMarker: string }).launchTestMarker),
+    ).toBe('retained');
+    await page.getByRole('tab', { name: /-second, Working-tree status unavailable/u }).click();
     const normalBounds = await application.evaluate(({ BrowserWindow, screen }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
       const reported = screen.getPrimaryDisplay().workArea;
@@ -116,6 +161,21 @@ test('opens CLI and second-instance repositories without reload and restores win
       displays: screen.getAllDisplays().map((display) => display.workArea),
     }));
     expect(restoredGeometry.bounds, JSON.stringify(restoredGeometry)).toEqual(normalBounds);
+    if (process.platform === 'darwin') {
+      // macOS keeps the process alive after the final window closes. Concurrent native events
+      // must recreate one owner and deliver the queued repository to that window.
+      await page.close();
+      const reopened = application.waitForEvent('window');
+      await application.evaluate(({ app }, path) => {
+        app.emit('open-file', { preventDefault: () => undefined }, path);
+        app.emit('activate');
+      }, first);
+      page = await reopened;
+      await expect(
+        page.getByRole('tab', { name: /first, Working-tree status unavailable/u }),
+      ).toHaveAttribute('aria-selected', 'true');
+      expect(application.windows()).toHaveLength(1);
+    }
   } finally {
     await application?.close();
     await rm(root, { recursive: true, force: true });

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { statisticsFixture } from '../statistics-fixture';
 import { openTrustedFixture } from './trusted-fixture';
+import { launchOptions } from './launch-options';
 
 test('P13 saved prompts, local generation, root amend and installed agent adapters stay explicit and read-only', async () => {
   const f = await statisticsFixture();
@@ -25,16 +26,7 @@ test('P13 saved prompts, local generation, root amend and installed agent adapte
     ) as Record<string, string>;
     env.ELECTRON_RENDERER_URL = '';
     const launch = async () => {
-      const instance = await electron.launch({
-        chromiumSandbox: true,
-        args: [
-          '.',
-          `--user-data-dir=${join(f.root, 'profile')}`,
-          '--ozone-platform=headless',
-          '--disable-gpu',
-        ],
-        env,
-      });
+      const instance = await electron.launch(launchOptions(join(f.root, 'profile'), env));
       await instance.evaluate(
         ({ dialog }, paths) => {
           dialog.showOpenDialog = async (_windowOrOptions, options?: OpenDialogOptions) => ({

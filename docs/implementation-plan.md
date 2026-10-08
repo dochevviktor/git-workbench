@@ -1,5 +1,51 @@
 # Git Workbench implementation plan
 
+Fifth CI correction (2026-10-08): [history-menu readiness](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08)
+records green Windows/macOS jobs and Linux packaging at `6d9c4a4`, with one remaining F19 desktop
+failure. Commit menus now refresh their captured loading state through the existing scoped menu
+handle, retaining their target and respecting dismissal/replacement. Controlled mouse/keyboard
+regressions join native/package smoke. A new hosted run is still required; P14 remains partial.
+
+Fourth CI correction (2026-10-08): [hunk-refresh and harness evidence](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08)
+records the green Windows job at `eb0702b` and the distinct remaining macOS/Linux failures. Hunk actions
+retain the displayed snapshot during refresh; controlled gates keep real Git checks while removing
+per-command Node startup overhead. Native smoke and package checks include the new click/stale-file
+regressions. The latest correction still needs a hosted rerun; P14 remains partial.
+
+Third CI correction (2026-10-08): [hosted results and reference-readiness fixes](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08)
+records a green macOS job and passing Linux package/sandbox checks at `facdfb2`. The remaining desktop
+failures lead to matching-HEAD reference actions, fresh Create Branch reviews, visible stale refusals
+and a Linux-only AppImage flag regression alongside native sandbox checks on every OS. Four controlled
+reference regressions are included in native smoke and package verification. P14 stays partial.
+
+CI correction (2026-10-08): [remaining runner failures and fixes](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+addresses Unix socket limits, GPG fixture homes, AppImage sandbox enforcement, native smoke menus,
+gated-test deadlines and Quick Launch readiness. Local check (718 tests), build, full routine desktop
+suite (88 scenarios), AppImage creation and eight package scenarios pass. Hosted Windows/macOS reruns and P14's broader gates
+remain outstanding; no phase status is promoted.
+
+CI correction (2026-10-07): [fixes and local verification](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07)
+address credential-file symlinks, canonical temporary paths, LFS attribute mapping and fixture cleanup,
+and add sandbox setup plus failure archives to CI. Local check/build/package and focused desktop/package
+verification pass; hosted Windows/macOS and the privileged Linux CI route still need a rerun. P14 stays partial.
+
+Cross-platform review (2026-10-06): [portability corrections and verification](reviews/cross-platform-portability.md)
+extends the Windows follow-ups with environment filtering, symlink conflicts, Git termination, explicit
+paths, macOS file-open/shortcut handling and native CI coverage. P14 remains partial; native macOS
+execution and the broader release gates are not inferred from Windows or synthetic tests.
+
+Windows implementation follow-up (2026-10-01): [OS-aware verification and supported workflows](reviews/windows-compatibility.md)
+supersedes the initial Windows exclusions below. F32/F33/F37 now have Windows process adapters;
+untracked diffs/images, literal search and historical Save As have native path fixes. Shared tests
+remain enabled, with capability-based exclusions for POSIX semantics and optional installed tools.
+P14's live-service, clean-host, signing and broader native-device gates remain partial.
+
+Windows verification extension (2026-10-01): the [Windows portability audit](reviews/windows-portability-audit.md)
+records this host's application, E2E and NSIS installation checks. Background index-refresh loops and
+inconsistent worktree path identities are corrected; test configuration and common fixtures are portable.
+That initial checkpoint retained failing tests and unsupported workflows; the implementation follow-up
+above records their corrections. Historical Linux verification below is unchanged, and P14 remains partial.
+
 P14 audit (2026-10-01): the [release audit](reviews/p14-release-audit.md) records all F01–F38 scopes,
 reference/test links and remaining unknowns. Corrections cover IME-triggered commits, modal shortcuts,
 accessibility contrast/tab semantics, renderer-crash recovery, the post-commit Amend refresh race,
@@ -236,6 +282,62 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+Fifth CI follow-up, 2026-10-08: the original F19/F20 scenarios and four controlled menu cases pass
+three consecutive one-core runs (**18 passes**, no retries). Local check passes **718 tests with five
+explicit skips**; production build and AppImage creation pass. The full desktop suite passes **99
+scenarios (five skips)**, and the AppImage passes **19 scenarios (one Windows-only skip)**, without retries. See the
+[fifth CI record](reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08) for complete
+desktop/package results and latest hosted limits. The green native jobs at `6d9c4a4` do not establish
+the new revision's hosted status or complete P14's wider release gates.
+
+Fourth CI follow-up, 2026-10-08: local check passes **718 unit/integration tests with five skips**,
+and production build/AppImage creation pass. Eleven focused scenarios pass on one CPU core; the six
+Bisect/hunk/commit cases pass three consecutive one-core runs (**18 passes**, no retries). The
+full desktop suite passes **95 scenarios (five skips)**, and AppImage verification passes **15 scenarios
+(one Windows-only skip)**, without retries. The
+[fourth CI record](reviews/cross-platform-portability.md#fourth-ci-failure-follow-up--2026-10-08) records
+the full desktop/package results and hosted limits. Windows' green `eb0702b` job does not certify
+the new corrections or complete P14's broader gates.
+
+Third CI follow-up, 2026-10-08: the hosted `facdfb2` macOS job passes 717 unit/integration tests and
+three native smoke scenarios, and Linux passes its eight applicable packaged scenarios. The new
+reference corrections pass four controlled regressions plus all four F16 variants and both Linux
+sandbox launch modes with one CPU core. Local `npm run check` passes **718 tests with five explicit
+skips**; production build and AppImage creation pass. The complete desktop suite passes **93 scenarios
+(five explicit skips)**, and the AppImage passes **13 scenarios (one Windows-only skip)**, with no retries. See the
+[third CI record](reviews/cross-platform-portability.md#third-ci-failure-follow-up--2026-10-08) for final
+desktop/package results and the latest hosted rerun limits. Feature-family and P14 gates remain partial.
+
+CI follow-up verified locally 2026-10-08: **718 unit/integration tests pass (five explicit skips)**,
+production build and AppImage creation pass, and **all 88 routine headless desktop scenarios pass**
+with five explicit skips and no retries. All five gated failures were reproduced with one CPU core,
+then passed under the same constraint; Quick Launch and forced sandbox checks passed three times
+with two cores. Real GPG/LFS suites also pass with a long temporary parent. **Eight packaged scenarios
+pass with one Windows-only skip**, including launcher and forced-flag sandbox checks. The
+[second CI record](reviews/cross-platform-portability.md#second-ci-failure-follow-up--2026-10-08)
+retains the observed three-OS failures and hosted verification limits. P14 remains partial.
+
+CI correction verified locally 2026-10-07: **716 unit/integration tests pass (five explicit skips)**,
+production build and AppImage packaging pass, **six focused headless desktop scenarios** pass, and
+**seven packaged scenarios** pass with one Windows-only skip. The
+[CI follow-up](reviews/cross-platform-portability.md#ci-failure-follow-up--2026-10-07) records the
+observed failures, changes, artifacts and native/hosted limits. This does not establish a green remote
+OS matrix or promote P14's remaining release gates.
+
+Portability review verified 2026-10-06: **704 unit/integration tests pass (10 explicit skips)**,
+production build passes, and **nine targeted native Windows Electron scenarios pass** with the
+sandbox enabled and no retries. Environment filtering, conflict symlinks, process lifetime, explicit
+paths and macOS event/shortcut handling are recorded in the
+[cross-platform review](reviews/cross-platform-portability.md). Synthetic macOS coverage and added CI
+jobs do not establish native macOS execution or package verification. P14 remains partial.
+
+Windows extension verified 2026-10-01: **697 unit/integration tests pass (10 explicit skips)** and
+the complete native desktop suite passes **88 scenarios (four explicit skips)**. OS/capability selection,
+F32/F33/F37 native process adapters, Git path/diff corrections and refresh-race fixes are covered in the
+[Windows follow-up](reviews/windows-compatibility.md). The unsigned NSIS installer installs/uninstalls
+successfully and passes all eight installed-app scenarios. The historical Linux phase statuses below remain;
+P14's clean-host, native-device, live-service and public-release gates are still partial.
 
 | Phase | Deliverable                                                          | Status                                                                                                                                                                                                                                   | Depends on                            |
 | ----- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |

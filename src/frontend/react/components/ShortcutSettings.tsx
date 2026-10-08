@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { usePersistentState } from '../hooks/use-persistent-state';
 import { customizableShortcuts, validShortcutOverrides } from '../lib/shortcut-preferences';
 import type { ShortcutOverrides } from '../lib/shortcut-preferences';
-import { isTextInputEvent } from '../lib/platform';
+import { detectPlatform, isTextInputEvent, shortcutEventKey } from '../lib/platform';
 
 const empty: ShortcutOverrides = {};
 export function ShortcutSettings() {
@@ -27,13 +27,17 @@ export function ShortcutSettings() {
                 if (event.key === 'Tab' || event.key === 'Escape') return;
                 event.preventDefault();
                 event.stopPropagation();
-                if ((!event.ctrlKey && !event.metaKey) || !event.altKey || !/^[a-z]$/iu.test(event.key)) {
+                const platform = detectPlatform();
+                const key = shortcutEventKey(event, platform);
+                const modifier =
+                  platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+                if (!modifier || !event.altKey || !/^[a-z]$/iu.test(key)) {
                   setError('Use Ctrl+Alt+letter (Cmd+Option on macOS), optionally with Shift.');
                   return;
                 }
                 const next = {
                   ...bindings,
-                  [original]: `Mod+Alt+${event.shiftKey ? 'Shift+' : ''}${event.key.toUpperCase()}`,
+                  [original]: `Mod+Alt+${event.shiftKey ? 'Shift+' : ''}${key.toUpperCase()}`,
                 };
                 if (!validShortcutOverrides(next)) {
                   setError('That shortcut is already assigned or reserved for an external tool.');

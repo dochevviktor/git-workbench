@@ -1,3 +1,4 @@
+import { fixtureName } from '../platform';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -76,7 +77,7 @@ describe('repository revision inspection service', () => {
 
     await runner.run(['mv', '--', 'root.txt', 'renamed.txt'], { cwd: repositoryPath });
     await writeFile(join(repositoryPath, 'src', 'file.txt'), 'second\n', 'utf8');
-    await writeFile(join(repositoryPath, 'odd\nname.txt'), 'unusual path\n', 'utf8');
+    await writeFile(join(repositoryPath, fixtureName('odd\nname.txt')), 'unusual path\n', 'utf8');
     const secondCommit = await commit(runner, repositoryPath, 'second');
 
     const changes = await service.getCommitChanges(21, repository.id, secondCommit);
@@ -89,7 +90,7 @@ describe('repository revision inspection service', () => {
           similarity: 100,
         }),
         expect.objectContaining({ status: 'modified', path: 'src/file.txt' }),
-        expect.objectContaining({ status: 'added', path: 'odd\nname.txt' }),
+        expect.objectContaining({ status: 'added', path: fixtureName('odd\nname.txt') }),
       ]),
     );
     const expectedChangedPaths = (
@@ -115,7 +116,7 @@ describe('repository revision inspection service', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'renamed.txt', path: 'renamed.txt', type: 'blob', size: 5 }),
         expect.objectContaining({ name: 'src', path: 'src', type: 'tree', size: null }),
-        expect.objectContaining({ name: 'odd\nname.txt', type: 'blob' }),
+        expect.objectContaining({ name: fixtureName('odd\nname.txt'), type: 'blob' }),
       ]),
     );
 

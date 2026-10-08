@@ -1,32 +1,81 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { GitRunner } from '../src/backend/git/runner';
 import type { GitRunOptions } from '../src/backend/git/runner';
+import { gpgHome } from './platform';
 
 const execute = promisify(execFile);
-export async function signingFixture(options: { protected?: boolean } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'workbench-signing-'));
+export async function signingFixture(
+  options: {
+    protected?: boolean;
+    signal?: AbortSignal;
+    onCleanup?: (cleanup: () => Promise<void>) => void;
+  } = {},
+) {
+  // All agent sockets must fit Darwin's 104-byte sockaddr_un, including the longest suffix.
+  const temporary = await realpath(tmpdir());
+  const socketTemplate = join(temporary, 'workbench-signing-XXXXXX', 'gnupg', 'S.gpg-agent.browser');
+  const parent =
+    process.platform !== 'win32' && Buffer.byteLength(socketTemplate) >= 104
+      ? await realpath('/tmp')
+      : temporary;
+  const root = await mkdtemp(join(parent, 'workbench-signing-'));
   const cwd = join(root, 'repo');
   const gnupg = join(root, 'gnupg');
   const env = {
     ...process.env,
-    GNUPGHOME: gnupg,
+    GNUPGHOME: gpgHome(gnupg),
     GIT_CONFIG_GLOBAL: join(root, 'global-config'),
     GIT_CONFIG_NOSYSTEM: '1',
   };
   const runner = new GitRunner();
   const git = {
-    run: (args: readonly string[], options: GitRunOptions) =>
-      runner.run(args, { ...options, env: { ...env, ...options.env } }),
+    run: (args: readonly string[], request: GitRunOptions) => {
+      const signals = [options.signal, request.signal].filter((value): value is AbortSignal => !!value);
+      return runner.run(args, {
+        ...request,
+        ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
+        env: { ...env, ...request.env },
+      });
+    },
   };
   const run = async (...args: string[]) => (await git.run(args, { cwd })).stdout.trim();
-  const cleanup = async () => {
-    await execute('gpgconf', ['--homedir', gnupg, '--kill', 'gpg-agent']).catch(() => undefined);
-    await rm(root, { recursive: true, force: true });
-  };
+  let cleaning: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleaning ??= (async () => {
+      await execute('gpgconf', ['--homedir', gpgHome(gnupg), '--kill', 'gpg-agent'], {
+        env,
+        timeout: 5000,
+        killSignal: 'SIGKILL',
+        windowsHide: true,
+      }).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    })());
+  options.onCleanup?.(cleanup);
+  const command = (phase: string, args: string[], input?: string) =>
+    new Promise<string>((done, reject) => {
+      const child = execFile(
+        'gpg',
+        args,
+        {
+          env,
+          timeout: 15000,
+          killSignal: 'SIGKILL',
+          windowsHide: true,
+          maxBuffer: 64 * 1024,
+          ...(options.signal ? { signal: options.signal } : {}),
+        },
+        (error, stdout, stderr) => {
+          if (error)
+            reject(new Error(`GPG fixture ${phase} failed: ${error.message}\n${stderr.slice(0, 4000)}`));
+          else done(stdout);
+        },
+      );
+      child.stdin?.end(input);
+    });
   try {
     await mkdir(cwd);
     await mkdir(gnupg, { mode: 0o700 });
@@ -41,28 +90,24 @@ export async function signingFixture(options: { protected?: boolean } = {}) {
       await writeFile(join(gnupg, 'pinentry-mode'), 'accept');
       await writeFile(join(gnupg, 'fixture-passphrase'), 'synthetic-p10-passphrase', { mode: 0o600 });
     }
-    await new Promise<void>((done, reject) => {
-      const child = execFile(
-        'gpg',
-        [
-          '--batch',
-          '--pinentry-mode',
-          'loopback',
-          '--passphrase-fd',
-          '0',
-          '--quick-generate-key',
-          'Workbench Test <signing@example.test>',
-          'ed25519',
-          'sign',
-          '0',
-        ],
-        { env },
-        (error) => (error ? reject(error) : done()),
-      );
-      child.stdin?.end(options.protected ? 'synthetic-p10-passphrase\n' : '\n');
-    });
-    const keys = await execute('gpg', ['--batch', '--with-colons', '--list-secret-keys'], { env });
-    const fingerprint = keys.stdout
+    await command(
+      'key generation',
+      [
+        '--batch',
+        '--pinentry-mode',
+        'loopback',
+        '--passphrase-fd',
+        '0',
+        '--quick-generate-key',
+        'Workbench Test <signing@example.test>',
+        'ed25519',
+        'sign',
+        '0',
+      ],
+      options.protected ? 'synthetic-p10-passphrase\n' : '\n',
+    );
+    const keys = await command('key listing', ['--batch', '--with-colons', '--list-secret-keys']);
+    const fingerprint = keys
       .split('\n')
       .find((line) => line.startsWith('fpr:'))
       ?.split(':')[9];

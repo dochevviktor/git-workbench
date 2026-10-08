@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from '@playwright/test';
 
 test('P14 installed package preserves sandbox, attribution, icon and private renderer boundaries', async () => {
   const executablePath = process.env.ELECTRON_TEST_EXECUTABLE;
-  test.skip(!executablePath || process.platform !== 'linux', 'Requires a built Linux package executable.');
+  test.skip(!executablePath || process.platform === 'darwin', 'Requires a built Windows or Linux package.');
   const profile = await mkdtemp(join(tmpdir(), 'workbench-p14-package-'));
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -53,9 +53,19 @@ test('P14 installed package preserves sandbox, attribution, icon and private ren
       'zod',
     ]);
     expect(packageState.notice).toContain('MIT');
-    const status = await readFile(`/proc/${packageState.pid}/status`, 'utf8');
-    expect(status).toMatch(/^NoNewPrivs:\s+1$/mu);
-    expect(status).toMatch(/^Seccomp:\s+2$/mu);
+    const sandboxed = await app.evaluate(
+      ({ app: application }, pid) =>
+        application.getAppMetrics().find((metric) => metric.pid === pid)?.sandboxed,
+      packageState.pid,
+    );
+    if (process.platform === 'win32') expect(sandboxed).toBe(true);
+    let rendererSandbox: Record<string, boolean | undefined> = { sandboxed };
+    if (process.platform === 'linux') {
+      const status = await readFile(`/proc/${packageState.pid}/status`, 'utf8');
+      expect(status).toMatch(/^NoNewPrivs:\s+1$/mu);
+      expect(status).toMatch(/^Seccomp:\s+2$/mu);
+      rendererSandbox = { sandboxed, noNewPrivileges: true, seccompFilter: true };
+    }
     expect(
       await page.evaluate(() => ['require', 'process', 'ipcRenderer'].some((key) => key in window)),
     ).toBe(false);
@@ -68,7 +78,7 @@ test('P14 installed package preserves sandbox, attribution, icon and private ren
         {
           ...packageState,
           notice: undefined,
-          rendererSandbox: { noNewPrivileges: true, seccompFilter: true },
+          rendererSandbox,
         },
         null,
         2,
@@ -79,7 +89,7 @@ test('P14 installed package preserves sandbox, attribution, icon and private ren
         {
           ...packageState,
           notice: undefined,
-          rendererSandbox: { noNewPrivileges: true, seccompFilter: true },
+          rendererSandbox,
         },
         null,
         2,

@@ -13,6 +13,9 @@ import { HostingPreferencesStore } from '../hosting/preferences-store';
 import { GitInstanceStore } from '../git/instance-store';
 import { GitRunner } from '../git/runner';
 
+// AppImage launchers can inject --no-sandbox when their user-namespace probe fails.
+// Enforce the application's sandbox policy before ready, including the SUID-helper route.
+app.enableSandbox();
 app.setName('Git Workbench');
 const launchPaths = repositoryPathsFromArguments(process.argv, process.cwd(), process.defaultApp === true);
 
@@ -37,6 +40,12 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
       forwardedRepositoryPaths(additionalData) ??
         repositoryPathsFromArguments(argv, cwd, process.defaultApp === true),
     );
+    focusWindow();
+  });
+  // Finder/Dock requests arrive as events, including before ready, rather than positional argv.
+  app.on('open-file', (event, path) => {
+    event.preventDefault();
+    openRequestedPaths([path]);
     focusWindow();
   });
   app.on('window-all-closed', () => {
@@ -134,8 +143,9 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
       openRequestedPaths = (paths) => {
         openQueue = openQueue
           .then(async () => {
-            const window = mainWindow;
-            if (!window || window.isDestroyed() || !loadedWindows.has(window.webContents.id)) {
+            const window = await ensureMainWindow();
+            if (!window) return;
+            if (!loadedWindows.has(window.webContents.id)) {
               launchPaths.push(...paths.slice(0, 20));
               return;
             }
@@ -192,11 +202,19 @@ if (!app.requestSingleInstanceLock({ version: 1, repositoryPaths: launchPaths })
         return window;
       };
 
-      openWindow((await repositories.namedWorkspaces.read()).lastActiveId);
+      const ensureMainWindow = async () => {
+        if (quitting) return null;
+        if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+        const state = await repositories.namedWorkspaces.read();
+        if (quitting) return null;
+        // An activation or another open request may have created it while settings were loading.
+        return mainWindow && !mainWindow.isDestroyed() ? mainWindow : openWindow(state.lastActiveId);
+      };
+      await ensureMainWindow();
       app.on('activate', () => {
-        if (!mainWindow)
-          void repositories.namedWorkspaces.read().then((state) => openWindow(state.lastActiveId));
-        else focusWindow();
+        void ensureMainWindow()
+          .then(() => focusWindow())
+          .catch((error: unknown) => console.error('Unable to restore the workspace window', error));
       });
       app.once('will-quit', () => {
         hosting.dispose();

@@ -82,7 +82,7 @@ test('P12 workspaces own windows, tab colors and saved layouts; profile preferen
     await expect(work.getByRole('tab', { name: /Café project/ })).toHaveAttribute('data-color', 'none');
     await home.bringToFront();
     await expect(home.getByRole('menu')).toHaveCount(0);
-    await home.keyboard.press('Control+,');
+    await home.keyboard.press('ControlOrMeta+,');
     const preferences = home.getByRole('dialog', { name: 'Preferences', exact: true });
     await preferences.getByLabel('Appearance').selectOption('dark');
     await preferences.getByLabel('Author avatars').selectOption('hidden');
@@ -92,16 +92,16 @@ test('P12 workspaces own windows, tab colors and saved layouts; profile preferen
     await expect(work.locator('.app')).toHaveAttribute('data-theme', 'dark');
     await expect(work.locator('.app')).toHaveAttribute('data-avatars', 'hidden');
     await preferences.getByRole('button', { name: 'Shortcuts', exact: true }).click();
-    await preferences.getByLabel('Quick Launch shortcut', { exact: true }).press('Control+Alt+k');
-    await preferences.getByLabel('New Tab shortcut', { exact: true }).press('Control+Alt+k');
+    await preferences.getByLabel('Quick Launch shortcut', { exact: true }).press('ControlOrMeta+Alt+k');
+    await preferences.getByLabel('New Tab shortcut', { exact: true }).press('ControlOrMeta+Alt+k');
     await expect(preferences.getByRole('alert')).toContainText('already assigned');
     await home.screenshot({ path: 'test-results/p12-shortcuts-dark.png' });
     await preferences.getByRole('button', { name: 'Close', exact: true }).click();
-    await home.keyboard.press('Control+Alt+k');
+    await home.keyboard.press('ControlOrMeta+Alt+k');
     await expect(home.getByRole('dialog', { name: 'Quick Launch', exact: true })).toBeVisible();
     await home.keyboard.press('Escape');
     await work.bringToFront();
-    await work.keyboard.press('Control+Alt+k');
+    await work.keyboard.press('ControlOrMeta+Alt+k');
     await expect(work.getByRole('dialog', { name: 'Quick Launch', exact: true })).toBeVisible();
     await work.keyboard.press('Escape');
     // Close one main owner while the same repository remains usable in the other window.
@@ -120,13 +120,15 @@ test('P12 workspaces own windows, tab colors and saved layouts; profile preferen
       );
       expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
       await other.close();
-      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+      await expect
+        .poll(() => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length))
+        .toBe(1);
     }
     await home.bringToFront();
-    await home.keyboard.press('Control+1');
+    await home.keyboard.press('ControlOrMeta+1');
     await home.getByTestId('commit-subject').fill('Draft retained across restart');
     await home.setViewportSize({ width: 880, height: 600 });
-    await home.keyboard.press('Control+,');
+    await home.keyboard.press('ControlOrMeta+,');
     await expect(preferences).toBeVisible();
     expect(await preferences.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
       true,
@@ -144,9 +146,9 @@ test('P12 workspaces own windows, tab colors and saved layouts; profile preferen
       'aria-selected',
       'true',
     );
-    await work.keyboard.press('Control+1');
+    await work.keyboard.press('ControlOrMeta+1');
     await expect(work.getByTestId('commit-subject')).toHaveValue('Draft retained across restart');
-    await work.keyboard.press('Control+Alt+k');
+    await work.keyboard.press('ControlOrMeta+Alt+k');
     await expect(work.getByRole('dialog', { name: 'Quick Launch', exact: true })).toBeVisible();
     await work.keyboard.press('Escape');
     expect(await run('rev-parse', 'HEAD')).toBe(head);
@@ -196,7 +198,7 @@ test('P12 embedded editors, default historical diff shortcut, background cancell
     expect((await page.evaluate(openTrustedFixture, cwd)).ok).toBe(true);
     await page.reload();
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     const preferences = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await preferences.getByRole('button', { name: 'Integration', exact: true }).click();
     const tools = preferences.getByRole('region', { name: 'External Tools', exact: true });
@@ -230,7 +232,7 @@ test('P12 embedded editors, default historical diff shortcut, background cancell
     await page.getByTestId('history-commit').filter({ hasText: 'First' }).click();
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
     await page.locator('.commit-details').getByText('value.txt', { exact: true }).first().click();
-    await page.keyboard.press('Control+d');
+    await page.keyboard.press('ControlOrMeta+d');
     const viewer = page.getByRole('dialog', { name: 'Exact Revision', exact: true });
     await viewer.getByRole('button', { name: 'Launch Tool', exact: true }).click();
     await expect(viewer.getByRole('status')).toHaveText('Command completed.');
@@ -239,13 +241,13 @@ test('P12 embedded editors, default historical diff shortcut, background cancell
     expect(await readFile(join(cwd, 'value.txt'), 'utf8')).toBe('two\n');
     await page.getByRole('tab', { name: 'File Tree', exact: true }).click();
     await page.getByTestId('revision-tree-entry').filter({ hasText: 'other.txt' }).click();
-    await page.keyboard.press('Control+d');
+    await page.keyboard.press('ControlOrMeta+d');
     await expect(viewer).toContainText('other.txt');
     await viewer.getByRole('button', { name: 'Launch Tool', exact: true }).click();
     await expect(viewer.getByRole('status')).toHaveText('Command completed.');
     await expect(viewer.locator('.external-tool-output')).toContainText('other historical content');
     await viewer.getByRole('button', { name: 'Close', exact: true }).click();
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     const quick = page.getByRole('dialog', { name: 'Quick Launch', exact: true });
     await quick.getByRole('combobox').fill('Background task');
     await quick.getByRole('combobox').press('Enter');
@@ -279,10 +281,10 @@ test('P12 embedded editors, default historical diff shortcut, background cancell
     await run('add', '.');
     await page.reload();
     await expect(page.getByRole('button', { name: /Local Changes/ })).toBeVisible();
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     await page.getByTestId('commit-subject').fill('P12 commit');
     await expect(page.getByTestId('commit-submit')).toBeEnabled();
-    await page.getByTestId('commit-subject').press('Control+Shift+Enter');
+    await page.getByTestId('commit-subject').press('ControlOrMeta+Shift+Enter');
     const push = page.getByRole('dialog', { name: 'Push', exact: true });
     await expect(push).toBeVisible();
     expect(await run('rev-parse', 'HEAD')).not.toBe(before);

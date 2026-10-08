@@ -22,6 +22,7 @@ import { ReferenceChipList } from './ReferenceChipList';
 import { Splitter } from './Splitter';
 import { SearchMatch } from './SearchMatch';
 import { useContextMenu } from './menu/context-menu';
+import type { UpdateContextMenu } from './menu/context-menu';
 import { compactMenu, contextMenuAnchor, menuSeparator } from './menu/menu-model';
 import type { MenuEntry } from './menu/menu-model';
 
@@ -194,6 +195,15 @@ export function HistoryView({
   const [maximumListHeight, setMaximumListHeight] = useState(4000);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [contextCommitId, setContextCommitId] = useState<string>();
+  const pendingCommitMenu = useRef<
+    | {
+        sessionKey: string;
+        commit: RepositoryHistoryCommit;
+        includeCustom: boolean;
+        update: UpdateContextMenu;
+      }
+    | undefined
+  >(undefined);
   const [viewport, setViewport] = useState({ top: savedPresentation?.scrollTop ?? 0, height: 600 });
   const restoreScroll = useRef(savedPresentation?.scrollTop ?? 0);
   const [listHeight, setListHeight] = usePersistentState(
@@ -597,17 +607,50 @@ export function HistoryView({
         cell !== null &&
         event.clientX !== 0 &&
         event.clientX - cell.getBoundingClientRect().left < graphWidth(row);
-      showContextMenu({
+      pendingCommitMenu.current = undefined;
+      const update = showContextMenu({
         anchor: contextMenuAnchor(event, event.currentTarget),
         items: onGraph
           ? graphMenu(commit, row)
           : [...commitMenu(commit, row), ...(customCommitItems?.(commit.id) ?? [])],
         label: `${onGraph ? 'Graph' : 'Commit'} ${shortHash(commit.id)}`,
-        onClose: () => setContextCommitId(undefined),
+        onClose: () => {
+          pendingCommitMenu.current = undefined;
+          setContextCommitId(undefined);
+        },
       });
+      if (!onGraph && !referenceCommands.ready)
+        pendingCommitMenu.current = { sessionKey, commit, includeCustom: true, update };
     },
-    [commitMenu, commits, graph, graphMenu, showContextMenu, customCommitItems],
+    [
+      commitMenu,
+      commits,
+      graph,
+      graphMenu,
+      showContextMenu,
+      customCommitItems,
+      referenceCommands.ready,
+      sessionKey,
+    ],
   );
+
+  useLayoutEffect(() => {
+    const pending = pendingCommitMenu.current;
+    if (!pending) return;
+    if (pending.sessionKey !== sessionKey) {
+      pendingCommitMenu.current = undefined;
+      return;
+    }
+    if (!referenceCommands.ready) return;
+    pendingCommitMenu.current = undefined;
+    const row = graph[commits.findIndex((commit) => commit.id === pending.commit.id)];
+    // Enable the menu that was actually opened, retaining its immutable commit target. The scoped
+    // update handle cannot reopen a dismissed menu or replace another component's menu.
+    pending.update([
+      ...commitMenu(pending.commit, row),
+      ...(pending.includeCustom ? (customCommitItems?.(pending.commit.id) ?? []) : []),
+    ]);
+  });
 
   const pendingPageSelection = useRef<{ readonly from: string; readonly delta: number } | undefined>(
     undefined,
@@ -676,13 +719,19 @@ export function HistoryView({
         if (!commit || !row) return;
         const rect = row.getBoundingClientRect();
         setContextCommitId(commit.id);
-        showContextMenu({
+        pendingCommitMenu.current = undefined;
+        const update = showContextMenu({
           anchor: { type: 'point', x: rect.left + 48, y: rect.bottom },
           items: commitMenu(commit, graph[selectedIndex]),
           label: `Commit ${shortHash(commit.id)}`,
           keyboard: true,
-          onClose: () => setContextCommitId(undefined),
+          onClose: () => {
+            pendingCommitMenu.current = undefined;
+            setContextCommitId(undefined);
+          },
         });
+        if (!referenceCommands.ready)
+          pendingCommitMenu.current = { sessionKey, commit, includeCustom: false, update };
         break;
       }
       default:

@@ -1,3 +1,5 @@
+import { gitEnvironment } from './environment';
+
 /** Credentials stay between Git, the SSH agent and the user's configured credential/askpass tools. */
 export type GitAuthenticationPolicy = 'silent' | 'prompt';
 
@@ -10,7 +12,7 @@ export function applyAuthenticationPolicy(
   environment: NodeJS.ProcessEnv,
   policy: GitAuthenticationPolicy,
 ): NodeJS.ProcessEnv {
-  const result = { ...environment };
+  const result = gitEnvironment(environment);
   result.GIT_TERMINAL_PROMPT = '0';
   result.GCM_TRACE_SECRETS = '0';
   result.GIT_TRACE_REDACT = '1';

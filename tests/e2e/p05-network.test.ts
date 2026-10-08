@@ -109,7 +109,7 @@ test('P05 compact Fetch/Push, optional tracking, all tags, combined remote edit 
     expect(await f.git(['config', '--get', 'branch.main.remote'])).toBe('team');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-    await page.keyboard.press('Control+Shift+G');
+    await page.keyboard.press('ControlOrMeta+Shift+G');
     await expect(dialog).toContainText('Create Tag');
     await dialog.getByTestId('reference-name').fill('release-p05');
     await page.screenshot({ path: test.info().outputPath('p05-tag-light.png') });
@@ -139,7 +139,7 @@ test('P05 compact Fetch/Push, optional tracking, all tags, combined remote edit 
     await page.screenshot({ path: test.info().outputPath('p05-tag-delete.png') });
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(await f.git(['cat-file', '-t', 'release-p05'])).toBe('tag');
-    await page.keyboard.press('Control+n');
+    await page.keyboard.press('ControlOrMeta+n');
     const clone = page.getByRole('dialog', { name: 'Clone', exact: true });
     await clone.locator('#clone-url').fill(`file://${f.bare}`);
     await clone.locator('#clone-parent').fill(f.root);
@@ -244,7 +244,7 @@ test('P05 force preview refuses a moved remote after fetch, and stale-branch bat
     await f.git(['push', 'origin', '--delete', 'stale-a', 'stale-b']);
     await page.keyboard.press('F5');
     const tree = page.getByRole('tree', { name: 'References', exact: true });
-    await expect(tree.getByRole('treeitem', { name: /stale-a/u })).toBeVisible();
+    await expect(tree.locator('[role="treeitem"][title="refs/heads/stale-a"]')).toBeVisible();
     await tree.getByRole('treeitem', { name: 'Branches', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Select Stale Local Branches…', exact: true }).click();
     await expect(dialog.getByRole('checkbox', { name: /stale-a/u })).toBeChecked();

@@ -51,7 +51,7 @@ test('F22 creates, opens, labels, and removes a linked worktree', async () => {
     await expect(create).toHaveCount(0);
     await expect
       .poll(async () => (await git.run(['worktree', 'list', '--porcelain'], { cwd: repository })).stdout)
-      .toContain(linked);
+      .toContain(linked.replaceAll('\\', '/'));
     await expect(page.getByRole('tab', { name: /^linked-worktree,/u })).toBeVisible();
     await expect(page.getByRole('tab', { name: /^linked-worktree,/u })).toHaveAttribute(
       'aria-label',
@@ -68,7 +68,7 @@ test('F22 creates, opens, labels, and removes a linked worktree', async () => {
     await expect(remove).toHaveCount(0);
     await expect
       .poll(async () => (await git.run(['worktree', 'list', '--porcelain'], { cwd: repository })).stdout)
-      .not.toContain(linked);
+      .not.toContain(linked.replaceAll('\\', '/'));
     await expect(page.getByRole('tab', { name: /^linked-worktree,/u })).toHaveCount(0);
     await expect(page.getByRole('treeitem', { name: 'Worktrees', exact: true })).toHaveCount(0);
   } finally {

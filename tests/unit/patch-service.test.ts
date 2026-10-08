@@ -1,3 +1,4 @@
+import { testPlatform } from '../platform';
 import { readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +15,7 @@ async function fixture() {
   const service = new RepositoryService({ storagePath: join(f.root, 'recent.json'), runner: f.git });
   cleanups.push(async () => {
     service.dispose();
+    await service.settled();
     await f.cleanup();
   });
   const { id } = await service.open(1, f.cwd);
@@ -121,9 +123,11 @@ describe('F36 patch import and export', () => {
     expect(() => checkedPatch(Buffer.alloc(0))).toThrow();
     expect(() => checkedPatch(Buffer.alloc(8 * 1024 * 1024 + 1))).toThrow();
     await expect(readPatchFile(f.cwd)).rejects.toThrow();
-    await symlink(f.root, join(f.cwd, 'link'));
-    const unsafe = await f.preview(Buffer.from('--- /dev/null\n+++ b/link/escape\n@@ -0,0 +1 @@\n+bad\n'));
-    expect(unsafe.state).toBe('invalid');
+    if (testPlatform.symlinks) {
+      await symlink(f.root, join(f.cwd, 'link'), 'junction');
+      const unsafe = await f.preview(Buffer.from('--- /dev/null\n+++ b/link/escape\n@@ -0,0 +1 @@\n+bad\n'));
+      expect(unsafe.state).toBe('invalid');
+    }
     const mailbox = await f.preview(
       Buffer.from(
         `From ${f.head} Mon Sep 17 00:00:00 2001\n${f.bytes.toString()}From ${f.head} Mon Sep 17 00:00:00 2001\n${f.bytes.toString()}`,
@@ -253,26 +257,29 @@ describe('F36 patch import and export', () => {
     expect(await readFile(join(f.cwd, 'change.txt'), 'utf8')).toBe('second change\r\n');
   });
 
-  it('round-trips quoted tab, newline, backslash and leading-dash paths on Linux', async () => {
-    const f = await fixture();
-    const paths = ['line\nbreak.txt', 'tab\tname.txt', 'back\\slash.txt', '-option café.txt'];
-    for (const path of paths) await writeFile(join(f.cwd, path), Buffer.from([255, 13, 10, 97]));
-    await f.run('add', '--', ...paths);
-    const expected = await f.run('ls-files', '--stage');
-    const destination = join(f.root, 'paths.patch');
-    await f.service.savePatch(
-      1,
-      { id: f.id, target: { kind: 'working', paths, includeUntracked: true } },
-      destination,
-    );
-    await f.run('reset', '--hard', 'HEAD');
-    const preview = await f.preview(await readFile(destination));
-    expect(preview.state).toBe('clean');
-    expect(await f.apply(preview.token)).toMatchObject({ status: 'succeeded' });
-    expect(await f.run('ls-files', '--stage')).toBe(expected);
-    for (const path of paths)
-      expect(await readFile(join(f.cwd, path))).toEqual(Buffer.from([255, 13, 10, 97]));
-  });
+  it.skipIf(!testPlatform.posix)(
+    'round-trips quoted tab, newline, backslash and leading-dash paths on Linux',
+    async () => {
+      const f = await fixture();
+      const paths = ['line\nbreak.txt', 'tab\tname.txt', 'back\\slash.txt', '-option café.txt'];
+      for (const path of paths) await writeFile(join(f.cwd, path), Buffer.from([255, 13, 10, 97]));
+      await f.run('add', '--', ...paths);
+      const expected = await f.run('ls-files', '--stage');
+      const destination = join(f.root, 'paths.patch');
+      await f.service.savePatch(
+        1,
+        { id: f.id, target: { kind: 'working', paths, includeUntracked: true } },
+        destination,
+      );
+      await f.run('reset', '--hard', 'HEAD');
+      const preview = await f.preview(await readFile(destination));
+      expect(preview.state).toBe('clean');
+      expect(await f.apply(preview.token)).toMatchObject({ status: 'succeeded' });
+      expect(await f.run('ls-files', '--stage')).toBe(expected);
+      for (const path of paths)
+        expect(await readFile(join(f.cwd, path))).toEqual(Buffer.from([255, 13, 10, 97]));
+    },
+  );
 
   it('round-trips binary additions, deletions and header-like hunk text without rewriting bytes', async () => {
     const f = await fixture();

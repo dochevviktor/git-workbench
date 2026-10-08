@@ -1,11 +1,11 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { connect } from 'node:net';
 import type { Socket, AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { createCredentialBroker, credentialProgress } from '../../src/backend/git/credential-broker';
@@ -22,6 +22,37 @@ const helperPath = resolve('src/backend/git/credential-helper.ts');
 const exec = promisify(execFile);
 
 describe('GitHub account credential transport', () => {
+  it.skipIf(process.platform === 'win32')(
+    'keeps its private socket usable with a long multibyte temporary path',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'workbench-long-temp-'));
+      const temporary = join(root, 'é'.repeat(50));
+      await mkdir(temporary);
+      vi.stubEnv('TMPDIR', temporary);
+      let broker: Awaited<ReturnType<typeof createCredentialBroker>> | undefined;
+      try {
+        broker = await createCredentialBroker({
+          source: { available: async () => true, get: async () => credential },
+          executable: process.execPath,
+          helperPath,
+        });
+        expect(Buffer.byteLength(broker.env.GW_CREDENTIAL_SOCKET)).toBeLessThan(104);
+        expect((await stat(dirname(broker.env.GW_CREDENTIAL_SOCKET))).mode & 0o777).toBe(0o700);
+        const result = await new GitRunner().run([...broker.args, 'credential', 'fill'], {
+          cwd: root,
+          env: broker.env,
+          stdin: 'protocol=https\nhost=github.com\npath=org/private.git\n\n',
+        });
+        expect(result.stdout).toContain(`password=${token}`);
+      } finally {
+        await broker?.close();
+        vi.unstubAllEnvs();
+        await rm(root, { recursive: true, force: true });
+      }
+      await expect(stat(dirname(broker!.env.GW_CREDENTIAL_SOCKET))).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
   it('accepts a public GitHub login in an HTTPS remote but rejects token URLs', () => {
     expect(isAllowedRemoteUrl('https://fixture-user@github.com/org/private.git')).toBe(true);
     expect(isAllowedRemoteUrl('https://fixture_user@git.example:8443/group/subgroup/private.git')).toBe(true);

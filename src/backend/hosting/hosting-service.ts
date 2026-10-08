@@ -1,5 +1,3 @@
-import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import type {
   HostedRepository,
@@ -39,6 +37,7 @@ import { HostingPreferencesStore } from './preferences-store';
 import { GitHubOAuth, decodeOAuthTokens, encodeOAuthTokens } from './github-oauth';
 import type { GitHubDeviceAuthorization } from './github-oauth';
 import { configuredPullRequestUrl } from '../repositories/hosting-service';
+import { readCredentialFile } from '../credentials/credential-file';
 
 type Entry = { account: HostingAccount; stored?: StoredAccount; token?: string };
 type Request = { owner: number; accountId?: string; controller: AbortController };
@@ -863,19 +862,9 @@ export class HostingService {
 
 export async function readTokenFile(path: string): Promise<string> {
   try {
-    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    try {
-      const stat = await file.stat();
-      if (!stat.isFile() || stat.size > 4096 || stat.size < 1) throw new Error('Invalid file');
-      const buffer = Buffer.alloc(4097);
-      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
-      const token = buffer.subarray(0, bytesRead).toString('utf8').trim();
-      buffer.fill(0);
-      if (bytesRead > 4096 || !/^[A-Za-z0-9_]{10,4096}$/u.test(token)) throw new Error('Invalid token');
-      return token;
-    } finally {
-      await file.close();
-    }
+    const token = await readCredentialFile(path);
+    if (!/^[A-Za-z0-9_]{10,4096}$/u.test(token)) throw new Error('Invalid token');
+    return token;
   } catch {
     throw new ExpectedBackendError(
       'HOSTING_AUTH',

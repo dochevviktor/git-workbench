@@ -1,3 +1,4 @@
+import { fixtureName, testPlatform } from '../platform';
 import {
   access,
   mkdir,
@@ -22,6 +23,12 @@ import {
 import { RepositoryService } from '../../src/backend/repositories/repository-service';
 
 const temporaryDirectories: string[] = [];
+const services: RepositoryService[] = [];
+function repositoryService(options: ConstructorParameters<typeof RepositoryService>[0]) {
+  const service = new RepositoryService(options);
+  services.push(service);
+  return service;
+}
 
 async function fixtureDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'git-workbench-repository-'));
@@ -30,6 +37,10 @@ async function fixtureDirectory(): Promise<string> {
 }
 
 afterEach(async () => {
+  for (const service of services.splice(0)) {
+    service.dispose();
+    await service.settled();
+  }
   while (temporaryDirectories.length > 0) {
     const directory = temporaryDirectories.pop();
     if (directory) await rm(directory, { recursive: true, force: true });
@@ -84,10 +95,10 @@ describe('Git runner', () => {
 describe('repository service', () => {
   it('initializes, discovers, deduplicates, closes, and reopens a local repository', async () => {
     const directory = await fixtureDirectory();
-    const unusual = join(directory, '-leading space and unicode-✓\nname');
+    const unusual = join(directory, fixtureName('-leading space and unicode-✓\nname'));
     await mkdir(unusual);
     const storagePath = join(directory, 'settings', 'recent.json');
-    const service = new RepositoryService({ storagePath });
+    const service = repositoryService({ storagePath });
 
     const initialized = await service.initialize(7, unusual, false);
     expect(initialized.path).toBe(unusual);
@@ -111,7 +122,7 @@ describe('repository service', () => {
 
     await service.close(7, initialized.id);
     await expect(service.listOpen(7)).resolves.toEqual([]);
-    const reopenedService = new RepositoryService({ storagePath });
+    const reopenedService = repositoryService({ storagePath });
     expect((await reopenedService.listRecent(8))[0]).toMatchObject({
       id: initialized.id,
       path: unusual,
@@ -129,11 +140,11 @@ describe('repository service', () => {
     await mkdir(firstPath);
     await mkdir(secondPath);
     const storagePath = join(directory, 'recent.json');
-    const service = new RepositoryService({ storagePath });
+    const service = repositoryService({ storagePath });
     const first = await service.initialize(1, firstPath, false);
     const second = await service.initialize(1, secondPath, false);
 
-    const changedPath = join(firstPath, 'unusual\nfilename.txt');
+    const changedPath = join(firstPath, fixtureName('unusual\nfilename.txt'));
     await writeFile(changedPath, 'uncommitted\n', 'utf8');
     const dirtyTabs = await service.listOpen(1);
     expect(dirtyTabs.find((repository) => repository.id === first.id)).toMatchObject({
@@ -150,7 +161,7 @@ describe('repository service', () => {
       activeRepositoryId: second.id,
     });
 
-    const restarted = new RepositoryService({ storagePath });
+    const restarted = repositoryService({ storagePath });
     await expect(restarted.listOpen(2)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: first.id, path: first.path }),
@@ -169,7 +180,7 @@ describe('repository service', () => {
     const repositoryPath = join(directory, 'repository');
     await mkdir(repositoryPath);
     const runner = new GitRunner();
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json'), runner });
     const repository = await service.initialize(1, repositoryPath, false);
     await writeFile(join(repositoryPath, 'file.txt'), 'one\ntwo\n', 'utf8');
     await runner.run(['add', '--', 'file.txt'], { cwd: repositoryPath });
@@ -218,7 +229,7 @@ describe('repository service', () => {
     const repositoryPath = join(directory, 'repository');
     await mkdir(repositoryPath);
     const runner = new GitRunner();
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json'), runner });
     const repository = await service.initialize(1, repositoryPath, false);
     await runner.run(['config', 'user.name', 'Service Author'], { cwd: repositoryPath });
     await runner.run(['config', 'user.email', 'service@example.test'], { cwd: repositoryPath });
@@ -261,7 +272,7 @@ describe('repository service', () => {
     const directory = await fixtureDirectory();
     const barePath = join(directory, 'bare');
     await mkdir(barePath);
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json') });
     const repository = await service.initialize(1, barePath, true);
 
     await expect(service.getCommitContext(1, repository.id)).rejects.toMatchObject({
@@ -274,7 +285,7 @@ describe('repository service', () => {
     const repositoryPath = join(directory, 'repository');
     await mkdir(repositoryPath);
     const runner = new GitRunner();
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json'), runner });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json'), runner });
     const repository = await service.initialize(1, repositoryPath, false);
     await runner.run(['config', 'user.name', 'Service Author'], { cwd: repositoryPath });
     await runner.run(['config', 'user.email', 'service@example.test'], { cwd: repositoryPath });
@@ -319,7 +330,7 @@ describe('repository service', () => {
     const directory = await fixtureDirectory();
     const barePath = join(directory, 'bare-references');
     await mkdir(barePath);
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json') });
     const repository = await service.initialize(1, barePath, true);
 
     await expect(service.getReferenceContext(1, repository.id)).rejects.toMatchObject({
@@ -336,7 +347,7 @@ describe('repository service', () => {
     const runner = new GitRunner();
     await runner.run(['init', '--quiet', '--separate-git-dir', gitDirectory], { cwd: worktree });
 
-    const service = new RepositoryService({
+    const service = repositoryService({
       storagePath: join(directory, 'recent.json'),
       runner,
     });
@@ -347,14 +358,13 @@ describe('repository service', () => {
     expect(repository.commonDir).toBe(await realpath(gitDirectory));
   });
 
-  it('canonicalizes a symlinked repository path on Linux', async () => {
-    if (process.platform === 'win32') return;
+  it.skipIf(!testPlatform.symlinks)('canonicalizes a symlinked repository path', async () => {
     const directory = await fixtureDirectory();
     const repositoryPath = join(directory, 'repository');
     const aliasPath = join(directory, 'repository-alias');
     await mkdir(repositoryPath);
     await symlink(repositoryPath, aliasPath, 'dir');
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json') });
     await service.initialize(1, repositoryPath, false);
 
     const opened = await service.open(1, aliasPath);
@@ -365,7 +375,7 @@ describe('repository service', () => {
   it('discovers a bare repository without inventing a working tree', async () => {
     const directory = await fixtureDirectory();
     await mkdir(join(directory, 'bare'));
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json') });
     const repository = await service.initialize(1, join(directory, 'bare'), true);
     expect(repository.bare).toBe(true);
     expect(repository.worktreePath).toBeNull();
@@ -376,13 +386,13 @@ describe('repository service', () => {
 
   it('keeps opening read-only and classifies invalid paths and missing Git', async () => {
     const directory = await fixtureDirectory();
-    const service = new RepositoryService({ storagePath: join(directory, 'recent.json') });
+    const service = repositoryService({ storagePath: join(directory, 'recent.json') });
     await expect(service.open(1, join(directory, 'not-a-repository'))).rejects.toMatchObject({
       code: 'PATH_NOT_FOUND',
     });
     expect(await readdir(directory)).toEqual([]);
 
-    const missingGit = new RepositoryService({
+    const missingGit = repositoryService({
       storagePath: join(directory, 'missing-git-recent.json'),
       runner: new GitRunner({ executable: join(directory, 'does-not-exist') }),
     });
@@ -398,7 +408,7 @@ describe('repository service', () => {
     const directory = await fixtureDirectory();
     const storagePath = join(directory, 'recent.json');
     await writeFile(storagePath, '{not-json', 'utf8');
-    const service = new RepositoryService({ storagePath });
+    const service = repositoryService({ storagePath });
     await expect(service.listRecent(1)).resolves.toEqual([]);
     await expect(readdir(directory)).resolves.toEqual(
       expect.arrayContaining([expect.stringMatching(/^recent\.json\.corrupt-/u)]),
@@ -419,7 +429,7 @@ describe('repository service', () => {
 
     const storagePath = join(directory, 'recent.json');
     const managerStoragePath = join(directory, 'manager.json');
-    const service = new RepositoryService({ storagePath, managerStoragePath });
+    const service = repositoryService({ storagePath, managerStoragePath });
     const alpha = await service.initialize(1, teamRepository, false);
     const beta = await service.initialize(1, secondTeamRepository, false);
     const bare = await service.initialize(1, bareRepository, true);
@@ -465,7 +475,7 @@ describe('repository service', () => {
       beta.id,
     );
 
-    const reopened = new RepositoryService({ storagePath, managerStoragePath });
+    const reopened = repositoryService({ storagePath, managerStoragePath });
     const reopenedSnapshot = await reopened.listManager(2);
     expect(reopenedSnapshot.sourceDirectories[0]).toMatchObject({ path: source, repositoryCount: 3 });
     expect(
@@ -495,7 +505,9 @@ describe('repository service', () => {
     });
     expect((await reopened.listManager(2)).repositories).toHaveLength(4);
     service.dispose();
+    await service.settled();
     reopened.dispose();
+    await reopened.settled();
   });
 
   it('reports missing roots and bounds source scans without following links', async () => {
@@ -505,7 +517,7 @@ describe('repository service', () => {
     const nestedRepository = join(source, 'one', 'two', 'repository');
     await mkdir(nestedRepository, { recursive: true });
     await mkdir(outside);
-    const service = new RepositoryService({
+    const service = repositoryService({
       storagePath: join(directory, 'recent.json'),
       managerStoragePath: join(directory, 'manager.json'),
       sourceScanOptions: { maxDepth: 1, maxEntries: 100 },
@@ -519,7 +531,9 @@ describe('repository service', () => {
       expect.arrayContaining([expect.objectContaining({ code: 'depth-limit' })]),
     );
 
-    await rm(source, { recursive: true, force: true });
+    service.disposeWindow(1);
+    await service.settled();
+    await rm(source, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     const missing = await service.listManager(1);
     expect(missing.sourceDirectories[0]).toMatchObject({ status: 'missing', repositoryCount: 0 });
   });
@@ -531,7 +545,7 @@ describe('repository service', () => {
     const closed = join(directory, 'closed');
     await mkdir(managed, { recursive: true });
     await mkdir(closed);
-    const service = new RepositoryService({
+    const service = repositoryService({
       storagePath: join(directory, 'recent.json'),
       managerStoragePath: join(directory, 'manager.json'),
       workspaceStoragePath: join(directory, 'workspace.json'),
@@ -583,7 +597,7 @@ describe('repository service', () => {
     const directory = await fixtureDirectory();
     const managerStoragePath = join(directory, 'manager.json');
     await writeFile(managerStoragePath, '{not-json', 'utf8');
-    const service = new RepositoryService({
+    const service = repositoryService({
       storagePath: join(directory, 'recent.json'),
       managerStoragePath,
     });

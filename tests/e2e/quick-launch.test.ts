@@ -43,7 +43,7 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
     const launch = page.getByRole('dialog', { name: 'Quick Launch', exact: true });
     const search = () => launch.getByRole('combobox');
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await expect(launch).toBeVisible();
     await search().fill('rebase');
     await expect(launch.getByRole('option', { name: 'Rebase…', exact: true })).toHaveAttribute(
@@ -83,7 +83,7 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
     expect((await git.run(['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim()).toBe(before);
     expect((await git.run(['status', '--porcelain'], { cwd: repository })).stdout).toBe('');
 
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('rebase');
     await search().press('Enter');
     await search().fill('v1.0');
@@ -97,15 +97,23 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
         return result.ok ? result.value.find((op) => op.kind === 'rebase')?.status : 'error';
       })
       .toBe('succeeded');
-    expect((await git.run(['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim()).not.toBe(before);
+    const rebased = (await git.run(['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim();
+    expect(rebased).not.toBe(before);
     expect(
       (await git.run(['merge-base', '--is-ancestor', 'v1.0', 'HEAD'], { cwd: repository })).exitCode,
     ).toBe(0);
     expect((await git.run(['show', 'HEAD:main.txt'], { cwd: repository })).stdout).toBe('main work\n');
     expect((await git.run(['show', 'HEAD:sidebar.txt'], { cwd: repository })).stdout).toBe('sidebar\n');
 
-    await page.keyboard.press('Control+p');
+    // Operation completion precedes the renderer's reference refresh. Wait for the displayed HEAD
+    // and the chooser's availability before capturing a parameter-selection snapshot.
+    await expect(page.locator('.commit-row.head')).toHaveAttribute('data-commit-id', rebased);
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('checkout branch');
+    await expect(launch.getByRole('option', { name: 'Checkout Branch…', exact: true })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     await search().press('Enter');
     await search().press('Backspace');
     await expect(search()).toHaveAttribute('aria-label', 'Search commands and repositories');
@@ -121,7 +129,7 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
       'true',
     );
 
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('file history');
     await search().press('Enter');
     await expect(launch.getByRole('option')).toHaveCount(2);
@@ -140,28 +148,28 @@ test('F31 Quick Launch command, parameter, confirmation, checkout and historical
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Quick Launch', exact: true })).toBeFocused();
     }
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('dark');
     await search().press('Enter');
     await expect(page.locator('.app')).toHaveAttribute('data-theme', 'dark');
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await page.screenshot({ path: 'test-results/f31-dark.png' });
     await page.mouse.click(10, 150);
     await expect(launch).toHaveCount(0);
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill(repository);
     await search().press('Enter');
     await expect(launch).toHaveCount(0);
     const sessions = await page.evaluate(() => window.desktop!.repository.listOpen());
     expect(sessions.ok && sessions.value).toHaveLength(1);
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('merge');
     await search().press('Enter');
     await search().fill('main');
     await search().press('Enter');
     await expect(page.getByRole('dialog', { name: 'Merge Branch' })).toContainText('main');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.keyboard.press('Control+p');
+    await page.keyboard.press('ControlOrMeta+p');
     await search().fill('rebase');
     await search().press('Enter');
     await expect(launch).toContainText('Branches and Tags');

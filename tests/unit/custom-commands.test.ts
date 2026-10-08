@@ -221,7 +221,11 @@ describe('F32 custom command definitions and execution', () => {
       };
       expect((await runCustomCommand(preview, handle, async () => undefined)).output).toBe(value);
       const action = expandCommand(
-        { kind: 'process', executable: '/usr/bin/printf', args: ['%s', '${input:1}'] },
+        {
+          kind: 'process',
+          executable: process.execPath,
+          args: ['-e', 'process.stdout.write(process.argv[1])', '--', '${input:1}'],
+        },
         preview.variables,
       );
       expect((await runCustomCommand({ ...preview, action }, handle, async () => undefined)).output).toBe(

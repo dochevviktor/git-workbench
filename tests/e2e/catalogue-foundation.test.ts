@@ -40,7 +40,7 @@ test('catalogue clone, additive repository list, reorder/reopen, view shortcuts 
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await expect(page.locator('.app')).toHaveAttribute('data-desktop-status', 'connected');
-    await page.keyboard.press('Control+n');
+    await page.keyboard.press('ControlOrMeta+n');
     const dialog = page.getByRole('dialog', { name: 'Clone', exact: true });
     await dialog.getByLabel('Repository URL:').fill(source);
     await dialog.getByLabel('Parent Folder:').fill(root);
@@ -75,18 +75,18 @@ test('catalogue clone, additive repository list, reorder/reopen, view shortcuts 
       )
       .toEqual(['other', 'cloned']);
     await strip.getByRole('tab', { name: /^other, /u }).click();
-    await page.keyboard.press('Control+w');
+    await page.keyboard.press('ControlOrMeta+w');
     await expect(strip.getByRole('tab', { name: /^other, /u })).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('listbox', { name: 'Repository list' })).toBeVisible();
-    await page.keyboard.press('Control+Shift+t');
+    await page.keyboard.press('ControlOrMeta+Shift+t');
     await expect(strip.getByRole('tab', { name: /^other, /u })).toHaveAttribute('aria-selected', 'true');
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     await expect(page.getByTestId('commit-composer')).toBeVisible();
     await expect(strip.getByRole('tab', { name: /^other, /u })).toHaveAttribute('aria-selected', 'true');
-    await page.keyboard.press('Control+2');
+    await page.keyboard.press('ControlOrMeta+2');
     await expect(page.getByTestId('history-commit').first()).toBeVisible();
-    await page.keyboard.press('Control+Shift+g');
+    await page.keyboard.press('ControlOrMeta+Shift+g');
     const tagDialog = page.getByRole('dialog', { name: 'Create Tag', exact: true });
     await tagDialog.getByTestId('reference-name').fill('empty-annotation');
     await tagDialog.getByTestId('reference-dialog-submit').click();

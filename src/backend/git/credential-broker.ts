@@ -44,7 +44,13 @@ const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 /** A private, per-process channel. Neither argv, environment nor temporary files contain a token. */
 export async function createCredentialBroker(bridge: GitCredentialBridge) {
   const scopes = (await bridge.source.scopes?.()) ?? ['https://github.com'];
-  const directory = await mkdtemp(join(tmpdir(), 'gw-credentials-'));
+  // Darwin's sockaddr_un has 104 bytes including NUL (Linux allows 108). TMPDIR can
+  // exceed that limit, especially beneath a repository or a macOS runner profile.
+  const temporary = tmpdir();
+  const socketTemplate = join(temporary, 'gw-credentials-XXXXXX', 'socket');
+  const parent =
+    process.platform !== 'win32' && Buffer.byteLength(socketTemplate) >= 104 ? '/tmp' : temporary;
+  const directory = await mkdtemp(join(parent, 'gw-credentials-'));
   const nonce = randomBytes(32).toString('hex');
   const address = process.platform === 'win32' ? `\\\\.\\pipe\\gw-${nonce}` : join(directory, 'socket');
   const sockets = new Set<Socket>();

@@ -36,7 +36,7 @@ test('P14 accessibility: manager, history, changes, preferences and palette in b
     for (const theme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: theme });
       await audit(`history-${theme}`);
-      await page.keyboard.press('Control+,');
+      await page.keyboard.press('ControlOrMeta+,');
       const preferences = page.getByRole('dialog', { name: 'Preferences', exact: true });
       await expect(preferences).toBeVisible();
       for (const section of ['General', 'Git', 'Commit', 'Shortcuts', 'Accounts']) {
@@ -44,13 +44,13 @@ test('P14 accessibility: manager, history, changes, preferences and palette in b
         await audit(`preferences-${section}-${theme}`);
       }
       await page.keyboard.press('Escape');
-      await page.keyboard.press('Control+p');
+      await page.keyboard.press('ControlOrMeta+p');
       await expect(page.getByRole('dialog', { name: 'Quick Launch', exact: true })).toBeVisible();
       await audit(`palette-${theme}`);
       await page.keyboard.press('Escape');
     }
     await writeFile(join(f.repo, 'value.ts'), 'export const value = 3;\n');
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     await expect(page.getByTestId('working-change').first()).toBeVisible();
     await page.getByTestId('working-change').first().click();
     await expect(page.getByTestId('diff-content')).toContainText('value = 3');
@@ -72,7 +72,7 @@ test('P14 composing input cannot commit or open global menus over a modal', asyn
     await writeFile(join(f.repo, 'value.ts'), 'export const value = 3;\n');
     await f.run('add', 'value.ts');
     await f.open();
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     const subject = page.getByTestId('commit-subject');
     await subject.fill('まだ編集中');
     await expect(page.getByTestId('commit-submit')).toBeEnabled();
@@ -92,7 +92,7 @@ test('P14 composing input cannot commit or open global menus over a modal', asyn
     // Wait for an ordinary owned read after the event; any wrongly queued commit has then started.
     await expect.poll(() => f.run('rev-parse', 'HEAD')).toBe(f.head);
     await expect.soft(subject).toHaveValue('まだ編集中');
-    await page.keyboard.press('Control+,');
+    await page.keyboard.press('ControlOrMeta+,');
     const preferences = page.getByRole('dialog', { name: 'Preferences', exact: true });
     await expect(preferences).toBeVisible();
     await preferences.getByRole('button', { name: 'Git', exact: true }).click();
@@ -116,7 +116,7 @@ test('P14 scaled keyboard navigation, forced colors and renderer crash recovery 
         window.setSize(1440, 960);
         window.webContents.setZoomFactor(factor);
       }, zoom);
-      await page.keyboard.press('Control+,');
+      await page.keyboard.press('ControlOrMeta+,');
       const dialog = page.getByRole('dialog', { name: 'Preferences', exact: true });
       await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeInViewport();
       for (let index = 0; index < 24; index++) {
@@ -157,9 +157,9 @@ test('P14 scaled keyboard navigation, forced colors and renderer crash recovery 
     await tab.focus();
     await tab.press('Delete');
     await expect(tab).toHaveCount(0);
-    await page.keyboard.press('Control+Shift+T');
+    await page.keyboard.press('ControlOrMeta+Shift+T');
     await expect(tab).toBeVisible();
-    await page.keyboard.press('Control+1');
+    await page.keyboard.press('ControlOrMeta+1');
     await page.getByTestId('commit-subject').fill('Saved before renderer crash');
     await app.evaluate(({ BrowserWindow, dialog }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
@@ -192,6 +192,16 @@ test('P14 scaled keyboard navigation, forced colors and renderer crash recovery 
         ),
       )
       .toBe('connected');
+    // Preload connection precedes repository restoration. A native JS click has no locator auto-wait.
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
+            '[...document.querySelectorAll("button")].some(button => button.textContent.startsWith("Local Changes") && !button.disabled)',
+          ),
+        ),
+      )
+      .toBe(true);
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
         '[...document.querySelectorAll("button")].find(button => button.textContent.startsWith("Local Changes"))?.click()',

@@ -3418,7 +3418,7 @@ export class RepositoryService {
     for (const protectedPath of [summary.worktreePath, summary.gitDir, summary.commonDir]) {
       if (!protectedPath) continue;
       const path = relative(protectedPath, target);
-      if (path === '' || (!path.startsWith('../') && path !== '..' && !isAbsolute(path)))
+      if (path === '' || (!path.startsWith(`..${sep}`) && path !== '..' && !isAbsolute(path)))
         throw new ExpectedBackendError(
           'INVALID_REQUEST',
           'Save the historical file outside this repository.',
