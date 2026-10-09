@@ -1,6 +1,6 @@
 {
   "name": "git-workbench",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "A Linux-first Git desktop client built with Electron, React, and TypeScript",
   "author": "Viktor Dochev",
