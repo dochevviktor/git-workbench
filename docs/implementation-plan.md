@@ -2,7 +2,9 @@
 
 CI toolbar correction (2026-10-09): [packaged native failures](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
 at `5d27bc6` share an accessible-name change at compact widths. Explicit toolbar action labels and
-a three-width native/package regression address it; full verification is pending. P14 remains partial.
+a three-width native/package regression address it; native macOS package checks now pass. The first
+hosted rerun also exposed a watcher-limit notification failure; its controlled correction is under
+verification. P14 remains partial.
 
 CI release-validation correction (2026-10-08): [first hosted-run failures and fixes](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 records successful native installer generation at `efedbb4` and validation failures that blocked
@@ -301,9 +303,13 @@ outside this slice; F38 Lean Branching remains separate.
 CI compact toolbar correction, 2026-10-09: `npm run check` passes **736 unit/integration tests with
 11 capability/benchmark skips**, build/AppImage creation pass, and **20 packaged scenarios pass with
 one Windows-only skip**. The three-width regression reproduces the original accessible-name change
-and passes after the correction; it is included in native and packaged smoke. Full desktop/hosted
-verification is pending in the [CI record](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09).
-P14 remains partial.
+and passes after the correction; it is included in native and packaged smoke. The full desktop suite
+passes **99 scenarios with six explicit skips**, without retries. Hosted verification is pending in
+the [CI record](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09).
+The first hosted rerun passes macOS native/package checks but exposes a watcher-limit notification
+failure. Its correction passes final check (**739 tests, 11 explicit skips**), build/AppImage,
+**20 package scenarios** and **eight session/window desktop scenarios**; hosted verification remains
+pending. P14 remains partial.
 
 CI release-validation correction, 2026-10-08: local check passes **742 unit/integration tests with five
 explicit skips**, including the new service/window/tab watcher-shutdown regressions. Build and AppImage

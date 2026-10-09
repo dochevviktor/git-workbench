@@ -5,6 +5,8 @@ records an independent F31/F34 accessible-name defect, controlled three-width re
 W3C/Playwright sources. Confidence is high for the local reproduction; hosted verification is pending.
 OSes share the responsive breakpoint but have different shortcut tooltips and native window sizes.
 No Fork case/finding, layout/style, private asset or visual-parity claim changes.
+The same record adds an independent F02 watcher-coverage correction and Node fs.watch source checked
+on this date. Native macOS package checks pass; final hosted watcher verification remains pending.
 
 Release validation correction — **2026-10-08**: [the first installer-run follow-up](../reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 records hosted failures and independent F02/F03 watcher-lifetime corrections plus portable F32/F33/F37

@@ -89,6 +89,7 @@ export class DirectoryWatcher {
     }
     this.reconciling = true;
     this.reconcileAgain = false;
+    const previousDegraded = this.degraded;
     this.degraded = false;
     const previousCount = this.watchers.size;
     const wanted = new Set<string>();
@@ -183,8 +184,10 @@ export class DirectoryWatcher {
           this.watchers.delete(path);
           this.identities.delete(path);
         }
-      // Cover changes during installation of watches on newly created subdirectories.
-      if (previousCount > 0 && this.watchers.size !== previousCount) this.notify();
+      // Publish known coverage changes even if the OS delivers no native event. Also cover
+      // changes during installation of watches on newly created subdirectories.
+      if (this.degraded !== previousDegraded || (previousCount > 0 && this.watchers.size !== previousCount))
+        this.notify();
     } finally {
       this.reconciling = false;
       if (this.reconcileAgain && !this.closed) void this.reconcile();

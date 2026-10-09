@@ -3,7 +3,8 @@
 CI follow-up (2026-10-09): [compact toolbar correction](docs/reviews/ci-releases.md#compact-toolbar-correction--2026-10-09).
 The latest Windows/macOS failures share an accessible-name change when toolbar text is hidden on
 narrow desktops. Stable button labels and a regression at three widths fix that failure locally;
-hosted installer/upload verification is pending.
+macOS native/package checks now pass. A separate watcher-limit notification failure is also corrected
+and verified locally; final hosted installer/upload verification is pending.
 
 Release packaging (2026-10-08): CI now builds Windows x64 NSIS installers, Linux x64 AppImages and
 universal macOS DMGs, then assembles checksums and a tested Arch `git-workbench-bin` recipe. Successful

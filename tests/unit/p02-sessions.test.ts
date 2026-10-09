@@ -23,7 +23,10 @@ afterEach(async () => {
     service.dispose();
     await service.settled();
   }
-  for (const watcher of watches.splice(0)) watcher.dispose();
+  for (const watcher of watches.splice(0)) {
+    watcher.dispose();
+    await watcher.settled();
+  }
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function fixture() {
@@ -286,7 +289,7 @@ it('does not follow directory symlinks and reports fallback when a watcher bound
   const watcher = new DirectoryWatcher([{ path: source, kind: 'worktree' }], (mode) => events.push(mode), 2);
   watches.push(watcher);
   await watcher.ready;
-  await writeFile(join(source, 'file'), 'one');
+  // Reaching the limit is already known after enumeration; it must not need a native event.
   await expect.poll(() => events.includes('fallback'), { timeout: 2000 }).toBe(true);
   events.length = 0;
   await writeFile(join(outside, 'external'), 'two');

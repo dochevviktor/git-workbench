@@ -41,11 +41,36 @@ Local verification on Linux, Node 24.13.0 and Git 2.55.0:
   skips (six require unavailable Git LFS, three opt-in scale cases and two Windows-only cases).
 - Production build and AppImage creation passed; all **20 applicable packaged scenarios passed**,
   with one Windows-only skip and no retries. Renderer isolation and sandbox assertions remain enabled.
-- The full desktop suite and hosted installer/upload verification are pending.
+- The full headless desktop suite passes **99 scenarios with six explicit skips**, without retries
+  (5.1 minutes). Hosted installer/upload verification is pending.
 
 Logs and structured reports are retained in `test-results/ci-current`; the original hosted Windows
 and macOS reports are retained there separately. P14's wider native-device, assistive-technology,
 signing and live-provider gates remain separate.
+
+The first correction run, [37972253744](https://github.com/dochevviktor/git-workbench/actions/runs/37972253744)
+at `44ab276`, confirms **14 native macOS smoke passes and 19 packaged passes**, with one Windows-only
+skip in each suite. The original three failures are resolved. A separate macOS watcher integration
+test failed to observe fallback mode within two seconds, leaving that job red despite passing package
+checks. Windows and Linux were still running when this follow-up was prepared.
+
+The watcher knew its initial directory limit was reached but only notified clients on a native event
+or its 30-second polling interval. The old test coupled fallback reporting to a newly created file's
+native event. The report does not distinguish missing delivery from event coalescing. A deterministic
+regression with real directory enumeration and silent watcher handles reproduced the missing initial
+notification on Linux. Watchers now notify through the existing debounce when scan coverage changes;
+normal coverage stays quiet. The original integration test checks known fallback without a file write,
+and its teardown drains native resources. A separate regression verifies symlink exclusion with ample
+watcher capacity. All 18 targeted watcher/session/shutdown tests pass. Final `npm run check` passes
+types, lint, formatting and **739 tests with 11 explicit skips** (49.57 seconds). The rebuilt AppImage
+passes **20 scenarios with one Windows-only skip**, and all **eight session/window-lifecycle desktop
+scenarios pass**, without retries. These final reports are in `test-results/ci-current/watcher-fix`.
+Hosted verification of this follow-up remains pending.
+
+[Node's fs.watch caveats](https://nodejs.org/download/release/v24.13.0/docs/api/fs.html#caveats), checked
+**2026-10-09**, document platform-dependent event behavior. Confidence is high for the controlled
+coverage-notification regression; the exact cause of the missed native observation remains unclaimed.
+The backend change reuses existing invalidations, limits, debounce, polling and shutdown boundaries.
 
 ## First hosted-run correction — 2026-10-08
 
