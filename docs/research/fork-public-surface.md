@@ -1,5 +1,11 @@
 # Fork: captured and public feature surface
 
+Compact toolbar correction — **2026-10-09**: [native package evidence](../reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
+records an independent F31/F34 accessible-name defect, controlled three-width regression and dated
+W3C/Playwright sources. Confidence is high for the local reproduction; hosted verification is pending.
+OSes share the responsive breakpoint but have different shortcut tooltips and native window sizes.
+No Fork case/finding, layout/style, private asset or visual-parity claim changes.
+
 Release validation correction — **2026-10-08**: [the first installer-run follow-up](../reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 records hosted failures and independent F02/F03 watcher-lifetime corrections plus portable F32/F33/F37
 test entry points. Node directory/watcher contracts are linked with this access date. Controlled local

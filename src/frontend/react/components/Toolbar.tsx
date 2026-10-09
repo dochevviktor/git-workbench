@@ -142,6 +142,7 @@ function ToolbarButton({
     <button
       type="button"
       className="toolbar-button"
+      aria-label={label}
       aria-disabled={disabled || undefined}
       title={disabledReason ?? (shortcut ? `${label} (${shortcut})` : label)}
       data-testid={testId}

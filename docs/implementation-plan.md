@@ -1,5 +1,9 @@
 # Git Workbench implementation plan
 
+CI toolbar correction (2026-10-09): [packaged native failures](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
+at `5d27bc6` share an accessible-name change at compact widths. Explicit toolbar action labels and
+a three-width native/package regression address it; full verification is pending. P14 remains partial.
+
 CI release-validation correction (2026-10-08): [first hosted-run failures and fixes](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 records successful native installer generation at `efedbb4` and validation failures that blocked
 uploads/publication. Corrections drain directory-watcher resources, use cross-platform test commands,
@@ -293,6 +297,13 @@ automatic stash/reapply, specialized conflict continuation, and worktree-owned t
 outside this slice; F38 Lean Branching remains separate.
 
 ## Progress ledger
+
+CI compact toolbar correction, 2026-10-09: `npm run check` passes **736 unit/integration tests with
+11 capability/benchmark skips**, build/AppImage creation pass, and **20 packaged scenarios pass with
+one Windows-only skip**. The three-width regression reproduces the original accessible-name change
+and passes after the correction; it is included in native and packaged smoke. Full desktop/hosted
+verification is pending in the [CI record](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09).
+P14 remains partial.
 
 CI release-validation correction, 2026-10-08: local check passes **742 unit/integration tests with five
 explicit skips**, including the new service/window/tab watcher-shutdown regressions. Build and AppImage

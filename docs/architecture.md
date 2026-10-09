@@ -1,5 +1,10 @@
 # Architecture and implementation decisions
 
+CI toolbar correction (2026-10-09): [compact-width accessible names](reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
+gives ordinary toolbar buttons the same explicit action labels as split/menu buttons. The responsive
+layout and tooltips stay intact; native/package smoke exercises settings entry at three widths.
+This renderer accessibility correction adds no IPC, backend, credential or privilege capability.
+
 Release validation correction (2026-10-08): [first hosted-run follow-up](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 extends backend shutdown draining to directory-watcher walks and close notifications, including
 watchers retired when tabs, windows or sources close. `dispose()` still stops new work immediately;

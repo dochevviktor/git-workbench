@@ -5,6 +5,48 @@ Arch/AUR recipe. The version comes from `package.json`; `package-lock.json` must
 independent distribution policy, informed by the version gates in the local `offworktime` workflows.
 It does not change any Fork feature or claim new feature-family parity. P14 remains partial.
 
+## Compact toolbar correction — 2026-10-09
+
+The [second installer run](https://github.com/dochevviktor/git-workbench/actions/runs/37842844004)
+at `5d27bc6` passed all unit tests, builds and native desktop smoke checks on Windows and macOS.
+Both installers were built successfully. Each packaged suite then failed the same three scenarios
+(F32 custom commands, F33 external tools and P13 AI) at the first Quick Launch click. Windows passed
+the other 16 package scenarios; macOS passed 15 and skipped the Windows-only scenario. Linux's entire
+job, including its installer upload, passed. Assembly and publication remained blocked.
+
+The shared cause is the toolbar's existing 1080px responsive breakpoint. When the visible text is
+hidden, ordinary toolbar buttons derive their accessible names from their tooltips. Quick Launch
+therefore becomes `Quick Launch (Ctrl+P)` or its macOS shortcut variant, while disabled Fetch/Pull/Push
+buttons become `Open a repository first.`. The exact role/name selector cannot find Quick Launch on
+the hosted desktops. A local Electron regression reproduced the name change at 1024px before the fix.
+
+Ordinary toolbar buttons now expose their action label with `aria-label`, as the split and menu
+buttons already do. The new regression opens all three settings dialogs before a repository is open
+at 1280px, 1024px and 780px, checks stable names and disabled state, and checks that tooltips remain.
+It runs in the native smoke and packaged suites on every supported OS. Existing workflow assertions
+and the upload gates remain enabled. No layout, CSS, private asset, Git semantic, IPC, sandbox or
+credential boundary changes. This is an independent F31/F34 accessibility correction, not a new
+Fork observation or visual-parity claim.
+
+Primary references checked **2026-10-09**, high confidence for the documented naming contract:
+[W3C HTML accessible names](https://www.w3.org/TR/html-aam/#accessible-name-and-description-computation)
+and [Playwright role locators](https://playwright.dev/docs/locators#locate-by-role).
+The same breakpoint applies across OSes; the tooltip shortcut and native window size differ.
+
+Local verification on Linux, Node 24.13.0 and Git 2.55.0:
+
+- The new regression fails against the original toolbar and passes after the fix; all three
+  previously failing scenarios also pass.
+- `npm run check`: types, lint, formatting and **736 unit/integration tests passed**, with 11 explicit
+  skips (six require unavailable Git LFS, three opt-in scale cases and two Windows-only cases).
+- Production build and AppImage creation passed; all **20 applicable packaged scenarios passed**,
+  with one Windows-only skip and no retries. Renderer isolation and sandbox assertions remain enabled.
+- The full desktop suite and hosted installer/upload verification are pending.
+
+Logs and structured reports are retained in `test-results/ci-current`; the original hosted Windows
+and macOS reports are retained there separately. P14's wider native-device, assistive-technology,
+signing and live-provider gates remain separate.
+
 ## First hosted-run correction — 2026-10-08
 
 The [first installer run](https://github.com/dochevviktor/git-workbench/actions/runs/37824923781)
