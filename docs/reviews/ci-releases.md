@@ -5,6 +5,29 @@ Arch/AUR recipe. The version comes from `package.json`; `package-lock.json` must
 independent distribution policy, informed by the version gates in the local `offworktime` workflows.
 It does not change any Fork feature or claim new feature-family parity. P14 remains partial.
 
+## Hosted validation — 2026-10-09
+
+[Run 37973746787](https://github.com/dochevviktor/git-workbench/actions/runs/37973746787) validates
+`2c64340` on `fix/ci-compact-toolbar`, including both corrections below. The workflow is **successful**:
+all three platform jobs build, validate and upload their installers, and the final job assembles the
+complete bundle and verifies the Arch recipe in its isolated container.
+
+| Host        | Unit/integration       | Desktop                           | Packaged             |
+| ----------- | ---------------------- | --------------------------------- | -------------------- |
+| Linux x64   | 745 passed, 5 skipped  | 100 passed, 5 skipped             | 20 passed, 1 skipped |
+| macOS arm64 | 744 passed, 6 skipped  | 14 native smoke passed, 1 skipped | 19 passed, 1 skipped |
+| Windows x64 | 740 passed, 10 skipped | 15 native smoke passed            | 20 passed            |
+
+Completed reports have no failed or flaky tests and no retries. Skips retain the existing OS,
+optional-tool and opt-in benchmark policy. The macOS DMG contains both architectures; these runtime
+results exercise arm64. P14's wider native-device, signing and live-provider gates remain partial.
+The default branch has not been changed and no version tag or GitHub Release has been published.
+The publish job is intentionally skipped for this fix branch. The run's `release-v0.1.0` artifact
+contains all three installers, the Arch recipe/archive, `SHA256SUMS` and the source-bound manifest;
+the individual `installers-<os>-latest` artifacts are also available. Artifacts expire after 14 days.
+Updating the default branch would run the existing versioned-release workflow. The repository is
+private, so a GitHub Release would retain that access restriction.
+
 ## Compact toolbar correction — 2026-10-09
 
 The [second installer run](https://github.com/dochevviktor/git-workbench/actions/runs/37842844004)
@@ -42,7 +65,7 @@ Local verification on Linux, Node 24.13.0 and Git 2.55.0:
 - Production build and AppImage creation passed; all **20 applicable packaged scenarios passed**,
   with one Windows-only skip and no retries. Renderer isolation and sandbox assertions remain enabled.
 - The full headless desktop suite passes **99 scenarios with six explicit skips**, without retries
-  (5.1 minutes). Hosted installer/upload verification is pending.
+  (5.1 minutes). The final hosted results are recorded above.
 
 Logs and structured reports are retained in `test-results/ci-current`; the original hosted Windows
 and macOS reports are retained there separately. P14's wider native-device, assistive-technology,
@@ -52,7 +75,8 @@ The first correction run, [37972253744](https://github.com/dochevviktor/git-work
 at `44ab276`, confirms **14 native macOS smoke passes and 19 packaged passes**, with one Windows-only
 skip in each suite. The original three failures are resolved. A separate macOS watcher integration
 test failed to observe fallback mode within two seconds, leaving that job red despite passing package
-checks. Windows and Linux were still running when this follow-up was prepared.
+checks. That superseded run was cancelled to release the branch's concurrency slot for the corrected
+commit; its passing macOS package evidence and failing watcher report are retained.
 
 The watcher knew its initial directory limit was reached but only notified clients on a native event
 or its 30-second polling interval. The old test coupled fallback reporting to a newly created file's
@@ -65,7 +89,7 @@ watcher capacity. All 18 targeted watcher/session/shutdown tests pass. Final `np
 types, lint, formatting and **739 tests with 11 explicit skips** (49.57 seconds). The rebuilt AppImage
 passes **20 scenarios with one Windows-only skip**, and all **eight session/window-lifecycle desktop
 scenarios pass**, without retries. These final reports are in `test-results/ci-current/watcher-fix`.
-Hosted verification of this follow-up remains pending.
+The final hosted results above verify this follow-up on all three OSes.
 
 [Node's fs.watch caveats](https://nodejs.org/download/release/v24.13.0/docs/api/fs.html#caveats), checked
 **2026-10-09**, document platform-dependent event behavior. Confidence is high for the controlled

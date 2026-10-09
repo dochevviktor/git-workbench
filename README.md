@@ -1,28 +1,24 @@
 # Git Workbench
 
-CI follow-up (2026-10-09): [compact toolbar correction](docs/reviews/ci-releases.md#compact-toolbar-correction--2026-10-09).
-The latest Windows/macOS failures share an accessible-name change when toolbar text is hidden on
-narrow desktops. Stable button labels and a regression at three widths fix that failure locally;
-macOS native/package checks now pass. A separate watcher-limit notification failure is also corrected
-and verified locally; final hosted installer/upload verification is pending.
+CI verification (2026-10-09): Windows, macOS and Linux validation, installer uploads and Arch recipe
+verification pass in [run 37973746787](https://github.com/dochevviktor/git-workbench/actions/runs/37973746787)
+at `2c64340`. Download the complete `release-v0.1.0` bundle or individual installer artifacts from that
+run; they are retained for 14 days. The [correction record](docs/reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
+explains stable toolbar names at compact widths and proactive watcher-coverage notifications, with
+local and native regression evidence.
 
 Release packaging (2026-10-08): CI now builds Windows x64 NSIS installers, Linux x64 AppImages and
 universal macOS DMGs, then assembles checksums and a tested Arch `git-workbench-bin` recipe. Successful
 default-branch pushes publish new `package.json` versions as `v<version>` GitHub Releases. See
 [release workflow and verification](docs/reviews/ci-releases.md) for downloads, retries, signing limits
-and AUR submission. The first hosted run built all three installers; its validation failures and
-[corrections](docs/reviews/ci-releases.md#first-hosted-run-correction--2026-10-08) are recorded separately.
-The corrected native tests and first successful assembly/publication still need a hosted run.
-
-Latest CI follow-up (2026-10-08): [history-menu readiness correction](docs/reviews/cross-platform-portability.md#fifth-ci-failure-follow-up--2026-10-08).
-Windows and macOS validation, plus Linux's package checks, are green at `6d9c4a4`. Linux's last desktop
-failure was a Reset menu item stuck in its initial loading state. The correction updates that open
-menu when references become ready, preserving the reviewed commit. It still needs a hosted rerun.
+and AUR submission. The verification above is on `fix/ci-compact-toolbar`; updating `master` and
+publishing the first versioned GitHub Release remain separate actions. Earlier failures and their
+corrections are retained in the release record.
 
 Cross-platform review (2026-10-06): [corrections and verification](docs/reviews/cross-platform-portability.md)
 covers Windows environment/symlink/process issues and macOS file-open/shortcut handling. CI now includes
-native Windows/macOS smoke scenarios. macOS unit/build/smoke verification now has the hosted evidence
-linked above; macOS packaging and native-device checks remain outstanding.
+native Windows/macOS smoke scenarios. Native package verification now has the hosted evidence linked
+above; broader native-device checks remain outstanding.
 
 Windows implementation (2026-10-01): the [compatibility follow-up](docs/reviews/windows-compatibility.md)
 records native custom commands, external tools, AI adapters and Git/diff/path corrections, plus test

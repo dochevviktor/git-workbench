@@ -3,10 +3,10 @@
 Compact toolbar correction — **2026-10-09**: [the CI record](../reviews/ci-releases.md#compact-toolbar-correction--2026-10-09)
 links W3C/Playwright naming contracts and independent F31/F34 regression evidence, with high confidence
 for the locally reproduced failure. Hosted desktop sizes exposed the shared responsive breakpoint;
-native verification is pending. No layout/style or private evidence changes, and no additional Fork
+final native/package checks pass on all three OSes. No layout/style or private evidence changes, and no additional Fork
 behavior, visual comparison or case completion is inferred.
 The hosted follow-up confirms native macOS package checks and adds independent F02 coverage-state
-notification evidence using Node's documented fs.watch caveats; final watcher verification is pending.
+notification evidence using Node's documented fs.watch caveats; the final hosted watcher tests pass.
 
 Release validation correction — **2026-10-08**: [watcher and package-test evidence](../reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 concerns independent F02/F03 resource lifetime and F32/F33/F37 test portability. The responsive editor

@@ -2,9 +2,10 @@
 
 CI toolbar follow-up (2026-10-09): [compact-width correction](ci-releases.md#compact-toolbar-correction--2026-10-09)
 adds independent F31/F34 accessible-name coverage for F32/F33/F37 settings entry on native and packaged
-apps. The regression reproduces the hosted failure locally. Hosted upload verification is pending;
-the feature ledger's case-level unknowns and broader P14 gates remain unchanged. Native macOS package
-checks now pass; a separate F02 watcher-limit notification correction is under verification.
+apps. The regression reproduces the hosted failure locally. A separate F02 watcher-limit notification
+correction also has controlled coverage. Final hosted validation, native/package checks and installer
+uploads pass on all three OSes at `2c64340`, followed by successful complete-bundle and Arch verification.
+Versioned publication, the feature ledger's case-level unknowns and broader P14 gates remain separate.
 
 CI distribution update (2026-10-08): [versioned installers and Arch packaging](ci-releases.md)
 supersedes the original local-only publishing policy below. New CI creates version-gated GitHub

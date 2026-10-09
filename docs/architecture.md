@@ -7,6 +7,7 @@ This renderer accessibility correction adds no IPC, backend, credential or privi
 The first hosted correction passes native/macOS package checks but exposes a watcher-limit test
 failure. Directory watchers now publish known coverage transitions after scanning, through the existing
 debounce and invalidation route, without requiring a native file event. Limits and shutdown drains remain.
+Final hosted checks, native/package smoke, installer uploads and bundle/Arch verification pass.
 
 Release validation correction (2026-10-08): [first hosted-run follow-up](reviews/ci-releases.md#first-hosted-run-correction--2026-10-08)
 extends backend shutdown draining to directory-watcher walks and close notifications, including
