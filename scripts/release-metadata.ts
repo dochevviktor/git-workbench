@@ -21,16 +21,7 @@ export function compareVersions(left: string, right: string): number {
 
 export async function readReleaseVersion(): Promise<string> {
   const metadata = JSON.parse(await readFile('package.json', 'utf8')) as { version?: unknown };
-  const lock = JSON.parse(await readFile('package-lock.json', 'utf8')) as {
-    version?: unknown;
-    packages?: Record<string, { version?: unknown }>;
-  };
-  const version = releaseVersion(metadata.version);
-  if (lock.version !== version || lock.packages?.['']?.version !== version)
-    throw new Error(
-      'package.json and package-lock.json versions differ. Run npm install --package-lock-only.',
-    );
-  return version;
+  return releaseVersion(metadata.version);
 }
 
 export function releaseRepository(

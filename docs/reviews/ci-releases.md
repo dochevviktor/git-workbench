@@ -1,8 +1,9 @@
 # Versioned CI installers — 2026-10-08
 
 Scope: extend the existing three-OS validation with downloadable production builds and a generated
-Arch/AUR recipe. The version comes from `package.json`; `package-lock.json` must agree. This is an
-independent distribution policy, informed by the version gates in the local `offworktime` workflows.
+Arch/AUR recipe. As of 2026-10-10, the release version comes only from `package.json`; version fields
+in `package-lock.json` are not checked. The lockfile still pins dependencies and supplies the manifest's
+dependency checksum. This is an independent distribution policy, informed by the version gates in the local `offworktime` workflows.
 It does not change any Fork feature or claim new feature-family parity. P14 remains partial.
 
 ## Hosted validation — 2026-10-09
@@ -184,9 +185,10 @@ GitHub Releases is used for binary downloads; GitHub Packages is not a generic e
 
 ## Version and retry policy
 
-Versions are stable `major.minor.patch` numbers. Prerelease/build suffixes are rejected because an
-Arch `pkgver` ordering policy has not been defined for them. `npm version patch --no-git-tag-version`
-(or `minor`/`major`) updates both metadata files; commit those changes normally. CI creates
+Versions are stable `major.minor.patch` numbers in `package.json`. Prerelease/build suffixes are rejected
+because an Arch `pkgver` ordering policy has not been defined for them. Update `package.json` directly,
+or use `npm version patch --no-git-tag-version` (or `minor`/`major`), and commit the changes. npm may also
+update the lockfile, but matching its version fields is not a release requirement. CI creates
 `v<version>` only after validation and upload checks. No separate tag push is required.
 
 An equal or newer published version causes publication to skip; validation and downloadable build

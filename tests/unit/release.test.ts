@@ -50,14 +50,42 @@ it('validates versions and compares their numeric parts without lexicographic or
   expect(() => releaseRepository('owner/repo\nmalicious')).toThrow();
 });
 
-it('refuses mismatched lockfile versions before packaging', async () => {
+it.each([
+  {
+    state: 'has a different top-level version',
+    lock: '{"version":"1.2.2","packages":{"":{"version":"1.2.3"}}}',
+  },
+  {
+    state: 'has a different root-package version',
+    lock: '{"version":"1.2.3","packages":{"":{"version":"1.2.2"}}}',
+  },
+  { state: 'has no version fields', lock: '{"lockfileVersion":3,"packages":{}}' },
+  { state: 'is absent', lock: undefined },
+])('packages with the package.json version when the lockfile $state', async ({ lock }) => {
   const root = await directory();
   await writeFile(join(root, 'package.json'), '{"version":"1.2.3"}');
-  await writeFile(join(root, 'package-lock.json'), '{"version":"1.2.2","packages":{"":{"version":"1.2.2"}}}');
-  await expect(
-    promisify(execFile)(process.execPath, [resolve('scripts/package-aur.ts')], { cwd: root }),
-  ).rejects.toMatchObject({ stderr: expect.stringContaining('versions differ') });
+  if (lock !== undefined) await writeFile(join(root, 'package-lock.json'), lock);
+  await writeFile(join(root, 'git-workbench-1.2.3-linux-x86_64.AppImage'), 'test-only installer');
+  await writeFile(join(root, 'LICENSE'), 'test-only license');
+  await promisify(execFile)(process.execPath, [resolve('scripts/package-aur.ts'), root], { cwd: root });
+  expect(await readFile(join(root, 'PKGBUILD'), 'utf8')).toContain('pkgver=1.2.3\n');
+  expect(await readFile(join(root, '.SRCINFO'), 'utf8')).toContain('\tpkgver = 1.2.3\n');
 });
+
+it.each([{}, { version: '1.2.3-rc.1' }])(
+  'rejects invalid package.json metadata %j even when the lockfile has a valid version',
+  async (metadata) => {
+    const root = await directory();
+    await writeFile(join(root, 'package.json'), JSON.stringify(metadata));
+    await writeFile(
+      join(root, 'package-lock.json'),
+      '{"version":"1.2.3","packages":{"":{"version":"1.2.3"}}}',
+    );
+    await expect(
+      promisify(execFile)(process.execPath, [resolve('scripts/package-aur.ts')], { cwd: root }),
+    ).rejects.toMatchObject({ stderr: expect.stringContaining('major.minor.patch') });
+  },
+);
 
 it('pins AUR sources to the versioned AppImage and license and preserves the sandbox', () => {
   const { pkgbuild, srcinfo } = aurSources('1.2.3', 'owner/repo', 'a'.repeat(64), 'b'.repeat(64));
